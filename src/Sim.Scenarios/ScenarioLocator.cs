@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace Sim.Headless.Scenarios;
+namespace Sim.Scenarios;
 
 /// <summary>Разрешение аргумента <c>--scenario</c>: путь к файлу или имя (<c>s1k</c> → <c>scenarios/s1k.json</c>).</summary>
 public static class ScenarioLocator

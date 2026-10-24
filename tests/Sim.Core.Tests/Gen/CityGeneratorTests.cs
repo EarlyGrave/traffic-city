@@ -11,7 +11,7 @@ public class CityGeneratorTests
 {
     // Голден-хэш NetworkStore.Hash() сети s1k (seed 20261024). Менять только вместе с city-generator.md §3.9
     // (порядок PRNG) или изменением геометрии/эмиссии NetworkBuilder.
-    private const ulong GoldenS1kNetworkHash = 0xC9A11346B4CF4614UL;
+    private const ulong GoldenS1kNetworkHash = 0x579C25BA8FEB8BC8UL;
 
     private readonly ITestOutputHelper _out;
 
@@ -334,7 +334,7 @@ public class CityGeneratorTests
         Assert.Equal(25, signals);
         SignalPlanSeed[] plans = r.City0.SignalPlans;
         Assert.Equal(25, plans.Length);
-        int cycle = 540 + 540 + (2 * (60 + 20));
+        int cycle = 480 + 480 + (2 * (60 + 20));
         for (int i = 0; i < plans.Length; i++)
         {
             if (i > 0)
@@ -342,8 +342,8 @@ public class CityGeneratorTests
                 Assert.True(plans[i].Node > plans[i - 1].Node);
             }
 
-            Assert.Equal(540, plans[i].Green0);
-            Assert.Equal(540, plans[i].Green1);
+            Assert.Equal(480, plans[i].Green0);
+            Assert.Equal(480, plans[i].Green1);
             Assert.True(plans[i].OffsetTicks < cycle);
             Assert.Equal(NodeControl.Signal, s.Nodes[plans[i].Node].Control);
         }

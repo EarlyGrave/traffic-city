@@ -9,6 +9,7 @@ internal enum BuildStatus : byte
 {
     Ok = 0,
     NoPath = 1,    // пути нет (RouteFailed)
+    Skipped = 3,   // ничего не строилось (внутреннее значение плановой перемаршрутизации)
     Deferred = 2,  // бюджет раскрытий тика исчерпан либо в пуле/арене нет места - повторить позже
 }
 
@@ -270,7 +271,7 @@ internal sealed class RouteBuilder
     // Магистраль зонной пары: из кэша или полным поиском с вставкой в кэш. Результат - в _trunk, возвращает длину (0 = нет).
     private int GetTrunk(int fromZone, int toZone, int hubA, int hubB, long tick)
     {
-        int idx = _cache.Lookup(fromZone, toZone, _net.Version, tick);
+        int idx = _cache.Lookup(fromZone, toZone, _net.Version, tick, Graph.WeightsVersion);
         if (idx >= 0)
         {
             CacheHits++;
@@ -383,6 +384,7 @@ internal sealed class RouteBuilder
             if (_pool.TryAdd(steps, fromZone, toZone, _net.Version, out handle))
             {
                 _pool.LastUsedTick[handle.Index] = tick;
+                _pool.WeightsVersion[handle.Index] = Graph.WeightsVersion;
                 return true;
             }
 

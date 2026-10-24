@@ -5,7 +5,7 @@ using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Core.Network;
 
-namespace Sim.Headless.Scenarios;
+namespace Sim.Scenarios;
 
 /// <summary>Результат загрузки: desc плюс информативные поля, которых нет в <see cref="ScenarioDesc"/>.</summary>
 public sealed class LoadedScenario
@@ -277,6 +277,7 @@ public static class ScenarioLoader
             LaneWidth = 3.5f,
             IrregularNodes = 12,
             IrregularJitter = 40,
+            NodeJitter = 0,
             RemovedStreetShare = 0.15f,
             ConnectorSamples = 8,
             Signals = CitySignals.ArterialXArterial,
@@ -314,6 +315,7 @@ public static class ScenarioLoader
             ? r.Int("irregular_nodes", min: 0)
             : ScaledIrregularDefault(c.Scale);
         c.IrregularJitter = (float)r.Num("irregular_jitter_m", 40, min: 0);
+        c.NodeJitter = (float)r.Num("node_jitter_m", 0, min: 0);
         c.RemovedStreetShare = (float)r.Num("removed_street_share", 0.15, min: 0, max: 0.5);
         c.ConnectorSamples = r.Int("connector_samples", 8, min: 2);
 

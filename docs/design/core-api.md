@@ -269,8 +269,8 @@ public struct SimCapacities
     public int EventCapacity;              // по умолчанию 4096 за Step
     public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
     public int MaxSignalizedNodes;
-    public int MaxConnectors;              // connector-полос всего (intersections.md §4); по умолчанию MaxNodes * 16
-    public int MaxConflicts;               // записей ConflictEntry (intersections.md §3); по умолчанию MaxConnectors * 6
+    public int MaxConnectors;              // connector-полос всего (intersections.md §4); по умолчанию MaxNodes * 16 (0 в World = по умолчанию)
+    public int MaxConflicts;               // записей ConflictEntry (intersections.md §3); по умолчанию MaxConnectors * 6 (0 в World = по умолчанию)
 }
 
 public struct VehicleTypeDesc            // см. scenario-format.md §3 — значения и обоснование
@@ -665,7 +665,7 @@ Connector-полосы: по одной на разрешённый манёвр
 без спец-случаев: connector — такая же полилиния, как и обычная полоса.
 Реализация (`NetworkBuilder`): правила манёвров — интерфейс `IConnectorRules` (точка расширения шага 3);
 порядок connector'ов полосы в `LaneNext`: прямо, направо, налево, разворот. Манёвр «прямо» — поворот ≤ 30°.
-Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
+Радиус узла этапа 1 фиксирован: `NodeData.Radius = NodeSetback` (7 м, `intersections.md` §1). Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
 направления («relaxed»-проход). Разворот — только на тупике (узел с одним сегментом). Узел строится один раз
 (`NodeAlreadyBuilt`); `NodeData.FirstArm == -1` — узел ещё не построен. Рукава ≤ 16 на узел. Ошибки построения —
 `NetworkStatus` (ёмкости → `CreateStatus.NetworkTooLarge`, остальное → `InvalidNetwork`).
@@ -728,7 +728,7 @@ internal sealed class VehicleStore
     public readonly int[] RouteCursor;
     public readonly int[] DestZone;
     public readonly int[] DestLane; public readonly float[] DestS;   // точка прибытия
-    public readonly int[] NextConn;                                   // STAGE2-TEMP: выбранный connector ближайшей развилки, -1 = не выбран (до маршрутов шага 3)
+    public readonly int[] NextConn;                                   // кэш NextConnector: connector ближайшей развилки по маршруту (routing.md 6.2), -1 = не выбран; пересчёт в конце фазы 7
 
     // --- ворота перекрёстка (intersections.md §4, §5) ---
     public readonly byte[]   GateState;           // бит0 Granted (допуск выдан), бит1 StoppedAtLine
@@ -882,7 +882,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 |---|------|--------|-------|------|
 | 1 | **Команды**: применить всю очередь FIFO, события `CommandApplied/Rejected` | CommandQueue | Network, Signals, Transit, Selection, Events | `Api/CommandDispatcher.cs` |
 | 2 | **Спавн**: (a) генератор OD: пока `Alive < Target` и `Pending` не полна — сгенерировать поездку (PRNG `Spawn`), ramp по `SpawnRampTicks`; (b) автобусы: по `HeadwayTicks` выпустить на маршрут **[шаг 4]**; (c) из `PendingTrips` FIFO ставить машины **с уже построенным маршрутом** (`Route != -1`; голова без маршрута ждёт, порядок сохраняется) на `FromLane` при `s=Length_type+MinGap`, если `LaneTail` достаточно далеко (`S[tail] − L_tail ≥ s + MinGap`), иначе поездка остаётся в очереди | Zones, Lanes, Pending | VehicleStore, LaneLists | `Agents/Spawner.cs` |
-| 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию и не считаются stuck пока `Route == -1`), затем поездки из `PendingTrips` без маршрута — кэш магистралей, при промахе A*; всё в пределах `PathfindBudgetPerTick` и бюджета раскрытий; компактификация арены при нехватке | Network, RoutePool, Pending | RoutePool, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
+| 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию (`Route == -1`) и ждут нового маршрута), затем поездки из `PendingTrips` без маршрута — кэш магистралей, при промахе A*; всё в пределах `PathfindBudgetPerTick` и бюджета раскрытий; компактификация арены при нехватке | Network, RoutePool, Pending | RoutePool, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
 | 4 | **Перекрёстки и сигналы** (`intersections.md` §5–6): таймеры фаз, `LaneSignals`, `SignalStates`; сбор кандидатов (головы полос у узлов с воротами) и выдача допусков с билетами (сигнал, STOP, выезд свободен, gap acceptance, старшинство); на шаге 2 фаза пустая | Signals, LaneLists, S, Speed, Route | Signals, LaneSignals, GateState, GrantConnector, Ticket, WaitTicks, NodeTicket, OutReserved | `Rules/Intersections/*.cs` |
 | 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение). Пишет **только** `Accel[]` и `LaneChangeDir[]`: это делает фазу параллелизуемой по машинам **[этап 2]** | S, Speed, Lane, списки, Signals | Accel, LaneChangeDir | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
 | 6 | **Интеграция (write)**: `v' = max(0, v + a·dt)`; `s' = s + v'·dt`; **клэмп I6** (§7.6); `Lateral` анимация; `StillTicks` | Accel | S, Speed, Lateral | `Agents/IntegratePhase.cs` |
@@ -893,10 +893,12 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
 
-**STAGE2-TEMP (шаг 2, до маршрутов шага 3).** Поездка без маршрута: на развилке машина берёт connector равновероятно из стрима
-`RngBehaviour` (предпочтение: не разворот и не тупик, затем не разворот; выбор хранится в `NextConn`, чтобы поиск лидера видел ту же
-полосу), прибывает при въезде на любую полосу зоны `DestZone` (`World.Spawn.LaneZone`; для внешней зоны - её полосы спавна и встречные
-полосы того же сегмента). Шаг 3 заменяет это маршрутами и `DestLane/DestS`; места в коде помечены `// STAGE2-TEMP`.
+**Маршруты в симуляции (шаг 3, 3-R4/R5; `routing.md` §13).** Маршрут строится фазой 3 ДО спавна: фаза 2 ставит на дорогу только поездки с
+`PendingTrip.HasRoute` (`RouteGen != 0`; поездка без маршрута уходит в хвост очереди). Точка прибытия `DestLane/DestS` выбирается при
+генерации поездки (`Routing/Destinations`: полоса `LaneNo 0` встречного направления сегмента случайной полосы спавна зоны назначения,
+`DestS = 0.6 * Length`). Прибытие (фаза 8) - строго `Lane == DestLane && S >= DestS`, маршрут прибывшей машины освобождается. Развилка
+в фазе 7: `NextConnector` по курсору маршрута, на другой полосе того же сегмента - connector в тот же направленный сегмент, иначе
+connector по умолчанию (не разворот и не тупик) и промах -> маршрут освобождается, машина едет дальше и встаёт в очередь перемаршрутизации.
 
 **Уточнения реализации (задача 2-H).**
 - Фаза 2: цель = `TargetVehicles * min(1, Tick / SpawnRampTicks)`; поездка генерируется, пока `Alive + Pending < цель` (не более 64 за тик).
@@ -909,7 +911,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 - Фаза 7 (временно): машина не входит на полосу, если зазор до хвоста этой полосы меньше `MinPhysicalGap` (одновременный въезд с двух
   connector'ов); на слиянии двух connector'ов в одну полосу без правил перекрёстков (шаг 3) голова одной может перекрыться с хвостом
   другой на границе полос - IDM/клэмп I6 тут же гасит скорость, списки полос остаются без перекрытий.
-- Фаза 9: `Route == -1` stuck не исключает (маршрутов нет). `NodeThroughput` ведёт фаза 7. `SegmentLoads`: `Count` - машины на сегменте (обе
+- Фаза 9: `Route == -1` stuck не исключает (машина без маршрута едет по умолчанию, не стоит). `NodeThroughput` ведёт фаза 7. `SegmentLoads`: `Count` - машины на сегменте (обе
   стороны, по основной полосе), `Density` = `Count / (полос * Length / 1000)`, `SpeedRatio` = средняя скорость / лимит сегмента (1 при пустом).
   Gridlock-флаг: счётчик `World.GridlockStreak` - подряд тиков, когда условие расходится с флагом; смена флага при достижении `GridlockHoldTicks`.
 
@@ -1121,9 +1123,9 @@ public struct BusRouteStats { public int ActiveBuses; public long Arrivals; publ
 
 Определения:
 - **stuck**: `StillTicks[i] >= StuckThresholdTicks` (1200 = 60 с), где `StillTicks` растёт, если за
-  тик `v' < StuckSpeedThreshold` (0,1 м/с), и сбрасывается в 0 иначе. Исключения: автобус с
-  `DwellTicks > 0` (стоянка — не застревание) и машина с `Route == -1` (ждёт маршрут — считается
-  в `RouteDeferred`, а не stuck). Ожидание на красном **считается**: при корректных планах
+  тик `v' < StuckSpeedThreshold` (0,1 м/с), и сбрасывается в 0 иначе. Исключение: автобус с
+  `DwellTicks > 0` (стоянка — не застревание). Машина с `Route == -1` (промах полосы) едет по умолчанию, а не стоит,
+  поэтому исключения для неё нет: стоящая машина считается stuck при любом маршруте. Ожидание на красном **считается**: при корректных планах
   (цикл ≤ 120 с, зелёный ≥ 10 с) очередь за 60 с должна сдвинуться хотя бы на одну машину;
   если нет — это и есть проблема трафика, которую метрика должна показать. Событие `VehicleStuck`
   при переходе, `VehicleUnstuck` при сбросе.
@@ -1211,6 +1213,7 @@ src/Sim.Core/
 | `Occupancy` | `LaneOccupancy` | списки порядка на полосах (§6.4) |
 | `Trips` | `PendingTrips` | очередь поездок (§6.6) |
 | `Routes` | `RoutePool` | хранилище маршрутов (§6.5) |
+| `Connectors` | `ConnectorStore` | connector'ы и конфликтные пары (`intersections.md` §3–4); `WorldBuilder.Create` вызывает `Connectors.BuildAll(Net)` после построения сети; `LaneData.ConflictGroup` = индекс записи |
 | `CityInfo` | `CityGenResult` | итог `CityGenerator` (размеры, счётчики); при `City.Enabled == false` - `default` |
 | `SignalPlanSeeds` | `SignalPlanSeed[]` | зерновые планы светофоров генератора (длина = `SignalCount`) - вход шага 3, логики сигналов в `Create` нет |
 | `Transit` | `GenTransit?` | результат `TransitGenerator` (маршруты, остановки, пути по сегментам `PathSeg/PathDir`) - вход шага 4; `null` без генератора |

@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using Sim.Core.Api;
+using Sim.Scenarios;
 
 namespace Sim.Headless.Scenarios;
 

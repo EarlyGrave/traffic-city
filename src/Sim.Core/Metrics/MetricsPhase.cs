@@ -12,8 +12,8 @@ namespace Sim.Core.Metrics;
 /// <c>Stuck &gt;= max(GridlockMinStuck, GridlockStuckShare * Active)</c>; флаг включается, когда условие держится
 /// <c>GridlockHoldTicks</c> подряд, и выключается, когда оно ложно столько же подряд (<c>World.GridlockStreak</c>).
 /// Все накопители целочисленные; float - только при расчёте порога и отношения скорости (порядок суммирования фиксирован).
-/// <c>NodeThroughput</c> ведёт фаза 7 (при выходе с connector'а). STAGE2-TEMP: исключение «Route == -1 не stuck» (core-api 11)
-/// отключено, пока маршрутов нет - иначе stuck не считался бы вовсе.
+/// <c>NodeThroughput</c> ведёт фаза 7 (при выходе с connector'а). Машина с <c>Route == -1</c> (промах полосы, ждёт перемаршрутизации)
+/// едет по умолчанию, а не стоит, поэтому исключения из stuck для неё нет: стоящая машина считается stuck при любом маршруте.
 /// </summary>
 internal static class MetricsPhase
 {

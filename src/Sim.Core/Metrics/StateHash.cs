@@ -41,7 +41,10 @@ internal static class StateHash
             h.Add(v.Accel[i]);
             h.Add(v.Type[i]);
             h.Add(v.Route[i]);
+            h.Add(v.RouteGen[i]);
             h.Add(v.RouteCursor[i]);
+            h.Add(v.DestLane[i]);
+            h.Add(v.DestS[i]);
             h.Add((byte)v.LaneChangeDir[i]);
             h.Add(v.GhostLane[i]);
             h.Add(v.Flags[i]);
@@ -49,6 +52,10 @@ internal static class StateHash
             h.Add(v.DestZone[i]);
             h.Add(v.NextConn[i]);
             h.Add(v.SpawnTick[i]);
+            h.Add(v.GateState[i]);
+            h.Add(v.GrantConnector[i]);
+            h.Add(v.Ticket[i]);
+            h.Add((int)v.WaitTicks[i]);
         }
 
         // 4. Полосы.
@@ -59,6 +66,15 @@ internal static class StateHash
             h.Add(w.Occupancy.LaneHead[l]);
             h.Add(w.Occupancy.LaneTail[l]);
             h.Add(w.Occupancy.LaneCount[l]);
+            h.Add(w.Net.OutReserved[l]);
+        }
+
+        // 4a. Узлы: билеты ворот.
+        int nodes = w.Net.NodeCount;
+        h.Add(nodes);
+        for (int n = 0; n < nodes; n++)
+        {
+            h.Add(w.Net.NodeTicket[n]);
         }
 
         // 5. Сигналы.
@@ -85,6 +101,7 @@ internal static class StateHash
 
         // 7. Счётчики (по полям в порядке объявления).
         AddCounters(ref h, in w.Counters);
+        h.Add(w.Router.Graph.WeightsVersion);
 
         // 8. Очередь поездок в порядке очереди.
         int pending = w.Trips.Count;
@@ -97,6 +114,22 @@ internal static class StateHash
             h.Add(t.FromLane);
             h.Add(t.FromS);
             h.Add(t.Type);
+            h.Add(t.DestLane);
+            h.Add(t.DestS);
+            h.Add(t.Route);
+            h.Add(t.RouteGen);
+        }
+
+        // 8a. Очередь перемаршрутизации в порядке очереди.
+        int rer = w.Rerouting.Count;
+        h.Add(rer);
+        for (int p = 0; p < rer; p++)
+        {
+            ref readonly Routing.RerouteEntry re = ref w.Rerouting.At(p);
+            h.Add(re.Index);
+            h.Add(re.Generation);
+            h.Add(re.ReadyTick);
+            h.Add(re.Kind);
         }
 
         // 9. Управляющее состояние команд.
@@ -136,6 +169,12 @@ internal static class StateHash
         h.Add(c.PathfindCacheHits);
         h.Add(c.RouteDeferred);
         h.Add(c.PathfindExpandedNodes);
+        h.Add(c.RouteFailed);
+        h.Add(c.Reroutes);
+        h.Add(c.RouteCompactions);
+        h.Add(c.RouteCacheSkips);
+        h.Add(c.CostRecalcs);
+        h.Add(c.TimedReroutes);
         h.Add(c.ConnectorEntries);
         h.Add(c.CommandsApplied);
         h.Add(c.CommandsRejected);
@@ -152,5 +191,10 @@ internal static class StateHash
         h.Add(c.BusStopArrivals);
         h.Add(c.BusHeadwayDeviationTicksTotal);
         h.Add(c.BusPassengersBoarded);
+        h.Add(c.Grants);
+        h.Add(c.GateDeniedExit);
+        h.Add(c.PriorityInversions);
+        h.Add(c.BoxWaitTicks);
+        h.Add(c.GateWaitTicksTotal);
     }
 }

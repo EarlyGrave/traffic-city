@@ -3,6 +3,7 @@ using Sim.Core.Api;
 using Sim.Core.Gen;
 using Sim.Core.Network;
 using Sim.Core.Routing;
+using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
 namespace Sim.Core;
@@ -29,7 +30,12 @@ internal sealed class World
     public readonly LaneOccupancy Occupancy;
     public readonly PendingTrips Trips;
     public readonly RoutePool Routes;
+    public readonly RouteBuilder Router;               // фаза 3: A*, кэш магистралей, бюджет раскрытий (routing.md)
+    public readonly RingBuffer<RerouteEntry> Rerouting; // машины, промахнувшиеся мимо полосы (routing.md 3)
     public readonly SpawnerData Spawn;
+    public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
+    public readonly SignalStore Signals;
+    public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
@@ -56,6 +62,7 @@ internal sealed class World
     public int TargetVehicles;
     public VehicleHandle Selected;
     public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
+    public bool DebugDisableExitCheck;    // тестовый флаг (intersections.md §11, T6): отключить правило «выезд свободен» у ворот
 
     // ---- выходные массивы фаз 4, 9, 10 ----
     public readonly SegmentLoad[] SegmentLoads;
@@ -84,7 +91,16 @@ internal sealed class World
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
         Routes = new RoutePool(c.MaxRoutes, c.MaxRouteSteps);
-        Spawn = new SpawnerData(c.MaxZones, c.MaxLanes, types.Length);
+        Router = new RouteBuilder(Net, Routes, in c);
+        Rerouting = new RingBuffer<RerouteEntry>(c.MaxVehicles);
+        Spawn = new SpawnerData(c.MaxZones, types.Length);
+
+        // 0 = по умолчанию (intersections.md §4): MaxNodes * 16 connector'ов, MaxConnectors * 6 записей конфликтов.
+        int maxConnectors = c.MaxConnectors > 0 ? c.MaxConnectors : checked(c.MaxNodes * 16);
+        int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
+        Connectors = new ConnectorStore(maxConnectors, maxConflicts);
+        Signals = new SignalStore(c.MaxSignalizedNodes);
+        Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes);
 
         RngCityGen = Pcg32.ForStream(Seed, RngStream.CityGen);
         RngZones = Pcg32.ForStream(Seed, RngStream.Zones);

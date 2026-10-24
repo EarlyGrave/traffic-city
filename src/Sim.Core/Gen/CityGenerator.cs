@@ -43,7 +43,7 @@ internal static class CityGenerator
     internal const int RouteAttempts = 8;
     internal const int Tail1MaxEdges = 3;
     internal const int Tail2Edges = 2;
-    internal const ushort DefaultGreenTicks = 540;
+    internal const ushort DefaultGreenTicks = 480;
     internal const ushort MajorGreenTicks = 720;
     internal const ushort MinorGreenTicks = 280;
 
@@ -68,7 +68,7 @@ internal static class CityGenerator
         int nz = Math.Max(2, RoundI(h / city.BlockSize));
         float bx = w / nx;
         float bz = h / nz;
-        float g = 0.25f * city.IrregularJitter;
+        float g = city.NodeJitter;
         float halfW = w * 0.5f;
         float halfH = h * 0.5f;
 
@@ -520,6 +520,7 @@ internal static class CityGenerator
             c.LaneWidth >= 2.5f && c.LaneWidth <= 5f &&
             c.IrregularNodes >= 0 &&
             c.IrregularJitter >= 0f && c.IrregularJitter <= 0.45f * c.BlockSize &&
+            c.NodeJitter >= 0f && c.NodeJitter <= 0.45f * c.BlockSize &&
             c.RemovedStreetShare >= 0f && c.RemovedStreetShare <= 0.5f &&
             c.ConnectorSamples >= 2 && c.ConnectorSamples <= 32;
     }

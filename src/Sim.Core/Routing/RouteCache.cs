@@ -31,7 +31,7 @@ internal sealed class RouteCache
     /// Индекс магистрали в пуле или -1. Запись устаревшей версии сети удаляется и освобождается.
     /// При попадании обновляет <c>LastUsedTick</c>.
     /// </summary>
-    public int Lookup(int from, int to, int networkVersion, long tick)
+    public int Lookup(int from, int to, int networkVersion, long tick, int weightsVersion = -1)
     {
         long key = Key(from, to);
         if (!_map.TryGet(key, out int idx))
@@ -39,7 +39,7 @@ internal sealed class RouteCache
             return -1;
         }
 
-        if (_pool.NetworkVersion[idx] != networkVersion)
+        if (_pool.NetworkVersion[idx] != networkVersion || (weightsVersion >= 0 && _pool.WeightsVersion[idx] != weightsVersion))
         {
             _map.Remove(key);
             _pool.Free(new RouteHandle(idx, _pool.Pool.GenerationOf(idx)));

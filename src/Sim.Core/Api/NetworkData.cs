@@ -34,6 +34,7 @@ public struct NodeData
 {
     public Vec2 Position;           // ось узла
     public float Elevation;         // Y, этап 1 = 0
+    public float Radius;            // м: отступ стоп-линий от оси узла; этап 1 = NetworkOptions.NodeSetback для всех узлов (intersections.md §1)
     public NodeControl Control;
     public int FirstArm, ArmCount;  // диапазон в NodeArms (сегменты, инцидентные узлу, по часовой стрелке)
     public int FirstConnector, ConnectorCount; // диапазон полос-connector'ов узла (подряд в Lanes)

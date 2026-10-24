@@ -5,7 +5,15 @@ namespace Sim.Core.Network;
 
 internal sealed partial class NetworkBuilder
 {
-    private const float StraightCos = 0.8660254f; // cos(30°): поворот до 30° — «прямо»
+    /// <summary>cos(30°): поворот до 30° — «прямо».</summary>
+    internal const float StraightCos = 0.8660254f;
+
+    /// <summary>Предел connector'ов на узел (LocalBit — 6 бит, PhaseMask — ulong; intersections.md §2.2).</summary>
+    internal const int MaxConnectorsPerNode = 64;
+
+    private const float LateralAccel = 2f;     // м/с², intersections.md §1
+    private const float MinConnectorSpeed = 2.5f;
+    private const float CosTenDegrees = 0.9848078f;
 
     /// <summary>BuildConnectors для всех узлов, где он ещё не вызывался; первая ошибка прерывает обход.</summary>
     public NetworkStatus BuildAllConnectorsEx()
@@ -105,7 +113,7 @@ internal sealed partial class NetworkBuilder
             _s.LaneNext[blockOwn + p] = outLane;
 
             int first = _s.LanePointCount + (p * samples);
-            float length = EmitBezier(li, lo, first, samples);
+            float length = EmitBezier(li, lo, first, samples, _planMan[p] == Maneuver.UTurn, out float speed);
             _s.Lanes[laneIdx] = new LaneData
             {
                 Kind = LaneKind.Connector,
@@ -117,7 +125,7 @@ internal sealed partial class NetworkBuilder
                 FromLane = inLane,
                 ToLane = outLane,
                 Length = length,
-                SpeedLimit = MathF.Min(li.SpeedLimit, lo.SpeedLimit),
+                SpeedLimit = speed,
                 FirstPoint = first,
                 PointCount = samples,
                 Left = -1,
@@ -133,10 +141,16 @@ internal sealed partial class NetworkBuilder
         _s.LaneCount += plan;
         _s.LanePointCount += plan * samples;
 
+        for (int a = 0; a < arms; a++)
+        {
+            _s.ArmDir[firstArm + a] = _armDir[a];
+        }
+
         nd.FirstArm = firstArm;
         nd.ArmCount = arms;
         nd.FirstConnector = baseLane;
         nd.ConnectorCount = plan;
+        RefreshArmFlags(node);
         _s.Version++;
         return NetworkStatus.Ok;
     }
@@ -202,19 +216,110 @@ internal sealed partial class NetworkBuilder
         count = ab ? sd.LanesAB : sd.LanesBA;
     }
 
-    private Maneuver Classify(int armIn, int armOut)
+    /// <summary>
+    /// Класс манёвра по направлениям рукавов от узла (intersections.md §2.1): |turn| ≤ 30° — прямо, иначе по знаку
+    /// cross вправо/влево. Поворот круче 150° остаётся Right/Left (а не UTurn), чтобы острые Y-развилки сохраняли связность.
+    /// На узле из двух рукавов (изгиб) любой проезд — Straight.
+    /// </summary>
+    internal static Maneuver ClassifyTurn(Vec2 armDirIn, Vec2 armDirOut, bool twoArms)
     {
-        Vec2 u = _armDir[armIn] * -1f;
-        Vec2 v = _armDir[armOut];
-        float dot = (u.X * v.X) + (u.Z * v.Z);
+        if (twoArms)
+        {
+            return Maneuver.Straight;
+        }
+
+        Vec2 u = armDirIn * -1f;
+        float dot = (u.X * armDirOut.X) + (u.Z * armDirOut.Z);
         if (dot >= StraightCos)
         {
             return Maneuver.Straight;
         }
 
-        float cross = (u.X * v.Z) - (u.Z * v.X);
+        float cross = (u.X * armDirOut.Z) - (u.Z * armDirOut.X);
         return cross >= 0f ? Maneuver.Right : Maneuver.Left;
     }
+
+    private Maneuver Classify(int armIn, int armOut, int arms) => ClassifyTurn(_armDir[armIn], _armDir[armOut], arms == 2);
+
+    /// <summary>
+    /// ArmMinor рукавов и нормализация Control (intersections.md §2.3). Для узлов с ArmCount ≤ 2 Control не меняется.
+    /// </summary>
+    private void RefreshArmFlags(int node)
+    {
+        ref NodeData nd = ref _s.Nodes[node];
+        int arms = nd.ArmCount;
+        int f = nd.FirstArm;
+        bool anyArterial = false;
+        bool anyStreet = false;
+        for (int a = 0; a < arms; a++)
+        {
+            if (_s.Segments[_s.NodeArms[f + a]].Kind == RoadKind.Arterial)
+            {
+                anyArterial = true;
+            }
+            else
+            {
+                anyStreet = true;
+            }
+
+            _s.ArmFlags[f + a] = 0;
+        }
+
+        bool anyMinor = false;
+        if (anyArterial && anyStreet)
+        {
+            for (int a = 0; a < arms; a++)
+            {
+                if (_s.Segments[_s.NodeArms[f + a]].Kind == RoadKind.Street)
+                {
+                    _s.ArmFlags[f + a] = ArmMinorBit;
+                    anyMinor = true;
+                }
+            }
+        }
+        else if (arms == 3)
+        {
+            int lonely = -1;
+            int lonelyCount = 0;
+            for (int a = 0; a < arms; a++)
+            {
+                Vec2 u = _s.ArmDir[f + a] * -1f;
+                bool hasOpposite = false;
+                for (int b = 0; b < arms && !hasOpposite; b++)
+                {
+                    if (b != a)
+                    {
+                        Vec2 v = _s.ArmDir[f + b];
+                        hasOpposite = (u.X * v.X) + (u.Z * v.Z) >= StraightCos;
+                    }
+                }
+
+                if (!hasOpposite)
+                {
+                    lonely = a;
+                    lonelyCount++;
+                }
+            }
+
+            if (lonelyCount == 1)
+            {
+                _s.ArmFlags[f + lonely] = ArmMinorBit;
+                anyMinor = true;
+            }
+        }
+
+        if (arms >= 3)
+        {
+            bool noRules = nd.Control == NodeControl.None;
+            bool needMinor = nd.Control == NodeControl.Yield || nd.Control == NodeControl.Stop;
+            if (noRules || (needMinor && !anyMinor))
+            {
+                nd.Control = NodeControl.RightHandRule;
+            }
+        }
+    }
+
+    internal const byte ArmMinorBit = 1;
 
     /// <summary>Заполняет _planIn/_planOut в порядке (рукав, полоса, манёвр: прямо, направо, налево, разворот); -1 при переполнении.</summary>
     private int PlanConnectors(NodeControl control, int arms)
@@ -242,7 +347,7 @@ internal sealed partial class NetworkBuilder
                                     continue;
                                 }
                             }
-                            else if (m == Maneuver.UTurn || Classify(ai, aj) != m)
+                            else if (m == Maneuver.UTurn || Classify(ai, aj, arms) != m)
                             {
                                 continue;
                             }
@@ -261,14 +366,20 @@ internal sealed partial class NetworkBuilder
                                 continue;
                             }
 
-                            if (plan == MaxPlan)
+                            // Прямо при n_out > n_in: старшая входная полоса расходится (diverge) на все лишние выходные.
+                            int hi = m == Maneuver.Straight && li == inCount - 1 && outCount > inCount ? outCount - 1 : target;
+                            for (int t = target; t <= hi; t++)
                             {
-                                return -1;
-                            }
+                                if (plan == MaxConnectorsPerNode)
+                                {
+                                    return -1;
+                                }
 
-                            _planIn[plan] = inFirst + li;
-                            _planOut[plan] = outFirst + target;
-                            plan++;
+                                _planIn[plan] = inFirst + li;
+                                _planOut[plan] = outFirst + t;
+                                _planMan[plan] = m;
+                                plan++;
+                            }
                         }
                     }
                 }
@@ -278,14 +389,15 @@ internal sealed partial class NetworkBuilder
         return plan;
     }
 
-    private float EmitBezier(in LaneData laneIn, in LaneData laneOut, int first, int samples)
+    private float EmitBezier(in LaneData laneIn, in LaneData laneOut, int first, int samples, bool uturn, out float speed)
     {
         int iEnd = laneIn.FirstPoint + laneIn.PointCount - 1;
         Vec2 p0 = _s.LanePoints[iEnd];
         Vec2 t0 = Normalize(p0 - _s.LanePoints[iEnd - 1]);
         Vec2 p3 = _s.LanePoints[laneOut.FirstPoint];
         Vec2 t3 = Normalize(_s.LanePoints[laneOut.FirstPoint + 1] - p3);
-        float d = Dist(p0, p3) * (1f / 3f);
+        float chord = Dist(p0, p3);
+        float d = uturn ? MathF.Max(chord, 2f * _o.LaneWidth) : chord * (1f / 3f);
         Vec2 p1 = p0 + (t0 * d);
         Vec2 p2 = p3 - (t3 * d);
 
@@ -321,6 +433,17 @@ internal sealed partial class NetworkBuilder
             _s.LanePointS[first + k] = s;
         }
 
+        // Лимит скорости: sqrt(a_lat · R), R = chord / (2 sin(|turn|/2)) при |turn| ≥ 10°; sin(turn/2) = sqrt((1 − cos)/2) без тригонометрии.
+        float cosTurn = (t0.X * t3.X) + (t0.Z * t3.Z);
+        float limit = laneIn.SpeedLimit;
+        if (uturn || cosTurn <= CosTenDegrees)
+        {
+            float r = uturn ? _o.LaneWidth : chord / (2f * MathF.Sqrt(MathF.Max(0f, (1f - cosTurn) * 0.5f)));
+            float v = MathF.Max(MinConnectorSpeed, MathF.Sqrt(LateralAccel * r));
+            limit = MathF.Min(limit, v);
+        }
+
+        speed = limit;
         return s;
     }
 

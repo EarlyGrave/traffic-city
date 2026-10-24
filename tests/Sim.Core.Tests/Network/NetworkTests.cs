@@ -267,12 +267,15 @@ public class NetworkTests
                 continue;
             }
 
+            // Разворот (петля в 8 точек) поворачивает курс на ~0.9 рад за звено полилинии.
+            bool uturn = v.Lanes[l.FromLane].Segment == v.Lanes[l.ToLane].Segment;
+            float maxJump = uturn ? 1.2f : 0.7f;
             float prev = LaneGeometry.Evaluate(v, i, 0f).Heading;
             for (int k = 1; k <= 100; k++)
             {
                 float h = LaneGeometry.Evaluate(v, i, l.Length * k / 100f).Heading;
                 float dh = MathF.Abs(MathF.IEEERemainder(h - prev, 2f * MathF.PI));
-                Assert.True(dh < 0.7f, $"connector {i}: скачок курса {dh} рад");
+                Assert.True(dh < maxJump, $"connector {i}: скачок курса {dh} рад");
                 prev = h;
             }
 

@@ -101,6 +101,7 @@ public struct CityGenDesc
     public float LaneWidth;                // м
     public int IrregularNodes;
     public float IrregularJitter;          // м
+    public float NodeJitter;               // фоновый джиттер всех внутренних узлов, м (дефолт 0)
     public float RemovedStreetShare;       // 0..0.5
     public int ConnectorSamples;
     public CitySignals Signals;

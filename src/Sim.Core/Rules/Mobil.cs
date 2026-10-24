@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Rules.Intersections;
 
 namespace Sim.Core.Rules;
 
@@ -34,6 +35,13 @@ internal static class Mobil
         int lane = v.Lane[i];
         ref readonly LaneData ld = ref e.Net.Lanes[lane];
         if (ld.Kind != LaneKind.Normal || v.GhostLane[i] != -1)
+        {
+            return 0;
+        }
+
+        // intersections.md §7.1: в зоне NoLaneChangeZone до конца полосы и после выдачи допуска смена полосы запрещена -
+        // порядок у стоп-линии после допуска не меняется.
+        if (GateRules.IsGranted(v, i) || ld.Length - v.S[i] < GateRules.NoLaneChangeZone)
         {
             return 0;
         }

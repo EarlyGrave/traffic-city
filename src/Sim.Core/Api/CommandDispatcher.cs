@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Network;
+using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
 namespace Sim.Core.Api;
@@ -49,11 +50,15 @@ internal static class CommandDispatcher
 
                 break;
             case CommandKind.SetSignalPlan:
+                SetSignalPlan(w, in cmd);
+                break;
+            case CommandKind.SetNodeControl:
+                SetNodeControl(w, in cmd);
+                break;
             case CommandKind.CreateBusRoute:
             case CommandKind.AppendBusStop:
             case CommandKind.SpawnBus:
-            case CommandKind.SetNodeControl:
-                // TODO(step 3/4): светофоры, регулирование узлов, транспорт.
+                // TODO(step 4): транспорт.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
             default:
@@ -120,12 +125,97 @@ internal static class CommandDispatcher
             NetworkStatus c1 = w.Builder.BuildConnectorsEx(sd.NodeA);
             NetworkStatus c2 = w.Builder.BuildConnectorsEx(sd.NodeB);
             NetworkStatus bad = c1 != NetworkStatus.Ok ? c1 : c2;
+            if (bad == NetworkStatus.Ok)
+            {
+                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений.
+                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, sd.NodeA);
+                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, sd.NodeB);
+                bad = k1 != NetworkStatus.Ok ? k1 : k2;
+            }
+
             if (bad != NetworkStatus.Ok)
             {
                 // Сегмент уже добавлен, но connector'ов нет (ёмкость): сообщаем об отказе, сеть остаётся согласованной по версии.
                 RejectNetwork(w, in cmd, bad);
                 return;
             }
+        }
+
+        Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// intersections.md 6.3: узел должен быть <c>Signal</c>; для <c>Fixed</c> PhaseCount = числу осей узла, Green_k >= 1,
+    /// цикл <= 65535; иначе <c>InvalidArgument</c> (отдельных причин NotSignalized/InvalidPhaseCount в RejectReason нет).
+    /// Применяется в фазе команд тика, начальное состояние пересчитывается по OffsetTicks.
+    /// </summary>
+    private static void SetSignalPlan(World w, in Command cmd)
+    {
+        SetSignalPlanCmd p = cmd.SetSignalPlan;
+        if ((uint)p.Node >= (uint)w.Net.NodeCount)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
+        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count ||
+            !SignalStore.IsValid(in p, w.Signals.PhaseCount[nd.Signal]))
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        w.Signals.ApplyPlan(nd.Signal, in p);
+        Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// intersections.md 6.3. Signal: слот в SignalStore + план по умолчанию (нет слота - Capacity; узел без connector'ов - InvalidArgument).
+    /// Из Signal в другой режим: swap-remove слота. TODO(J3): пересчёт ArmFlags/Rel и сброс допусков узла (5.7).
+    /// </summary>
+    private static void SetNodeControl(World w, in Command cmd)
+    {
+        SetNodeControlCmd c = cmd.SetNodeControl;
+        if ((uint)c.Node >= (uint)w.Net.NodeCount || (uint)c.Control > (uint)NodeControl.RightHandRule)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        ref NodeData nd = ref w.Net.Nodes[c.Node];
+        if (c.Control == NodeControl.Signal)
+        {
+            if (nd.Signal < 0)
+            {
+                if (w.Signals.Count >= w.Signals.Capacity)
+                {
+                    Rejected(w, in cmd, RejectReason.Capacity);
+                    return;
+                }
+
+                int axes = SignalStore.AxesOf(w, c.Node);
+                SetSignalPlanCmd plan = SignalStore.DefaultPlan(axes, in w.Rules);
+                if (axes < 1 || !w.Signals.TryAdd(w, c.Node, in plan, out _))
+                {
+                    Rejected(w, in cmd, RejectReason.InvalidArgument);
+                    return;
+                }
+            }
+        }
+        else if (nd.Signal >= 0)
+        {
+            w.Signals.Remove(w, nd.Signal);
+        }
+
+        if (nd.Control != c.Control)
+        {
+            // intersections.md §5.7, §6.3: смена режима пересчитывает ArmFlags (с нормализацией Yield/Stop без второстепенных рукавов
+            // в RightHandRule), Rel конфликтов узла и сбрасывает допуски машин на его входных полосах. Version++ делает Builder.
+            w.Builder.SetNodeControl(c.Node, c.Control);
+            NodeControl applied = w.Net.Nodes[c.Node].Control;
+            w.Connectors.RecomputeRel(w.Net, c.Node, applied == NodeControl.Yield || applied == NodeControl.Stop);
+            GatePhase.ResetNode(w, c.Node);
         }
 
         Applied(w, in cmd);
@@ -176,6 +266,8 @@ internal static class CommandDispatcher
             FromLane = fromLane ? t.FromLane : -1,
             FromS = fromLane ? t.FromS : 0f,
             Type = (byte)t.VehicleType,
+            DestLane = -1,   // точку прибытия в зоне ToZone и маршрут выбирает фаза 3
+            Route = -1,
         };
 
         int free = w.Trips.Capacity - w.Trips.Count;

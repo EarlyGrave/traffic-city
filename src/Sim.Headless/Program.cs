@@ -1,6 +1,8 @@
 using System;
+using Sim.Headless.Bench;
 using Sim.Headless.Render;
 using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless;
 
@@ -56,10 +58,15 @@ public static class Program
                 }
 
                 return ValidateCommand.Run(args, Console.Out, Console.Error);
-            case "run":
             case "bench":
+                return HasHelp(args) ? Help(BenchCommand.Usage) : BenchCommand.Run(args, Console.Out, Console.Error);
             case "compare":
+                return HasHelp(args) ? Help(CompareCommand.Usage) : CompareCommand.Run(args, Console.Out, Console.Error);
             case "update-baseline":
+                return HasHelp(args)
+                    ? Help(UpdateBaselineCommand.Usage)
+                    : UpdateBaselineCommand.Run(args, Console.Out, Console.Error);
+            case "run":
                 if (HasHelp(args))
                 {
                     Console.Out.WriteLine(Usage);
@@ -73,6 +80,12 @@ public static class Program
                 Console.Error.WriteLine(Usage);
                 return ExitUsage;
         }
+    }
+
+    private static int Help(string text)
+    {
+        Console.Out.WriteLine(text);
+        return ExitOk;
     }
 
     private static bool HasHelp(string[] args)

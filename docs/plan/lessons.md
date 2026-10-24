@@ -46,3 +46,21 @@
 - **Агенты не видят свежих коммитов, если оркестратор не запушил ветку**, а некоторые делают ff на
   `origin/...`. → Перед раздачей: commit + push рабочей ветки; в брифе — ff на ЛОКАЛЬНУЮ ветку.
 - **CA1861 на литералах-массивах в аргументах (тесты)** → выносить массив в локальную переменную/static readonly.
+- **После squash-мержа PR ветки, начатые от старой (несквошенной) истории, дают add/add-конфликты почти во
+  всех файлах.** → Не `git merge`, а перенос diff'а: `git diff <старый-head-PR> <ветка> | git apply --3way`
+  (дерево старого head == дерево squash-коммита в main — проверить `git diff --quiet <head> origin/main`).
+- **Оркестратор закоммитил merge с маркерами конфликта**: `git merge ... | grep conflict` в цепочке с
+  `git add -A && git commit` — конфликт не остановил цепочку. → После каждого мержа отдельной командой
+  `git diff --name-only --diff-filter=U` и `grep -rn '^<<<<<<<' docs src tests scenarios`; коммит — только при пустом выводе.
+
+## Тесты 0 B и JIT
+- **Редкий флейк `Step_Allocates_ZeroBytes_InSteadyState` (~1-2% прогонов `dotnet test traffic-city.sln`, только при параллельной
+  загрузке CPU/классов): 3-8 КБ в окне «0 B», по фазам - в произвольной (IntegratePhase, SyncStructuralCounters).** Исходный код
+  ядра не аллоцирует: это синхронная OSR/tier-up-компиляция метода с циклом в потоке теста (tier-0 патчпойнты; счётчики общие для
+  всех потоков, поэтому момент зависит от соседних тестов), JIT/загрузчик типов кладут объекты в управляемую кучу.
+  Прогрев не помогает - момент недетерминирован. → В `Sim.Core.Tests.csproj` `<ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>` + `Fixtures/AllocationProbe` (повтор окна, если за замер сработал GC)
+  Для новых проектов с `GetAllocatedBytesForCurrentThread` - то же.
+  Диагностика: временно разнести тик на фазы и мерить аллокации по каждой, гонять набор в 3 параллельных циклах.
+## Godot-клиент
+- **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
+- **Семантический конфликт без текстового**: одна ветка перенесла тип в другой namespace, другая добавила файл со старым using → git сливает чисто, падает сборка в pre-commit. → После мержа параллельных веток всегда build до коммита.

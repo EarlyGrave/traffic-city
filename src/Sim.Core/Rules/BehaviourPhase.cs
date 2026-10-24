@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Rules.Intersections;
 
 namespace Sim.Core.Rules;
 
@@ -9,11 +10,14 @@ namespace Sim.Core.Rules;
 /// Фаза 5 (core-api §7): поведение. Read-only по позициям/скоростям/спискам; пишет только
 /// <c>Accel[]</c> и <c>LaneChangeDir[]</c> (намерение смены полосы, исполняет фаза 7).
 /// IDM считается каждый тик; MOBIL - раз в <c>MobilEveryTicks</c> на машину, разнесено по индексу: <c>(tick + i) % N == 0</c>.
+/// Перекрёстки (intersections.md §7, при переданном <see cref="ConnectorStore"/>): IDM берёт минимум ускорения по обычному
+/// лидеру и по виртуальному препятствию ворот - стоп-линии без допуска (в пределах дистанции решения) либо конфликтной точке,
+/// занятой машиной с меньшим билетом (<see cref="GateRules.ObstacleGap"/>).
 /// </summary>
 internal static class BehaviourPhase
 {
     public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, w.Connectors);
 
     public static void Run(
         NetworkStore net,
@@ -22,7 +26,8 @@ internal static class BehaviourPhase
         in RouteAccess routes,
         ReadOnlySpan<VehicleTypeDesc> types,
         in PhysicsParams p,
-        long tick)
+        long tick,
+        ConnectorStore? connectors = null)
     {
         var e = new RuleEnv(net, v, occ, routes);
         int hw = v.HighWater;
@@ -44,6 +49,19 @@ internal static class BehaviourPhase
             LeaderInfo li = LeaderSearch.FindFor(e, v.S, i);
             float vi = v.Speed[i];
             float a = Idm.Accel(t, vi, v.DesiredSpeed[i], li.Gap, vi - li.Speed);
+            if (connectors != null)
+            {
+                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, v.S, i, t.ComfortDecel, visibilityLimited: true, out float gateSpeed);
+                if (gateGap < Idm.FreeGap)
+                {
+                    float ag = Idm.Accel(t, vi, v.DesiredSpeed[i], gateGap, vi - gateSpeed);
+                    if (ag < a)
+                    {
+                        a = ag;
+                    }
+                }
+            }
+
             v.Accel[i] = a;
 
             int dir = 0;

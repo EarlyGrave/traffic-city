@@ -24,7 +24,21 @@
 | 18 | spawner-metrics | sonnet | 2-H: Spawner, OD, MetricsPhase, подключение фаз | done, merged |
 | 19 | routing | sonnet | 3-R: A*, граф, кэш магистралей (без подключения) | done, merged (s1k A* 32 мкс, s100k 1.35 мс) |
 | 20 | loader-catchup | sonnet | 3.0: новые поля формата в загрузчике и сценариях | done, merged |
-| 21 | j1-connectors | sonnet | 3-J1: connector'ы по правилам, ConnectorStore, конфликты | done, ветка ждёт мержа после PR шага 2 |
-| 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, ветка ждёт мержа после PR шага 2 |
-| 23 | flaky-hunt (worktree) | sonnet | найти и устранить нестабильный тест (1 падение из 11 прогонов) | wip |
+| 21 | j1-connectors | sonnet | 3-J1: connector'ы, ConnectorStore, конфликты | done, merged |
+| 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, merged |
+| 23 | flaky-hunt | sonnet | нестабильный тест | stopped (лимит), WIP в checkpoint/2026-10-24-flaky-wip |
 | 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
+| 25 | merge-fix (s3) | haiku | разрешение конфликтов J1+J2 | done |
+| 26 | gates | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | stopped (лимит), код в checkpoint/2026-10-24-gates-wip; проверен: p95 409 мкс, gridlock 0, stuck 34 эпизода — доводка |
+| 27 | route-wiring | sonnet | 3-R4/R5: фаза 3, маршруты, STAGE2-TEMP убран | done, merged (completed 10 мин: 144 → 1775) |
+| 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |
+| 29 | verify-gates | sonnet | прогон ветки ворот: build/test/s1k 30 мин | done |
+| 30 | stuck-diag | sonnet | диагностика stuck на ветке ворот | done: корень — спиллбэк ниже узла 53 |
+| 31 | jam-chain | sonnet | цепочка затора до корня | done: корень — красный узла 51, цикл длиннее спеки |
+| 32 | stuck-fix | sonnet | светофоры 24/3/1 | done: stuck 34 → 9 |
+| 33 | flaky-port | sonnet | перенос фикса allocation-тестов | done, merged (15/15 зелёных) |
+| 34 | bench-cmd | sonnet | шаг 5: bench/compare/update-baseline | done, merged (s1k 2000 тиков p95 0.47 мс, 0 B) |
+| 35 | godot-client | sonnet | шаг 6: MultiMesh, камера, интерполяция, оверлеи, HUD | done, merged (сборка ок, ручная проверка владельцем) |
+| 36 | ns-fix | haiku | using Sim.Scenarios после мержа Godot | done |
+| 37 | load-routing | sonnet | ADR-0006 | done: stuck 9 → 0 |
+| 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |

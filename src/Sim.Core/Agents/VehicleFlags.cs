@@ -11,4 +11,5 @@ internal enum VehicleFlags : byte
     AtStop = 2,
     Selected = 4,
     IsBus = 8,
+    RouteMissed = 16,   // промах полосы в фазе 7: маршрут уже недействителен, освобождение и постановка в перемаршрутизацию - в конце фазы 7
 }

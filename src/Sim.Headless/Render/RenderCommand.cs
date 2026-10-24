@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using Sim.Core.Api;
-using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless.Render;
 
