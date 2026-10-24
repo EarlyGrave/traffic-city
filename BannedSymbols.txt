@@ -1,0 +1,32 @@
+// Banned APIs для Sim.Core (Microsoft.CodeAnalysis.BannedApiAnalyzers, диагностика RS0030).
+// Подключено ТОЛЬКО к src/Sim.Core (см. Sim.Core.csproj). Формат: T: тип, M: метод, P: свойство, N: namespace; после ';' — причина.
+//
+// Анализатором НЕ запретить, контролируется ревью и тестом «0 B/тик»:
+//   строки/конкатенация/интерполяция, замыкания и лямбды с захватом, boxing, исключения в горячем пути,
+//   new в горячем цикле, class для агентов.
+
+// Детерминизм и отсутствие аллокаций: LINQ аллоцирует итераторы и делегаты.
+N:System.Linq;LINQ запрещён: аллокации и скрытые замыкания в горячем цикле
+
+// Детерминизм: только собственный seeded PRNG (PCG/xoshiro).
+T:System.Random;Используй собственный seeded PRNG ядра
+T:System.Security.Cryptography.RandomNumberGenerator;Недетерминированный источник случайности
+
+// Детерминизм: реальное время не должно протекать в симуляцию; время — только тики (dt = 1/20 с).
+P:System.DateTime.Now;Реальное время запрещено в ядре
+P:System.DateTime.UtcNow;Реальное время запрещено в ядре
+P:System.DateTime.Today;Реальное время запрещено в ядре
+P:System.DateTimeOffset.Now;Реальное время запрещено в ядре
+P:System.DateTimeOffset.UtcNow;Реальное время запрещено в ядре
+P:System.Environment.TickCount;Реальное время запрещено в ядре
+P:System.Environment.TickCount64;Реальное время запрещено в ядре
+T:System.Diagnostics.Stopwatch;Замеры времени — только снаружи ядра (Sim.Headless/Sim.Bench)
+
+// Ядро не знает про ввод-вывод.
+T:System.Console;Ядро не пишет в консоль
+N:System.IO;Ядро не трогает файлы и потоки
+
+// Ядро однопоточное и синхронное.
+N:System.Threading.Tasks;async/Task/ValueTask запрещены в ядре
+M:System.Threading.Thread.Sleep(System.Int32);Блокировки по времени запрещены
+M:System.Threading.Thread.Sleep(System.TimeSpan);Блокировки по времени запрещены
