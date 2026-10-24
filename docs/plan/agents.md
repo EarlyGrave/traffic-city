@@ -34,3 +34,4 @@
 | 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |
 | 29 | verify-gates | sonnet | прогон ветки ворот: build/test/s1k 30 мин | done |
 | 30 | stuck-diag | sonnet | диагностика stuck на ветке ворот | done: корень — спиллбэк ниже узла 53 |
+| 31 | jam-chain | sonnet | цепочка затора до корня | done: корень — красный узла 51, цикл длиннее спеки |
