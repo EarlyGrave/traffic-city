@@ -11,6 +11,7 @@ public enum CreateStatus : int
     InvalidNetwork = 4,         // ссылка на несуществующий узел, нулевая длина сегмента и т.п.
     InvalidTransit = 5,
     InvalidDemand = 6,
+    NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (например, генератор города)
 }
 
 /// <summary>Монотонные счётчики ядра (core-api §11), кроме полей, помеченных «текущее».</summary>

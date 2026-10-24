@@ -213,8 +213,17 @@ public enum CreateStatus : int
     InvalidNetwork = 4,         // ссылка на несуществующий узел, нулевая длина сегмента и т.п.
     InvalidTransit = 5,
     InvalidDemand = 6,
+    NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (пока: City.Enabled — генератор города не подключён)
 }
 ```
+
+Уточнения реализации (задача E): ёмкости `MaxVehicles/Nodes/Segments/Lanes/LanePoints/PendingTrips/CommandQueueCapacity/EventCapacity`
+обязаны быть в `[1, 2^24]`, остальные — в `[0, 2^24]`, иначе `InvalidCapacity`. Явная сеть строится узлами **без прилипания**
+(индекс узла в `NetworkDesc.Nodes` = индекс в сети; слипшиеся узлы → `InvalidNetwork`). Нулевые поля `RulesDesc`
+(`MinPhysicalGap`, `StuckThresholdTicks`, `StuckSpeedThreshold`, `GridlockStuckShare`, `GridlockMinStuck`, `GridlockHoldTicks`,
+`MobilEveryTicks`) заменяются значениями по умолчанию из комментариев структуры. `Demand.Zones` копируются в `ZoneData`
+без полос появления (их назначит `ZoneGenerator`). `Events` накапливаются за весь `Step(n)`, а не за последний тик.
+`BuildRoad` в уже построенный узел → `CommandRejected(NotSupported)` (перестройка узла — шаг 3).
 
 Контракт времени: ядро **не измеряет** wall-clock. `Sim.Headless` меряет `Step(1)` своим
 `Stopwatch`; клиент Godot вызывает `Step(1)` из своего аккумулятора времени (20 Гц).
@@ -973,6 +982,8 @@ public struct Fnv1a64
 8. Очередь поездок `PendingTrips` (содержимое FIFO в порядке очереди, включая `Route`), затем
    очередь перемаршрутизации `RerouteQueue` (индексы машин в порядке очереди).
 
+9. Управляющее состояние команд: `TargetVehicles`, `Selected.Packed`.
+
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
 Требование: `float`-арифметика в ядре без `MathF.FusedMultiplyAdd` и без зависимости от
@@ -1125,7 +1136,7 @@ src/Sim.Core/
                                                   Handles.cs, Command.cs, CommandDispatcher.cs (фаза 1), Snapshots.cs
                                                   (VehicleRenderData, SegmentLoad, SignalState, RouteView, NetworkView),
                                                   SimEvent.cs, SimCounters.cs, SnapshotPhase.cs (фаза 10), VehicleInfo.cs
-  World/          namespace Sim.Core.World      — World.cs: internal sealed class, композиция всех хранилищ + PRNG; WorldBuilder.cs (Create: ёмкости, порядок инициализации)
+  World/          namespace Sim.Core            — World.cs: internal sealed class, композиция всех хранилищ + PRNG; WorldBuilder.cs (Create: ёмкости, порядок инициализации)
   Network/        namespace Sim.Core.Network    — NodeData/SegmentData/LaneData, NetworkStore.cs, NetworkBuilder.cs (AddNode/AddSegment/BuildConnectors/snap), LaneGeometry.cs
   Gen/            namespace Sim.Core.Gen        — CityGenerator.cs, ZoneGenerator.cs, TransitGenerator.cs, GridPlan.cs (спека docs/design/city-generator.md)
   Agents/         namespace Sim.Core.Agents     — VehicleStore.cs, LaneOccupancy.cs (списки §6.4), Spawner.cs (фаза 2), IntegratePhase.cs (6), TransitionPhase.cs (7), ArrivalPhase.cs (8), PendingTrips.cs
@@ -1140,6 +1151,38 @@ src/Sim.Core/
 намеренно — плоскость земли Godot). Публичные `RoadKind`, `NodeControl`, `LaneKind` и `*Data` из §6.1/§6.6 физически лежат в `Api/NetworkData.cs` (namespace `Sim.Core.Network`), т.к. на них ссылаются `Command` и `NetworkView`. `FixedHashMap` — `long→int`, `TrySet/TryGet/Remove`. Публичные типы — только в `Api/`, `Network/*Data`,
 `Util/Pcg32|Fnv1a64|Vec2`; остальное `internal` (+ `InternalsVisibleTo("Sim.Core.Tests")`,
 `"Sim.Bench"`).
+
+### 13.1 Поля `World` (контракт для авторов фаз)
+
+`World` — `internal sealed class` в **namespace `Sim.Core`** (файлы лежат в `World/`). Отклонение от
+первоначального `Sim.Core.World`: namespace с тем же именем, что и тип, затеняет тип во всех
+`Sim.Core.*` (`World w` не компилировалось бы без квалификации). Поэтому тип виден всем фазам без `using`.
+Поля публичные (internal-класс), не `readonly` там, где фазы их меняют:
+
+| Поле | Тип | Смысл |
+|------|-----|-------|
+| `Caps`, `Rules`, `Seed` | `SimCapacities`, `RulesDesc`, `ulong` | копии из `ScenarioDesc` |
+| `Types` | `VehicleTypeDesc[]` | параметры типов ТС, индекс = `VehicleStore.Type` |
+| `Net` | `NetworkStore` | граф сети (§6.1); `Builder` (`NetworkBuilder`) — для `BuildRoad` |
+| `Vehicles` | `VehicleStore` | SoA машин (§6.3) |
+| `Occupancy` | `LaneOccupancy` | списки порядка на полосах (§6.4) |
+| `Trips` | `PendingTrips` | очередь поездок (§6.6) |
+| `Routes` | `RoutePool` | хранилище маршрутов (§6.5) |
+| `Tick` | `long` | число завершённых тиков; во время фаз 1–10 — номер тика, который идёт сейчас (инкремент после фазы 10) |
+| `Counters` | `SimCounters` (поле, менять через `w.Counters.X++`) | метрики (§11) |
+| `RngCityGen`, `RngZones`, `RngSpawn`, `RngBehaviour`, `RngTransit`, `RngRouting` | `Pcg32` (мутабельные поля) | подпотоки §8 |
+| `Commands` | `RingBuffer<Command>` | очередь команд (фаза 1) |
+| `Events`, `EventCount` | `SimEvent[]`, `int` | буфер событий; писать только через `w.Emit(kind, tag, a, b)` |
+| `TargetVehicles` | `int` | цель `SetTargetVehicleCount` (читает спавнер) |
+| `Selected` | `VehicleHandle` | выбранная машина |
+| `SegmentLoads`, `NodeThroughput`, `BusRouteStats` | `SegmentLoad[]`, `uint[]`, `BusRouteStats[]` | выходные массивы фазы 9 (длины `MaxSegments`/`MaxNodes`/`MaxBusRoutes`) |
+| `SignalStates`, `SignalCount`, `LaneSignals` | `SignalState[]`, `int`, `byte[]` | выходы фазы 4 |
+| `Render` | `VehicleRenderData[][2]` | двойной снапшот; `SnapshotTick` (`long`) — тик, которому он соответствует |
+
+Порядок фаз — `World/PhaseList.cs: PhaseList.RunTick(World w)`; фазы 2–9 там строки-комментарии
+(`// TODO(phase N)`), оркестратор раскомментирует при слиянии задач F/H. Снапшот (фаза 10) пишет
+`Render[(Tick + 1) & 1]` и ставит `SnapshotTick = Tick + 1`, затем `RunTick` делает `Tick++`
+(поэтому после `Step` всегда `SnapshotTick == Tick`).
 
 Файлы фаз независимы: каждая фаза — `internal static class XxxPhase { public static void Run(World w) }`.
 `Simulation.Step` — только последовательность вызовов `Run`. Агент, реализующий фазу, трогает
