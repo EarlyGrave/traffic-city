@@ -5,7 +5,7 @@
 
 Статусы: `todo` / `wip` / `done` / `blocked`.
 
-## Шаг 1. Каркас репо, правила, хуки, CI — `wip`
+## Шаг 1. Каркас репо, правила, хуки, CI — `done` (PR #1, кроме 1.3 — спека API ещё в работе)
 | # | Задача | Модель | Критерий готовности |
 |---|--------|--------|---------------------|
 | 1.1 | Скелет: sln, Directory.Build.props, global.json, .editorconfig, BannedSymbols.txt, проекты-заглушки (Core/Headless/Tests/Bench/game), .gitignore/.gitattributes, LICENSE, README, CI, .githooks, bootstrap | sonnet | `dotnet build -warnaserror` и `dotnet test` зелёные; banned API реально ловится |
