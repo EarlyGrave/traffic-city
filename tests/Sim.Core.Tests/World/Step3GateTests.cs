@@ -98,6 +98,121 @@ internal static class Step3Gates
         }
     }
 
+    /// <summary>Цепочка "лидер полосы -> ворота -> отказ Exit -> выездная полоса" от первой застрявшей машины до корня + доля маршрутов через узлы цепочки.</summary>
+    public static string DescribeChain(World w)
+    {
+        VehicleStore v = w.Vehicles;
+        NetworkStore net = w.Net;
+        var sb = new StringBuilder();
+        int first = -1;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.Stuck) != 0)
+            {
+                first = i;
+                break;
+            }
+        }
+
+        if (first < 0)
+        {
+            return "no stuck\n";
+        }
+
+        int lane = v.Lane[first];
+        var chainNodes = new HashSet<int>();
+        var chainLanes = new HashSet<int>();
+        sb.Append($"chain start: stuck veh {first} on lane {lane}\n");
+        for (int step = 0; step < 40 && lane >= 0 && chainLanes.Add(lane); step++)
+        {
+            int cnt = 0;
+            int lead = -1;
+            for (int j = 0; j < v.HighWater; j++)
+            {
+                if (v.Pool.IsAlive(j) && v.Lane[j] == lane)
+                {
+                    cnt++;
+                    if (lead < 0 || v.S[j] > v.S[lead])
+                    {
+                        lead = j;
+                    }
+                }
+            }
+
+            int node = GateRules.GateNode(net, lane);
+            string ctl = node < 0 ? "-" : net.Nodes[node].Control.ToString();
+            if (node >= 0)
+            {
+                chainNodes.Add(node);
+            }
+
+            string head = lead < 0
+                ? "no vehicles"
+                : $"lead veh {lead} s={v.S[lead]:F1} v={v.Speed[lead]:F2} gate={v.GateState[lead]} deny={(GateDeny)w.Gate.DenyReason[lead]} wait={v.WaitTicks[lead]}t({v.WaitTicks[lead] * 0.05:F1}s) still={v.StillTicks[lead]} nextConn={v.NextConn[lead]}";
+            sb.Append($"  [{step}] lane {lane} {net.Lanes[lane].Kind} len={net.Lanes[lane].Length:F1} veh={cnt} node={node} ctl={ctl} | {head}\n");
+            if (lead < 0 || w.Gate.DenyReason[lead] != (byte)GateDeny.Exit || v.NextConn[lead] < 0)
+            {
+                sb.Append($"  ROOT at lane {lane}: " + (lead < 0 ? "empty lane" : $"deny={(GateDeny)w.Gate.DenyReason[lead]} (not Exit or no nextConn)") + "\n");
+                if (lead >= 0 && node >= 0 && net.Nodes[node].Signal >= 0)
+                {
+                    int sl = net.Nodes[node].Signal;
+                    int nc = v.NextConn[lead];
+                    string cyc = string.Join("/", Enumerable.Range(0, w.Signals.PhaseCount[sl]).Select(p => w.Signals.GreenTicks[(sl * SignalStore.MaxPhases) + p]));
+                    sb.Append($"  signal slot {sl}: mode={w.Signals.Mode[sl]} phase={w.SignalStates[sl].Phase} interval={w.SignalStates[sl].Interval} toChange={w.SignalStates[sl].TicksToChange} greenTicks[{cyc}] yellow={w.Signals.YellowTicks[sl]} allRed={w.Signals.AllRedTicks[sl]} lead nextConn={nc} laneSignal={(nc >= 0 ? (LaneSignal)w.LaneSignals[nc] : default)}\n");
+                }
+
+                break;
+            }
+
+            lane = net.Lanes[v.NextConn[lead]].ToLane;
+        }
+
+        int active = 0;
+        int viaNodeRemain = 0;
+        int viaLaneRemain = 0;
+        int viaNodeFull = 0;
+        var perNode = new Dictionary<int, int>();
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i) || v.Route[i] < 0)
+            {
+                continue;
+            }
+
+            int r = v.Route[i];
+            active++;
+            int f = w.Routes.First[r];
+            int n = w.Routes.Count[r];
+            bool anyRemain = false;
+            bool anyLaneRemain = false;
+            bool anyFull = false;
+            var seen = new HashSet<int>();
+            for (int k = 0; k < n; k++)
+            {
+                RouteStep rs = w.Routes.Steps[f + k];
+                bool inN = rs.Node >= 0 && chainNodes.Contains(rs.Node);
+                anyFull |= inN;
+                if (k >= v.RouteCursor[i])
+                {
+                    anyRemain |= inN;
+                    anyLaneRemain |= chainLanes.Contains(rs.Lane);
+                    if (inN && seen.Add(rs.Node))
+                    {
+                        perNode[rs.Node] = perNode.GetValueOrDefault(rs.Node) + 1;
+                    }
+                }
+            }
+
+            viaNodeRemain += anyRemain ? 1 : 0;
+            viaLaneRemain += anyLaneRemain ? 1 : 0;
+            viaNodeFull += anyFull ? 1 : 0;
+        }
+
+        sb.Append($"routes: active={active} remaining-path through chain nodes={viaNodeRemain} ({100.0 * viaNodeRemain / Math.Max(1, active):F1}%), through chain lanes={viaLaneRemain} ({100.0 * viaLaneRemain / Math.Max(1, active):F1}%), full route via chain nodes={viaNodeFull} ({100.0 * viaNodeFull / Math.Max(1, active):F1}%)\n");
+        sb.Append("per-node remaining share: " + string.Join(", ", perNode.OrderByDescending(k => k.Value).Select(k => $"node {k.Key}: {k.Value} ({100.0 * k.Value / Math.Max(1, active):F1}%)")) + "\n");
+        return sb.ToString();
+    }
+
     /// <summary>Описание застрявших машин (stuck) с состоянием ворот - для разбора причин.</summary>
     public static string DescribeStuck(World w, int max = 12)
     {
@@ -264,6 +379,7 @@ public class Step3GateReportTests
         int maxStuck = 0;
         long stuckEventTick = -1;
         string stuckInfo = string.Empty;
+        string chainInfo = string.Empty;
         string? gap = null;
         string? conflict = null;
         var episodes = new Dictionary<string, int>();
@@ -295,6 +411,11 @@ public class Step3GateReportTests
                 stuckInfo = Step3Gates.DescribeStuck(sim.World);
             }
 
+            if (chainInfo.Length == 0 && sim.Counters.StuckVehicles > 0)
+            {
+                chainInfo = $"tick {sim.Tick}:\n" + Step3Gates.DescribeChain(sim.World);
+            }
+
             if (sim.Counters.StuckVehicles > 0 || t % 50 == 0)
             {
                 Step3Gates.CollectStuckEpisodes(sim.World, wasStuck, episodes);
@@ -317,6 +438,11 @@ public class Step3GateReportTests
         foreach (KeyValuePair<string, int> kv in episodes.OrderByDescending(k => k.Value).Take(25))
         {
             _out.WriteLine($"stuck-episodes {kv.Value,4}  {kv.Key}");
+        }
+
+        if (chainInfo.Length > 0)
+        {
+            _out.WriteLine($"first stuck chain at {chainInfo}");
         }
 
         if (maxStuck > 0)
