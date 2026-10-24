@@ -29,6 +29,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateRouting(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         st = ValidateVehicleTypes(desc.VehicleTypes);
         if (st != CreateStatus.Ok)
         {
@@ -47,7 +53,7 @@ internal static class WorldBuilder
             return st;
         }
 
-        var w = new World(in desc, WithDefaults(desc.Rules), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
+        var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing, desc.Capacities.PathfindBudgetPerTick), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
         {
@@ -63,6 +69,12 @@ internal static class WorldBuilder
         w.Signals.InitFromSeeds(w); // светофоры генератора (intersections.md §6.4); для явной сети seeds нет
 
         st = BuildZones(w, in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = BuildOverlay(w);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -219,6 +231,93 @@ internal static class WorldBuilder
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// Оверлей маршрутизации (routing.md 9): граф актуализируется по готовой сети, ячейки и входы/выходы раскладываются, все матрицы
+    /// кастомизируются. <c>routing.levels = 0</c> - оверлея нет. Время этого шага - основной риск шага 2.2 (замер в отчёте H1).
+    /// </summary>
+    private static CreateStatus BuildOverlay(World w)
+    {
+        if (w.Routing.Levels <= 0)
+        {
+            return CreateStatus.Ok;
+        }
+
+        w.Router.Graph.Rebuild();
+        CreateStatus st = Routing.Overlay.TryCreate(w.Net, w.Router.Graph, in w.Routing, out Routing.Overlay? ov);
+        w.Overlay = ov;
+        return st;
+    }
+
+    private static CreateStatus ValidateRouting(in ScenarioDesc desc)
+    {
+        RoutingDesc r = desc.Routing;
+        if (r.Levels < 0 || r.Levels > Routing.Overlay.MaxLevels || r.Fanout < 0 || r.Fanout == 1 || r.Fanout > Routing.Overlay.MaxFanout ||
+            !NonNegative(r.CellSize) || (r.WindowSteps != 0 && (r.WindowSteps < 8 || r.WindowSteps > 32)) ||
+            !InRange(r.PathfindBudgetPerTick, 0) || r.WorkBudgetPerTick < 0 || r.CustomizeBudgetPerTick < 0 ||
+            !NonNegative(r.CustomizeEps) || r.CostRecalcTicks < 0 || !NonNegative(r.TimedDrift) || r.TimedDriftAbsTicks < 0 ||
+            desc.Capacities.MaxPlanSteps < 0 || desc.Capacities.MaxPlanSteps > MaxRouteStepsCapacity)
+        {
+            return CreateStatus.InvalidCapacity;
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    private static RoutingDesc WithDefaults(RoutingDesc r, int legacyPathfindBudget)
+    {
+        if (r.PathfindBudgetPerTick <= 0)
+        {
+            r.PathfindBudgetPerTick = legacyPathfindBudget;
+        }
+
+        if (r.Fanout <= 0)
+        {
+            r.Fanout = 4;
+        }
+
+        if (!(r.CellSize > 0f))
+        {
+            r.CellSize = 1000f;
+        }
+
+        if (r.WindowSteps <= 0)
+        {
+            r.WindowSteps = 16;
+        }
+
+        if (r.WorkBudgetPerTick <= 0)
+        {
+            r.WorkBudgetPerTick = (int)Math.Min(int.MaxValue, 1500L * r.PathfindBudgetPerTick);
+        }
+
+        if (r.CustomizeBudgetPerTick <= 0)
+        {
+            r.CustomizeBudgetPerTick = 10000;
+        }
+
+        if (!(r.CustomizeEps > 0f))
+        {
+            r.CustomizeEps = 0.05f;
+        }
+
+        if (r.CostRecalcTicks <= 0)
+        {
+            r.CostRecalcTicks = Routing.RoutePhase.DefaultCostRecalcTicks;
+        }
+
+        if (!(r.TimedDrift > 0f))
+        {
+            r.TimedDrift = 0.15f;
+        }
+
+        if (r.TimedDriftAbsTicks <= 0)
+        {
+            r.TimedDriftAbsTicks = 400;
+        }
+
+        return r;
     }
 
     public static void SyncStructuralCounters(World w)

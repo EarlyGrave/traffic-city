@@ -36,6 +36,10 @@ public struct SimCounters
     public long PathfindExpandedNodes;
     public long RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips; // маршрутизация (routing.md 8)
     public long CostRecalcs, TimedReroutes; // вес по загрузке и перемаршрутизация по времени (ADR-0006)
+    public long CustomizeRows, CustomizeWork; // волны кастомизации оверлея: строки и релаксации (routing.md 9.10)
+    public long CustomizeLagTicks;        // тики ожидания нового пересчёта весов из-за незаконченной волны
+    public long OverlayRebuilds;          // полные перестройки оверлея после BuildRoad
+    public int OverlayDisabled;           // текущее: 1 - оверлей выключен (не влезла перестройка)
     public long ConnectorEntries;         // сумма проездов через connector'ы (= сумма NodeThroughput)
     public long CommandsApplied, CommandsRejected, CommandsDropped, EventsDropped;
     public long SpawnDeferredTicks, InvalidHandleOps;

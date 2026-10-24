@@ -103,6 +103,22 @@ internal static class StateHash
         AddCounters(ref h, in w.Counters);
         h.Add(w.Router.Graph.WeightsVersion);
 
+        // 7a. Оверлей маршрутизации (routing.md 9.8): курсор волны и версия весов; матрицы производные - не хэшируются.
+        Routing.Overlay? ov = w.Overlay;
+        if (ov != null)
+        {
+            h.Add(ov.WeightsVersion);
+            h.Add(ov.WaveActive ? 1 : 0);
+            h.Add(ov.WaveCell);
+            h.Add(ov.WaveRow);
+            h.Add(ov.Disabled ? 1 : 0);
+            h.Add(w.RecalcPending ? 1 : 0);
+            h.Add(w.Counters.CustomizeRows);
+            h.Add(w.Counters.CustomizeWork);
+            h.Add(w.Counters.CustomizeLagTicks);
+            h.Add(w.Counters.OverlayRebuilds);
+        }
+
         // 8. Очередь поездок в порядке очереди.
         int pending = w.Trips.Count;
         h.Add(pending);

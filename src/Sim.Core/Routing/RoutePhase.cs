@@ -18,8 +18,8 @@ namespace Sim.Core.Routing;
 /// </summary>
 internal static class RoutePhase
 {
-    /// <summary>Период пересчёта весов по загрузке, тиков (30 с, ADR-0006).</summary>
-    public const int CostRecalcPeriod = 600;
+    /// <summary>Период пересчёта весов по загрузке по умолчанию, тиков (30 с, ADR-0006); сценарий задаёт <c>routing.cost_recalc_s</c>.</summary>
+    public const int DefaultCostRecalcTicks = 600;
 
     /// <summary>Период плановой перемаршрутизации одной машины, тиков (60 с); машины разнесены по индексу.</summary>
     public const int TimedPeriod = 1200;
@@ -47,16 +47,7 @@ internal static class RoutePhase
         int served = 0;
         bool stopped = false;
 
-        if (w.Tick > 0 && w.Tick % CostRecalcPeriod == 0)
-        {
-            if (rb.Graph.BuiltVersion != w.Net.Version)
-            {
-                rb.Graph.Rebuild();
-            }
-
-            rb.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
-            w.Counters.CostRecalcs++;
-        }
+        RecalcWeights(w, rb);
 
         EnqueueTimed(w);
         RerouteVehicles(w, rb, budget, ref served, ref stopped);
@@ -70,6 +61,8 @@ internal static class RoutePhase
             w.Counters.RouteDeferred += w.Trips.Unrouted;
         }
 
+        RunCustomizeWave(w);
+
         ref SimCounters c = ref w.Counters;
         c.PathfindQueries = rb.Queries;
         c.PathfindCacheHits = rb.CacheHits;
@@ -77,6 +70,63 @@ internal static class RoutePhase
         c.RouteFailed = rb.Failed;
         c.RouteCompactions = rb.Compactions;
         c.RouteCacheSkips = rb.CacheSkips;
+    }
+
+    // Пересчёт весов по номеру тика (ADR-0006). Пока идёт волна кастомизации оверлея, новый пересчёт откладывается до её конца
+    // (routing.md 9.3 п. 4): RecalcPending держит просроченный пересчёт, каждый тик ожидания - CustomizeLagTicks.
+    private static void RecalcWeights(World w, RouteBuilder rb)
+    {
+        Overlay? ov = w.Overlay;
+        bool overlay = ov != null && !ov.Disabled;
+        if (w.Tick > 0 && w.Tick % w.Routing.CostRecalcTicks == 0)
+        {
+            w.RecalcPending = true;
+        }
+
+        if (!w.RecalcPending)
+        {
+            return;
+        }
+
+        if (overlay && ov!.WaveActive)
+        {
+            w.Counters.CustomizeLagTicks++;
+            return;
+        }
+
+        w.RecalcPending = false;
+        if (rb.Graph.BuiltVersion != w.Net.Version)
+        {
+            rb.Graph.Rebuild();
+        }
+
+        rb.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
+        w.Counters.CostRecalcs++;
+        if (overlay)
+        {
+            ov!.AfterRecalc(rb.Graph.WeightsVersion);
+        }
+    }
+
+    // Конец фазы: волна кастомизации в пределах бюджета тика; счётчики оверлея переносятся в SimCounters.
+    private static void RunCustomizeWave(World w)
+    {
+        Overlay? ov = w.Overlay;
+        if (ov == null)
+        {
+            return;
+        }
+
+        if (!ov.Disabled)
+        {
+            ov.RunWave(w.Routing.CustomizeBudgetPerTick);
+        }
+
+        ref SimCounters c = ref w.Counters;
+        c.CustomizeRows = ov.CustomizeRows;
+        c.CustomizeWork = ov.CustomizeWork;
+        c.OverlayRebuilds = ov.Rebuilds;
+        c.OverlayDisabled = ov.Disabled ? 1 : 0;
     }
 
     // ---- (2) перемаршрутизация ----

@@ -11,6 +11,7 @@ public struct ScenarioDesc
     public ulong Seed;
     public int DurationTicks;              // информативно для хоста; ядро само не останавливается
     public SimCapacities Capacities;
+    public RoutingDesc Routing;            // иерархическая маршрутизация (routing.md §9); нули = дефолты, Levels 0 = оверлей выключен
     public CityGenDesc City;               // City.Enabled == false -> сеть берётся из Network
     public NetworkDesc Network;            // явная сеть (тесты, ручные карты); может быть пустой
     public DemandDesc Demand;
@@ -26,14 +27,35 @@ public struct SimCapacities
     public int MaxLanePoints;              // суммарно точек полилиний всех полос
     public int MaxZones, MaxBusRoutes, MaxBusStops;
     public int MaxBusStopsPerRoute;        // по умолчанию 32
-    public int MaxRoutes, MaxRouteSteps;   // кэш маршрутов: число маршрутов и суммарно шагов
+    public int MaxRoutes;                  // слоты маршрутов (машины + поездки с построенным маршрутом)
+    public int MaxRouteSteps;              // переходно (H3 удалит вместе с RoutePool): арена шагов кэша маршрутов этапа 1
+    public int MaxPlanSteps;               // арена планов маршрутов (int), routing.md §9.5; используется с H3
     public int MaxPendingTrips;            // очередь ожидающих спавна поездок
     public int CommandQueueCapacity;       // по умолчанию 1024
     public int EventCapacity;              // по умолчанию 4096 за Step
-    public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
+    public int PathfindBudgetPerTick;      // переходно: зеркало RoutingDesc.PathfindBudgetPerTick (H3 уберёт из ёмкостей)
     public int MaxSignalizedNodes;
     public int MaxConnectors;              // connector-полос всего; по умолчанию MaxNodes * 16
     public int MaxConflicts;               // записей ConflictEntry; по умолчанию MaxConnectors * 6
+}
+
+/// <summary>
+/// Параметры иерархической маршрутизации (routing.md §9.9, scenario-format.md §2.1 "routing"). Нули в полях, кроме
+/// <see cref="Levels"/>, заменяются дефолтами в <c>Create</c>; <c>Levels = 0</c> - оверлей не строится (тестовый режим).
+/// </summary>
+public struct RoutingDesc
+{
+    public int Levels;                     // 0..4; дефолт загрузчика 1
+    public int Fanout;                     // ячеек уровня ℓ по стороне ячейки ℓ+1; дефолт 4
+    public float CellSize;                 // сторона ячейки уровня 1, м; дефолт 1000
+    public int WindowSteps;                // слот окна маршрута, шагов 8..32; дефолт 16
+    public int PathfindBudgetPerTick;      // запросов на тик
+    public int WorkBudgetPerTick;          // релаксаций запросов на тик; дефолт 1500 * PathfindBudgetPerTick
+    public int CustomizeBudgetPerTick;     // релаксаций волны кастомизации на тик; дефолт 10000
+    public float CustomizeEps;             // порог изменения веса для «грязной» ячейки; дефолт 0.05
+    public int CostRecalcTicks;            // период пересчёта весов по загрузке, тиков; дефолт 600 (30 с)
+    public float TimedDrift;               // порог дрейфа остатка стоимости; дефолт 0.15
+    public int TimedDriftAbsTicks;         // абсолютная добавка к порогу, тики; дефолт 400 (20 с)
 }
 
 public enum VehicleCategory : int

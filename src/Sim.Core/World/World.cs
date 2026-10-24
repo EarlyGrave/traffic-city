@@ -19,6 +19,7 @@ internal sealed class World
     // ---- параметры (копии из ScenarioDesc) ----
     public readonly SimCapacities Caps;
     public readonly RulesDesc Rules;
+    public readonly RoutingDesc Routing;       // с применёнными дефолтами (WorldBuilder.WithDefaults)
     public readonly ulong Seed;
     public readonly VehicleTypeDesc[] Types;
     public readonly DemandDesc Demand;
@@ -32,6 +33,8 @@ internal sealed class World
     public readonly PendingTrips Trips;
     public readonly RoutePool Routes;
     public readonly RouteBuilder Router;               // фаза 3: A*, кэш магистралей, бюджет раскрытий (routing.md)
+    public Overlay? Overlay;                           // оверлей ячеек (routing.md 9.2); null при routing.levels = 0; строится в Create
+    public bool RecalcPending;                         // пересчёт весов по номеру тика наступил, но ждёт конца волны кастомизации
     public readonly RingBuffer<RerouteEntry> Rerouting; // машины, промахнувшиеся мимо полосы (routing.md 3)
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
@@ -76,11 +79,12 @@ internal sealed class World
     public long SnapshotTick;
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
 
-    public World(in ScenarioDesc desc, in RulesDesc rules, VehicleTypeDesc[] types)
+    public World(in ScenarioDesc desc, in RulesDesc rules, in RoutingDesc routing, VehicleTypeDesc[] types)
     {
         SimCapacities c = desc.Capacities;
         Caps = c;
         Rules = rules;
+        Routing = routing;
         Seed = desc.Seed;
         Types = types;
         Demand = desc.Demand;
