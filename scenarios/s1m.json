@@ -74,6 +74,6 @@
     "command_queue": 1024,
     "events": 4096,
     "pathfind_budget_per_tick": 2048,
-    "max_signalized_nodes": 64
+    "max_signalized_nodes": 8000
   }
 }
