@@ -67,6 +67,63 @@ internal static class LaneGeometry
         dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
     }
 
+    /// <summary>
+    /// Только позиция и индекс отрезка внутри полосы (0..PointCount-2), без нормировки направления. Тот же поиск и та же
+    /// арифметика позиции, что в <see cref="Evaluate(ReadOnlySpan{LaneData}, ReadOnlySpan{Vec2}, ReadOnlySpan{float}, int, float, ref int, out Vec2, out Vec2)"/>.
+    /// </summary>
+    public static void EvaluatePos(
+        ReadOnlySpan<LaneData> lanes,
+        ReadOnlySpan<Vec2> points,
+        ReadOnlySpan<float> pointS,
+        int lane,
+        float s,
+        ref int pointHint,
+        out Vec2 pos,
+        out int piece)
+    {
+        ref readonly LaneData l = ref lanes[lane];
+        int first = l.FirstPoint;
+        int lastPiece = l.PointCount - 2;
+        float total = pointS[first + lastPiece + 1];
+        if (s < 0f)
+        {
+            s = 0f;
+        }
+        else if (s > total)
+        {
+            s = total;
+        }
+
+        int h = pointHint;
+        if (h < 0)
+        {
+            h = 0;
+        }
+        else if (h > lastPiece)
+        {
+            h = lastPiece;
+        }
+
+        while (h < lastPiece && s >= pointS[first + h + 1])
+        {
+            h++;
+        }
+
+        while (h > 0 && s < pointS[first + h])
+        {
+            h--;
+        }
+
+        pointHint = h;
+        Vec2 a = points[first + h];
+        Vec2 b = points[first + h + 1];
+        float sa = pointS[first + h];
+        float span = pointS[first + h + 1] - sa;
+        float t = span > 1e-6f ? (s - sa) / span : 0f;
+        pos = a + ((b - a) * t);
+        piece = first + h;
+    }
+
     public static void Evaluate(NetworkStore store, int lane, float s, ref int pointHint, out Vec2 pos, out Vec2 dir) =>
         Evaluate(store.Lanes, store.LanePoints, store.LanePointS, lane, s, ref pointHint, out pos, out dir);
 

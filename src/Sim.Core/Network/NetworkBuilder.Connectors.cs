@@ -433,6 +433,8 @@ internal sealed partial class NetworkBuilder
             _s.LanePointS[first + k] = s;
         }
 
+        _s.FillPieceHeadings(first, samples);
+
         // Лимит скорости: sqrt(a_lat · R), R = chord / (2 sin(|turn|/2)) при |turn| ≥ 10°; sin(turn/2) = sqrt((1 − cos)/2) без тригонометрии.
         float cosTurn = (t0.X * t3.X) + (t0.Z * t3.Z);
         float limit = laneIn.SpeedLimit;
