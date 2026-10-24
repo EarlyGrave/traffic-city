@@ -160,6 +160,54 @@ public class ScenarioLoaderTests
         Assert.Equal(32, d.Capacities.MaxBusStopsPerRoute);
         Assert.Equal(1024, d.Capacities.CommandQueueCapacity);
         Assert.Equal(4096, d.Capacities.EventCapacity);
+        Assert.Equal(400, d.Rules.MaxYieldWaitTicks);
+        Assert.Equal(8 * 16, d.Capacities.MaxConnectors);
+        Assert.Equal(8 * 16 * 6, d.Capacities.MaxConflicts);
+    }
+
+    [Fact]
+    public void Step3KeysAreRead()
+    {
+        string j = Minimal("\"rules\": { \"max_yield_wait_s\": 12.5 }")
+            .Replace("\"max_nodes\": 8", "\"max_nodes\": 8, \"max_connectors\": 100, \"max_conflicts\": 321", StringComparison.Ordinal);
+        ScenarioDesc d = Load(j);
+        Assert.Equal(250, d.Rules.MaxYieldWaitTicks);
+        Assert.Equal(100, d.Capacities.MaxConnectors);
+        Assert.Equal(321, d.Capacities.MaxConflicts);
+
+        d = Load(Minimal().Replace("\"max_nodes\": 8", "\"max_nodes\": 8, \"max_connectors\": 100", StringComparison.Ordinal));
+        Assert.Equal(600, d.Capacities.MaxConflicts);
+    }
+
+    [Theory]
+    [InlineData("s1k", 8192, 262144, 700, 1000)]
+    [InlineData("s10k", 16000, 2000000, 2800, 10000)]
+    [InlineData("s100k", 65000, 16000000, 17000, 100000)]
+    [InlineData("s1m", 262000, 128000000, 170000, 1000000)]
+    public void LadderCapacities(string name, int routes, int steps, int nodes, int vehicles)
+    {
+        ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
+        Assert.Equal(routes, d.Capacities.MaxRoutes);
+        Assert.Equal(steps, d.Capacities.MaxRouteSteps);
+        Assert.Equal(nodes, d.Capacities.MaxNodes);
+        Assert.Equal(nodes * 16, d.Capacities.MaxConnectors);
+        Assert.Equal(nodes * 16 * 6, d.Capacities.MaxConflicts);
+        Assert.Equal(400, d.Rules.MaxYieldWaitTicks);
+        Assert.Equal(vehicles, d.Demand.TargetVehicles);
+    }
+
+    [Fact]
+    public void AllScenarioFilesLoad()
+    {
+        foreach (string f in Directory.GetFiles(ScenariosDir(), "*.json"))
+        {
+            if (Path.GetFileName(f) == "vehicle-types.json")
+            {
+                continue;
+            }
+
+            ScenarioLoader.Load(f);
+        }
     }
 
     [Fact]
