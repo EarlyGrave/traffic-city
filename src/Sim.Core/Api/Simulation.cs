@@ -103,11 +103,13 @@ public sealed class Simulation : IDisposable
     /// <summary>Тик, которому соответствует <see cref="Vehicles"/> (после каждого Step равен <see cref="Tick"/>).</summary>
     public long SnapshotTick => _disposed ? 0 : _w.SnapshotTick;
 
-    /// <summary>Длина ровно MaxVehicles, индекс = слот; неживые слоты - нули.</summary>
-    public ReadOnlySpan<VehicleRenderData> Vehicles => _disposed ? default : _w.Render[(int)(_w.SnapshotTick & 1)];
+    /// <summary>Длина = HighWater пула на SnapshotTick (до первого Step пусто), индекс = слот; неживые слоты - нули.</summary>
+    public ReadOnlySpan<VehicleRenderData> Vehicles => _disposed ? default : SnapshotSpan((int)(_w.SnapshotTick & 1));
 
-    /// <summary>Состояние на SnapshotTick - 1.</summary>
-    public ReadOnlySpan<VehicleRenderData> PreviousVehicles => _disposed ? default : _w.Render[(int)((_w.SnapshotTick + 1) & 1)];
+    /// <summary>Состояние на SnapshotTick - 1 (после первого Step пусто); длина не больше <see cref="Vehicles"/>.</summary>
+    public ReadOnlySpan<VehicleRenderData> PreviousVehicles => _disposed ? default : SnapshotSpan((int)((_w.SnapshotTick + 1) & 1));
+
+    private ReadOnlySpan<VehicleRenderData> SnapshotSpan(int buffer) => new(_w.Render[buffer], 0, _w.SnapshotSlots[buffer]);
 
     public int ActiveVehicleCount => _disposed ? 0 : _w.Vehicles.AliveCount;
 

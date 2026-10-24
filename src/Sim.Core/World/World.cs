@@ -74,6 +74,7 @@ internal sealed class World
     public readonly byte[] LaneSignals;
     public readonly VehicleRenderData[][] Render;
     public long SnapshotTick;
+    public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
 
     public World(in ScenarioDesc desc, in RulesDesc rules, VehicleTypeDesc[] types)
     {

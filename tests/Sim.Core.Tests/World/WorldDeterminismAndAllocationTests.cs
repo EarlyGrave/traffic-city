@@ -128,8 +128,8 @@ public class WorldDeterminismAndAllocationTests
                 sim.Enqueue(Command.MakeSelectVehicle(sim.World.Vehicles.HandleOf(n % 10)));
                 sim.Step(1);
                 _ = sim.Events.Length;
-                _ = sim.Vehicles[0];
-                _ = sim.PreviousVehicles[0];
+                _ = sim.Vehicles.Length > 0 ? sim.Vehicles[0] : default;
+                _ = sim.PreviousVehicles.Length > 0 ? sim.PreviousVehicles[0] : default;
                 _ = sim.SelectedRoute;
             }
         }

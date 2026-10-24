@@ -23,6 +23,7 @@ internal sealed class NetworkStore
     public readonly Vec2[] SegmentPoints;    // осевые полилинии сегментов (между отступами от узлов)
     public readonly Vec2[] LanePoints;
     public readonly float[] LanePointS;
+    public readonly float[] LanePieceHeading; // курс отрезка k->k+1 полилинии (atan2); производные данные, в хэш не входят (ADR-0010)
     public readonly ZoneData[] Zones;
     public readonly int[] ZoneLanes;         // полосы появления зон подряд; диапазон зоны - ZoneData.FirstSpawnLane/SpawnLaneCount
     public readonly BusStopData[] BusStops;
@@ -36,6 +37,26 @@ internal sealed class NetworkStore
     internal readonly int[] IncNext;         // [2*MaxSegments]
     internal readonly int[] CellNext;        // [MaxNodes] цепочка узлов в ячейке сетки
     internal readonly FixedHashMap Cells;    // ключ ячейки -> первый узел
+
+    /// <summary>Курс отрезка a->b: тем же выражением, что <see cref="LaneGeometry"/> (нормировка + atan2).</summary>
+    internal static float PieceHeading(Vec2 a, Vec2 b)
+    {
+        Vec2 d = b - a;
+        float len = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
+        Vec2 dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
+        return MathF.Atan2(dir.Z, dir.X);
+    }
+
+    /// <summary>Заполняет кэш курса отрезков полосы, чьи <paramref name="m"/> точек лежат с индекса <paramref name="first"/>.</summary>
+    internal void FillPieceHeadings(int first, int m)
+    {
+        for (int k = 0; k < m - 1; k++)
+        {
+            LanePieceHeading[first + k] = PieceHeading(LanePoints[first + k], LanePoints[first + k + 1]);
+        }
+
+        LanePieceHeading[first + m - 1] = 0f;
+    }
 
     public NetworkStore(in SimCapacities caps)
     {
@@ -53,6 +74,7 @@ internal sealed class NetworkStore
         SegmentPoints = new Vec2[4 * segs];
         LanePoints = new Vec2[pts];
         LanePointS = new float[pts];
+        LanePieceHeading = new float[pts];
         Zones = new ZoneData[Math.Max(0, caps.MaxZones)];
         ZoneLanes = new int[lanes];
         BusStops = new BusStopData[Math.Max(0, caps.MaxBusStops)];

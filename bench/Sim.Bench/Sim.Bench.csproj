@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <ProjectReference Include="../../src/Sim.Core/Sim.Core.csproj" />
+    <ProjectReference Include="../../src/Sim.Scenarios/Sim.Scenarios.csproj" />
   </ItemGroup>
 
 </Project>

@@ -29,8 +29,8 @@ public class SimulationTests
         Assert.Equal(2, net.Zones.Length);
         Assert.Equal(0, sim.Tick);
         Assert.Equal(0, sim.SnapshotTick);
-        Assert.Equal(TestScenarios.MaxVehicles, sim.Vehicles.Length);
-        Assert.Equal(TestScenarios.MaxVehicles, sim.PreviousVehicles.Length);
+        Assert.Equal(0, sim.Vehicles.Length); // до первого Step спаны пусты (core-api 5.2)
+        Assert.Equal(0, sim.PreviousVehicles.Length);
         Assert.Equal(0, sim.ActiveVehicleCount);
         Assert.Equal(3, sim.Counters.NodeCount);
         Assert.Equal(2, sim.Counters.ZoneCount);
@@ -456,9 +456,9 @@ public class SimulationTests
         sim.Step(1);
         Assert.Equal(1, sim.SnapshotTick);
         VehicleRenderData first = sim.Vehicles[i];
-        Assert.Equal(TestScenarios.MaxVehicles, sim.Vehicles.Length);
+        Assert.Equal(sim.World.Vehicles.HighWater, sim.Vehicles.Length);
         Assert.NotEqual(0, first.Flags & (byte)VehicleRenderFlags.Active);
-        Assert.Equal(0, sim.PreviousVehicles[i].Flags); // до первого Step слот был пуст
+        Assert.Equal(0, sim.PreviousVehicles.Length); // после первого Step prev пуст
 
         sim.Step(1); // фазы 5-8 подключены: машина едет сама
         Assert.Equal(2, sim.SnapshotTick);

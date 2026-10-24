@@ -409,6 +409,7 @@ internal sealed partial class NetworkBuilder
 
         _s.LanePointS[first] = 0f;
         _s.LanePointS[first + m - 1] = length;
+        _s.FillPieceHeadings(first, m);
         _s.Lanes[laneIdx] = new LaneData
         {
             Kind = LaneKind.Normal,
