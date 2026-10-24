@@ -35,3 +35,7 @@
 | 29 | verify-gates | sonnet | прогон ветки ворот: build/test/s1k 30 мин | done |
 | 30 | stuck-diag | sonnet | диагностика stuck на ветке ворот | done: корень — спиллбэк ниже узла 53 |
 | 31 | jam-chain | sonnet | цепочка затора до корня | done: корень — красный узла 51, цикл длиннее спеки |
+| 32 | stuck-fix (gates worktree) | sonnet | светофоры 24/3/1 + yield перед светофором → stuck = 0 | wip |
+| 33 | flaky-port (worktree) | sonnet | перенос фикса allocation-тестов из checkpoint | wip |
+| 34 | bench-cmd (worktree) | sonnet | шаг 5: bench/compare/update-baseline в Headless | wip |
+| 35 | godot-client (worktree) | sonnet | шаг 6: MultiMesh, камера, интерполяция, оверлеи, HUD | wip |
