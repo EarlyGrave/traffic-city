@@ -43,6 +43,6 @@
 | 37 | load-routing | sonnet | ADR-0006 | done: stuck 9 → 0 |
 | 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |
 | 39 | buses (worktree) | sonnet | шаг 4: автобусы, остановки, headway | wip |
-| 40 | ci-baseline (worktree) | sonnet | ADR-0007: CI baseline-ci, печать JSON, бюджет | wip |
+| 40 | ci-baseline | sonnet | ADR-0007 | done, merged |
 | 41 | ladder-profile | sonnet | шаг 5: лестница + профиль | done (s1m не создан: ёмкость) |
 | 42 | s1m-fix (worktree) | haiku | ёмкость точек s1m + прогон s1m | wip |
