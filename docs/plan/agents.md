@@ -24,7 +24,11 @@
 | 18 | spawner-metrics | sonnet | 2-H: Spawner, OD, MetricsPhase, подключение фаз | done, merged |
 | 19 | routing | sonnet | 3-R: A*, граф, кэш магистралей (без подключения) | done, merged (s1k A* 32 мкс, s100k 1.35 мс) |
 | 20 | loader-catchup | sonnet | 3.0: новые поля формата в загрузчике и сценариях | done, merged |
-| 21 | j1-connectors | sonnet | 3-J1: connector'ы по правилам, ConnectorStore, конфликты | done, ветка ждёт мержа после PR шага 2 |
-| 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, ветка ждёт мержа после PR шага 2 |
+| 21 | j1-connectors | sonnet | 3-J1: connector'ы, ConnectorStore, конфликты | done, merged |
+| 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, merged |
 | 23 | flaky-hunt (worktree) | sonnet | найти и устранить нестабильный тест (1 падение из 11 прогонов) | wip |
 | 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
+| 25 | merge-fix (s3) | haiku | разрешение конфликтов J1+J2 | done |
+| 26 | gates (worktree) | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | wip |
+| 27 | route-wiring (worktree) | sonnet | 3-R4/R5: фаза 3, маршруты в спавне и движении, убрать STAGE2-TEMP | wip |
+| 28 | straight-roads (worktree) | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | wip |
