@@ -11,4 +11,4 @@
 | 5 | util-api (worktree) | sonnet | 2-AB: Util + Api-типы | wip |
 | 6 | citygen-spec (worktree) | fable | спека генератора города + ADR-0003 | wip |
 | 7 | intersections-spec (worktree) | fable | спека перекрёстков и маршрутизации + ADR-0004/0005 | wip |
-| 8 | scenarios (worktree) | haiku | scenarios/*.json по scenario-format.md | wip |
+| 8 | scenarios | haiku | scenarios/*.json по scenario-format.md | done, merged (TODO: max_signalized_nodes для s10k+ после спеки генератора) |
