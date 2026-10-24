@@ -27,11 +27,15 @@ public sealed class LoadedScenario
 
 /// <summary>
 /// Загрузчик сценариев JSON → <see cref="ScenarioDesc"/> по docs/design/scenario-format.md:
-/// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 1.
+/// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 2 (сценарий) / 1 (типы ТС).
 /// </summary>
 public static class ScenarioLoader
 {
-    public const int SupportedFormatVersion = 1;
+    public const int SupportedFormatVersion = 2;
+    public const int VehicleTypesFormatVersion = 1;
+    private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
+    private const int MaxRoutingFanout = 16;      // = Overlay.MaxFanout
+    private const int MaxArenaSteps = 1 << 28;    // предел арен шагов/планов (WorldBuilder.MaxRouteStepsCapacity)
     public const int TicksPerSecond = 20;
     private const string DefaultVehicleTypesFile = "vehicle-types.json";
 
@@ -58,7 +62,7 @@ public static class ScenarioLoader
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root);
+        CheckVersion(root, SupportedFormatVersion);
 
         string name = root.Str("name", defaultName);
         ulong seed = root.ULong("seed");
@@ -117,7 +121,8 @@ public static class ScenarioLoader
 
         TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames);
         RulesDesc rules = ParseRules(root.OptObject("rules"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"));
+        RoutingDesc routing = ParseRouting(root.OptObject("routing"));
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing);
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -125,6 +130,7 @@ public static class ScenarioLoader
             Seed = seed,
             DurationTicks = Ticks(durationS),
             Capacities = caps,
+            Routing = routing,
             City = city,
             Network = network,
             Demand = demand,
@@ -168,7 +174,7 @@ public static class ScenarioLoader
         }
     }
 
-    private static void CheckVersion(JsonObjectReader root)
+    private static void CheckVersion(JsonObjectReader root, int supported)
     {
         if (!root.Has("format_version"))
         {
@@ -176,10 +182,10 @@ public static class ScenarioLoader
         }
 
         int v = root.Int("format_version");
-        if (v != SupportedFormatVersion)
+        if (v != supported)
         {
             throw new ScenarioException(
-                $"$.format_version: unsupported version {v}, loader supports {SupportedFormatVersion}");
+                $"$.format_version: unsupported version {v}, loader supports {supported}");
         }
     }
 
@@ -200,7 +206,7 @@ public static class ScenarioLoader
     {
         using JsonDocument doc = OpenDoc(text, "vehicle types");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root);
+        CheckVersion(root, VehicleTypesFormatVersion);
         JsonElement[] arr = root.ReqArray("types");
         root.Finish();
         if (arr.Length == 0)
@@ -644,7 +650,46 @@ public static class ScenarioLoader
         return d;
     }
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r)
+    // routing.md 9.9, scenario-format.md 2.1 "routing": дефолты - как в спеке; секция необязательна.
+    private static RoutingDesc ParseRouting(JsonObjectReader? r)
+    {
+        var d = new RoutingDesc
+        {
+            Levels = 1,
+            Fanout = 4,
+            CellSize = 1000f,
+            WindowSteps = 16,
+            PathfindBudgetPerTick = 32,
+            CustomizeBudgetPerTick = 10000,
+            CustomizeEps = 0.05f,
+            CostRecalcTicks = Ticks(30),
+            TimedDrift = 0.15f,
+            TimedDriftAbsTicks = Ticks(20),
+        };
+        d.WorkBudgetPerTick = WorkBudgetDefault(d.PathfindBudgetPerTick);
+        if (r == null)
+        {
+            return d;
+        }
+
+        d.Levels = r.Int("levels", 1, min: 0, max: MaxRoutingLevels);
+        d.CellSize = (float)r.Num("cell_m", 1000, min: 1);
+        d.Fanout = r.Int("fanout", 4, min: 2, max: MaxRoutingFanout);
+        d.WindowSteps = r.Int("window_steps", 16, min: 8, max: 32);
+        d.PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", 32, min: 1);
+        d.WorkBudgetPerTick = r.Int("work_budget_per_tick", WorkBudgetDefault(d.PathfindBudgetPerTick), min: 1);
+        d.CustomizeBudgetPerTick = r.Int("customize_budget_per_tick", 10000, min: 1);
+        d.CustomizeEps = (float)r.Num("customize_eps", 0.05, min: 0, max: 1);
+        d.CostRecalcTicks = Math.Max(1, Ticks(r.Num("cost_recalc_s", 30, min: 0.05)));
+        d.TimedDrift = (float)r.Num("timed_drift", 0.15, min: 0);
+        d.TimedDriftAbsTicks = Ticks(r.Num("timed_drift_abs_s", 20, min: 0));
+        r.Finish();
+        return d;
+    }
+
+    private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
+
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing)
     {
         var c = new SimCapacities
         {
@@ -658,13 +703,18 @@ public static class ScenarioLoader
             MaxBusStops = r.Int("max_bus_stops", min: 0),
             MaxBusStopsPerRoute = r.Int("max_bus_stops_per_route", 32, min: 1),
             MaxRoutes = r.Int("max_routes", min: 1),
-            MaxRouteSteps = r.Int("max_route_steps", min: 1),
             MaxPendingTrips = r.Int("max_pending_trips", min: 1),
             CommandQueueCapacity = r.Int("command_queue", 1024, min: 1),
             EventCapacity = r.Int("events", 4096, min: 1),
-            PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", min: 1),
+            PathfindBudgetPerTick = routing.PathfindBudgetPerTick, // переходно: зеркало routing.pathfind_budget_per_tick до H3
             MaxSignalizedNodes = r.Int("max_signalized_nodes", min: 0),
         };
+        // max_plan_steps: дефолт max_routes * (12 + 8 * levels) (оценка, уточняется замером H3); предел арены - 1 << 28.
+        long planDefault = Math.Min(MaxArenaSteps, (long)c.MaxRoutes * (12 + (8 * Math.Max(1, routing.Levels))));
+        c.MaxPlanSteps = r.Int("max_plan_steps", (int)planDefault, min: 1, max: MaxArenaSteps);
+        // Переходный ключ: арена шагов кэша маршрутов этапа 1 (RoutePool) живёт до H3, где RouteStore её заменит и ключ уйдёт.
+        long legacySteps = Math.Min(MaxArenaSteps, (long)c.MaxRoutes * 64);
+        c.MaxRouteSteps = r.Int("max_route_steps", (int)legacySteps, min: 1, max: MaxArenaSteps);
         c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
         c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
         r.Finish();

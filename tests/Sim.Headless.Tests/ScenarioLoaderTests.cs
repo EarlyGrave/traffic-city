@@ -26,13 +26,13 @@ public class ScenarioLoaderTests
     private const string Caps = """
         "capacities": { "max_vehicles": 64, "max_nodes": 8, "max_segments": 8, "max_lanes": 64, "max_lane_points": 512,
           "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
-          "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1 }
+          "max_plan_steps": 2048, "max_pending_trips": 64, "max_signalized_nodes": 1 }
         """;
 
     private static readonly float[] _onlyCar = { 1f, 0f };
     private static readonly float[] _carThreeBusOne = { 3f, 1f };
 
-    private static string Minimal(string extra = "", string version = "1") =>
+    private static string Minimal(string extra = "", string version = "2") =>
         "{ \"format_version\": " + version + ", \"seed\": 7, \"duration_s\": 10, \"vehicles\": { \"count\": 5 }, "
         + Caps + (extra.Length > 0 ? ", " + extra : string.Empty) + " }";
 
@@ -181,20 +181,113 @@ public class ScenarioLoaderTests
     }
 
     [Theory]
-    [InlineData("s1k", 8192, 262144, 700, 1000)]
-    [InlineData("s10k", 32000, 4000000, 2800, 10000)]
-    [InlineData("s100k", 250000, 40000000, 17000, 100000)]
-    [InlineData("s1m", 1300000, 128000000, 170000, 1000000)]
-    public void LadderCapacities(string name, int routes, int steps, int nodes, int vehicles)
+    [InlineData("s1k", 8192, 262144, 81920, 700, 1000)]
+    [InlineData("s10k", 32000, 4000000, 640000, 2800, 10000)]
+    [InlineData("s100k", 250000, 40000000, 7000000, 17000, 100000)]
+    [InlineData("s1m", 1300000, 128000000, 47000000, 170000, 1000000)]
+    public void LadderCapacities(string name, int routes, int steps, int planSteps, int nodes, int vehicles)
     {
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
         Assert.Equal(routes, d.Capacities.MaxRoutes);
         Assert.Equal(steps, d.Capacities.MaxRouteSteps);
+        Assert.Equal(planSteps, d.Capacities.MaxPlanSteps);
         Assert.Equal(nodes, d.Capacities.MaxNodes);
         Assert.Equal(nodes * 16, d.Capacities.MaxConnectors);
         Assert.Equal(nodes * 16 * 6, d.Capacities.MaxConflicts);
         Assert.Equal(400, d.Rules.MaxYieldWaitTicks);
         Assert.Equal(vehicles, d.Demand.TargetVehicles);
+    }
+
+    [Theory]
+    [InlineData("s1k", 1, 32, 48000, 10000, 600)]
+    [InlineData("s10k", 1, 128, 192000, 20000, 600)]
+    [InlineData("s100k", 2, 512, 400000, 100000, 600)]
+    [InlineData("s1m", 3, 2048, 2000000, 2000000, 2400)]
+    public void LadderRouting(string name, int levels, int pathfind, int work, int customize, int recalcTicks)
+    {
+        ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
+        RoutingDesc r = d.Routing;
+        Assert.Equal(levels, r.Levels);
+        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(4, r.Fanout);
+        Assert.Equal(16, r.WindowSteps);
+        Assert.Equal(pathfind, r.PathfindBudgetPerTick);
+        Assert.Equal(pathfind, d.Capacities.PathfindBudgetPerTick); // переходное зеркало для маршрутизации этапа 1
+        Assert.Equal(work, r.WorkBudgetPerTick);
+        Assert.Equal(customize, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.05f, r.CustomizeEps);
+        Assert.Equal(recalcTicks, r.CostRecalcTicks);
+        Assert.Equal(0.15f, r.TimedDrift);
+        Assert.Equal(400, r.TimedDriftAbsTicks);
+    }
+
+    [Fact]
+    public void RoutingDefaultsWhenSectionAbsent()
+    {
+        RoutingDesc r = Load(Minimal()).Routing;
+        Assert.Equal(1, r.Levels);
+        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(4, r.Fanout);
+        Assert.Equal(16, r.WindowSteps);
+        Assert.Equal(32, r.PathfindBudgetPerTick);
+        Assert.Equal(1500 * 32, r.WorkBudgetPerTick);
+        Assert.Equal(10000, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.05f, r.CustomizeEps);
+        Assert.Equal(600, r.CostRecalcTicks);
+        Assert.Equal(0.15f, r.TimedDrift);
+        Assert.Equal(400, r.TimedDriftAbsTicks);
+    }
+
+    [Fact]
+    public void RoutingKeysAreReadWithUnits()
+    {
+        RoutingDesc r = Load(Minimal(
+            "\"routing\": { \"levels\": 3, \"cell_m\": 300, \"fanout\": 2, \"window_steps\": 12, \"pathfind_budget_per_tick\": 5, "
+            + "\"customize_budget_per_tick\": 77, \"customize_eps\": 0.1, \"cost_recalc_s\": 15, \"timed_drift\": 0.3, \"timed_drift_abs_s\": 10 }"))
+            .Routing;
+        Assert.Equal(3, r.Levels);
+        Assert.Equal(300f, r.CellSize);
+        Assert.Equal(2, r.Fanout);
+        Assert.Equal(12, r.WindowSteps);
+        Assert.Equal(5, r.PathfindBudgetPerTick);
+        Assert.Equal(7500, r.WorkBudgetPerTick); // дефолт 1500 * pathfind_budget_per_tick
+        Assert.Equal(77, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.1f, r.CustomizeEps);
+        Assert.Equal(300, r.CostRecalcTicks);
+        Assert.Equal(0.3f, r.TimedDrift);
+        Assert.Equal(200, r.TimedDriftAbsTicks);
+
+        ScenarioDesc d = Load(Minimal("\"routing\": { \"levels\": 0, \"work_budget_per_tick\": 9 }"));
+        Assert.Equal(0, d.Routing.Levels);
+        Assert.Equal(9, d.Routing.WorkBudgetPerTick);
+    }
+
+    [Fact]
+    public void RoutingErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"routing\": { \"levels\": 5 }"));
+        Assert.Contains("$.routing.levels", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"fanout\": 1 }"));
+        Assert.Contains("$.routing.fanout", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"window_steps\": 40 }"));
+        Assert.Contains("$.routing.window_steps", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"cell_mm\": 1 }"));
+        Assert.Contains("$.routing.cell_mm", e.Message, StringComparison.Ordinal);
+
+        // pathfind_budget_per_tick переехал из capacities в routing (format_version 2).
+        e = Fails(Minimal().Replace("\"max_nodes\": 8", "\"max_nodes\": 8, \"pathfind_budget_per_tick\": 8", StringComparison.Ordinal));
+        Assert.Contains("$.capacities.pathfind_budget_per_tick", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaxPlanStepsDefaultsFromRoutesAndLevels()
+    {
+        string noPlan = Minimal().Replace("\"max_plan_steps\": 2048, ", string.Empty, StringComparison.Ordinal);
+        Assert.Equal(64 * (12 + 8), Load(noPlan).Capacities.MaxPlanSteps);
+        Assert.Equal(64 * (12 + 24), Load(noPlan.Replace("\"capacities\"", "\"routing\": { \"levels\": 3 }, \"capacities\"", StringComparison.Ordinal)).Capacities.MaxPlanSteps);
+        Assert.Equal(2048, Load(Minimal()).Capacities.MaxPlanSteps);
+        ScenarioException e = Fails(Minimal().Replace("\"max_plan_steps\": 2048", "\"max_plan_steps\": 300000000", StringComparison.Ordinal));
+        Assert.Contains("$.capacities.max_plan_steps", e.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -269,13 +362,13 @@ public class ScenarioLoaderTests
     [Fact]
     public void WrongFormatVersionIsError()
     {
-        ScenarioException e = Fails(Minimal(version: "2"));
+        ScenarioException e = Fails(Minimal(version: "1")); // формат 1 больше не принимается (ADR-0009)
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
 
         e = Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(Minimal(), Types.Replace("\"format_version\": 1", "\"format_version\": 9", StringComparison.Ordinal)));
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
 
-        e = Fails(Minimal().Replace("\"format_version\": 1, ", string.Empty, StringComparison.Ordinal));
+        e = Fails(Minimal().Replace("\"format_version\": 2, ", string.Empty, StringComparison.Ordinal));
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
     }
 

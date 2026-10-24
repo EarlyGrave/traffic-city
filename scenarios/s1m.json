@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "name": "s1m",
   "seed": 20261024,
   "duration_s": 600,
@@ -60,6 +60,19 @@
     "yield_gap_s": 3.0,
     "max_yield_wait_s": 20
   },
+  "routing": {
+    "levels": 3,
+    "cell_m": 1000,
+    "fanout": 4,
+    "window_steps": 16,
+    "pathfind_budget_per_tick": 2048,
+    "work_budget_per_tick": 2000000,
+    "customize_budget_per_tick": 2000000,
+    "customize_eps": 0.05,
+    "cost_recalc_s": 120,
+    "timed_drift": 0.15,
+    "timed_drift_abs_s": 20
+  },
   "capacities": {
     "max_vehicles": 1100000,
     "max_nodes": 170000,
@@ -72,10 +85,10 @@
     "max_bus_stops_per_route": 32,
     "max_routes": 1300000,
     "max_route_steps": 128000000,
+    "max_plan_steps": 47000000,
     "max_pending_trips": 1000000,
     "command_queue": 1024,
     "events": 4096,
-    "pathfind_budget_per_tick": 2048,
     "max_signalized_nodes": 8000,
     "max_connectors": 2720000,
     "max_conflicts": 16320000

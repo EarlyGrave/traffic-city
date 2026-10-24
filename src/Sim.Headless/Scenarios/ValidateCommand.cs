@@ -109,7 +109,10 @@ public static class ValidateCommand
         w.WriteLine(
             $"  capacities: vehicles {N(c2.MaxVehicles)}, nodes {N(c2.MaxNodes)}, segments {N(c2.MaxSegments)}, lanes {N(c2.MaxLanes)}, lane points {N(c2.MaxLanePoints)}");
         w.WriteLine(
-            $"              zones {N(c2.MaxZones)}, routes {N(c2.MaxRoutes)}, route steps {N(c2.MaxRouteSteps)}, pending trips {N(c2.MaxPendingTrips)}, pathfind/tick {N(c2.PathfindBudgetPerTick)}");
+            $"              zones {N(c2.MaxZones)}, routes {N(c2.MaxRoutes)}, route steps {N(c2.MaxRouteSteps)}, plan steps {N(c2.MaxPlanSteps)}, pending trips {N(c2.MaxPendingTrips)}");
+        RoutingDesc rt = d.Routing;
+        w.WriteLine(
+            $"  routing: levels {N(rt.Levels)}, cell {F(rt.CellSize)} m, fanout {N(rt.Fanout)}, window {N(rt.WindowSteps)}, pathfind/tick {N(rt.PathfindBudgetPerTick)}, work/tick {N(rt.WorkBudgetPerTick)}, customize/tick {N(rt.CustomizeBudgetPerTick)}, recalc {N(rt.CostRecalcTicks)} ticks");
         w.WriteLine("ok");
     }
 }
