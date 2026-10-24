@@ -127,6 +127,105 @@ public sealed class BenchCommandTests : IDisposable
         Assert.Equal(p95s[1], perf.GetProperty("tick_ms").GetProperty("p95").GetDouble());
     }
 
+    private string WriteRamp(string name, double p95, bool? complete, int active = 1000, int target = 1000)
+    {
+        string path = Path.Combine(_dir, name);
+        string ramp = complete is null
+            ? string.Empty
+            : ",\"ramp_complete\":" + (complete.Value ? "true" : "false") + ",\"active_vehicles\":" + active + ",\"active_vehicles_start\":" + active + ",\"target_vehicles\":" + target;
+        File.WriteAllText(
+            path,
+            "{\"scenario\":\"s1k\",\"perf\":{\"tick_ms\":{\"p95\":" + p95.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            "},\"alloc_bytes_per_tick\":0" + ramp + "}}");
+        return path;
+    }
+
+    [Fact]
+    public void Compare_RampMismatch_Fails()
+    {
+        Assert.Equal(1, Compare(WriteRamp("r.json", 1.0, false, 500), WriteRamp("b.json", 1.0, true), out string o));
+        Assert.Contains("RAMP MISMATCH", o);
+    }
+
+    [Fact]
+    public void Compare_RampBothComplete_Ok()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true), WriteRamp("b.json", 1.0, true), out string o));
+        Assert.DoesNotContain("warning", o);
+    }
+
+    [Fact]
+    public void Compare_LegacyBaselineWithoutRampInfo_ReadsAndWarns()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true), Write("b.json", 1.0, 0), out string o));
+        Assert.Contains("ramp info is missing", o);
+        Assert.Equal(0, Compare(Write("r2.json", 1.0, 0), Write("b2.json", 1.0, 0), out string o2));
+        Assert.DoesNotContain("warning", o2);
+    }
+
+    [Fact]
+    public void Compare_IncompleteResultAgainstLegacyBaseline_Warns()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, false, 500), Write("b.json", 1.0, 0), out string o));
+        Assert.Contains("ramp_complete=false", o);
+    }
+
+    [Fact]
+    public void Compare_ActiveVehiclesDiffer_WarnsButDoesNotFail()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true, 1300), WriteRamp("b.json", 1.0, true, 1000), out string o));
+        Assert.Contains("active vehicles differ", o);
+    }
+
+    [Theory]
+    [InlineData(1000, 1000, true)]
+    [InlineData(980, 1000, true)]
+    [InlineData(979, 1000, false)]
+    [InlineData(0, 0, true)]
+    [InlineData(4991, 10000, false)]
+    public void IsFull_UsesShareOfTarget(int active, int target, bool expected) =>
+        Assert.Equal(expected, BenchCommand.IsFull(active, target));
+
+    [Fact]
+    public void CliArgs_Flag_NeedsNoValue()
+    {
+        Assert.True(CliArgs.TryParse(new[] { "x", "--f", "--a", "1" }, new[] { "--a" }, new[] { "--f" }, out CliArgs a));
+        Assert.True(a.Has("--f"));
+        Assert.Equal("1", a.Get("--a"));
+        Assert.False(a.Has("--g"));
+    }
+
+    [Fact]
+    public void Bench_WarmupUntilFull_ReportsRampFields()
+    {
+        string scenarios = FindScenariosDir();
+        string full = Path.Combine(_dir, "full.json");
+        string partial = Path.Combine(_dir, "partial.json");
+        var e = new StringWriter();
+        Assert.Equal(
+            0,
+            BenchCommand.Run(
+                new[] { "bench", "--scenario", "s1k", "--ticks", "20", "--warmup-ticks", "5", "--warmup-until-full", "--warmup-max-ticks", "6000", "--out", full, "--scenarios-dir", scenarios },
+                new StringWriter(),
+                e));
+        Assert.Equal(
+            0,
+            BenchCommand.Run(
+                new[] { "bench", "--scenario", "s1k", "--ticks", "20", "--warmup-ticks", "5", "--out", partial, "--scenarios-dir", scenarios },
+                new StringWriter(),
+                e));
+        using JsonDocument f = JsonDocument.Parse(File.ReadAllText(full));
+        using JsonDocument p = JsonDocument.Parse(File.ReadAllText(partial));
+        JsonElement fp = f.RootElement.GetProperty("perf");
+        JsonElement pp = p.RootElement.GetProperty("perf");
+        Assert.True(fp.GetProperty("ramp_complete").GetBoolean());
+        Assert.Equal(1000, fp.GetProperty("target_vehicles").GetInt32());
+        Assert.True(fp.GetProperty("active_vehicles_start").GetInt32() >= 980);
+        Assert.True(fp.GetProperty("warmup_ticks_actual").GetInt32() > 5);
+        Assert.False(pp.GetProperty("ramp_complete").GetBoolean());
+        Assert.Equal(5, pp.GetProperty("warmup_ticks_actual").GetInt32());
+    }
+
     [Fact]
     public void Compare_WithinTolerance_Ok()
     {

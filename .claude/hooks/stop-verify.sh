@@ -35,15 +35,17 @@ if [ ! -f scenarios/s1k.json ] || [ ! -f src/Sim.Headless/Sim.Headless.csproj ];
   echo "stop-verify: bench/compare пропущены (нужны scenarios/s1k.json, src/Sim.Headless)." >&2
   exit 0
 fi
-mkdir -p perf/results
-out=$(dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k-smoke.json 2>&1); rc=$?
-[ $rc -ne 0 ] && fail "bench s1k провалился (exit $rc):" "$out"
-# Облачный контейнер: эталон perf/baseline.json (ADR-0007); нет его — абсолютный бюджет p95 <= 1 мс и 0 аллокаций.
+# Параметры bench и повтор при шуме p95 - в scripts/bench-gate.sh (единая точка для хука, CI и рук).
+# Облачный контейнер: эталон perf/baseline.json (ADR-0007); нет его - абсолютный бюджет p95 <= 1 мс и 0 аллокаций.
+if [ ! -f scripts/bench-gate.sh ]; then
+  echo "stop-verify: scripts/bench-gate.sh нет, bench/compare пропущены." >&2
+  exit 0
+fi
 if [ -f perf/baseline.json ]; then
-  out=$(dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k-smoke.json --baseline perf/baseline.json 2>&1); rc=$?
-  [ $rc -ne 0 ] && fail "регрессия производительности vs perf/baseline.json (compare exit $rc):" "$out"
+  out=$(bash scripts/bench-gate.sh --out perf/results/s1k-smoke.json --baseline perf/baseline.json 2>&1); rc=$?
+  [ $rc -ne 0 ] && fail "регрессия производительности vs perf/baseline.json (bench-gate exit $rc):" "$out"
 else
-  out=$(dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k-smoke.json --budget-p95-ms 1.0 2>&1); rc=$?
-  [ $rc -ne 0 ] && fail "бюджет s1k нарушен: p95 > 1.0 мс или аллокации (compare exit $rc):" "$out"
+  out=$(bash scripts/bench-gate.sh --out perf/results/s1k-smoke.json --budget-p95-ms 1.0 2>&1); rc=$?
+  [ $rc -ne 0 ] && fail "бюджет s1k нарушен: p95 > 1.0 мс или аллокации (bench-gate exit $rc):" "$out"
 fi
 exit 0
