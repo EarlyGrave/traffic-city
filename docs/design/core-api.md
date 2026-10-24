@@ -269,8 +269,8 @@ public struct SimCapacities
     public int EventCapacity;              // по умолчанию 4096 за Step
     public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
     public int MaxSignalizedNodes;
-    public int MaxConnectors;              // connector-полос всего (intersections.md §4); по умолчанию MaxNodes * 16
-    public int MaxConflicts;               // записей ConflictEntry (intersections.md §3); по умолчанию MaxConnectors * 6
+    public int MaxConnectors;              // connector-полос всего (intersections.md §4); по умолчанию MaxNodes * 16 (0 в World = по умолчанию)
+    public int MaxConflicts;               // записей ConflictEntry (intersections.md §3); по умолчанию MaxConnectors * 6 (0 в World = по умолчанию)
 }
 
 public struct VehicleTypeDesc            // см. scenario-format.md §3 — значения и обоснование
@@ -665,7 +665,7 @@ Connector-полосы: по одной на разрешённый манёвр
 без спец-случаев: connector — такая же полилиния, как и обычная полоса.
 Реализация (`NetworkBuilder`): правила манёвров — интерфейс `IConnectorRules` (точка расширения шага 3);
 порядок connector'ов полосы в `LaneNext`: прямо, направо, налево, разворот. Манёвр «прямо» — поворот ≤ 30°.
-Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
+Радиус узла этапа 1 фиксирован: `NodeData.Radius = NodeSetback` (7 м, `intersections.md` §1). Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
 направления («relaxed»-проход). Разворот — только на тупике (узел с одним сегментом). Узел строится один раз
 (`NodeAlreadyBuilt`); `NodeData.FirstArm == -1` — узел ещё не построен. Рукава ≤ 16 на узел. Ошибки построения —
 `NetworkStatus` (ёмкости → `CreateStatus.NetworkTooLarge`, остальное → `InvalidNetwork`).
@@ -1211,6 +1211,7 @@ src/Sim.Core/
 | `Occupancy` | `LaneOccupancy` | списки порядка на полосах (§6.4) |
 | `Trips` | `PendingTrips` | очередь поездок (§6.6) |
 | `Routes` | `RoutePool` | хранилище маршрутов (§6.5) |
+| `Connectors` | `ConnectorStore` | connector'ы и конфликтные пары (`intersections.md` §3–4); `WorldBuilder.Create` вызывает `Connectors.BuildAll(Net)` после построения сети; `LaneData.ConflictGroup` = индекс записи |
 | `CityInfo` | `CityGenResult` | итог `CityGenerator` (размеры, счётчики); при `City.Enabled == false` - `default` |
 | `SignalPlanSeeds` | `SignalPlanSeed[]` | зерновые планы светофоров генератора (длина = `SignalCount`) - вход шага 3, логики сигналов в `Create` нет |
 | `Transit` | `GenTransit?` | результат `TransitGenerator` (маршруты, остановки, пути по сегментам `PathSeg/PathDir`) - вход шага 4; `null` без генератора |

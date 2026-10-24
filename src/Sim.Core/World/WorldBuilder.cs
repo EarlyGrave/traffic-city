@@ -51,6 +51,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = w.Connectors.BuildAll(w.Net).ToCreateStatus();
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         st = BuildZones(w, in desc);
         if (st != CreateStatus.Ok)
         {

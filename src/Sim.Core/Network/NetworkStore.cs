@@ -17,6 +17,8 @@ internal sealed class NetworkStore
     public readonly SegmentData[] Segments;
     public readonly LaneData[] Lanes;
     public readonly int[] NodeArms;          // индексы сегментов, инцидентных узлу, по часовой стрелке
+    public readonly byte[] ArmFlags;         // параллелен NodeArms: бит0 ArmMinor (intersections.md §2.3)
+    public readonly Vec2[] ArmDir;           // параллелен NodeArms: единичный вектор от узла вдоль рукава
     public readonly int[] LaneNext;          // индексы connector'ов (диапазоны из LaneData.FirstNext)
     public readonly Vec2[] SegmentPoints;    // осевые полилинии сегментов (между отступами от узлов)
     public readonly Vec2[] LanePoints;
@@ -43,6 +45,8 @@ internal sealed class NetworkStore
         Segments = new SegmentData[segs];
         Lanes = new LaneData[lanes];
         NodeArms = new int[2 * segs];
+        ArmFlags = new byte[2 * segs];
+        ArmDir = new Vec2[2 * segs];
         LaneNext = new int[2 * lanes];
         SegmentPoints = new Vec2[4 * segs];
         LanePoints = new Vec2[pts];
@@ -109,6 +113,8 @@ internal sealed class NetworkStore
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<SegmentData>(Segments, 0, SegmentCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<LaneData>(Lanes, 0, LaneCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount)));
+        h.Add(new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount));
+        h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(ArmDir, 0, NodeArmCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<int>(LaneNext, 0, LaneNextCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(SegmentPoints, 0, SegmentPointCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(LanePoints, 0, LanePointCount)));

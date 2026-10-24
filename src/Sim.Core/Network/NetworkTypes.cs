@@ -15,6 +15,8 @@ internal enum NetworkStatus : int
     SegmentsFull = 7,       // MaxSegments
     LanesFull = 8,          // MaxLanes
     PointsFull = 9,         // MaxLanePoints (или буфер осевых точек сегментов / NodeArms / LaneNext)
+    ConnectorsFull = 10,    // MaxConnectors (ConnectorStore)
+    ConflictsFull = 11,     // MaxConflicts (ConnectorStore)
 }
 
 internal static class NetworkStatusExtensions
@@ -96,7 +98,7 @@ internal interface IConnectorRules
     int TargetLane(in ManeuverContext ctx, int inLaneNo);
 }
 
-/// <summary>Правила по умолчанию (core-api §6.1): правая → направо и прямо, левая → налево и прямо, средние → прямо.</summary>
+/// <summary>Правила по умолчанию (intersections.md §2.2): правая → направо и прямо, левая → налево и прямо, средние → прямо; разворот — с левой полосы.</summary>
 internal sealed class DefaultConnectorRules : IConnectorRules
 {
     public static readonly DefaultConnectorRules Instance = new();
@@ -107,8 +109,9 @@ internal sealed class DefaultConnectorRules : IConnectorRules
         switch (ctx.Maneuver)
         {
             case Maneuver.Straight:
-            case Maneuver.UTurn:
                 return inLaneNo < last ? inLaneNo : last;
+            case Maneuver.UTurn:
+                return ctx.Relaxed || inLaneNo == ctx.InLaneCount - 1 ? last : -1;
             case Maneuver.Right:
                 return ctx.Relaxed || inLaneNo == 0 ? 0 : -1;
             case Maneuver.Left:

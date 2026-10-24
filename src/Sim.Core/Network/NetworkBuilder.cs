@@ -15,7 +15,6 @@ internal sealed partial class NetworkBuilder
     public const int MaxVia = 12;                 // промежуточных точек оси сегмента
     public const int MaxLanesPerDirection = 8;
     private const int MaxAxis = MaxVia + 2;
-    private const int MaxPlan = 2048;             // connector'ов одного узла
 
     private readonly NetworkStore _s;
     private readonly NetworkOptions _o;
@@ -32,8 +31,9 @@ internal sealed partial class NetworkBuilder
     private readonly float[] _armKey = new float[NetworkStore.MaxArms];
     private readonly Vec2[] _armDir = new Vec2[NetworkStore.MaxArms];
 
-    private readonly int[] _planIn = new int[MaxPlan];
-    private readonly int[] _planOut = new int[MaxPlan];
+    private readonly int[] _planIn = new int[MaxConnectorsPerNode];
+    private readonly int[] _planOut = new int[MaxConnectorsPerNode];
+    private readonly Maneuver[] _planMan = new Maneuver[MaxConnectorsPerNode];
 
     public NetworkBuilder(NetworkStore store)
         : this(store, NetworkOptions.Default, DefaultConnectorRules.Instance)
@@ -92,6 +92,11 @@ internal sealed partial class NetworkBuilder
         if ((uint)node < (uint)_s.NodeCount)
         {
             _s.Nodes[node].Control = control;
+            if (_s.Nodes[node].FirstArm >= 0)
+            {
+                RefreshArmFlags(node);
+            }
+
             _s.Version++;
         }
     }
@@ -211,6 +216,7 @@ internal sealed partial class NetworkBuilder
             ConnectorCount = 0,
             Signal = -1,
             Zone = -1,
+            Radius = _o.NodeSetback,
             Generation = 1,
         };
         _s.NodeCount = idx + 1;

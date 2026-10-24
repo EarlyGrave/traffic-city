@@ -298,7 +298,7 @@ public class SimulationTests
     public void UnsupportedAndUnknownCommands_AreRejected()
     {
         using Simulation sim = Make();
-        sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Stop, tag: 1));
+        sim.Enqueue(Command.MakeCreateBusRoute(new CreateBusRouteCmd(), tag: 1));
         sim.Enqueue(Command.MakeSpawnBus(0, tag: 2));
         var unknown = default(Command);
         unknown.Kind = (CommandKind)99;

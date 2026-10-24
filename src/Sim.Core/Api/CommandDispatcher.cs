@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Network;
+using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
 namespace Sim.Core.Api;
@@ -49,11 +50,15 @@ internal static class CommandDispatcher
 
                 break;
             case CommandKind.SetSignalPlan:
+                SetSignalPlan(w, in cmd);
+                break;
+            case CommandKind.SetNodeControl:
+                SetNodeControl(w, in cmd);
+                break;
             case CommandKind.CreateBusRoute:
             case CommandKind.AppendBusStop:
             case CommandKind.SpawnBus:
-            case CommandKind.SetNodeControl:
-                // TODO(step 3/4): светофоры, регулирование узлов, транспорт.
+                // TODO(step 4): транспорт.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
             default:
@@ -126,6 +131,79 @@ internal static class CommandDispatcher
                 RejectNetwork(w, in cmd, bad);
                 return;
             }
+        }
+
+        Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// intersections.md 6.3: узел должен быть <c>Signal</c>; для <c>Fixed</c> PhaseCount = числу осей узла, Green_k >= 1,
+    /// цикл <= 65535; иначе <c>InvalidArgument</c> (отдельных причин NotSignalized/InvalidPhaseCount в RejectReason нет).
+    /// Применяется в фазе команд тика, начальное состояние пересчитывается по OffsetTicks.
+    /// </summary>
+    private static void SetSignalPlan(World w, in Command cmd)
+    {
+        SetSignalPlanCmd p = cmd.SetSignalPlan;
+        if ((uint)p.Node >= (uint)w.Net.NodeCount)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
+        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count ||
+            !SignalStore.IsValid(in p, w.Signals.PhaseCount[nd.Signal]))
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        w.Signals.ApplyPlan(nd.Signal, in p);
+        Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// intersections.md 6.3. Signal: слот в SignalStore + план по умолчанию (нет слота - Capacity; узел без connector'ов - InvalidArgument).
+    /// Из Signal в другой режим: swap-remove слота. TODO(J3): пересчёт ArmFlags/Rel и сброс допусков узла (5.7).
+    /// </summary>
+    private static void SetNodeControl(World w, in Command cmd)
+    {
+        SetNodeControlCmd c = cmd.SetNodeControl;
+        if ((uint)c.Node >= (uint)w.Net.NodeCount || (uint)c.Control > (uint)NodeControl.RightHandRule)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        ref NodeData nd = ref w.Net.Nodes[c.Node];
+        if (c.Control == NodeControl.Signal)
+        {
+            if (nd.Signal < 0)
+            {
+                if (w.Signals.Count >= w.Signals.Capacity)
+                {
+                    Rejected(w, in cmd, RejectReason.Capacity);
+                    return;
+                }
+
+                int axes = SignalStore.AxesOf(w, c.Node);
+                SetSignalPlanCmd plan = SignalStore.DefaultPlan(axes, in w.Rules);
+                if (axes < 1 || !w.Signals.TryAdd(w, c.Node, in plan, out _))
+                {
+                    Rejected(w, in cmd, RejectReason.InvalidArgument);
+                    return;
+                }
+            }
+        }
+        else if (nd.Signal >= 0)
+        {
+            w.Signals.Remove(w, nd.Signal);
+        }
+
+        if (nd.Control != c.Control)
+        {
+            nd.Control = c.Control;
+            w.Net.Version++;
         }
 
         Applied(w, in cmd);
