@@ -16,9 +16,9 @@ public class WindowRoutingTests
 {
     // s10k: сеть и зоны из scenarios/s10k.json, машин немного (тест на минуты в Debug), короткий период пересчёта и малый бюджет
     // кастомизации - волна идёт почти всё время.
-    private static ScenarioDesc S10k(int vehicles, int levels = 1, float cell = 1000f)
+    private static ScenarioDesc S10k(int vehicles, int levels = 1, float cell = 1000f, string scenario = "s10k")
     {
-        ScenarioDesc d = CityWorldTests.Desc("s10k");
+        ScenarioDesc d = CityWorldTests.Desc(scenario);
         d.Capacities.MaxVehicles = vehicles + 256;
         d.Capacities.MaxRoutes = 4096;
         d.Capacities.MaxPendingTrips = 2048;
@@ -283,5 +283,71 @@ public class WindowRoutingTests
         Assert.True(sim.Counters.PathfindQueries > 0);
         Assert.True(sim.Counters.PathfindWork > 0);
         Assert.True(sim.World.Routes.AliveCount <= sim.World.Vehicles.AliveCount + sim.World.Trips.Count);
+    }
+
+    // Замер длины плана за окном для формулы max_plan_steps (routing.md 15, H3). Только при TC_STEP3_REPORT=1.
+    [Theory]
+    [InlineData("s1k", 1, 1000f)]
+    [InlineData("s10k", 1, 1000f)]
+    [InlineData("s10k", 2, 500f)]
+    [InlineData("s10k", 3, 300f)]
+    [InlineData("s100k", 2, 1000f)]
+    public void Report_PlanStackLength(string scenario, int levels, float cell)
+    {
+        if (Environment.GetEnvironmentVariable("TC_STEP3_REPORT") != "1")
+        {
+            return;
+        }
+
+        ScenarioDesc d = scenario == "s1k" ? Step3.S1k() : S10k(1500, levels, cell, scenario);
+        if (scenario == "s1k")
+        {
+            d.Routing.Levels = levels;
+            d.Routing.CellSize = cell;
+        }
+
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        long sum = 0;
+        long winSum = 0;
+        long n = 0;
+        int max = 0;
+        int peakUsed = 0;
+        var hist = new int[64];
+        for (int t = 0; t < 4000; t++)
+        {
+            sim.Step(1);
+            peakUsed = Math.Max(peakUsed, w.Routes.PlanUsed);
+            if (t >= 2400 && t % 50 == 0)
+            {
+                for (int r = 0; r < w.Routes.Pool.HighWater; r++)
+                {
+                    if (w.Routes.Pool.IsAlive(r))
+                    {
+                        int c = w.Routes.PlanCount[r];
+                        sum += c;
+                        winSum += w.Routes.WinCount[r];
+                        n++;
+                        max = Math.Max(max, c);
+                        hist[Math.Min(63, c)]++;
+                    }
+                }
+            }
+        }
+
+        long acc = 0;
+        int p95 = 0;
+        for (int c = 0; c < hist.Length; c++)
+        {
+            acc += hist[c];
+            if (acc >= n * 95 / 100)
+            {
+                p95 = c;
+                break;
+            }
+        }
+
+        SimCounters k = sim.Counters;
+        Console.WriteLine($"PLAN {scenario} L{levels} cell {cell}: routes sampled {n}, plan stack avg {sum / (double)Math.Max(1, n):F1} p95 {p95} max {max}, window avg {winSum / (double)Math.Max(1, n):F1}; peak plan arena {peakUsed} (cap {w.Routes.PlanArena.Length}), alive {w.Routes.AliveCount}, compactions {k.PlanCompactions}, unpacks {k.PlanUnpacks}, refills {k.WindowRefills}, late {k.RefillLate}, failed {k.RouteFailed}");
     }
 }
