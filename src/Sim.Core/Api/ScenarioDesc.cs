@@ -32,6 +32,8 @@ public struct SimCapacities
     public int EventCapacity;              // по умолчанию 4096 за Step
     public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
     public int MaxSignalizedNodes;
+    public int MaxConnectors;              // connector-полос всего; по умолчанию MaxNodes * 16
+    public int MaxConflicts;               // записей ConflictEntry; по умолчанию MaxConnectors * 6
 }
 
 public enum VehicleCategory : int
@@ -69,6 +71,7 @@ public struct RulesDesc
     public int MobilEveryTicks;            // 10
     public int DefaultYellowTicks, DefaultAllRedTicks; // [шаг 3]
     public float YieldGapTime;             // с [шаг 3]
+    public int MaxYieldWaitTicks;          // инверсия приоритета у ворот после такого ожидания, 20 с -> 400
 }
 
 // ---- city (scenario-format.md §2.1 "city") ----

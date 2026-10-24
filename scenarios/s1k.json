@@ -56,7 +56,8 @@
     "mobil_every_ticks": 10,
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
-    "yield_gap_s": 3.0
+    "yield_gap_s": 3.0,
+    "max_yield_wait_s": 20
   },
   "capacities": {
     "max_vehicles": 1280,
@@ -68,12 +69,14 @@
     "max_bus_routes": 16,
     "max_bus_stops": 256,
     "max_bus_stops_per_route": 32,
-    "max_routes": 4096,
+    "max_routes": 8192,
     "max_route_steps": 262144,
     "max_pending_trips": 2048,
     "command_queue": 1024,
     "events": 4096,
     "pathfind_budget_per_tick": 32,
-    "max_signalized_nodes": 64
+    "max_signalized_nodes": 64,
+    "max_connectors": 11200,
+    "max_conflicts": 67200
   }
 }

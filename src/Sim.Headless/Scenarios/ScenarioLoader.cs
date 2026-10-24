@@ -620,6 +620,7 @@ public static class ScenarioLoader
             DefaultYellowTicks = Ticks(3),
             DefaultAllRedTicks = Ticks(1),
             YieldGapTime = 3.0f,
+            MaxYieldWaitTicks = Ticks(20),
         };
         if (r == null)
         {
@@ -636,6 +637,7 @@ public static class ScenarioLoader
         d.DefaultYellowTicks = Ticks(r.Num("signal_yellow_s", 3, min: 0));
         d.DefaultAllRedTicks = Ticks(r.Num("signal_all_red_s", 1, min: 0));
         d.YieldGapTime = (float)r.Num("yield_gap_s", 3.0, min: 0);
+        d.MaxYieldWaitTicks = Ticks(r.Num("max_yield_wait_s", 20, min: 0));
         r.Finish();
         return d;
     }
@@ -661,6 +663,8 @@ public static class ScenarioLoader
             PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", min: 1),
             MaxSignalizedNodes = r.Int("max_signalized_nodes", min: 0),
         };
+        c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
+        c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
         r.Finish();
         return c;
     }
