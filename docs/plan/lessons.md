@@ -63,3 +63,4 @@
   Диагностика: временно разнести тик на фазы и мерить аллокации по каждой, гонять набор в 3 параллельных циклах.
 ## Godot-клиент
 - **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
+- **Семантический конфликт без текстового**: одна ветка перенесла тип в другой namespace, другая добавила файл со старым using → git сливает чисто, падает сборка в pre-commit. → После мержа параллельных веток всегда build до коммита.

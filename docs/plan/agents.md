@@ -35,7 +35,9 @@
 | 29 | verify-gates | sonnet | прогон ветки ворот: build/test/s1k 30 мин | done |
 | 30 | stuck-diag | sonnet | диагностика stuck на ветке ворот | done: корень — спиллбэк ниже узла 53 |
 | 31 | jam-chain | sonnet | цепочка затора до корня | done: корень — красный узла 51, цикл длиннее спеки |
-| 32 | stuck-fix (gates worktree) | sonnet | светофоры 24/3/1 + yield перед светофором → stuck = 0 | wip |
-| 33 | flaky-port (worktree) | sonnet | перенос фикса allocation-тестов из checkpoint | wip |
+| 32 | stuck-fix | sonnet | светофоры 24/3/1 | done: stuck 34 → 9 |
+| 33 | flaky-port | sonnet | перенос фикса allocation-тестов | done, merged (15/15 зелёных) |
 | 34 | bench-cmd | sonnet | шаг 5: bench/compare/update-baseline | done, merged (s1k 2000 тиков p95 0.47 мс, 0 B) |
-| 35 | godot-client (worktree) | sonnet | шаг 6: MultiMesh, камера, интерполяция, оверлеи, HUD | wip |
+| 35 | godot-client | sonnet | шаг 6: MultiMesh, камера, интерполяция, оверлеи, HUD | done, merged (сборка ок, ручная проверка владельцем) |
+| 36 | ns-fix | haiku | using Sim.Scenarios после мержа Godot | done |
+| 37 | load-routing (gates worktree) | sonnet | ADR-0006: веса по загрузке + перемаршрутизация | wip |
