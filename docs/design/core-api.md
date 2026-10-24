@@ -1053,7 +1053,7 @@ src/Sim.Core/
                                                   SimEvent.cs, SimCounters.cs, SnapshotPhase.cs (фаза 10), VehicleInfo.cs
   World/          namespace Sim.Core.World      — World.cs: internal sealed class, композиция всех хранилищ + PRNG; WorldBuilder.cs (Create: ёмкости, порядок инициализации)
   Network/        namespace Sim.Core.Network    — NodeData/SegmentData/LaneData, NetworkStore.cs, NetworkBuilder.cs (AddNode/AddSegment/BuildConnectors/snap), LaneGeometry.cs
-  Gen/            namespace Sim.Core.Gen        — CityGenerator.cs (2.2), ZoneGenerator.cs
+  Gen/            namespace Sim.Core.Gen        — CityGenerator.cs, ZoneGenerator.cs, TransitGenerator.cs, GridPlan.cs (спека docs/design/city-generator.md)
   Agents/         namespace Sim.Core.Agents     — VehicleStore.cs, LaneOccupancy.cs (списки §6.4), Spawner.cs (фаза 2), IntegratePhase.cs (6), TransitionPhase.cs (7), ArrivalPhase.cs (8), PendingTrips.cs
   Rules/          namespace Sim.Core.Rules      — Idm.cs, Mobil.cs, BehaviourPhase.cs (5); Rules/Intersections/ — SignalStore.cs, SignalPhase.cs, Priority.cs (шаг 3)
   Routing/        namespace Sim.Core.Routing    — RoutePool.cs, RouteCache.cs, AStar.cs (шаг 3), RoutePhase.cs (3)

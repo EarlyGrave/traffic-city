@@ -42,7 +42,7 @@
     "arterial_speed_kmh": number,       // дефолт 60
     "street_speed_kmh": number,         // дефолт 40
     "lane_width_m": number,             // дефолт 3.5
-    "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт 12 (масштабируется scale²)
+    "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт 12; задаётся явно (в лестнице ≈ 12·scale², генератор не масштабирует)
     "irregular_jitter_m": number,       // макс. сдвиг нерегулярного узла, м. Дефолт 40
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
@@ -114,7 +114,10 @@
 `Create` возвращает `NetworkTooLarge`, и запас нужно поднять. Оценка для сетки: при
 `N = size/block` линий в каждом направлении узлов ≈ `(N+1)²`, сегментов ≈ `2·N·(N+1)`,
 полос ≈ `сегменты × 2.5` (смесь 1+1 и 2+2) + connector'ы ≈ `узлы × 12`, точек полос ≈
-`полосы_normal × 2 + connector'ы × connector_samples`. Берём ×1.5.
+`полосы_normal × 2 + connector'ы × connector_samples`. Берём ×1.5. Точные формулы и оценки по
+лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
+arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
+узлов `0.25 · irregular_jitter_m`. Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
 
 ### 2.2 Полный пример `scenarios/s1k.json`
 
@@ -228,6 +231,7 @@
 | `capacities.pathfind_budget_per_tick` | 32 | 128 | 512 | 2 048 |
 | `capacities.max_zones` | 64 | 256 | 1 024 | 10 000 |
 | `capacities.max_bus_routes / stops` | 16 / 256 | 64 / 1 024 | 320 / 4 096 | 3 000 / 40 000 |
+| `capacities.max_signalized_nodes` (светофоров `A²`: 25 / 100 / 625 / 6 400) | 64 | 160 | 800 | 8 000 |
 
 Всё остальное (`block_m`, скорости, `demand`, `rules`, типы ТС) **одинаково** на всей лестнице,
 чтобы различия метрик объяснялись только размером. Плотность растёт с 3 до ~13 маш./полосо-км —
