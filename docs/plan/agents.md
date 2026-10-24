@@ -12,7 +12,10 @@
 | 6 | citygen-spec | fable | спека генератора города + ADR-0003 | done, merged |
 | 7 | intersections-spec (worktree) | fable | спека перекрёстков и маршрутизации + ADR-0004/0005 | wip |
 | 8 | scenarios | haiku | scenarios/*.json по scenario-format.md | done, merged |
-| 9 | network (worktree) | sonnet | 2-C: Network store/builder/geometry | wip |
+| 9 | network | sonnet | 2-C: Network store/builder/geometry | done, merged (Evaluate ~10 нс, 0 B) |
 | 10 | vehicle-store | sonnet | 2-D: VehicleStore, LaneOccupancy, PendingTrips | done, merged (0 B на 100k операций) |
 | 11 | json-loader | sonnet | 2-I: Headless JSON → ScenarioDesc | done, merged (19 тестов) |
 | 12 | scenarios-fix | haiku | max_signalized_nodes по лестнице | done, merged |
+| 13 | facade (worktree) | sonnet | 2-E: World + Simulation фасад, команды, снапшот, хэш | wip |
+| 14 | physics (worktree) | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | wip |
+| 15 | citygen (worktree) | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | wip |
