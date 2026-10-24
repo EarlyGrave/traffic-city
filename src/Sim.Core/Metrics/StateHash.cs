@@ -101,6 +101,7 @@ internal static class StateHash
 
         // 7. Счётчики (по полям в порядке объявления).
         AddCounters(ref h, in w.Counters);
+        h.Add(w.Router.Graph.WeightsVersion);
 
         // 8. Очередь поездок в порядке очереди.
         int pending = w.Trips.Count;
@@ -128,6 +129,7 @@ internal static class StateHash
             h.Add(re.Index);
             h.Add(re.Generation);
             h.Add(re.ReadyTick);
+            h.Add(re.Kind);
         }
 
         // 9. Управляющее состояние команд.
@@ -171,6 +173,8 @@ internal static class StateHash
         h.Add(c.Reroutes);
         h.Add(c.RouteCompactions);
         h.Add(c.RouteCacheSkips);
+        h.Add(c.CostRecalcs);
+        h.Add(c.TimedReroutes);
         h.Add(c.ConnectorEntries);
         h.Add(c.CommandsApplied);
         h.Add(c.CommandsRejected);

@@ -445,6 +445,7 @@ public class Step3GateReportTests
         _out.WriteLine($"=== s1k + intersections, {(ticks + 200) / 1200.0:F1} min game time ===");
         _out.WriteLine($"active={c.ActiveVehicles} spawned={c.VehiclesSpawned} completed={c.TripsCompleted} pendingTrips={sim.World.Trips.Count}");
         _out.WriteLine($"avg_speed_kmh={st.AvgSpeedKmh:F2} avg_trip_time_s={st.AvgTripTimeS:F1} trips_per_min={st.TripsCompletedPerMin:F2}");
+        _out.WriteLine($"reroutes={sim.Counters.Reroutes} timed_reroutes={sim.Counters.TimedReroutes} cost_recalcs={sim.Counters.CostRecalcs} queries={sim.Counters.PathfindQueries} deferred={sim.Counters.RouteDeferred}");
         _out.WriteLine($"stuck_now={c.StuckVehicles} stuck_max={maxStuck} stuck_events_total={c.StuckEventsTotal} stuck_ticks_total={c.StuckTicksTotal} gridlock_flag={c.GridlockFlag} gridlock_ticks_total={c.GridlockTicksTotal}");
         _out.WriteLine($"grants={c.Grants} denied_exit={c.GateDeniedExit} inversions={c.PriorityInversions} box_wait_ticks={c.BoxWaitTicks} gate_wait_avg_s={(c.Grants > 0 ? c.GateWaitTicksTotal * 0.05 / c.Grants : 0):F2}");
         _out.WriteLine($"hard_clamps={c.HardClamps} lane_changes={c.LaneChanges} aborted={c.LaneChangesAborted} connector_entries={c.ConnectorEntries} spawn_deferred_ticks={c.SpawnDeferredTicks} events_dropped={c.EventsDropped}");

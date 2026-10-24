@@ -18,6 +18,7 @@ internal sealed class RoutePool
     public readonly int[] FromZone;
     public readonly int[] ToZone;
     public readonly int[] NetworkVersion;
+    public readonly int[] WeightsVersion;  // версия весов графа, по которой построена магистраль (ADR-0006)
     public readonly long[] LastUsedTick;   // routing.md 4.1: вытеснение магистралей кэша
     public readonly RouteStep[] Steps;
     private readonly int[] _compactKeys;   // служебные буферы Compact (выделены один раз)
@@ -33,6 +34,7 @@ internal sealed class RoutePool
         FromZone = new int[routes];
         ToZone = new int[routes];
         NetworkVersion = new int[routes];
+        WeightsVersion = new int[routes];
         LastUsedTick = new long[routes];
         _compactKeys = new int[routes];
         _compactItems = new int[routes];
@@ -62,6 +64,7 @@ internal sealed class RoutePool
         FromZone[index] = fromZone;
         ToZone[index] = toZone;
         NetworkVersion[index] = networkVersion;
+        WeightsVersion[index] = 0;
         LastUsedTick[index] = 0;
         StepsUsed += steps.Length;
         handle = new RouteHandle(index, generation);
