@@ -13,12 +13,13 @@ namespace Sim.Headless.Render;
 public sealed class FrameRenderer
 {
     public static readonly Rgb Background = new(14, 16, 22);
-    public static readonly Rgb ConnectorColor = new(40, 46, 58);
-    public static readonly Rgb StreetColor = new(78, 84, 98);
-    public static readonly Rgb ArterialColor = new(135, 142, 160);
-    public static readonly Rgb CarColor = new(70, 170, 255);
-    public static readonly Rgb BusColor = new(255, 160, 40);
-    public static readonly Rgb StuckColor = new(255, 40, 40);
+    public static readonly Rgb ConnectorColor = new(24, 28, 38);
+    public static readonly Rgb StreetColor = new(38, 44, 58);
+    public static readonly Rgb ArterialColor = new(66, 78, 100);
+    public static readonly Rgb CarColor = new(51, 221, 255);
+    public static readonly Rgb BusColor = new(255, 160, 32);
+    public static readonly Rgb StuckColor = new(255, 48, 48);
+    public static readonly Rgb VehicleOutlineColor = new(8, 10, 14);
     public static readonly Rgb SelectedColor = new(255, 255, 255);
     public static readonly Rgb SignalRed = new(255, 50, 50);
     public static readonly Rgb SignalYellow = new(255, 220, 40);
@@ -26,8 +27,12 @@ public sealed class FrameRenderer
     public static readonly Rgb HudText = new(220, 225, 235);
 
     private const float LaneWidthM = 3.2f;
-    private const float MinVehicleLengthPx = 3f;
-    private const float MinVehicleWidthPx = 2f;
+    /// <summary>Машина меньше этого (по длине или ширине, px) рисуется как точка <see cref="MinDotPx"/>.</summary>
+    private const float SmallVehicleLengthPx = 3f;
+    private const float SmallVehicleWidthPx = 2f;
+
+    /// <summary>Минимальный размер точки машины на общем плане, px (3x3 - виден поток на 3 км).</summary>
+    public const float MinDotPx = 3f;
 
     private readonly Canvas _canvas;
     private readonly Viewport _view;
@@ -123,9 +128,20 @@ public sealed class FrameRenderer
             VehicleTypeDesc t = c.Type < _types.Length ? _types[c.Type] : default;
             float lengthM = t.Length > 0f ? t.Length : 4.5f;
             float widthM = t.Width > 0f ? t.Width : 1.8f;
-            float len = MathF.Max(lengthM * scale, MinVehicleLengthPx);
-            float wid = MathF.Max(widthM * scale, MinVehicleWidthPx);
-            _canvas.FillOrientedRect(_view.ToScreenX(x), _view.ToScreenY(z), MathF.Cos(h), MathF.Sin(h), len, wid, VehicleColor(c.Flags, t.Category));
+            float len = lengthM * scale;
+            float wid = widthM * scale;
+            if (len < SmallVehicleLengthPx || wid < SmallVehicleWidthPx)
+            {
+                len = MathF.Max(len, MinDotPx);
+                wid = MathF.Max(wid, MinDotPx);
+            }
+
+            float sx = _view.ToScreenX(x);
+            float sy = _view.ToScreenY(z);
+            float dx = MathF.Cos(h);
+            float dy = MathF.Sin(h);
+            _canvas.FillOrientedRect(sx, sy, dx, dy, len + 2f, wid + 2f, VehicleOutlineColor);
+            _canvas.FillOrientedRect(sx, sy, dx, dy, len, wid, VehicleColor(c.Flags, t.Category));
         }
     }
 
