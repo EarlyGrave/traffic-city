@@ -15,6 +15,7 @@
     "lane_width_m": 3.5,
     "irregular_nodes": 48,
     "irregular_jitter_m": 40,
+    "node_jitter_m": 0,
     "removed_street_share": 0.15,
     "connector_samples": 8,
     "signals": "arterial_x_arterial",

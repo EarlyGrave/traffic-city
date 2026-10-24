@@ -218,6 +218,13 @@ public class ScenarioLoaderTests
     }
 
     [Fact]
+    public void NodeJitterDefaultsToZeroAndIsRead()
+    {
+        Assert.Equal(0f, Load(Minimal("\"city\": { \"scale\": 1.0 }")).City.NodeJitter);
+        Assert.Equal(5f, Load(Minimal("\"city\": { \"node_jitter_m\": 5 }")).City.NodeJitter);
+    }
+
+    [Fact]
     public void TypeMixMapsNamesToIndices()
     {
         string j = Minimal().Replace("\"count\": 5", "\"count\": 5, \"type_mix\": { \"bus\": 1, \"car\": 3 }", StringComparison.Ordinal);

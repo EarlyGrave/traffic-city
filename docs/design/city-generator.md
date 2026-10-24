@@ -43,6 +43,7 @@ public struct CityGenDesc
     public float LaneWidth;            // м
     public int   IrregularNodes;       // число нерегулярных узлов (значение как есть, генератор его не масштабирует)
     public float IrregularJitterM;     // макс. смещение нерегулярного узла, м
+    public float NodeJitterM;          // фоновый джиттер внутренних узлов, м (дефолт 0; в коде NodeJitter)
     public float RemovedStreetShare;   // 0..0.5
     public int   ConnectorSamples;     // точек полилинии connector'а
     public SignalPlacement Signals;
@@ -52,7 +53,7 @@ public struct CityGenDesc
 
 Валидация в `Create` (нарушение → `ArgumentException` из `Create`, `CreateStatus.InvalidNetwork`
 из `TryCreate`): `SizeW, SizeH ≥ 2·BlockM`, `Scale > 0`, `BlockM ≥ 50`, `ArterialEvery ≥ 2`,
-скорости `> 0`, `LaneWidth ∈ [2.5, 5]`, `IrregularNodes ≥ 0`, `IrregularJitterM ∈ [0, 0.45·BlockM]`,
+скорости `> 0`, `LaneWidth ∈ [2.5, 5]`, `IrregularNodes ≥ 0`, `IrregularJitterM ∈ [0, 0.45·BlockM]`, `NodeJitterM ∈ [0, 0.45·BlockM]`,
 `RemovedStreetShare ∈ [0, 0.5]`, `ConnectorSamples ∈ [2, 32]`.
 
 Производные величины (вычисляются один раз, записываются в `CityGenResult`):
@@ -61,7 +62,7 @@ public struct CityGenDesc
 W  = SizeW · Scale                 H  = SizeH · Scale
 Nx = max(2, round(W / BlockM))     Nz = max(2, round(H / BlockM))      // кварталов по осям
 bx = W / Nx                        bz = H / Nz                         // фактический шаг (карта ровно W×H)
-g  = 0.25 · IrregularJitterM       // «фоновый» джиттер всех узлов (по умолчанию 10 м)
+g  = NodeJitterM                   // «фоновый» джиттер внутренних узлов (по умолчанию 0: улицы прямые; ADR-0003, поправка 2026-10-24)
 ```
 
 Линии сетки: `i = 0..Nx` (вертикальные, `x_i = −W/2 + i·bx`), `j = 0..Nz` (горизонтальные,

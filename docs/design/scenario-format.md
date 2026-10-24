@@ -44,6 +44,7 @@
     "lane_width_m": number,             // дефолт 3.5
     "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт round(12·scale²) — считает загрузчик, если ключ опущен; генератор сам не масштабирует
     "irregular_jitter_m": number,       // макс. сдвиг нерегулярного узла, м. Дефолт 40
+    "node_jitter_m": number,            // фоновый джиттер всех внутренних узлов, м (0..0.45·block_m). Дефолт 0 — улицы и артерии прямые. PRNG-draw делается всегда
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
     "signals": "arterial_x_arterial" | "all_arterial" | "none",   // где ставить светофоры. Дефолт "arterial_x_arterial"
@@ -120,7 +121,7 @@
 `полосы_normal × 2 + connector'ы × connector_samples`. Берём ×1.5. Точные формулы и оценки по
 лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
 arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
-узлов `0.25 · irregular_jitter_m`. Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
+узлов `node_jitter_m` (дефолт 0). Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
 `max_routes ≥ max_vehicles + число
 используемых пар зон` (кэш магистралей, `routing.md` §4.3).
 
@@ -145,6 +146,7 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
     "lane_width_m": 3.5,
     "irregular_nodes": 12,
     "irregular_jitter_m": 40,
+    "node_jitter_m": 0,
     "removed_street_share": 0.15,
     "connector_samples": 8,
     "signals": "arterial_x_arterial",
