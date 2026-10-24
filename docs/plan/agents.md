@@ -19,3 +19,4 @@
 | 13 | facade | sonnet | 2-E: World + Simulation фасад, команды, снапшот, хэш | done, merged (0 B/тик, детерминизм) |
 | 14 | physics (worktree) | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | wip |
 | 15 | citygen (worktree) | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | wip |
+| 16 | render (worktree) | sonnet | 2.5: Sim.Headless render → mp4 | wip |
