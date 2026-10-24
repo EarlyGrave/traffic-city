@@ -334,7 +334,7 @@ public class CityGeneratorTests
         Assert.Equal(25, signals);
         SignalPlanSeed[] plans = r.City0.SignalPlans;
         Assert.Equal(25, plans.Length);
-        int cycle = 540 + 540 + (2 * (60 + 20));
+        int cycle = 480 + 480 + (2 * (60 + 20));
         for (int i = 0; i < plans.Length; i++)
         {
             if (i > 0)
@@ -342,8 +342,8 @@ public class CityGeneratorTests
                 Assert.True(plans[i].Node > plans[i - 1].Node);
             }
 
-            Assert.Equal(540, plans[i].Green0);
-            Assert.Equal(540, plans[i].Green1);
+            Assert.Equal(480, plans[i].Green0);
+            Assert.Equal(480, plans[i].Green1);
             Assert.True(plans[i].OffsetTicks < cycle);
             Assert.Equal(NodeControl.Signal, s.Nodes[plans[i].Node].Control);
         }

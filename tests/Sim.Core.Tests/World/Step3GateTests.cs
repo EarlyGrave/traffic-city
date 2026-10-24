@@ -253,6 +253,22 @@ internal static class Step3Gates
                 }
 
                 sb.Append($"     out lane vehicles={cnt} moving={mov} lead={lead}" + (lead < 0 ? "" : $" s={v.S[lead]:F1} v={v.Speed[lead]:F2} gate={v.GateState[lead]} deny={(GateDeny)w.Gate.DenyReason[lead]} wait={v.WaitTicks[lead]} still={v.StillTicks[lead]}") + "\n");
+                for (int j = 0; j < v.HighWater; j++)
+                {
+                    if (v.Pool.IsAlive(j) && v.Lane[j] == ol)
+                    {
+                        sb.Append($"       ov {j} s={v.S[j]:F1} v={v.Speed[j]:F2} still={v.StillTicks[j]} deny={(GateDeny)w.Gate.DenyReason[j]}\n");
+                    }
+                }
+
+                for (int c = 0; c < net.LaneCount; c++)
+                {
+                    if (net.Lanes[c].Kind == LaneKind.Connector && net.Lanes[c].ToLane == ol)
+                    {
+                        int h = w.Occupancy.LaneHead[net.Lanes[c].FromLane];
+                        sb.Append($"       feeder conn {c} from {net.Lanes[c].FromLane} head={h}" + (h < 0 ? "" : $" s={v.S[h]:F1} v={v.Speed[h]:F2} wait={v.WaitTicks[h]} deny={(GateDeny)w.Gate.DenyReason[h]} gate={v.GateState[h]}") + "\n");
+                    }
+                }
             }
         }
 

@@ -43,7 +43,7 @@ internal static class CityGenerator
     internal const int RouteAttempts = 8;
     internal const int Tail1MaxEdges = 3;
     internal const int Tail2Edges = 2;
-    internal const ushort DefaultGreenTicks = 540;
+    internal const ushort DefaultGreenTicks = 480;
     internal const ushort MajorGreenTicks = 720;
     internal const ushort MinorGreenTicks = 280;
 
