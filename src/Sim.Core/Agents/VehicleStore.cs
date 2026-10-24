@@ -44,6 +44,12 @@ internal sealed class VehicleStore
     public readonly float[] DestS;
     public readonly int[] NextConn;        // кэш NextConnector: connector ближайшей развилки по маршруту (-1 = не выбран); пересчитывает конец фазы 7
 
+    // --- ворота перекрёстка (intersections.md §4, §5; биты GateState - Rules.Intersections.GateRules) ---
+    public readonly byte[] GateState;      // бит0 Granted (допуск выдан), бит1 StoppedAtLine
+    public readonly int[] GrantConnector;  // connector допуска или -1
+    public readonly uint[] Ticket;         // билет узла (порядок внутри перекрёстка), валиден при Granted
+    public readonly ushort[] WaitTicks;    // тиков подряд кандидатом у ворот без допуска
+
     // --- геометрия/рендер ---
     public readonly int[] PointHint;
     public readonly float[] Lateral;
@@ -84,6 +90,10 @@ internal sealed class VehicleStore
         DestLane = new int[maxVehicles];
         DestS = new float[maxVehicles];
         NextConn = new int[maxVehicles];
+        GateState = new byte[maxVehicles];
+        GrantConnector = new int[maxVehicles];
+        Ticket = new uint[maxVehicles];
+        WaitTicks = new ushort[maxVehicles];
         PointHint = new int[maxVehicles];
         Lateral = new float[maxVehicles];
         SpawnTick = new long[maxVehicles];
@@ -171,6 +181,10 @@ internal sealed class VehicleStore
         DestLane[i] = -1;
         DestS[i] = 0f;
         NextConn[i] = -1;
+        GateState[i] = 0;
+        GrantConnector[i] = -1;
+        Ticket[i] = 0;
+        WaitTicks[i] = 0;
         PointHint[i] = 0;
         Lateral[i] = 0f;
         SpawnTick[i] = 0;

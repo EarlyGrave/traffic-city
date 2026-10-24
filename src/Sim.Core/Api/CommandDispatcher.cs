@@ -125,6 +125,14 @@ internal static class CommandDispatcher
             NetworkStatus c1 = w.Builder.BuildConnectorsEx(sd.NodeA);
             NetworkStatus c2 = w.Builder.BuildConnectorsEx(sd.NodeB);
             NetworkStatus bad = c1 != NetworkStatus.Ok ? c1 : c2;
+            if (bad == NetworkStatus.Ok)
+            {
+                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений.
+                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, sd.NodeA);
+                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, sd.NodeB);
+                bad = k1 != NetworkStatus.Ok ? k1 : k2;
+            }
+
             if (bad != NetworkStatus.Ok)
             {
                 // Сегмент уже добавлен, но connector'ов нет (ёмкость): сообщаем об отказе, сеть остаётся согласованной по версии.
@@ -202,8 +210,12 @@ internal static class CommandDispatcher
 
         if (nd.Control != c.Control)
         {
-            nd.Control = c.Control;
-            w.Net.Version++;
+            // intersections.md §5.7, §6.3: смена режима пересчитывает ArmFlags (с нормализацией Yield/Stop без второстепенных рукавов
+            // в RightHandRule), Rel конфликтов узла и сбрасывает допуски машин на его входных полосах. Version++ делает Builder.
+            w.Builder.SetNodeControl(c.Node, c.Control);
+            NodeControl applied = w.Net.Nodes[c.Node].Control;
+            w.Connectors.RecomputeRel(w.Net, c.Node, applied == NodeControl.Yield || applied == NodeControl.Stop);
+            GatePhase.ResetNode(w, c.Node);
         }
 
         Applied(w, in cmd);

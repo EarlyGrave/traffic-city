@@ -60,6 +60,8 @@ internal static class WorldBuilder
             return st;
         }
 
+        w.Signals.InitFromSeeds(w); // светофоры генератора (intersections.md §6.4); для явной сети seeds нет
+
         st = BuildZones(w, in desc);
         if (st != CreateStatus.Ok)
         {
@@ -381,6 +383,16 @@ internal static class WorldBuilder
         if (r.MobilEveryTicks <= 0)
         {
             r.MobilEveryTicks = 10;
+        }
+
+        if (!(r.YieldGapTime > 0f))
+        {
+            r.YieldGapTime = Rules.Intersections.GateRules.DefaultYieldGapTime;
+        }
+
+        if (r.MaxYieldWaitTicks <= 0)
+        {
+            r.MaxYieldWaitTicks = Rules.Intersections.GateRules.DefaultMaxYieldWaitTicks;
         }
 
         return r;

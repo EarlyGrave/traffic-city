@@ -35,6 +35,7 @@ public struct SimCounters
     public long PathfindQueries, PathfindCacheHits, RouteDeferred;
     public long PathfindExpandedNodes;
     public long RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips; // маршрутизация (routing.md 8)
+    public long CostRecalcs, TimedReroutes; // вес по загрузке и перемаршрутизация по времени (ADR-0006)
     public long ConnectorEntries;         // сумма проездов через connector'ы (= сумма NodeThroughput)
     public long CommandsApplied, CommandsRejected, CommandsDropped, EventsDropped;
     public long SpawnDeferredTicks, InvalidHandleOps;
@@ -42,6 +43,12 @@ public struct SimCounters
     public long BusDispatched, BusStopArrivals;
     public long BusHeadwayDeviationTicksTotal;   // [шаг 4]
     public long BusPassengersBoarded;
+    // --- перекрёстки (intersections.md §10) ---
+    public long Grants;                   // выданных допусков
+    public long GateDeniedExit;           // отказов «выезд занят» (don't-block-the-box)
+    public long PriorityInversions;       // допусков по инверсии приоритета (долгое ожидание)
+    public long BoxWaitTicks;             // Σ тиков, когда допущенная машина стоит на connector'е (v < StuckSpeedThreshold)
+    public long GateWaitTicksTotal;       // Σ WaitTicks на момент допуска (среднее ожидание у ворот)
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

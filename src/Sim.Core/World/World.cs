@@ -35,6 +35,7 @@ internal sealed class World
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
@@ -61,6 +62,7 @@ internal sealed class World
     public int TargetVehicles;
     public VehicleHandle Selected;
     public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
+    public bool DebugDisableExitCheck;    // тестовый флаг (intersections.md §11, T6): отключить правило «выезд свободен» у ворот
 
     // ---- выходные массивы фаз 4, 9, 10 ----
     public readonly SegmentLoad[] SegmentLoads;
@@ -98,6 +100,7 @@ internal sealed class World
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
         Connectors = new ConnectorStore(maxConnectors, maxConflicts);
         Signals = new SignalStore(c.MaxSignalizedNodes);
+        Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes);
 
         RngCityGen = Pcg32.ForStream(Seed, RngStream.CityGen);
         RngZones = Pcg32.ForStream(Seed, RngStream.Zones);

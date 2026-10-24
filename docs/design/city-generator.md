@@ -93,7 +93,7 @@ g  = NodeJitterM                   // «фоновый» джиттер внут
 | `RouteAttempts` | 8 | попыток сгенерировать маршрут |
 | `Tail1MaxEdges` | 3 | макс. рёбер улицы от начала маршрута до первой артерии |
 | `Tail2Edges` | 2 | рёбер улицы после схода с артерии |
-| `DefaultGreenTicks` | 540 (27 с) | зелёный фазы на перекрёстке артерия×артерия |
+| `DefaultGreenTicks` | 480 (24 с) | зелёный фазы на перекрёстке артерия×артерия |
 | `MajorGreenTicks` / `MinorGreenTicks` | 720 / 280 (36 / 14 с) | для светофора на Т-узле улица→артерия (`all_arterial`) |
 
 Жёлтый и всё-красное берутся из `RulesDesc.DefaultYellowTicks / DefaultAllRedTicks` (60 / 20).
@@ -255,7 +255,7 @@ internal struct SignalPlanSeed
 }
 ```
 
-- Артерия×артерия: `Green0 = Green1 = DefaultGreenTicks` (27 с), цикл `2·(27+3+1) = 62 с`.
+- Артерия×артерия: `Green0 = Green1 = DefaultGreenTicks` (24 с), цикл `2·(24+3+1) = 56 с`.
   `OffsetTicks = round(ia · ArterialEvery · bx / ArterialSpeed · 20) mod CycleTicks`, где `ia` —
   порядковый номер артериальной линии узла по оси X (`0..Ax−1`). Это «зелёная волна» на восток
   вдоль каждой горизонтальной артерии при движении с `ArterialSpeed` (600 м / 16.7 м/с = 36 с).
@@ -543,7 +543,7 @@ scenario-format §2.2 и дефолтным `CityGenDesc` (seed `20261024`), е�
    IrregularSkipped == 12`.
 7. **Управление узлами**: каждый узел с ≥ 2 артериальными рукавами и без уличных — `Signal`;
    смешанные — `Yield` (дефолт); чисто уличные с `ArmCount ≥ 3` — `RightHandRule`; `ArmCount == 2`
-   — `None`. `SignalPlans[i].Node` возрастают; `Green0 == Green1 == 540`; `OffsetTicks < CycleTicks`.
+   — `None`. `SignalPlans[i].Node` возрастают; `Green0 == Green1 == 480`; `OffsetTicks < CycleTicks`.
 8. **Параметры**: `Signals = None` → 0 светофоров; `AllArterial` с `MaxSignalizedNodes = 64` →
    `NetworkTooLarge`; с `256` → `185` светофоров; `RemovedStreetShare = 0` → `840 − MergedNodes`
    сегментов; `IrregularNodes = 0` → все углы 90° ± 8°.

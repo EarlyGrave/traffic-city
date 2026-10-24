@@ -90,6 +90,9 @@ internal sealed class RouteGraph
     /// <summary>Версия сети, по которой построен граф.</summary>
     public int BuiltVersion { get; private set; } = -1;
 
+    /// <summary>Версия весов сегментов: растёт при каждом <see cref="RecalcCosts"/>; магистрали кэша другой версии устаревают (ленивo).</summary>
+    public int WeightsVersion { get; private set; }
+
     /// <summary>true, если в сети больше дуг, чем помещается (граф усечён).</summary>
     public bool Truncated { get; private set; }
 
@@ -120,6 +123,29 @@ internal sealed class RouteGraph
         }
 
         return -1;
+    }
+
+    /// <summary>Нижняя граница отношения скорости к лимиту в весе по загрузке (routing.md 9).</summary>
+    public const float MinSpeedRatio = 0.2f;
+
+    /// <summary>
+    /// Вес по загрузке (ADR-0006): <c>SegCost = Length / (SpeedLimit * clamp(SpeedRatio, 0.2, 1))</c> по <paramref name="loads"/>
+    /// (индекс = сегмент). Штрафы манёвров и узлов (<see cref="ArcCost"/>) не меняются. Верхняя граница 1 сохраняет допустимость
+    /// эвристики A* (<see cref="VMax"/>). Растит <see cref="WeightsVersion"/>. Без аллокаций.
+    /// </summary>
+    public void RecalcCosts(SegmentLoad[] loads, int segmentCount)
+    {
+        int n = Math.Min(segmentCount, Math.Min(_net.SegmentCount, loads.Length));
+        for (int s = 0; s < n; s++)
+        {
+            ref readonly SegmentData sd = ref _net.Segments[s];
+            float ratio = Math.Clamp(loads[s].SpeedRatio, MinSpeedRatio, 1f);
+            float cost = sd.Length / (sd.SpeedLimit * ratio);
+            SegCost[s * 2] = cost;
+            SegCost[(s * 2) + 1] = cost;
+        }
+
+        WeightsVersion++;
     }
 
     /// <summary>Полная перестройка из текущего <see cref="NetworkStore"/> (после Create и каждого BuildRoad).</summary>

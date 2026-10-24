@@ -11,6 +11,9 @@ internal struct RerouteEntry
     public int Index;
     public int Generation;
     public long ReadyTick;
+
+    /// <summary>0 - промах мимо полосы (маршрута нет); 1 - плановая перемаршрутизация по времени (маршрут есть, ADR-0006).</summary>
+    public int Kind;
 }
 
 /// <summary>
@@ -21,6 +24,9 @@ internal static class RouteNav
 {
     /// <summary>Через сколько тиков повторять неудавшуюся перемаршрутизацию (routing.md 3, RerouteRetryTicks).</summary>
     public const int RerouteRetryTicks = 100;
+
+    public const int KindMiss = 0;
+    public const int KindTimed = 1;
 
     /// <summary>
     /// Connector, который машина <paramref name="i"/> на обычной полосе <paramref name="lane"/> возьмёт на ближайшей развилке

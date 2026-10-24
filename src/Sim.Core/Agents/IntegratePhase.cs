@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules;
+using Sim.Core.Rules.Intersections;
 
 namespace Sim.Core.Agents;
 
@@ -11,11 +12,15 @@ namespace Sim.Core.Agents;
 /// поэтому результат не зависит от порядка обхода. Лидер - сосед по списку основной полосы и (во время смены полосы)
 /// по списку ghost-полосы, иначе хвост следующей полосы; у полосы без продолжения - конец полосы. Пишет S, Speed, StillTicks.
 /// Анимацию <c>Lateral</c> ведёт фаза 7 (она владеет счётчиком манёвра).
+/// Перекрёстки (intersections.md §7, при переданном <see cref="ConnectorStore"/>): тот же жёсткий клэмп по виртуальным препятствиям
+/// ворот - стоп-линия без допуска (машина не пересекает её без допуска ни при каких IDM-параметрах) и конфликтная точка, занятая
+/// машиной с меньшим билетом (I6 на пересекающихся connector'ах); позиции чужих машин берутся на начало тика (<c>SOld</c>), поэтому
+/// результат не зависит от порядка обхода.
 /// </summary>
 internal static class IntegratePhase
 {
     public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), ref w.Counters);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), ref w.Counters, w.Connectors);
 
     public static void Run(
         NetworkStore net,
@@ -24,7 +29,8 @@ internal static class IntegratePhase
         in RouteAccess routes,
         ReadOnlySpan<VehicleTypeDesc> types,
         in PhysicsParams p,
-        ref SimCounters c)
+        ref SimCounters c,
+        ConnectorStore? connectors = null)
     {
         int hw = v.HighWater;
         Array.Copy(v.S, v.SOld, hw);
@@ -59,6 +65,21 @@ internal static class IntegratePhase
                     sNew = sMax > s ? sMax : s;
                     vNew = (sNew - s) / dt;
                     c.HardClamps++;
+                }
+            }
+
+            if (connectors != null)
+            {
+                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, v.SOld, i, t.ComfortDecel, visibilityLimited: false, out _);
+                if (gateGap < Idm.FreeGap)
+                {
+                    float sMax = s + gateGap;
+                    if (sNew > sMax)
+                    {
+                        sNew = sMax > s ? sMax : s;
+                        vNew = (sNew - s) / dt;
+                        c.HardClamps++;
+                    }
                 }
             }
 
