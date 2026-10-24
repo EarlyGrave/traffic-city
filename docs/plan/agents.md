@@ -60,7 +60,8 @@
 | 57 | hotpath-p1 (worktree) | sonnet | 2.4 P1: OnPhaseEnd, SimWork, bench --phases, golden-хэш | done, merged (s10k 0 B/тик подтверждено) |
 | 58 | hotpath-p2 (worktree) | sonnet | 2.4 P2 (hotpath H2): зазоры клэмпа, фаза 6 потоковая | done, merged (integrate 1.61→0.17 мс, хэши равны) |
 | 59 | hotpath-p3 (worktree) | sonnet | 2.4 P3 (hotpath H3): NodeBusy, SoA ворот | done, merged (s10k p95 6.39→5.57 мс, хэши равны) |
-| 60 | hotpath-p4 (worktree) | sonnet | 2.4 P4 (hotpath H4): кэш полос, NextConn | wip |
+| 60 | hotpath-p4 (worktree) | sonnet | 2.4 P4 (hotpath H4): кэш полос, NextConn | done, merged (s10k p95 4.41 мс при load ~3, хэши равны) |
+| 61 | hotpath-p5 (worktree) | sonnet | 2.4 P5 (hotpath H5): AssignConnectors по флагу | wip |
 | 54 | hotpath-plan (worktree) | opus | 2.4b: план горячего пути s10k | done, merged (ADR-0016, P1–P5) |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
 | 56 | sim-lod-spec (worktree) | opus | 2.6: ADR-0013 уровни детализации + новая лестница | done, merged (micro+meso, L1–L5) |
