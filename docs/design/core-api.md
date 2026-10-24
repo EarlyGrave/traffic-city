@@ -205,8 +205,17 @@ public enum CreateStatus : int
     InvalidNetwork = 4,         // ссылка на несуществующий узел, нулевая длина сегмента и т.п.
     InvalidTransit = 5,
     InvalidDemand = 6,
+    NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (пока: City.Enabled — генератор города не подключён)
 }
 ```
+
+Уточнения реализации (задача E): ёмкости `MaxVehicles/Nodes/Segments/Lanes/LanePoints/PendingTrips/CommandQueueCapacity/EventCapacity`
+обязаны быть в `[1, 2^24]`, остальные — в `[0, 2^24]`, иначе `InvalidCapacity`. Явная сеть строится узлами **без прилипания**
+(индекс узла в `NetworkDesc.Nodes` = индекс в сети; слипшиеся узлы → `InvalidNetwork`). Нулевые поля `RulesDesc`
+(`MinPhysicalGap`, `StuckThresholdTicks`, `StuckSpeedThreshold`, `GridlockStuckShare`, `GridlockMinStuck`, `GridlockHoldTicks`,
+`MobilEveryTicks`) заменяются значениями по умолчанию из комментариев структуры. `Demand.Zones` копируются в `ZoneData`
+без полос появления (их назначит `ZoneGenerator`). `Events` накапливаются за весь `Step(n)`, а не за последний тик.
+`BuildRoad` в уже построенный узел → `CommandRejected(NotSupported)` (перестройка узла — шаг 3).
 
 Контракт времени: ядро **не измеряет** wall-clock. `Sim.Headless` меряет `Step(1)` своим
 `Stopwatch`; клиент Godot вызывает `Step(1)` из своего аккумулятора времени (20 Гц).
@@ -940,6 +949,8 @@ public struct Fnv1a64
 6. Transit: по остановкам `Waiting, LastArrivalTick`; по маршрутам `ActiveBuses, LastDispatchTick`.
 7. `SimCounters` целиком, по полям в порядке объявления.
 8. Очередь поездок `PendingTrips` (содержимое FIFO в порядке очереди).
+
+9. Управляющее состояние команд: `TargetVehicles`, `Selected.Packed`.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
