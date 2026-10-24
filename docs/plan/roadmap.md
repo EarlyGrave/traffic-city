@@ -21,7 +21,9 @@
 - 2.5 (sonnet) `Sim.Headless render`: растровый 2D-вид сверху из снапшотов ядра → кадры → ffmpeg → mp4 (запрос владельца: видео прогресса; Godot 4 в облаке недоступен).
 - Критерий: тест детерминизма (хэш), 0 B/тик в тесте, бенчи запускаются, первое видео.
 
-## Шаг 3. Перекрёстки, светофоры, знаки, маршрутизация — `todo`
+## Шаг 3. Перекрёстки, светофоры, знаки, маршрутизация — `todo` (спеки готовы: intersections.md J1–J5, routing.md R1–R5)
+- 3.0 (haiku+sonnet) догнать формат: загрузчик читает `rules.max_yield_wait_s`, `capacities.max_connectors/max_conflicts`; s1k `max_routes` 4096→8192; лестница по таблице scenario-format.md.
+- 3.0b проверить: `NodeData.Radius`/обрезка у узла (C сделал `NodeSetback` 7 м) vs intersections.md; `ZoneData.HubNode` — заполняет ZoneGenerator.
 - 3.1 (fable) модель перекрёстка: connector-полосы, конфликтные пары, правила приоритета (светофор, yield/STOP, помеха справа, don't-block-the-box) — спека + ADR.
 - 3.2 (sonnet) реализация перекрёстков по спеке.
 - 3.3 (fable→sonnet) A* (вес = время), кэш по парам зон, бюджет запросов/тик.
