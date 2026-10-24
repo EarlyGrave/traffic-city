@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -67,6 +68,7 @@ internal static class RouteNav
         if (e.Net.Lanes[fromLane].Kind == LaneKind.Connector)
         {
             v.RouteCursor[i]++;
+            v.RouteDirty[i] = 1;
             return;
         }
 
@@ -76,6 +78,7 @@ internal static class RouteNav
             if (e.Routes.Steps![idx1].Lane == toLane)
             {
                 v.RouteCursor[i]++;
+                v.RouteDirty[i] = 1;
                 return;
             }
 
@@ -84,15 +87,17 @@ internal static class RouteNav
                 RuleEnv.DirSegOf(e.Net, e.Net.Lanes[toLane].ToLane) == RuleEnv.DirSegOf(e.Net, e.Routes.Steps[idx2].Lane))
             {
                 v.RouteCursor[i]++;
+                v.RouteDirty[i] = 1;
                 return;
             }
         }
 
         v.Flags[i] |= (byte)VehicleFlags.RouteMissed;
+        v.RouteDirty[i] = 1;
     }
 
     /// <summary>
-    /// Конец фазы 7. Для каждой живой машины: промах -> маршрут освобождается, <c>Route = -1</c>, машина в очередь перемаршрутизации
+    /// Конец фазы 7. Для каждой живой машины с флагом <see cref="VehicleStore.RouteDirty"/> (ADR-0016, D7): промах -> маршрут освобождается, <c>Route = -1</c>, машина в очередь перемаршрутизации
     /// (<c>Reroutes++</c>); затем <c>NextConn</c> пересчитывается, если он не от текущей полосы (въезд на новую полосу, смена полосы).
     /// Обход по возрастанию индекса - детерминирован.
     /// </summary>
@@ -111,13 +116,25 @@ internal static class RouteNav
                 continue;
             }
 
+            if (v.RouteDirty[i] == 0)
+            {
+                // Вход расчёта не менялся с прошлой фазы 7: результат прежний (ADR-0016, D7). В Debug - сверка с полным расчётом.
+                Debug.Assert(UnchangedByFullRecalc(w, i, lane), "RouteDirty flag missed: AssignConnectors result differs");
+                continue;
+            }
+
+            v.RouteDirty[i] = 0;
             if ((v.Flags[i] & (byte)VehicleFlags.RouteMissed) != 0)
             {
                 ProcessMiss(w, i);
             }
 
             refillChecks++;
-            QueueRefill(w, i);
+            if (!QueueRefill(w, i))
+            {
+                v.RouteDirty[i] = 1; // очередь дозаполнения полна: повторить на следующем тике
+            }
+
             int cur = v.NextConn[i];
             if (cur >= 0 && net.Lanes[cur].FromLane == lane && net.Lanes[lane].Kind == LaneKind.Normal)
             {
@@ -136,13 +153,32 @@ internal static class RouteNav
     /// Ставит машину в очередь дозаполнения окна (routing.md 9.5), если у плана есть хвост, а впереди в окне осталось
     /// не больше <see cref="Router.RefillAhead"/> направленных сегментов. Флаг <see cref="VehicleFlags.RefillQueued"/> защищает от дублей.
     /// </summary>
-    private static void QueueRefill(World w, int i)
+    private static bool QueueRefill(World w, int i)
+    {
+        if (!NeedsRefill(w, i))
+        {
+            return true;
+        }
+
+        VehicleStore v = w.Vehicles;
+        var entry = new RefillEntry { Index = i, Generation = v.Pool.GenerationOf(i) };
+        if (w.RefillQueue.TryEnqueue(in entry))
+        {
+            v.Flags[i] |= (byte)VehicleFlags.RefillQueued;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Нужно ли ставить машину в очередь дозаполнения (чистая функция состояния, без побочных эффектов).</summary>
+    private static bool NeedsRefill(World w, int i)
     {
         VehicleStore v = w.Vehicles;
         int r = v.Route[i];
         if (r < 0 || (v.Flags[i] & (byte)(VehicleFlags.RefillQueued | VehicleFlags.RouteMissed)) != 0 || w.Routes.PlanCount[r] == 0)
         {
-            return;
+            return false;
         }
 
         int cur = v.RouteCursor[i];
@@ -162,16 +198,28 @@ internal static class RouteNav
             ahead = (wc - 1 - cur + (onConnector ? 1 : 0)) / 2;
         }
 
-        if (ahead > Router.RefillAhead)
+        return ahead <= Router.RefillAhead;
+    }
+
+    /// <summary>
+    /// Debug-сверка D7: для машины без флага полный расчёт <see cref="AssignConnectors"/> ничего бы не изменил - промаха нет,
+    /// в очередь дозаполнения не встала бы, а <c>NextConn</c> либо валиден, либо совпадает с пересчётом.
+    /// </summary>
+    private static bool UnchangedByFullRecalc(World w, int i, int lane)
+    {
+        VehicleStore v = w.Vehicles;
+        if ((v.Flags[i] & (byte)VehicleFlags.RouteMissed) != 0 || NeedsRefill(w, i))
         {
-            return;
+            return false;
         }
 
-        var entry = new RefillEntry { Index = i, Generation = v.Pool.GenerationOf(i) };
-        if (w.RefillQueue.TryEnqueue(in entry))
+        int cur = v.NextConn[i];
+        if (cur >= 0 && w.Net.Lanes[cur].FromLane == lane && w.Net.Lanes[lane].Kind == LaneKind.Normal)
         {
-            v.Flags[i] |= (byte)VehicleFlags.RefillQueued;
+            return true;
         }
+
+        return cur == NextConnector(w, i, lane);
     }
 
     private static void ProcessMiss(World w, int i)

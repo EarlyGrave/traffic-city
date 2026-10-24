@@ -150,6 +150,7 @@ internal static class CommandDispatcher
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
     private static void GrowOverlay(World w)
     {
+        w.Vehicles.MarkAllRouteDirty();
         // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
         // проверка оверлея пометит почти все ячейки и волна будет огромной.
         w.Graph.Rebuild();
@@ -188,6 +189,7 @@ internal static class CommandDispatcher
         }
 
         w.Signals.ApplyPlan(nd.Signal, in p);
+        w.Vehicles.MarkAllRouteDirty();
         Applied(w, in cmd);
     }
 
@@ -237,6 +239,7 @@ internal static class CommandDispatcher
             NodeControl applied = w.Net.Nodes[c.Node].Control;
             w.Connectors.RecomputeRel(w.Net, c.Node, applied == NodeControl.Yield || applied == NodeControl.Stop);
             GatePhase.ResetNode(w, c.Node);
+            w.Vehicles.MarkAllRouteDirty();
         }
 
         Applied(w, in cmd);

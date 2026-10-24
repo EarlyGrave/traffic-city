@@ -46,6 +46,7 @@ internal sealed class LaneOccupancy
         Debug.Assert(_v.Lane[i] == -1, "PushTail: машина уже на полосе");
         Debug.Assert(LaneTail[lane] == -1 || _v.S[i] <= _v.S[LaneTail[lane]], "PushTail: нарушен порядок S");
         _v.Lane[i] = lane;
+        _v.RouteDirty[i] = 1;
         Insert(lane, i, ahead: LaneTail[lane], behind: -1);
     }
 
@@ -55,6 +56,7 @@ internal sealed class LaneOccupancy
         Debug.Assert(_v.Lane[i] == -1, "PushHead: машина уже на полосе");
         Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]], "PushHead: нарушен порядок S");
         _v.Lane[i] = lane;
+        _v.RouteDirty[i] = 1;
         Insert(lane, i, ahead: -1, behind: LaneHead[lane]);
     }
 
@@ -63,6 +65,7 @@ internal sealed class LaneOccupancy
     {
         Debug.Assert(_v.Lane[i] == -1, "InsertBetween: машина уже на полосе");
         _v.Lane[i] = lane;
+        _v.RouteDirty[i] = 1;
         Insert(lane, i, ahead, behind);
     }
 
@@ -118,6 +121,7 @@ internal sealed class LaneOccupancy
         _v.GhostAhead[i] = _v.Ahead[i];
         _v.GhostBehind[i] = _v.Behind[i];
         _v.Lane[i] = target;
+        _v.RouteDirty[i] = 1;
         Insert(target, i, ahead, behind);
     }
 
@@ -141,6 +145,7 @@ internal sealed class LaneOccupancy
         Debug.Assert(g != -1, "CancelLaneChange: нет ghost");
         Remove(_v.Lane[i], i);
         _v.Lane[i] = g;
+        _v.RouteDirty[i] = 1;
         _v.Ahead[i] = _v.GhostAhead[i];
         _v.Behind[i] = _v.GhostBehind[i];
         _v.GhostLane[i] = -1;

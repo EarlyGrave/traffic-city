@@ -191,6 +191,7 @@ internal static class BusStopPhase
             v.Route[i] = h.Index;
             v.RouteGen[i] = h.Generation;
             v.RouteCursor[i] = 0;
+            v.RouteDirty[i] = 1;
             v.NextConn[i] = -1;
             v.DestLane[i] = next.Lane;
             v.DestS[i] = next.S;

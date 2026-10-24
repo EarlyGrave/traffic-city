@@ -47,6 +47,7 @@ internal sealed class VehicleStore
     public readonly int[] DestLane;
     public readonly float[] DestS;
     public readonly int[] NextConn;        // кэш NextConnector: connector ближайшей развилки по маршруту (-1 = не выбран); пересчитывает конец фазы 7
+    public readonly byte[] RouteDirty;     // 1 = у машины изменился вход AssignConnectors (полоса, маршрут, окно, флаги); вне хэша (ADR-0016, D7)
 
     // --- ворота перекрёстка (intersections.md §4, §5; биты GateState - Rules.Intersections.GateRules) ---
     public readonly byte[] GateState;      // бит0 Granted (допуск выдан), бит1 StoppedAtLine
@@ -97,6 +98,8 @@ internal sealed class VehicleStore
         DestLane = new int[maxVehicles];
         DestS = new float[maxVehicles];
         NextConn = new int[maxVehicles];
+        RouteDirty = new byte[maxVehicles];
+        Array.Fill(RouteDirty, (byte)1);
         GateState = new byte[maxVehicles];
         GrantConnector = new int[maxVehicles];
         Ticket = new uint[maxVehicles];
@@ -163,6 +166,9 @@ internal sealed class VehicleStore
         return new VehicleHandle(index, Pool.GenerationOf(index));
     }
 
+    /// <summary>Помечает все машины для пересчёта в <c>AssignConnectors</c> (изменилась сеть/узлы; ADR-0016, D7).</summary>
+    public void MarkAllRouteDirty() => Array.Fill(RouteDirty, (byte)1);
+
     private void ResetSlot(int i)
     {
         Lane[i] = -1;
@@ -190,6 +196,7 @@ internal sealed class VehicleStore
         DestLane[i] = -1;
         DestS[i] = 0f;
         NextConn[i] = -1;
+        RouteDirty[i] = 1;
         GateState[i] = 0;
         GrantConnector[i] = -1;
         Ticket[i] = 0;
