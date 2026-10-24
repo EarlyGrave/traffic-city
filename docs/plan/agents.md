@@ -17,7 +17,8 @@
 | 11 | json-loader | sonnet | 2-I: Headless JSON → ScenarioDesc | done, merged (19 тестов) |
 | 12 | scenarios-fix | haiku | max_signalized_nodes по лестнице | done, merged |
 | 13 | facade | sonnet | 2-E: World + Simulation фасад, команды, снапшот, хэш | done, merged (0 B/тик, детерминизм) |
-| 14 | physics (worktree) | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | wip |
+| 14 | physics | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | done, merged (фазы 5–7 1000 машин ≈38 мкс, 0 B) |
 | 15 | citygen | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | done, merged (s1k 4 мс, голден-хэш) |
-| 16 | render (worktree) | sonnet | 2.5: Sim.Headless render → mp4 | wip |
+| 16 | render | sonnet | 2.5: Sim.Headless render → mp4 | done, merged |
 | 17 | gen-wiring | sonnet | 2-G2: генератор в WorldBuilder/Create | done, merged (Create s1k 13.5 мс) |
+| 18 | spawner-metrics (worktree) | sonnet | 2-H: Spawner, OD, MetricsPhase, подключение фаз | wip |
