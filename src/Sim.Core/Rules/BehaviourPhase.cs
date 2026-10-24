@@ -12,6 +12,9 @@ namespace Sim.Core.Rules;
 /// </summary>
 internal static class BehaviourPhase
 {
+    public static void Run(World w) =>
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick);
+
     public static void Run(
         NetworkStore net,
         VehicleStore v,

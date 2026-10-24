@@ -19,6 +19,9 @@ internal static class TransitionPhase
 {
     private const int MaxHopsPerTick = 4;
 
+    public static void Run(World w) =>
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters);
+
     public static void Run(
         NetworkStore net,
         VehicleStore v,

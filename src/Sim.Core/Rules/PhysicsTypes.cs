@@ -27,6 +27,8 @@ internal readonly struct PhysicsParams
 
     public static PhysicsParams From(in RulesDesc rules, float laneWidth = DefaultLaneWidth) =>
         new(DefaultDt, rules.MinPhysicalGap, rules.MobilEveryTicks, rules.StuckSpeedThreshold, laneWidth);
+
+    public static PhysicsParams From(World w) => From(w.Rules, w.Builder.Options.LaneWidth);
 }
 
 /// <summary>
@@ -48,6 +50,8 @@ internal readonly struct RouteAccess
     }
 
     public static RouteAccess None => default;
+
+    public static RouteAccess From(World w) => new(w.Routes.First, w.Routes.Count, w.Routes.Steps);
 
     public bool IsEmpty => Steps is null;
 }

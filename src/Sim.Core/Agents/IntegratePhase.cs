@@ -14,6 +14,9 @@ namespace Sim.Core.Agents;
 /// </summary>
 internal static class IntegratePhase
 {
+    public static void Run(World w) =>
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), ref w.Counters);
+
     public static void Run(
         NetworkStore net,
         VehicleStore v,

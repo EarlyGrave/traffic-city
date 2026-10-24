@@ -13,6 +13,32 @@ namespace Sim.Core.Agents;
 /// </summary>
 internal static class ArrivalPhase
 {
+    public static void Run(World w)
+    {
+        // Буфер событий мира: пишем через общий счётчик; переполнение помечает Emit мира, поэтому здесь отдельный путь не нужен.
+        VehicleStore v = w.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            int dest = v.DestLane[i];
+            if (dest < 0 || v.Lane[i] != dest || v.S[i] < v.DestS[i])
+            {
+                continue;
+            }
+
+            VehicleHandle h = v.HandleOf(i);
+            w.Counters.TripsCompleted++;
+            w.Counters.TripTimeTicksTotal += w.Tick - v.SpawnTick[i];
+            w.Emit(SimEventKind.TripCompleted, 0, h.Index, h.Generation);
+            w.Occupancy.UnlinkAll(i);
+            v.Despawn(h);
+        }
+    }
+
     public static void Run(
         VehicleStore v,
         LaneOccupancy occ,
