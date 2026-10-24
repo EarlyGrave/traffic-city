@@ -18,7 +18,10 @@ internal sealed class RoutePool
     public readonly int[] FromZone;
     public readonly int[] ToZone;
     public readonly int[] NetworkVersion;
+    public readonly long[] LastUsedTick;   // routing.md 4.1: вытеснение магистралей кэша
     public readonly RouteStep[] Steps;
+    private readonly int[] _compactKeys;   // служебные буферы Compact (выделены один раз)
+    private readonly int[] _compactItems;
 
     public RoutePool(int maxRoutes, int maxRouteSteps)
     {
@@ -30,6 +33,9 @@ internal sealed class RoutePool
         FromZone = new int[routes];
         ToZone = new int[routes];
         NetworkVersion = new int[routes];
+        LastUsedTick = new long[routes];
+        _compactKeys = new int[routes];
+        _compactItems = new int[routes];
         Steps = new RouteStep[Math.Max(0, maxRouteSteps)];
     }
 
@@ -56,9 +62,52 @@ internal sealed class RoutePool
         FromZone[index] = fromZone;
         ToZone[index] = toZone;
         NetworkVersion[index] = networkVersion;
+        LastUsedTick[index] = 0;
         StepsUsed += steps.Length;
         handle = new RouteHandle(index, generation);
         return true;
+    }
+
+    /// <summary>Сколько раз выполнялась компактификация арены.</summary>
+    public int Compactions { get; private set; }
+
+    /// <summary>
+    /// Компактификация арены (routing.md 4.3): живые маршруты переносятся вплотную в порядке их расположения
+    /// в арене (порядок по <c>First</c> - иначе перенос затёр бы ещё не перенесённые данные). Handle'ы остаются
+    /// валидными (меняется только <c>First</c>). Возвращает освобождённое число шагов. Без аллокаций.
+    /// </summary>
+    public int Compact()
+    {
+        int n = 0;
+        for (int i = 0; i < Pool.HighWater; i++)
+        {
+            if (Pool.IsAlive(i))
+            {
+                _compactKeys[n] = First[i];
+                _compactItems[n] = i;
+                n++;
+            }
+        }
+
+        new Span<int>(_compactKeys, 0, n).Sort(new Span<int>(_compactItems, 0, n));
+        int dst = 0;
+        for (int k = 0; k < n; k++)
+        {
+            int i = _compactItems[k];
+            int len = Count[i];
+            if (First[i] != dst)
+            {
+                Array.Copy(Steps, First[i], Steps, dst, len);
+                First[i] = dst;
+            }
+
+            dst += len;
+        }
+
+        int freed = StepsUsed - dst;
+        StepsUsed = dst;
+        Compactions++;
+        return freed;
     }
 
     public bool IsAlive(RouteHandle h) => !h.IsNull && Pool.IsAlive(h.Index, h.Generation);
