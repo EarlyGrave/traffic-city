@@ -1,0 +1,49 @@
+{
+  "format_version": 1,
+  "types": [
+    {
+      "name": "car",
+      "category": "car",
+      "length_m": 4.5,
+      "width_m": 1.8,
+      "max_speed_kmh": 130,
+      "speed_factor": 1.05,
+      "idm": {
+        "a": 1.0,
+        "b": 1.5,
+        "T": 1.2,
+        "s0": 2.0,
+        "delta": 4
+      },
+      "mobil": {
+        "politeness": 0.3,
+        "threshold": 0.2,
+        "b_safe": 4.0,
+        "right_bias": 0.3,
+        "duration_s": 2.0
+      }
+    },
+    {
+      "name": "bus",
+      "category": "bus",
+      "length_m": 12.0,
+      "width_m": 2.55,
+      "max_speed_kmh": 80,
+      "speed_factor": 0.95,
+      "idm": {
+        "a": 0.8,
+        "b": 1.2,
+        "T": 1.6,
+        "s0": 2.5,
+        "delta": 4
+      },
+      "mobil": {
+        "politeness": 0.5,
+        "threshold": 0.3,
+        "b_safe": 3.0,
+        "right_bias": 0.5,
+        "duration_s": 3.0
+      }
+    }
+  ]
+}
