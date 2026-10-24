@@ -168,10 +168,10 @@ public sealed class Simulation : IDisposable
     public bool Enqueue(in Command cmd);         // false = очередь полна (команда отброшена, счётчик++)
     public int PendingCommands { get; }
 
-    // ---- снапшоты (валидны до следующего Step) ----
+    // ---- снапшоты (валидны до следующего Step/Dispose; память ядра, только чтение; §5.2, ADR-0010) ----
     public long SnapshotTick { get; }                               // тик, которому соответствует Vehicles
-    public ReadOnlySpan<VehicleRenderData> Vehicles { get; }         // [Capacities.MaxVehicles], индекс = слот
-    public ReadOnlySpan<VehicleRenderData> PreviousVehicles { get; } // состояние на SnapshotTick-1
+    public ReadOnlySpan<VehicleRenderData> Vehicles { get; }         // [SnapshotSlots тика SnapshotTick], индекс = слот
+    public ReadOnlySpan<VehicleRenderData> PreviousVehicles { get; } // состояние на SnapshotTick-1, длина ≤ Vehicles.Length
     public int ActiveVehicleCount { get; }
 
     public ReadOnlySpan<SegmentLoad> SegmentLoads { get; }           // [MaxSegments], индекс = Segment.Index
@@ -458,29 +458,55 @@ public struct VehicleRenderData
 }
 ```
 
-Массив имеет длину **ровно `MaxVehicles`**, индекс элемента = слот машины; неживые слоты имеют
-`Flags == 0` (остальные байты — нули). Такой выбор (а не компактный список) даёт клиенту
-бесплатное сопоставление prev/curr по индексу и один `MultiMesh` с `instance_count = MaxVehicles`
-(неживые — масштаб 0). Цена: клиент обходит `MaxVehicles` элементов за кадр (1M × 32 B = 32 MB
-на буфер — для headless s1m снапшот не читается, см. `Flags` ниже; компактный список —
-**[этап 2]** при необходимости, API позволит добавить `ActiveSlots : ReadOnlySpan<int>`).
+Буферы ядра имеют ёмкость `MaxVehicles`; наружу отдаётся префикс длиной **`SnapshotSlots`** —
+`HighWater` пула машин на момент снапшота (все слоты, когда-либо выданные; монотонно не убывает, **[шаг 2.3]**,
+ADR-0010). Индекс элемента = слот машины; неживые слоты внутри префикса имеют `Flags == 0` (остальные байты —
+нули). Такой выбор (а не компактный список, ADR-0002/0010) даёт клиенту бесплатное сопоставление prev/curr по
+индексу; клиент сам раскладывает живые по `MultiMesh` своих типов. При частичной загрузке (s10k/s100k в рампе)
+клиент обходит `HighWater`, а не `MaxVehicles` слотов. Компактный список живых — отвергнут (ADR-0010 «C»).
 
-### 5.2 Двойная буферизация
+### 5.2 Двойная буферизация (без копирования)
 
-Ядро держит `_render[2]` и индекс текущего. В фазе 10 каждого тика пишется буфер
-`cur = tick & 1`; `Vehicles` → `_render[SnapshotTick & 1]`, `PreviousVehicles` → другой.
-`SnapshotTick == Tick`. Интерполяция на клиенте:
+Ядро держит `Render[2]` (по `MaxVehicles`) и `SnapshotSlots[2]`. В фазе 10 тика пишется буфер
+`(Tick + 1) & 1`, затем `SnapshotTick = Tick + 1` (`Tick++` — сразу после фазы). Наружу:
+`Vehicles` → `Render[SnapshotTick & 1][..SnapshotSlots[SnapshotTick & 1]]`, `PreviousVehicles` → другой
+буфер со своим `SnapshotSlots`. **Копирования нет** — меняется только индекс (ADR-0010).
+
+Гарантии для клиента:
+- спаны валидны до следующего `Step`/`Dispose`: следующий `Step` перезаписывает буфер, на который сейчас
+  указывает `PreviousVehicles`; держать спан через `Step` нельзя (C# этого не запрещает, Rust — запрещает
+  заимствованием). Хранить — только скопировав;
+- `SnapshotTick == Tick`; `PreviousVehicles` — ровно тик `SnapshotTick − 1`, в том числе после `Step(n>1)`
+  (ядро не хранит более старые буферы). До первого `Step` оба спана пусты; после первого `Step`
+  `PreviousVehicles` пуст (длина 0);
+- `PreviousVehicles.Length ≤ Vehicles.Length`; пара prev/curr — по одному индексу `i`, интерполировать только при
+  совпадении `Generation` (слот мог быть освобождён и перевыдан за тик);
+- данные снапшота — функция состояния мира на `SnapshotTick`, не зависят от числа/порядка чтений и от
+  `PointHint`; буферы снапшота в хэш состояния (§9) не входят.
+
+Интерполяция на клиенте (без изменений):
 
 ```
 alpha = clamp((renderTime - timeOf(SnapshotTick)) / Dt, 0, 1)
-if prev[i].Flags.Active && cur[i].Flags.Active && prev[i].Generation == cur[i].Generation:
-    pos = lerp(prev[i].pos, cur[i].pos, alpha); heading = lerpAngle(...)
-else: pos = cur[i].pos    // только что заспавнилась / перевыдан слот
+for i in 0 .. cur.Length-1:
+  if !cur[i].Flags.Active: continue
+  if i < prev.Length && prev[i].Flags.Active && prev[i].Generation == cur[i].Generation:
+      pos = lerp(prev[i].pos, cur[i].pos, alpha); heading = lerpAngle(...)
+  else: pos = cur[i].pos    // только что заспавнилась / перевыдан слот
 ```
 
-При `Step(n>1)` клиент получает prev = tick-1, cur = tick (ядро не хранит более старые буферы).
-Снапшот пишется всегда, в том числе в headless (O(N) простых записей, оценочно ~1 % тика);
-флаг отключения — **[этап 2]**, если профиль s1m покажет, что это заметно.
+Реализация фазы 10 (**[шаг 2.3]**): позиция — `LaneGeometry` по отрезку полилинии с `PointHint`; курс — из кэша
+`NetworkStore.LanePieceHeading[point]` (курс отрезка, считается при записи точек полосы в `NetworkBuilder`, тем же
+выражением, что `atan2(dir)`; не входит в хэш сети); нормированный `dir` — только при `Lateral != 0`; мёртвый
+слот обнуляется, только если в буфере `Flags != 0`. Результат побитово равен реализации этапа 1.
+
+FFI (будущий Rust): `void tc_sim_vehicles(const TcSim*, const VehicleRenderData** cur, int32_t* cur_len,
+const VehicleRenderData** prev, int32_t* prev_len, int64_t* snapshot_tick)` — указатели в память ядра,
+только чтение, валидны до `tc_sim_step`/`tc_sim_destroy`. В Rust-API: `fn vehicles(&self) -> &[VehicleRenderData]`.
+
+Потребители: Godot `game/Scripts/SimHost.UpdateVehicles` и `Sim.Headless` `FrameRenderer.DrawVehicles` уже
+обходят `cur.Length` с проверкой `i < prev.Length` — правка кода не нужна. Снапшот пишется всегда, в том числе в
+headless; режим `SnapshotEnabled = false` (ленивый/выключенный снапшот для headless) — отложен (ADR-0010 «F»).
 
 ### 5.3 Загрузка сегментов (оверлей heatmap)
 
@@ -889,7 +915,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 7 | **Переходы**: (a) начало смены полосы для `LaneChangeDir != 0` — вставка в целевую, ghost в исходной; завершение манёвров; (b) `s' ≥ Length` → перенос на следующую полосу маршрута (`RouteCursor++`, `s' −= Length`, PushTail, пересчёт `DesiredSpeed`, `PointHint = 0`); фиксация `NodeThroughput[node]++` при выходе с connector'а | S, Route | Lane, списки, RouteCursor | `Agents/TransitionPhase.cs` |
 | 8 | **Прибытие/деспаун**: `Lane == DestLane && S >= DestS` → `TripCompleted`, счётчики времени поездки, `Free`; автобус на конечной — **[шаг 4]**. Деспаун застрявших запрещён | S, Dest | VehicleStore, Counters, Events | `Agents/ArrivalPhase.cs` |
 | 9 | **Метрики**: stuck/unstuck (§11), gridlock, `SegmentLoads`, `BusRouteStats`, счётчики | всё | Counters, SegmentLoads | `Metrics/MetricsPhase.cs` |
-| 10 | **Снапшот**: заполнить `_render[tick & 1]` (позиция через `LaneGeometry.Evaluate` с `PointHint` + `Lateral`), `SelectedRoute` | S, Lane, Lateral | RenderBuffers | `Api/SnapshotPhase.cs` |
+| 10 | **Снапшот** (§5.2): заполнить `Render[(tick+1) & 1][..HighWater]` и `SnapshotSlots` (позиция по полилинии с `PointHint` + `Lateral`, курс из `LanePieceHeading`), `SelectedRoute` | S, Lane, Lateral, флаги | RenderBuffers | `Api/SnapshotPhase.cs` |
 
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
 
