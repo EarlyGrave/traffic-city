@@ -225,7 +225,40 @@ p95 > 4 мс — резерв (обход по полосам, затем 2 по
 `work_per_tick`). > 4 мс — архитектор (opus) выбирает резерв по фазовым временам.
 
 ## 6. Открытые вопросы
-1. В прогонах счётчиков (код с зондом) `alloc_bytes_per_tick` s10k = 23–30 B. Проверить на чистом коде: если есть
-   — найти источник (H1, `AllocationProbe` по фазам), это нарушение 0 B/тик вне зависимости от 2.4b.
+1. ~~В прогонах счётчиков (код с зондом) `alloc_bytes_per_tick` s10k = 23–30 B.~~ Закрыто (H1): на чистом коде `274dc1b`
+   `bench --scenario s10k --warmup-until-full --ticks 1000` = **0 B/тик**, gen0/1/2 = 0 (активных 9 818 -> 9 999); после H1
+   (зонд + `SimWork`) тоже 0 B на 2 000 тиков. 23–30 B давал временный статический зонд-счётчик архитектора (вне репо).
 2. 2.4a (stuck) может менять правила ворот → golden-хэш H1 снимать после её мержа.
 3. Порт на Rust: всё выше — плоские массивы и маски, без указателей и потоков; зонд фаз — `extern "C" fn(i32, *mut c_void)`.
+
+## 7. Состояние: H1 выполнена (инструмент D1)
+Реализовано как в D1, с уточнениями: `LeaderInfo.Hops` несёт число переходов цепочки полос (без смены сигнатур `Find`);
+`ObstacleGap`/`ConflictGap` получили `ref SimWork`; `conflict_gap_calls_behaviour/integrate` — разность сырого
+`SimWork.ConflictGapCallsRaw` до/после цикла фазы; `conflict_entries_scanned` считает все просмотренные записи цикла
+(включая пропущенные `continue`), поэтому в 2.3 раза больше, чем «различных» (§1.2). `work_per_tick` лежит в `perf.work_per_tick`
+и пишется всегда, `perf.phase_ms` — только с `--phases` (зонд добавляет ~10 чтений таймера на тик; tick_ms такого прогона для гейта не годится).
+`compare` печатает `work.*` и `phase_ms.*.p50/p95` справочно (не влияет на exit code). Команда `hash` и golden-тест
+(`tests/Sim.Headless.Tests/HotPathGoldenHashTests.cs`): хэши сняты на `274dc1b` до правок и совпали после H1, в том числе
+при полной загрузке s10k (`hash --scenario s10k --warmup-until-full --ticks 400 --every 200`: tick=6100 `861672e99fa95a39`,
+tick=6300 `c73832373fb67bd3`).
+
+«До» для H2–H5: `bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases` (активных 9 818 -> 9 997,
+рампа 5 900 тиков, 0 B/тик, stuck 0, tick p50/p95 5.12/7.96 мс — общий 4-vCPU контейнер, load ~3), мс на тик:
+
+| фаза | p50 | p95 | mean |
+|---|---|---|---|
+| 1 commands | 0.001 | 0.001 | 0.001 |
+| 2 spawn | 0.005 | 0.012 | 0.006 |
+| 3 route | 0.243 | 0.685 | 0.281 |
+| 4 gate | 0.784 | 1.246 | 0.870 |
+| 5 behaviour | 1.628 | 2.654 | 1.813 |
+| 6 integrate | 1.421 | 2.363 | 1.608 |
+| 7 transition | 0.380 | 0.620 | 0.419 |
+| 8 arrival | 0.044 | 0.080 | 0.051 |
+| 9 metrics | 0.118 | 0.213 | 0.137 |
+| 10 snapshot | 0.372 | 0.635 | 0.417 |
+
+`work_per_tick`: behaviour_vehicles 9 981, leader_lookahead_hops 16 536, obstacle_gap_calls 19 975,
+conflict_gap_calls_behaviour 3 149, conflict_gap_calls_integrate 3 149, conflict_gap_mask_rejects 0 (до H3),
+conflict_entries_scanned 24 246, conflict_occupants_scanned 4 083, gate_candidates 1 085, gate_trygrant_calls 1 085,
+gate_trygrant_entries 1 358, route_refill_checks 9 994, next_conn_recomputes 809, snapshot_slots 9 996.
