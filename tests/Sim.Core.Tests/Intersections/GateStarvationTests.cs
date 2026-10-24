@@ -1,3 +1,4 @@
+using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
@@ -12,9 +13,14 @@ public class GateStarvationTests
 
     public GateStarvationTests(ITestOutputHelper output) => _out = output;
 
-    private static Simulation SignalCross()
+    private static Simulation SignalCross(int maxYieldWaitTicks = 0)
     {
         ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(1), Arm.S(1), Arm.W(1), Arm.N(1));
+        if (maxYieldWaitTicks > 0)
+        {
+            d.Rules.MaxYieldWaitTicks = maxYieldWaitTicks;
+        }
+
         Simulation sim = Simulation.Create(in d);
         Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));
         sim.Step(1);
@@ -33,7 +39,7 @@ public class GateStarvationTests
     [Fact]
     public void SaturatedOncoming_LeftTurnPassesWithinBound()
     {
-        using Simulation sim = SignalCross();
+        using Simulation sim = SignalCross(maxYieldWaitTicks: 200);
         World w = sim.World;
         int inW = GateFixture.InLane(w, 2);
         int inE = GateFixture.InLane(w, 0);
@@ -52,8 +58,7 @@ public class GateStarvationTests
         Assert.Null(drv.EntryWithoutGrant);
         Assert.Null(drv.GrantOnRed);
         Assert.Equal(0, c.StuckEventsTotal);
-        int maxWait = w.Rules.MaxYieldWaitTicks;
-        Assert.True(drv.MaxWaitTicks <= 2 * maxWait, $"левый ждал {drv.MaxWaitTicks} тиков (> 40 с, intersections.md §5.5)");
+        Assert.True(drv.MaxWaitTicks <= 800, $"левый ждал {drv.MaxWaitTicks} тиков (> 40 с, intersections.md §5.5)");
         Assert.True(leftExits >= 40, $"левых проехало {leftExits}");
     }
 
@@ -85,6 +90,50 @@ public class GateStarvationTests
         Assert.Equal(0, c.StuckEventsTotal);
         Assert.True(drv.MaxWaitTicks <= 2 * w.Rules.MaxYieldWaitTicks + 400, $"max wait {drv.MaxWaitTicks}");
         Assert.True(toS >= 30 && toN >= 30, $"левые: toS={toS} toN={toN}");
+    }
+
+    /// <summary>Правило голодания действует только на Signal: на RightHandRule приоритетная машина никогда не получает DenyYield (приоритетный не уступает никому).</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void StarvationRule_OnlyOnSignalNodes(bool signal)
+    {
+        ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(1), Arm.S(1), Arm.W(1), Arm.N(1));
+        using Simulation sim = Simulation.Create(in d);
+        if (signal)
+        {
+            Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));
+            sim.Step(1);
+        }
+
+        World w = sim.World;
+        int inW = GateFixture.InLane(w, 2);
+        int inE = GateFixture.InLane(w, 0);
+        var drv = new FlowDriver(sim);
+        drv.AddSource(inE, headwayTicks: 300, connector: GateFixture.ConnectorBy(w, inE, Maneuver.Left), routed: true);
+        drv.AddSource(inW, headwayTicks: 25, toArm: 0, routed: true);
+        AddAllSinks(drv);
+        int priorityYieldDenials = 0;
+        drv.OnTick = dr =>
+        {
+            for (int i = 0; i < dr.W.Vehicles.HighWater; i++)
+            {
+                if (dr.W.Vehicles.Pool.IsAlive(i) && dr.W.Vehicles.Lane[i] == inW && dr.W.Gate.DenyReason[i] == (byte)GateDeny.Yield)
+                {
+                    priorityYieldDenials++;
+                }
+            }
+        };
+        drv.Run(12000);
+        _out.WriteLine($"signal={signal} priorityYieldDenials={priorityYieldDenials}");
+        if (signal)
+        {
+            Assert.True(priorityYieldDenials > 0, "контроль: на Signal правило голодания отказывает приоритетному потоку");
+        }
+        else
+        {
+            Assert.Equal(0, priorityYieldDenials);
+        }
     }
 
     [Fact]

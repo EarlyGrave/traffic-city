@@ -318,7 +318,7 @@ internal static class GatePhase
             int end = cs.FirstConflict[g] + cs.ConflictCount[g];
             float yieldGap = w.Rules.YieldGapTime;
             int maxWait = w.Rules.MaxYieldWaitTicks;
-            int starveWait = maxWait / GateRules.StarvationDivisor;
+            int starveWait = maxWait;
             int wait = v.WaitTicks[i];
             for (int k = cs.FirstConflict[g]; k < end; k++)
             {
@@ -367,7 +367,7 @@ internal static class GatePhase
                 }
 
                 int wy = v.WaitTicks[y];
-                bool starving = nd.Control != NodeControl.RightHandRule && wy >= starveWait && (wy > wait || (wy == wait && y < i));
+                bool starving = fixedSignal && wy >= starveWait && (wy > wait || (wy == wait && y < i));
                 if (rel == ConflictRel.Priority && !starving)
                 {
                     continue; // у меня приоритет и Y не голодает: Y после моего допуска увидит меня допущенной и уступит
@@ -387,11 +387,11 @@ internal static class GatePhase
                     }
                 }
 
-                // 4b-bis (правило A, 2.4a2): долго ждущая (WaitTicks >= MaxYieldWaitTicks / StarvationDivisor, 10 с) голова Y, старше меня по (WaitTicks, -Index) и блокируемая
+                // 4b-bis (правило A, 2.4a2): долго ждущая (WaitTicks >= MaxYieldWaitTicks, 20 с) голова Y, старше меня по (WaitTicks, -Index) и блокируемая
                 // именно конфликтами (не выездом/сигналом/STOP), не должна голодать перед потоком, который проходит по приоритету или gap acceptance:
                 // новые допуски через её точку ей отказывают (любое Rel), допущенные проезжают (4a), ящик очищается, Y проходит. Порядок по
-                // (WaitTicks, -Index) строгий: отказывает только более младшему, поэтому взаимный отказ невозможен. На узлах RightHandRule (все
-                // равнозначны, правило справа + тай-брейки) не действует: там оно только снижает пропускную способность (T2).
+                // (WaitTicks, -Index) строгий: отказывает только более младшему, поэтому взаимный отказ невозможен. На узлах не-Signal (RightHandRule, Yield, Stop, FlashYellow/Off) правило не действует (на RightHandRule (все
+                // равнозначны) ломает T2, на Yield/Stop даёт -20% поездок на s10k).
                 if (starving)
                 {
                     // Отказ Y по выезду оправдывает пропуск потока (иначе перекрытый выезд запирал бы пересекающиеся потоки, don't-block-the-box),
