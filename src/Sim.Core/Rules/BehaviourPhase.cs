@@ -19,7 +19,7 @@ namespace Sim.Core.Rules;
 internal static class BehaviourPhase
 {
     public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, ref w.Work, w.Connectors);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, ref w.Work, w.Connectors, w.Gate.NodeBusy);
 
     public static void Run(
         NetworkStore net,
@@ -32,7 +32,7 @@ internal static class BehaviourPhase
         ConnectorStore? connectors = null)
     {
         SimWork scratch = default;
-        Run(net, v, occ, routes, types, p, tick, ref scratch, connectors);
+        Run(net, v, occ, routes, types, p, tick, ref scratch, connectors, null);
     }
 
     public static void Run(
@@ -44,7 +44,8 @@ internal static class BehaviourPhase
         in PhysicsParams p,
         long tick,
         ref SimWork work,
-        ConnectorStore? connectors)
+        ConnectorStore? connectors,
+        ulong[]? nodeBusy)
     {
         var e = new RuleEnv(net, v, occ, routes);
         int hw = v.HighWater;
@@ -85,7 +86,7 @@ internal static class BehaviourPhase
             if (connectors != null)
             {
                 obstacleCalls++;
-                gateGap = GateRules.ObstacleGap(net, v, occ, connectors, ref work, v.S, i, t.ComfortDecel, out beyondDecision, out gateSpeed);
+                gateGap = GateRules.ObstacleGap(net, v, occ, connectors, nodeBusy, ref work, v.S, i, t.ComfortDecel, out beyondDecision, out gateSpeed);
             }
 
             v.ClampGateGap[i] = gateGap;

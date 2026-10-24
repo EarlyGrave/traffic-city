@@ -15,8 +15,11 @@ internal sealed class GateScratch
     public readonly int[] TouchedNodes;   // [MaxNodes]
     public readonly int[] OutTouched;     // [MaxLanes] полосы с OutReserved != 0
     public readonly byte[] DenyReason;    // [MaxVehicles] GateDeny
+    public readonly ulong[] NodeBusy;     // [MaxNodes] биты LocalBit занятых connector'ов узла (ADR-0016 D3); строит фаза 4, читает фаза 5
+    public readonly int[] BusyTouched;    // [MaxNodes] узлы с ненулевой NodeBusy (для обнуления в следующем тике)
     public int TouchedCount;
     public int OutTouchedCount;
+    public int BusyTouchedCount;
 
     public GateScratch(int maxNodes, int maxVehicles, int maxLanes)
     {
@@ -25,6 +28,8 @@ internal sealed class GateScratch
         CandNext = new int[Math.Max(0, maxVehicles)];
         CandConn = new int[Math.Max(0, maxVehicles)];
         DenyReason = new byte[Math.Max(0, maxVehicles)];
+        NodeBusy = new ulong[Math.Max(0, maxNodes)];
+        BusyTouched = new int[Math.Max(0, maxNodes)];
         OutTouched = new int[Math.Max(0, maxLanes)];
         Array.Fill(NodeCandHead, -1);
     }

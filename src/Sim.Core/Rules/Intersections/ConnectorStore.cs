@@ -50,6 +50,8 @@ internal sealed class ConnectorStore
     public readonly int[] Node;
     public readonly int[] InLane;
     public readonly int[] OutLane;
+    public readonly float[] Length;         // длина connector'а (производное, вне хэша; ADR-0016 D4)
+    public readonly float[] InLength;       // длина входной полосы connector'а (производное, вне хэша)
     public readonly byte[] LocalBit;
     public readonly byte[] Maneuver;
     public readonly byte[] FromArm;
@@ -74,6 +76,8 @@ internal sealed class ConnectorStore
         Node = new int[c];
         InLane = new int[c];
         OutLane = new int[c];
+        Length = new float[c];
+        InLength = new float[c];
         LocalBit = new byte[c];
         Maneuver = new byte[c];
         FromArm = new byte[c];
@@ -278,6 +282,8 @@ internal sealed class ConnectorStore
             Node[g] = node;
             InLane[g] = ld.FromLane;
             OutLane[g] = ld.ToLane;
+            Length[g] = ld.Length;
+            InLength[g] = net.Lanes[ld.FromLane].Length;
             LocalBit[g] = (byte)i;
             int a = ArmOf(net, in nd, net.Lanes[ld.FromLane].Segment);
             int b = ArmOf(net, in nd, net.Lanes[ld.ToLane].Segment);

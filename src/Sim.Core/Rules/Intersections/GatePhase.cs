@@ -37,6 +37,15 @@ internal static class GatePhase
 
         g.OutTouchedCount = 0;
 
+        // 0b. NodeBusy (ADR-0016, D3): обнулить затронутые в прошлом тике узлы; заново соберём по машинам на connector'ах и допущенным.
+        for (int k = 0; k < g.BusyTouchedCount; k++)
+        {
+            g.NodeBusy[g.BusyTouched[k]] = 0UL;
+        }
+
+        g.BusyTouchedCount = 0;
+        ConnectorStore cs = w.Connectors;
+
         // 1. Сбор кандидатов.
         int hw = v.HighWater;
         int candidates = 0;
@@ -58,6 +67,7 @@ internal static class GatePhase
             if (ld.Kind == LaneKind.Connector)
             {
                 v.WaitTicks[i] = 0;
+                MarkBusy(g, cs, ld.ConflictGroup);
                 if (GateRules.IsGranted(v, i))
                 {
                     AddReserved(net, g, ld.ToLane, v.Length[i]);
@@ -91,6 +101,7 @@ internal static class GatePhase
                 }
 
                 AddReserved(net, g, net.Lanes[gc].ToLane, v.Length[i]);
+                MarkBusy(g, cs, net.Lanes[gc].ConflictGroup);
                 continue;
             }
 
@@ -223,6 +234,24 @@ internal static class GatePhase
         return wa > wb || (wa == wb && a < b);
     }
 
+    /// <summary>Ставит бит connector'а группы <paramref name="group"/> в <c>NodeBusy</c> его узла (D3); группа &lt; 0 - connector без записи в store.</summary>
+    private static void MarkBusy(GateScratch g, ConnectorStore cs, int group)
+    {
+        if (group < 0)
+        {
+            return;
+        }
+
+        int node = cs.Node[group];
+        ulong m = g.NodeBusy[node];
+        if (m == 0UL)
+        {
+            g.BusyTouched[g.BusyTouchedCount++] = node;
+        }
+
+        g.NodeBusy[node] = m | (1UL << cs.LocalBit[group]);
+    }
+
     private static void AddReserved(NetworkStore net, GateScratch g, int lane, float length)
     {
         if ((uint)lane >= (uint)net.OutReserved.Length)
@@ -319,7 +348,8 @@ internal static class GatePhase
         bool inversion = false;
         if (g >= 0 && cs.ConflictCount[g] > 0)
         {
-            int firstConn = nd.FirstConnector;
+            int local = cs.LocalBit[g];
+            int firstConn = cs.Lane[g] - local;
             int end = cs.FirstConflict[g] + cs.ConflictCount[g];
             float yieldGap = w.Rules.YieldGapTime;
             int maxWait = w.Rules.MaxYieldWaitTicks;
@@ -330,13 +360,14 @@ internal static class GatePhase
                 w.Work.GateTryGrantEntries++;
                 ref readonly ConflictEntry ce = ref cs.Conflicts[k];
                 int other = firstConn + ce.OtherLocal;
+                int gOther = g - local + ce.OtherLocal;
                 float sMine = ce.SMineCm * 0.01f;
                 float sOther = ce.SOtherCm * 0.01f;
                 bool merge = ce.Kind == ConflictKind.Merge;
                 float dMe = dLine + sMine;
                 float tMe = GateRules.Eta(dMe, vi, t.Accel, v0);
                 float tMeClear = GateRules.Eta(dMe + li + GateRules.ClearMargin, vi, t.Accel, v0);
-                int inLane = net.Lanes[other].FromLane;
+                int inLane = cs.InLane[gOther];
 
                 // 4a. Внутри узла / допущенные: проезжают первыми независимо от приоритета.
                 if (!merge)
@@ -349,7 +380,7 @@ internal static class GatePhase
                         }
                     }
 
-                    float lenOther = net.Lanes[inLane].Length;
+                    float lenOther = cs.InLength[gOther];
                     for (int x = occ.LaneHead[inLane]; x != -1 && GateRules.IsGranted(v, x); x = GateRules.BehindOn(v, x, inLane))
                     {
                         if (x != i && v.GrantConnector[x] == other && BlocksBox(w, x, v.S[x] - lenOther, sOther, tMe, inside: false))
@@ -407,7 +438,7 @@ internal static class GatePhase
                     bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop;
                     if (dy == (byte)GateDeny.Exit)
                     {
-                        int exitTail = occ.LaneTail[net.Lanes[other].ToLane];
+                        int exitTail = occ.LaneTail[cs.OutLane[gOther]];
                         excused = exitTail != -1 && v.Speed[exitTail] < GateRules.CreepSpeed;
                     }
 
@@ -436,7 +467,7 @@ internal static class GatePhase
                 }
 
                 ref readonly VehicleTypeDesc ty = ref w.Types[v.Type[y]];
-                float tY = GateRules.Eta(sOther + net.Lanes[inLane].Length - v.S[y], vy, ty.Accel, v.DesiredSpeed[y]);
+                float tY = GateRules.Eta(sOther + cs.InLength[gOther] - v.S[y], vy, ty.Accel, v.DesiredSpeed[y]);
                 if (rel == ConflictRel.Yield)
                 {
                     if (tY >= tMeClear + yieldGap)
@@ -470,6 +501,7 @@ internal static class GatePhase
         v.GrantConnector[i] = conn;
         v.Ticket[i] = net.NodeTicket[node]++;
         AddReserved(net, w.Gate, outLane, li);
+        MarkBusy(w.Gate, cs, g);   // новый допуск: участник ConflictGap фазы 5
         w.Counters.GateWaitTicksTotal += v.WaitTicks[i];
         v.WaitTicks[i] = 0;
         w.Counters.Grants++;
