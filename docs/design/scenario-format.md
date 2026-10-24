@@ -1,4 +1,4 @@
-# Формат сценариев и параметров ТС (JSON, `format_version: 1`)
+# Формат сценариев и параметров ТС (JSON; сценарий `format_version: 2`, типы ТС — `1`)
 
 Статус: принято (ADR-0002). Файлы в `scenarios/`: `s1k.json`, `s10k.json`, `s100k.json`,
 `s1m.json`, `vehicle-types.json`. Формат независим от языка: C#-хост (`Sim.Headless`, клиент) и
@@ -27,7 +27,7 @@
 
 ```
 {
-  "format_version": 1,
+  "format_version": 2,                  // 2: секция routing, max_plan_steps (ADR-0009); 1 больше не принимается
   "name": string,                       // информативно
   "seed": uint64 (как число или строка десятичная),
   "duration_s": number,                 // хост останавливает прогон; bench --ticks перекрывает
@@ -99,14 +99,28 @@
     "max_yield_wait_s": 20              // инверсия приоритета у ворот (intersections.md §5.4)
   },
 
+  "routing": {                          // → RoutingDesc (routing.md §9, ADR-0009)
+    "levels": int,                      // уровней оверлея 1..4 (0 — только тесты: плоский A*). Дефолт 1
+    "cell_m": number,                   // сторона ячейки уровня 1, м. Дефолт 1000
+    "fanout": int,                      // ячеек уровня ℓ по стороне ячейки ℓ+1. Дефолт 4
+    "window_steps": int,                // слот окна маршрута, шагов 8..32. Дефолт 16 (≤ 15 шагов = 8 сегментов)
+    "pathfind_budget_per_tick": int,    // запросов на тик (перенесено из capacities). Дефолт 32
+    "work_budget_per_tick": int,        // релаксаций запросов на тик. Дефолт 1500 · pathfind_budget_per_tick
+    "customize_budget_per_tick": int,   // релаксаций волны кастомизации на тик. Дефолт 10000
+    "customize_eps": number,            // порог изменения веса сегмента для «грязной» ячейки. Дефолт 0.05
+    "cost_recalc_s": number,            // период пересчёта весов по загрузке (ADR-0006). Дефолт 30
+    "timed_drift": number,              // порог дрейфа остатка стоимости для плановой перемаршрутизации. Дефолт 0.15
+    "timed_drift_abs_s": number         // абсолютная добавка к порогу, с. Дефолт 20
+  },
+
   "capacities": {                       // → SimCapacities; обязательны max_vehicles и сетевые
     "max_vehicles": int,
     "max_nodes": int, "max_segments": int, "max_lanes": int, "max_lane_points": int,
     "max_zones": int, "max_bus_routes": int, "max_bus_stops": int, "max_bus_stops_per_route": 32,
-    "max_routes": int, "max_route_steps": int,
+    "max_routes": int,                  // слоты маршрутов: машины + поездки с построенным маршрутом
+    "max_plan_steps": int,              // арена планов (int); дефолт max_routes · (12 + 8·levels)
     "max_pending_trips": int,
     "command_queue": 1024, "events": 4096,
-    "pathfind_budget_per_tick": int,
     "max_signalized_nodes": int,
     "max_connectors": int,              // дефолт max_nodes * 16 (intersections.md §4)
     "max_conflicts": int                // дефолт max_connectors * 6
@@ -122,17 +136,16 @@
 лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
 arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
 узлов `node_jitter_m` (дефолт 0). Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
-`max_routes ≥ max_vehicles + routed_pending + trunk_slots`: каждая машина (и каждая поездка с уже построенным маршрутом)
-держит свою запись, плюс слоты кэша магистралей (`routing.md` §4.3; при нехватке работает как LRU). `max_route_steps ≥
-(max_vehicles + routed_pending) · avg_steps + trunk_slots · avg_trunk_steps`, замер `gravity α=1`: `avg_steps` ≈ 41 / 68 / 149
-(s1k / s10k / s100k, ≈ 29·`scale`), `avg_trunk_steps` ≈ 14 / 27 / 68; запас ×1.5 на фрагментацию арены между компактификациями.
-Предел арены - `1<<28` шагов (8 байт на шаг).
+`max_routes ≥ max_vehicles + routed_pending`: каждая машина и каждая поездка с построенным маршрутом держит слот (план +
+окно `window_steps` шагов по 8 B, арена окон = `max_routes · window_steps`; `routing.md` §9.5); магистралей больше нет.
+Нет слота — поездка ждёт (`RouteDeferred`). `max_plan_steps ≥ max_routes · avg_plan · 1.5`, `avg_plan ≈ 12 + 8·levels` — оценка до
+замера H3 (`routing.md` §9.11), уточнить по факту. Предел арены плана — `1<<28`.
 
 ### 2.2 Полный пример `scenarios/s1k.json`
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "name": "s1k",
   "seed": 20261024,
   "duration_s": 1800,
@@ -197,6 +210,17 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
     "max_yield_wait_s": 20
   },
 
+  "routing": {
+    "levels": 1,
+    "cell_m": 1000,
+    "fanout": 4,
+    "window_steps": 16,
+    "pathfind_budget_per_tick": 32,
+    "work_budget_per_tick": 48000,
+    "customize_budget_per_tick": 10000,
+    "cost_recalc_s": 30
+  },
+
   "capacities": {
     "max_vehicles": 1280,
     "max_nodes": 700,
@@ -207,12 +231,11 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
     "max_bus_routes": 16,
     "max_bus_stops": 256,
     "max_bus_stops_per_route": 32,
-    "max_routes": 8192,
-    "max_route_steps": 262144,
+    "max_routes": 4096,
+    "max_plan_steps": 81920,
     "max_pending_trips": 2048,
     "command_queue": 1024,
     "events": 4096,
-    "pathfind_budget_per_tick": 32,
     "max_signalized_nodes": 64,
     "max_connectors": 11200,
     "max_conflicts": 67200
@@ -239,15 +262,18 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 | плотность, маш./полосо-км (оценка) | 3 | 8 | 13 | 13 |
 | `capacities.max_vehicles` | 1 280 | 12 000 | 115 000 | 1 100 000 |
 | `capacities.max_nodes / segments / lanes / lane_points` | 700 / 1 300 / 12 000 / 80 k | 2 800 / 5 200 / 48 k / 320 k | 17 k / 32 k / 300 k / 2 M | 170 k / 330 k / 3 M / 15 M |
-| `capacities.max_routes / route_steps` | 8 192 / 256 k | 32 k / 4 M | 250 k / 40 M | 1.3 M / 128 M (*) |
+| `capacities.max_routes / max_plan_steps` | 4 096 / 82 k | 32 k / 640 k | 250 k / 7 M | 1.3 M / 47 M (*) |
+| `routing.levels` (ячейки 1 / 4 / 16 км) | 1 | 1 | 2 | 3 |
+| `routing.work_budget_per_tick / customize_budget_per_tick` | 48 k / 10 k | 192 k / 20 k | 400 k / 100 k | 2 M / 2 M |
+| `routing.cost_recalc_s` | 30 | 30 | 30 | 120 |
 | `capacities.max_connectors / max_conflicts` | 11.2 k / 67 k | 45 k / 270 k | 270 k / 1.6 M | 2.7 M / 16 M |
 | `capacities.max_pending_trips` | 2 048 | 16 k | 128 k | 1 M |
-| `capacities.pathfind_budget_per_tick` | 32 | 128 | 512 | 2 048 |
+| `routing.pathfind_budget_per_tick` | 32 | 128 | 512 | 2 048 |
 | `capacities.max_zones` | 64 | 256 | 1 024 | 10 000 |
 | `capacities.max_bus_routes / stops` | 16 / 256 | 64 / 1 024 | 320 / 4 096 | 3 000 / 40 000 |
 | `capacities.max_signalized_nodes` (светофоров `A²`: 25 / 100 / 625 / 6 400) | 64 | 160 | 800 | 8 000 |
 
-(*) s1m: ≈ 470 шагов на маршрут × 1.1 M машин ≈ 4 ГБ арены не помещается в 128 M шагов - без оконных маршрутов/иерархии (routing.md §14) все машины маршрут не получат.
+(*) s1m (ADR-0009): окна `1.3 M · 16 · 8 B` ≈ 166 МБ + план `47 M · 4 B` ≈ 187 МБ вместо ≈ 4 ГБ полных маршрутов; `max_plan_steps` — оценка до замера H3.
 
 Всё остальное (`block_m`, скорости, `demand`, `rules`, типы ТС) **одинаково** на всей лестнице,
 чтобы различия метрик объяснялись только размером. Плотность растёт с 3 до ~13 маш./полосо-км —
@@ -323,7 +349,7 @@ MOBIL (Kesting, Treiber, Helbing, *Transportation Research Record* 1999, 2007):
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "name": "test-two-lanes-ring",
   "seed": 1,
   "duration_s": 60,
@@ -346,9 +372,10 @@ MOBIL (Kesting, Treiber, Helbing, *Transportation Research Record* 1999, 2007):
   "demand": { "zone_m": 1000, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
   "capacities": {
     "max_vehicles": 64, "max_nodes": 8, "max_segments": 8, "max_lanes": 64, "max_lane_points": 512,
-    "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_route_steps": 16384,
-    "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1
-  }
+    "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_plan_steps": 8192,
+    "max_pending_trips": 64, "max_signalized_nodes": 1
+  },
+  "routing": { "levels": 1, "cell_m": 250, "pathfind_budget_per_tick": 8 }
 }
 ```
 
