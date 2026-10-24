@@ -55,6 +55,7 @@
 | 50 | routing-h2 (worktree) | sonnet | 2.2 H2: поиск по оверлею, развёртывание плана, эквивалентность | done, merged (s100k запрос медиана 0.34 мс vs 0.85 мс A* этапа 1) |
 | 51 | routing-h3 (worktree) | sonnet | 2.2 H3: RouteStore, окно, дрейф, фаза 3, удаление старого кэша | done, merged (s1k 30 мин: completed 5532→6300, stuck 0) |
 | 52 | wave-verify (worktree) | sonnet | верификация волны 2.1–2.3 + профиль s1k/s10k/s100k | done (s10k p95 7.85 мс, stuck 27) |
-| 53 | stuck-large (worktree) | sonnet | 2.4a: stuck s10k/s100k, route_deferred | wip |
+| 53 | stuck-large (worktree) | sonnet | 2.4a: stuck s10k/s100k, route_deferred | done, merged (эпизоды 260→35, рампа s100k ок) |
+| 55 | left-starvation (worktree) | sonnet | 2.4a2: правило A против голодания левых | wip |
 | 54 | hotpath-plan (worktree) | opus | 2.4b: план горячего пути s10k | done, merged (ADR-0016, P1–P5) |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
