@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using Sim.Core.Agents;
 using Sim.Core.Api;
@@ -66,6 +68,36 @@ internal static class Step3Gates
         return null;
     }
 
+    /// <summary>Новые stuck-эпизоды (переход флага 0 -> 1) группируются по узлу / типу управления / причине отказа ворот / размеру очереди.</summary>
+    public static void CollectStuckEpisodes(World w, bool[] was, Dictionary<string, int> acc)
+    {
+        VehicleStore v = w.Vehicles;
+        NetworkStore net = w.Net;
+        for (int i = 0; i < v.HighWater && i < was.Length; i++)
+        {
+            bool st = v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.Stuck) != 0;
+            if (st && !was[i])
+            {
+                int lane = v.Lane[i];
+                int node = lane < 0 ? -1 : GateRules.GateNode(net, lane);
+                string ctl = node < 0 ? "-" : net.Nodes[node].Control.ToString();
+                int q = 0;
+                for (int j = 0; j < v.HighWater; j++)
+                {
+                    if (v.Pool.IsAlive(j) && v.Lane[j] == lane)
+                    {
+                        q++;
+                    }
+                }
+
+                string key = $"node {node} {ctl} deny={(GateDeny)w.Gate.DenyReason[i]} gate={v.GateState[i]} queue={q} lane={lane}";
+                acc[key] = acc.GetValueOrDefault(key) + 1;
+            }
+
+            was[i] = st;
+        }
+    }
+
     /// <summary>Описание застрявших машин (stuck) с состоянием ворот - для разбора причин.</summary>
     public static string DescribeStuck(World w, int max = 12)
     {
@@ -84,6 +116,29 @@ internal static class Step3Gates
             int lane = v.Lane[i];
             string laneInfo = lane < 0 ? "no lane" : $"lane {lane} ({net.Lanes[lane].Kind}, len {net.Lanes[lane].Length:F1}, node {GateRules.GateNode(net, lane)}/{net.Lanes[lane].Node})";
             sb.Append($"  veh {i}: {laneInfo} s={v.S[i]:F2} v={v.Speed[i]:F2} ahead={v.Ahead[i]} gate={v.GateState[i]} gc={v.GrantConnector[i]} wait={v.WaitTicks[i]} deny={(GateDeny)w.Gate.DenyReason[i]} nextConn={v.NextConn[i]} still={v.StillTicks[i]}\n");
+            if (w.Gate.DenyReason[i] == (byte)GateDeny.Exit && v.NextConn[i] >= 0)
+            {
+                int ol = net.Lanes[v.NextConn[i]].ToLane;
+                int tl = w.Occupancy.LaneTail[ol];
+                sb.Append($"     out lane {ol} len {net.Lanes[ol].Length:F1} reserved={net.OutReserved[ol]:F1} tail={tl}" + (tl < 0 ? "" : $" s={v.S[tl]:F1} v={v.Speed[tl]:F2} len={v.Length[tl]:F1} still={v.StillTicks[tl]} gate={v.GateState[tl]} deny={(GateDeny)w.Gate.DenyReason[tl]}") + "\n");
+                int cnt = 0;
+                int mov = 0;
+                int lead = -1;
+                for (int j = 0; j < v.HighWater; j++)
+                {
+                    if (v.Pool.IsAlive(j) && v.Lane[j] == ol)
+                    {
+                        cnt++;
+                        mov += v.Speed[j] > 0.5f ? 1 : 0;
+                        if (lead < 0 || v.S[j] > v.S[lead])
+                        {
+                            lead = j;
+                        }
+                    }
+                }
+
+                sb.Append($"     out lane vehicles={cnt} moving={mov} lead={lead}" + (lead < 0 ? "" : $" s={v.S[lead]:F1} v={v.Speed[lead]:F2} gate={v.GateState[lead]} deny={(GateDeny)w.Gate.DenyReason[lead]} wait={v.WaitTicks[lead]} still={v.StillTicks[lead]}") + "\n");
+            }
         }
 
         return sb.ToString();
@@ -211,6 +266,8 @@ public class Step3GateReportTests
         string stuckInfo = string.Empty;
         string? gap = null;
         string? conflict = null;
+        var episodes = new Dictionary<string, int>();
+        var wasStuck = new bool[sim.World.Vehicles.Pool.Capacity];
         var samples = new long[ticks];
         var overByTenth = new int[10];
         int gc0 = GC.CollectionCount(0);
@@ -237,6 +294,11 @@ public class Step3GateReportTests
                 stuckEventTick = sim.Tick;
                 stuckInfo = Step3Gates.DescribeStuck(sim.World);
             }
+
+            if (sim.Counters.StuckVehicles > 0 || t % 50 == 0)
+            {
+                Step3Gates.CollectStuckEpisodes(sim.World, wasStuck, episodes);
+            }
         }
 
         Array.Sort(samples);
@@ -252,6 +314,11 @@ public class Step3GateReportTests
         _out.WriteLine($"tick: mean={sum / (double)ticks * us:F1} us p50={samples[ticks / 2] * us:F1} p95={samples[(int)(ticks * 0.95)] * us:F1} p99={samples[(int)(ticks * 0.99)] * us:F1} max={max * us:F1} us; >1ms: {over1ms}");
         _out.WriteLine($"gap violation: {gap ?? "none"}; conflict overlap: {conflict ?? "none"}");
         _out.WriteLine($">1ms ticks by tenth of run: {string.Join(" ", overByTenth)}; gen0 GCs during run: {GC.CollectionCount(0) - gc0}; allocated by Step (all ticks, incl. ramp): {GC.GetAllocatedBytesForCurrentThread() - allocBefore} B");
+        foreach (KeyValuePair<string, int> kv in episodes.OrderByDescending(k => k.Value).Take(25))
+        {
+            _out.WriteLine($"stuck-episodes {kv.Value,4}  {kv.Key}");
+        }
+
         if (maxStuck > 0)
         {
             _out.WriteLine($"first stuck max at tick {stuckEventTick}:\n{stuckInfo}");
