@@ -59,7 +59,7 @@
   ядра не аллоцирует: это синхронная OSR/tier-up-компиляция метода с циклом в потоке теста (tier-0 патчпойнты; счётчики общие для
   всех потоков, поэтому момент зависит от соседних тестов), JIT/загрузчик типов кладут объекты в управляемую кучу.
   Прогрев не помогает - момент недетерминирован. → В `Sim.Core.Tests.csproj` `<ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>` + `Fixtures/AllocationProbe` (повтор окна, если за замер сработал GC)
-  (полная оптимизация сразу, без тиринга/OSR). Для новых проектов с `GetAllocatedBytesForCurrentThread` - то же.
+  Для новых проектов с `GetAllocatedBytesForCurrentThread` - то же.
   Диагностика: временно разнести тик на фазы и мерить аллокации по каждой, гонять набор в 3 параллельных циклах.
 ## Godot-клиент
 - **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
