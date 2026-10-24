@@ -16,6 +16,10 @@
   (`ConflictGap`/`ObstacleGap`/`Mobil.Decide` под `Step`); у `ConflictGap` смотреть родителей (Step = Behaviour, Integrate). Окно
   замера - только после рампы (отсечь по времени в speedscope, `at` в мс). s100k рампа не заканчивается за 14000 тиков
   (~19 мин, 87% активных); трассировка этого прогона - 120 МБ speedscope JSON, парсится python за ~1 мин.
+- **Сэмплирующий профиль не отличает «дорого» от «лишнее»** (дубль `ConflictGap` в фазах 5 и 6 виден только как две доли).
+  → Дёшево и детерминированно: выгрузить дерево коммита архивом в scratchpad, временные статические счётчики в копии,
+  `bench --ticks 600 --warmup-until-full --repeat 1`, печать из `BenchCommand`; два прогона дают одинаковые числа
+  (`docs/design/hotpath.md` §1.2).
 - **`dotnet-install.sh` / `dot.net` → 403.** Прокси закрывает microsoft-домены.
   → Ставить из apt Ubuntu: `apt-get install -y dotnet-sdk-10.0 dotnet-sdk-8.0`. NuGet (api.nuget.org) открыт.
 - **polyformproject.org → 403.** → Официальный текст лицензии:
