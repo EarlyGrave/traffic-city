@@ -46,6 +46,9 @@ internal static class StateHash
             h.Add(v.GhostLane[i]);
             h.Add(v.Flags[i]);
             h.Add((int)v.StillTicks[i]);
+            h.Add(v.DestZone[i]);
+            h.Add(v.NextConn[i]);
+            h.Add(v.SpawnTick[i]);
         }
 
         // 4. Полосы.
@@ -99,6 +102,7 @@ internal static class StateHash
         // 9. Управляющее состояние команд.
         h.Add(w.TargetVehicles);
         h.Add(w.Selected.Packed);
+        h.Add(w.GridlockStreak);
 
         return h.Value;
     }

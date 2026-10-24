@@ -20,6 +20,7 @@ internal sealed class World
     public readonly RulesDesc Rules;
     public readonly ulong Seed;
     public readonly VehicleTypeDesc[] Types;
+    public readonly DemandDesc Demand;
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -28,6 +29,7 @@ internal sealed class World
     public readonly LaneOccupancy Occupancy;
     public readonly PendingTrips Trips;
     public readonly RoutePool Routes;
+    public readonly SpawnerData Spawn;
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
@@ -53,6 +55,7 @@ internal sealed class World
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
     public VehicleHandle Selected;
+    public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
 
     // ---- выходные массивы фаз 4, 9, 10 ----
     public readonly SegmentLoad[] SegmentLoads;
@@ -71,6 +74,7 @@ internal sealed class World
         Rules = rules;
         Seed = desc.Seed;
         Types = types;
+        Demand = desc.Demand;
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled
@@ -80,6 +84,7 @@ internal sealed class World
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
         Routes = new RoutePool(c.MaxRoutes, c.MaxRouteSteps);
+        Spawn = new SpawnerData(c.MaxZones, c.MaxLanes, types.Length);
 
         RngCityGen = Pcg32.ForStream(Seed, RngStream.CityGen);
         RngZones = Pcg32.ForStream(Seed, RngStream.Zones);
