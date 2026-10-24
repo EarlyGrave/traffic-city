@@ -48,7 +48,7 @@
 | 42 | s1m-fix | haiku | ёмкость s1m + прогон | done (p95 185 мс на 2031 машине) |
 | 43 | buses | sonnet | шаг 4 | done, merged (diff-перенос, ADR переименован в 0008) |
 | 44 | bench-stability (worktree) | sonnet | 2.1: прогрев до полной рампы, шум p95 | wip |
-| 45 | routing-hier-spec (worktree) | opus | 2.2: спека иерархии маршрутов + ADR-0009 | wip |
+| 45 | routing-hier-spec (worktree) | opus | 2.2: спека иерархии маршрутов + ADR-0009 | done, merged (оверлей ячеек, H1–H4) |
 | 46 | snapshot-spec (worktree) | opus | 2.3: ADR-0010 снапшот без копирования | done, merged (копирования нет; удешевление фазы 10) |
 | 47 | snapshot-impl (worktree) | sonnet | 2.3: реализация ADR-0010 | wip |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
