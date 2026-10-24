@@ -18,6 +18,7 @@ public static class Program
         "Commands:\n" +
         "  run              run a scenario\n" +
         "  bench            run a scenario and write perf JSON\n" +
+        "  hash             print the state hash every K ticks (--scenario <name|path> --ticks N [--every K]; see hash --help)\n" +
         "  compare          compare a result with the baseline\n" +
         "  update-baseline  replace perf/baseline.json with a result\n" +
         "  render           render a scenario to mp4 (--scenario <name|path> --seconds <s> --out <file.mp4>; see render --help)\n" +
@@ -60,6 +61,8 @@ public static class Program
                 return ValidateCommand.Run(args, Console.Out, Console.Error);
             case "bench":
                 return HasHelp(args) ? Help(BenchCommand.Usage) : BenchCommand.Run(args, Console.Out, Console.Error);
+            case "hash":
+                return HasHelp(args) ? Help(HashCommand.Usage) : HashCommand.Run(args, Console.Out, Console.Error);
             case "compare":
                 return HasHelp(args) ? Help(CompareCommand.Usage) : CompareCommand.Run(args, Console.Out, Console.Error);
             case "update-baseline":

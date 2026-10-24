@@ -23,7 +23,9 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--scenarios-dir <dir>]\n" +
+        "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
+        "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --warmup-until-full  after --warmup-ticks keep warming up (in chunks of 20 ticks) until active vehicles >= 98% of the scenario target,\n" +
         "                       but not beyond --warmup-max-ticks in total (default 30000); JSON gets ramp_complete/active_*/target_vehicles.\n";
 
@@ -33,7 +35,7 @@ public static class BenchCommand
     public const int DefaultWarmupMaxTicks = 30000;
 
     private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks" };
-    private static readonly string[] _flags = { "--warmup-until-full" };
+    private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -62,7 +64,7 @@ public static class BenchCommand
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0);
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"));
         }
         catch (ScenarioException e)
         {
@@ -87,12 +89,12 @@ public static class BenchCommand
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -117,10 +119,11 @@ public static class BenchCommand
     /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
     public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0)
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false)
     {
         var r = new BenchResult { Scenario = sc.Name, Ticks = ticks, WarmupTicks = warmup };
         double[] samples = new double[ticks];
+        PhaseTimer? timer = phases ? new PhaseTimer(ticks) : null;
 
         long memBefore = GC.GetTotalMemory(true);
         using Simulation sim = Simulation.Create(sc.Desc);
@@ -130,31 +133,35 @@ public static class BenchCommand
         }
 
         int target = sc.Desc.Demand.TargetVehicles;
-        int warmedUp = warmup;
-        while (warmupUntilFullMax > 0 && warmedUp < warmupUntilFullMax && !IsFull(sim.ActiveVehicleCount, target))
-        {
-            int chunk = Math.Min(WarmupChunkTicks, warmupUntilFullMax - warmedUp);
-            sim.Step(chunk);
-            warmedUp += chunk;
-        }
+        int warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax);
 
         r.WarmupTicksActual = warmedUp;
         r.TargetVehicles = target;
         r.ActiveAtStart = sim.ActiveVehicleCount;
 
         long vtBefore = sim.Counters.VehicleTicksTotal;
+        SimWork workBefore = sim.Work;
+        if (timer != null)
+        {
+            sim.OnPhaseEnd = timer.OnPhaseEnd;
+        }
+
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
         long allocBefore = GC.GetAllocatedBytesForCurrentThread();
         long windowStart = Stopwatch.GetTimestamp();
         for (int i = 0; i < ticks; i++)
         {
             long t0 = Stopwatch.GetTimestamp();
+            timer?.BeginTick(t0);
             sim.Step(1);
             samples[i] = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
         }
 
         long windowEnd = Stopwatch.GetTimestamp();
         long allocAfter = GC.GetAllocatedBytesForCurrentThread();
+        sim.OnPhaseEnd = null;
+        r.Work = Delta(sim.Work, workBefore);
+        r.PhaseMs = timer?.Summarize();
         r.Gen0 = GC.CollectionCount(0) - g0;
         r.Gen1 = GC.CollectionCount(1) - g1;
         r.Gen2 = GC.CollectionCount(2) - g2;
@@ -216,6 +223,42 @@ public static class BenchCommand
         r.CpuCount = Environment.ProcessorCount;
         return r;
     }
+
+    /// <summary>
+    /// После <paramref name="warmup"/> тиков (уже выполненных) догоняет рампу чанками по <see cref="WarmupChunkTicks"/> до
+    /// <see cref="IsFull"/>, но не дальше <paramref name="warmupMax"/> всего (0 = не догонять). Возвращает число тиков прогрева.
+    /// </summary>
+    internal static int WarmUpUntilFull(Simulation sim, int target, int warmup, int warmupMax)
+    {
+        int warmedUp = warmup;
+        while (warmupMax > 0 && warmedUp < warmupMax && !IsFull(sim.ActiveVehicleCount, target))
+        {
+            int chunk = Math.Min(WarmupChunkTicks, warmupMax - warmedUp);
+            sim.Step(chunk);
+            warmedUp += chunk;
+        }
+
+        return warmedUp;
+    }
+
+    /// <summary>Разность монотонных счётчиков работы (<paramref name="after"/> - <paramref name="before"/>).</summary>
+    internal static SimWork Delta(in SimWork after, in SimWork before) => new()
+    {
+        BehaviourVehicles = after.BehaviourVehicles - before.BehaviourVehicles,
+        LeaderLookaheadHops = after.LeaderLookaheadHops - before.LeaderLookaheadHops,
+        ObstacleGapCalls = after.ObstacleGapCalls - before.ObstacleGapCalls,
+        ConflictGapCallsBehaviour = after.ConflictGapCallsBehaviour - before.ConflictGapCallsBehaviour,
+        ConflictGapCallsIntegrate = after.ConflictGapCallsIntegrate - before.ConflictGapCallsIntegrate,
+        ConflictGapMaskRejects = after.ConflictGapMaskRejects - before.ConflictGapMaskRejects,
+        ConflictEntriesScanned = after.ConflictEntriesScanned - before.ConflictEntriesScanned,
+        ConflictOccupantsScanned = after.ConflictOccupantsScanned - before.ConflictOccupantsScanned,
+        GateCandidates = after.GateCandidates - before.GateCandidates,
+        GateTryGrantCalls = after.GateTryGrantCalls - before.GateTryGrantCalls,
+        GateTryGrantEntries = after.GateTryGrantEntries - before.GateTryGrantEntries,
+        RouteRefillChecks = after.RouteRefillChecks - before.RouteRefillChecks,
+        NextConnRecomputes = after.NextConnRecomputes - before.NextConnRecomputes,
+        SnapshotSlots = after.SnapshotSlots - before.SnapshotSlots,
+    };
 
     private static double Percentile(double[] sorted, double p)
     {
@@ -295,6 +338,24 @@ public static class BenchCommand
             w.WriteNumber("p95", r.P95);
             w.WriteNumber("p99", r.P99);
             w.WriteNumber("max", r.Max);
+            w.WriteEndObject();
+            if (r.PhaseMs is { } phaseMs)
+            {
+                w.WriteStartObject("phase_ms");
+                for (int ph = 0; ph < PhaseTimer.PhaseCount; ph++)
+                {
+                    w.WriteStartObject(PhaseTimer.Names[ph]);
+                    w.WriteNumber("p50", phaseMs[ph].P50);
+                    w.WriteNumber("p95", phaseMs[ph].P95);
+                    w.WriteNumber("mean", phaseMs[ph].Mean);
+                    w.WriteEndObject();
+                }
+
+                w.WriteEndObject();
+            }
+
+            w.WriteStartObject("work_per_tick");
+            WriteWork(w, in r.Work, r.Ticks);
             w.WriteEndObject();
             w.WriteStartArray("tick_ms_runs");
             foreach ((double p50, double p95) in r.Runs)
@@ -378,6 +439,26 @@ public static class BenchCommand
         return Encoding.UTF8.GetString(ms.ToArray()) + "\n";
     }
 
+    /// <summary>Средние за тик окна замера (<paramref name="work"/> - разность счётчиков за <paramref name="ticks"/> тиков).</summary>
+    private static void WriteWork(Utf8JsonWriter w, in SimWork work, int ticks)
+    {
+        double n = Math.Max(1, ticks);
+        w.WriteNumber("behaviour_vehicles", work.BehaviourVehicles / n);
+        w.WriteNumber("leader_lookahead_hops", work.LeaderLookaheadHops / n);
+        w.WriteNumber("obstacle_gap_calls", work.ObstacleGapCalls / n);
+        w.WriteNumber("conflict_gap_calls_behaviour", work.ConflictGapCallsBehaviour / n);
+        w.WriteNumber("conflict_gap_calls_integrate", work.ConflictGapCallsIntegrate / n);
+        w.WriteNumber("conflict_gap_mask_rejects", work.ConflictGapMaskRejects / n);
+        w.WriteNumber("conflict_entries_scanned", work.ConflictEntriesScanned / n);
+        w.WriteNumber("conflict_occupants_scanned", work.ConflictOccupantsScanned / n);
+        w.WriteNumber("gate_candidates", work.GateCandidates / n);
+        w.WriteNumber("gate_trygrant_calls", work.GateTryGrantCalls / n);
+        w.WriteNumber("gate_trygrant_entries", work.GateTryGrantEntries / n);
+        w.WriteNumber("route_refill_checks", work.RouteRefillChecks / n);
+        w.WriteNumber("next_conn_recomputes", work.NextConnRecomputes / n);
+        w.WriteNumber("snapshot_slots", work.SnapshotSlots / n);
+    }
+
     private static void WriteNullable(Utf8JsonWriter w, string name, string? v)
     {
         if (v == null)
@@ -434,6 +515,8 @@ internal sealed class BenchResult
     public double? BusHeadwayDeviationS;
     public long PathfindQueries;
     public SimCounters Counters;
+    public SimWork Work;
+    public PhaseStat[]? PhaseMs;
     public double AvgSpeedKmh;
     public double AvgTripTimeS;
     public double TripsCompletedPerMin;
