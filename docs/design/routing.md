@@ -320,3 +320,25 @@ return LaneNext[FirstNext(Lane)]  с флагом Missed                        
   `ZoneData.HubNode`; §7 фаза 2/3 — маршрут до спавна; §9 хэш — `RerouteQueue`, `PendingTrip.Route`;
   §11 — `RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips`; §15 — вопрос 2 и 4 закрыты.
 - `scenario-format.md`: пример s1k `max_routes: 8192`.
+
+## 13. Уточнения по факту реализации R1-R3 (`Routing/`, фазы не подключены)
+
+- Класс графа - `RouteGraph` (`Routing/RoutingGraph.cs`), A* - `AStarSearcher` (`AStar.cs`), кэш - `RouteCache`, сборка -
+  `RouteBuilder` (`Build`, `LayoutLanes`). API `internal`, принимает `NetworkStore`/`RoutePool`/ёмкости, без `World`.
+  Граф пересобирается автоматически в `Build`, если `Network.Version` != `BuiltVersion`.
+- Вес дуги включает **время проезда connector'а** (`Length/min(SpeedLimit)`) - иначе эвристика неадмиссибельна
+  (длина сегмента меряется между отступами от узлов). Эвристика дополнительно умножена на 0.95 (константа масштаба,
+  монотонность сохраняется). Штраф `Signal` пока константа (план по умолчанию 56/24 = 9.1 с): планы светофоров в
+  `NetworkStore` не хранятся, `SetSignalPlan` подключается вместе с фазами.
+- Стоимость цели считается как полный `SegCost(goal)` (частичный `DestS/Length` не учитывается - не влияет на корректность).
+  Старт и цель на одном `DirSeg` при `StartS > DestS` - `NoPath` (объезд круга не строится).
+- Шаги магистрали в `RoutePool` хранят **DirSeg в поле `RouteStep.Lane`** (не полосу), `Node` = конечный узел.
+- Компактификация арены идёт в порядке **расположения в арене** (сортировка по `First` во вспомогательных буферах пула),
+  а не по индексу слота: перенос по индексу затёр бы ещё не перенесённые данные.
+- Раскладка: при ничьей по `|ΔLaneNo|` на первом сегменте предпочтителен connector с входной полосы, ближайшей к стартовой.
+  Отдельное правило `LaneChangeDistance` не нужно: минимум `|ΔLaneNo|` уже выбирает connector точно в целевую полосу, если он есть.
+- Бюджет раскрытий: `ExpansionBudget = 256 * PathfindBudgetPerTick` (0 = без ограничения), `BeginTick()` сбрасывает счётчик,
+  при исчерпании `Build` возвращает `Deferred`. Использованы существующие `MaxRoutes/MaxRouteSteps/PathfindBudgetPerTick`;
+  `MaxZones` берётся из `SimCapacities`.
+- Измерения (Release, BenchmarkDotNet short): A* случайная пара - s1k ~32 мкс (~310-380 раскрытий), s100k ~1.35 мс (~9 100 раскрытий);
+  сборка маршрута с попаданием в кэш ~2 мкс. Для s100k нужна иерархия (раздел 9).
