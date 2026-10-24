@@ -133,7 +133,7 @@ public class MobilTests
     }
 
     [Fact]
-    public void RouteNeedsOtherLane_BlockedTarget_CarStopsAtLaneEnd_NoJumpOverConnector()
+    public void RouteNeedsOtherLane_BlockedTarget_CarDoesNotWait_TakesConnectorToSameNextSegment()
     {
         PhysicsFixture f = PhysicsFixture.TwoSegments(200f, 2, out int a, out int b);
         int conn1 = f.Net.LaneNext[f.Net.Lanes[a + 1].FirstNext];
@@ -148,10 +148,12 @@ public class MobilTests
         f.Types[0].LaneChangeThreshold = 1000f;
         int car = f.Spawn(a, 5f, 10f);
         f.V.Route[car] = 0;
-        f.Run(20 * 60);
-        Assert.Equal(a, f.V.Lane[car]);
-        Assert.True(f.V.S[car] <= 200f);
-        Assert.True(f.V.Speed[car] < 0.1f);
+        f.Run(20 * 30);
+        // routing.md 6.2: машина не ждёт перестроения стоя - на конце полосы берёт connector в тот же следующий сегмент
+        // (маршрут продолжается, на следующем сегменте MOBIL доведёт до нужной полосы).
+        Assert.NotEqual(a, f.V.Lane[car]);
+        Assert.True(f.V.RouteCursor[car] >= 2);
+        Assert.Equal(0, f.V.Flags[car] & (byte)Sim.Core.Agents.VehicleFlags.RouteMissed);
     }
 
     private static float PhysicsParamsLaneWidth() => Sim.Core.Rules.PhysicsParams.DefaultLaneWidth;

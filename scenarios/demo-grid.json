@@ -35,7 +35,7 @@
   "demand": { "zone_m": 200, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
   "capacities": {
     "max_vehicles": 64, "max_nodes": 16, "max_segments": 16, "max_lanes": 256, "max_lane_points": 2048,
-    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
+    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_route_steps": 16384,
     "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1
   }
 }

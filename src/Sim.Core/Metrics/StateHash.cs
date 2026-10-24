@@ -41,7 +41,10 @@ internal static class StateHash
             h.Add(v.Accel[i]);
             h.Add(v.Type[i]);
             h.Add(v.Route[i]);
+            h.Add(v.RouteGen[i]);
             h.Add(v.RouteCursor[i]);
+            h.Add(v.DestLane[i]);
+            h.Add(v.DestS[i]);
             h.Add((byte)v.LaneChangeDir[i]);
             h.Add(v.GhostLane[i]);
             h.Add(v.Flags[i]);
@@ -97,6 +100,21 @@ internal static class StateHash
             h.Add(t.FromLane);
             h.Add(t.FromS);
             h.Add(t.Type);
+            h.Add(t.DestLane);
+            h.Add(t.DestS);
+            h.Add(t.Route);
+            h.Add(t.RouteGen);
+        }
+
+        // 8a. Очередь перемаршрутизации в порядке очереди.
+        int rer = w.Rerouting.Count;
+        h.Add(rer);
+        for (int p = 0; p < rer; p++)
+        {
+            ref readonly Routing.RerouteEntry re = ref w.Rerouting.At(p);
+            h.Add(re.Index);
+            h.Add(re.Generation);
+            h.Add(re.ReadyTick);
         }
 
         // 9. Управляющее состояние команд.
@@ -136,6 +154,10 @@ internal static class StateHash
         h.Add(c.PathfindCacheHits);
         h.Add(c.RouteDeferred);
         h.Add(c.PathfindExpandedNodes);
+        h.Add(c.RouteFailed);
+        h.Add(c.Reroutes);
+        h.Add(c.RouteCompactions);
+        h.Add(c.RouteCacheSkips);
         h.Add(c.ConnectorEntries);
         h.Add(c.CommandsApplied);
         h.Add(c.CommandsRejected);

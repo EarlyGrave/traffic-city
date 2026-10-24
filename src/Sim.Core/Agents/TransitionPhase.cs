@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Routing;
 using Sim.Core.Rules;
 
 namespace Sim.Core.Agents;
@@ -22,7 +23,7 @@ internal static class TransitionPhase
     public static void Run(World w)
     {
         Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters);
-        AssignConnectors(w); // STAGE2-TEMP
+        AssignConnectors(w);
     }
 
     public static void Run(
@@ -189,8 +190,8 @@ internal static class TransitionPhase
         e.Occ.Unlink(i);
         v.S[i] -= ld.Length;
         e.Occ.PushTail(next, i);
-        v.NextConn[i] = -1; // STAGE2-TEMP: новый connector выберет AssignConnectors
-        v.RouteCursor[i]++; // STAGE2-TEMP: без маршрута - число переходов между полосами (ArrivalPhase: не прибывать на полосе спавна)
+        v.NextConn[i] = -1; // новый connector выберет AssignConnectors
+        RouteNav.Advance(e, i, lane, next); // курсор маршрута / отметка промаха полосы (routing.md 6.3)
 
         v.DesiredSpeed[i] = Idm.DesiredSpeed(types[v.Type[i]], e.Net.Lanes[next].SpeedLimit);
         v.PointHint[i] = 0;
@@ -198,117 +199,14 @@ internal static class TransitionPhase
     }
 
     /// <summary>
-    /// STAGE2-TEMP (замена маршрутов до шага 3, core-api 7): машина без маршрута на обычной полосе заранее выбирает connector
-    /// развилки в конце полосы - равновероятно среди connector'ов <c>LaneNext</c> из стрима <c>RngBehaviour</c>, предпочитая
-    /// (по убыванию) не-разворот и не-тупик (полоса-цель имеет продолжение либо принадлежит зоне назначения), затем не-разворот,
-    /// затем любой. Выбор хранится в <see cref="VehicleStore.NextConn"/>, чтобы поиск лидера (фаза 5/6) видел ту же полосу,
-    /// куда машина реально поедет. Перевыбор - при въезде на новую полосу и при смене полосы (старый connector не от этой полосы).
-    /// Обход по возрастанию индекса, поэтому результат детерминирован.
+    /// Конец фазы 7: обработка промахов полосы (маршрут освобождается, машина встаёт в очередь перемаршрутизации) и выбор connector'а
+    /// ближайшей развилки для машин, сменивших полосу (<see cref="VehicleStore.NextConn"/>). Выбор - <see cref="ChooseConnector"/>.
     /// </summary>
-    public static void AssignConnectors(World w)
-    {
-        VehicleStore v = w.Vehicles;
-        NetworkStore net = w.Net;
-        int hw = v.HighWater;
-        for (int i = 0; i < hw; i++)
-        {
-            int lane = v.Lane[i];
-            if (lane < 0 || !v.Pool.IsAlive(i) || v.Route[i] >= 0)
-            {
-                continue;
-            }
+    public static void AssignConnectors(World w) => RouteNav.AssignConnectors(w);
 
-            int cur = v.NextConn[i];
-            if (cur >= 0 && net.Lanes[cur].FromLane == lane)
-            {
-                continue;
-            }
-
-            v.NextConn[i] = ChooseConnector(w, i, lane);
-        }
-    }
-
-    /// <summary>Выбор connector'а для машины <paramref name="i"/> на полосе <paramref name="lane"/> (-1 - выбирать не из чего).</summary>
-    public static int ChooseConnector(World w, int i, int lane)
-    {
-        NetworkStore net = w.Net;
-        ref readonly LaneData ld = ref net.Lanes[lane];
-        if (ld.Kind != LaneKind.Normal || ld.NextCount <= 0)
-        {
-            return -1;
-        }
-
-        int destZone = w.Vehicles.DestZone[i];
-        int[] laneZone = w.Spawn.LaneZone;
-        int best = 0;
-        int count0 = 0;
-        int count1 = 0;
-        int count2 = ld.NextCount;
-        for (int k = 0; k < ld.NextCount; k++)
-        {
-            int tier = ConnectorTier(net, laneZone, destZone, ld.Segment, net.LaneNext[ld.FirstNext + k]);
-            if (tier == 0)
-            {
-                count0++;
-            }
-
-            if (tier <= 1)
-            {
-                count1++;
-            }
-        }
-
-        int pool;
-        if (count0 > 0)
-        {
-            best = 0;
-            pool = count0;
-        }
-        else if (count1 > 0)
-        {
-            best = 1;
-            pool = count1;
-        }
-        else
-        {
-            best = 2;
-            pool = count2;
-        }
-
-        int pick = (int)w.RngBehaviour.NextBelow((uint)pool);
-        for (int k = 0; k < ld.NextCount; k++)
-        {
-            int c = net.LaneNext[ld.FirstNext + k];
-            if (ConnectorTier(net, laneZone, destZone, ld.Segment, c) <= best)
-            {
-                if (pick == 0)
-                {
-                    return c;
-                }
-
-                pick--;
-            }
-        }
-
-        return net.LaneNext[ld.FirstNext];
-    }
-
-    // 0 - не разворот и не тупик, 1 - не разворот, 2 - разворот.
-    private static int ConnectorTier(NetworkStore net, int[] laneZone, int destZone, int fromSegment, int connector)
-    {
-        int to = net.Lanes[connector].ToLane;
-        if (to < 0)
-        {
-            return 2;
-        }
-
-        ref readonly LaneData t = ref net.Lanes[to];
-        if (t.Segment == fromSegment)
-        {
-            return 2;
-        }
-
-        bool deadEnd = t.NextCount <= 0 && !(destZone >= 0 && laneZone[to] == destZone);
-        return deadEnd ? 1 : 0;
-    }
+    /// <summary>
+    /// Выбор connector'а для машины <paramref name="i"/> на полосе <paramref name="lane"/> по курсору маршрута (routing.md 6.2);
+    /// без маршрута или при промахе - connector по умолчанию. -1 - выбирать не из чего.
+    /// </summary>
+    public static int ChooseConnector(World w, int i, int lane) => RouteNav.NextConnector(w, i, lane);
 }

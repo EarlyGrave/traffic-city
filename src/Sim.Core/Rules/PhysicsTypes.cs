@@ -72,23 +72,29 @@ internal readonly struct RuleEnv
         Routes = routes;
     }
 
+    /// <summary>Действителен ли маршрут машины <paramref name="i"/> для навигации (есть запись и не отмечен промах).</summary>
+    public bool HasRoute(int i) => V.Route[i] >= 0 && Routes.Steps is not null && (V.Flags[i] & (byte)VehicleFlags.RouteMissed) == 0;
+
     /// <summary>Индекс шага маршрута машины <paramref name="i"/> + <paramref name="k"/> в <c>Routes.Steps</c> или -1 (нет маршрута / вышли за конец).</summary>
     public int RouteStepIndex(int i, int k)
     {
-        int r = V.Route[i];
-        if (r < 0 || Routes.Steps is null)
+        if (!HasRoute(i))
         {
             return -1;
         }
 
+        int r = V.Route[i];
         int c = V.RouteCursor[i] + k;
         return c >= 0 && c < Routes.Count![r] ? Routes.First![r] + c : -1;
     }
 
     /// <summary>
-    /// Следующая полоса после <paramref name="lane"/>, -1 = продолжения нет (тупик, конец маршрута, либо следующий connector
-    /// маршрута начинается не с этой полосы - машине нужно перестроиться). <paramref name="k"/> - сколько шагов маршрута
-    /// вперёд от текущего (1 = ближайшая следующая); <paramref name="useRoute"/> = false: игнорировать маршрут.
+    /// Следующая полоса после <paramref name="lane"/>. На connector'е - его <c>ToLane</c>. На обычной полосе - connector по маршруту
+    /// (routing.md 6.2): на целевой полосе тот, что в маршруте; на другой полосе того же сегмента - connector в тот же направленный
+    /// сегмент, что и у маршрута (на следующем сегменте MOBIL доведёт до нужной полосы); иначе (промах, маршрут кончился, маршрута
+    /// нет) - connector по умолчанию (<see cref="DefaultConnector"/>). -1 только если у полосы нет исходящих connector'ов.
+    /// <paramref name="k"/> - сколько шагов маршрута вперёд от текущего (1 = ближайший следующий); <paramref name="useRoute"/> = false:
+    /// игнорировать маршрут.
     /// </summary>
     public int NextLane(int i, int lane, int k, bool useRoute)
     {
@@ -98,47 +104,98 @@ internal readonly struct RuleEnv
             return l.ToLane;
         }
 
-        if (useRoute && V.Route[i] >= 0 && Routes.Steps is not null)
+        if (useRoute)
         {
             int idx = RouteStepIndex(i, k);
-            if (idx < 0)
+            if (idx >= 0)
             {
-                return -1;
-            }
+                int c = Routes.Steps![idx].Lane;
+                ref readonly LaneData cd = ref Net.Lanes[c];
+                if (cd.Kind == LaneKind.Connector)
+                {
+                    if (cd.FromLane == lane)
+                    {
+                        return c;
+                    }
 
-            int next = Routes.Steps[idx].Lane;
-            ref readonly LaneData n = ref Net.Lanes[next];
-            if (n.Kind == LaneKind.Connector)
-            {
-                return n.FromLane == lane ? next : -1;
+                    int idxNext = RouteStepIndex(i, k + 1);
+                    if (idxNext >= 0)
+                    {
+                        int want = DirSegOf(Net, Routes.Steps[idxNext].Lane);
+                        for (int n = 0; n < l.NextCount; n++)
+                        {
+                            int cc = Net.LaneNext[l.FirstNext + n];
+                            if (DirSegOf(Net, Net.Lanes[cc].ToLane) == want)
+                            {
+                                return cc;
+                            }
+                        }
+                    }
+                }
             }
-
-            return next;
         }
 
-        // STAGE2-TEMP: пока нет маршрутов, ближайшая развилка - connector, выбранный TransitionPhase.AssignConnectors (k == 1).
-        if (k == 1)
-        {
-            int chosen = V.NextConn[i];
-            if (chosen >= 0 && Net.Lanes[chosen].FromLane == lane)
-            {
-                return chosen;
-            }
-        }
-
-        return l.NextCount > 0 ? Net.LaneNext[l.FirstNext] : -1;
+        return DefaultConnector(Net, lane);
     }
 
-    /// <summary>Полоса, с которой маршрут машины входит в ближайший connector (нужная полоса перед поворотом) или -1.</summary>
-    public int RouteDesiredLane(int i)
+    /// <summary>Направленный сегмент полосы: <c>segment * 2 + direction</c> (как вершина графа маршрутизации).</summary>
+    public static int DirSegOf(NetworkStore net, int lane) => (net.Lanes[lane].Segment * 2) + net.Lanes[lane].Direction;
+
+    /// <summary>
+    /// Connector по умолчанию (машина без маршрута или после промаха): первый по порядку <c>LaneNext</c> среди лучшего класса -
+    /// не разворот и не тупик, затем не разворот, затем любой. Детерминирован, PRNG не использует. -1 - исходящих нет.
+    /// </summary>
+    public static int DefaultConnector(NetworkStore net, int lane)
     {
-        int idx = RouteStepIndex(i, 1);
-        if (idx < 0)
+        ref readonly LaneData l = ref net.Lanes[lane];
+        if (l.NextCount <= 0)
         {
             return -1;
         }
 
-        int next = Routes.Steps![idx].Lane;
-        return Net.Lanes[next].Kind == LaneKind.Connector ? Net.Lanes[next].FromLane : -1;
+        int bestTier = 3;
+        int best = net.LaneNext[l.FirstNext];
+        for (int n = 0; n < l.NextCount && bestTier > 0; n++)
+        {
+            int c = net.LaneNext[l.FirstNext + n];
+            int to = net.Lanes[c].ToLane;
+            int tier = 2;
+            if (to >= 0)
+            {
+                ref readonly LaneData t = ref net.Lanes[to];
+                tier = t.Segment == l.Segment ? 2 : (t.NextCount <= 0 ? 1 : 0);
+            }
+
+            if (tier < bestTier)
+            {
+                bestTier = tier;
+                best = c;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Желаемая полоса для MOBIL (routing.md 6.4): полоса, с которой маршрут входит в ближайший connector; на последнем сегменте
+    /// (connector'а дальше нет) - полоса прибытия. -1 - маршрута нет / курсор не на обычной полосе.
+    /// </summary>
+    public int RouteDesiredLane(int i)
+    {
+        int idx = RouteStepIndex(i, 1);
+        if (idx >= 0)
+        {
+            int next = Routes.Steps![idx].Lane;
+            return Net.Lanes[next].Kind == LaneKind.Connector ? Net.Lanes[next].FromLane : -1;
+        }
+
+        int cur = RouteStepIndex(i, 0);
+        if (cur >= 0 && RouteStepIndex(i, 1) < 0)
+        {
+            int lane = Routes.Steps![cur].Lane;
+            return Net.Lanes[lane].Kind == LaneKind.Normal ? lane : -1;
+        }
+
+        return -1;
     }
 }
