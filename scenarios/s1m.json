@@ -65,7 +65,7 @@
     "max_nodes": 170000,
     "max_segments": 330000,
     "max_lanes": 3000000,
-    "max_lane_points": 20000000,
+    "max_lane_points": 15000000,
     "max_zones": 10000,
     "max_bus_routes": 3000,
     "max_bus_stops": 40000,
