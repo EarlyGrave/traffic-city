@@ -157,6 +157,9 @@ internal static class CommandDispatcher
         }
 
         w.Router.Graph.Rebuild();
+        // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
+        // проверка оверлея пометит почти все ячейки и волна будет огромной.
+        w.Router.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
         ov.OnNetworkGrown();
         w.Counters.OverlayRebuilds = ov.Rebuilds;
         w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;

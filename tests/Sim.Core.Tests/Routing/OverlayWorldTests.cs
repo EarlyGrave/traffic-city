@@ -112,6 +112,65 @@ public class OverlayWorldTests
         Assert.Equal(g.DirSegCount, sim.World.Net.SegmentCount * 2);
     }
 
+    // §15 п.6: Graph.Rebuild сбрасывает SegCost к свободному потоку; BuildRoad возвращает веса по текущей загрузке (RecalcCosts),
+    // иначе под нагрузкой волна после дороги пересчитывала бы все ячейки с замедленными сегментами.
+    [Fact]
+    public void BuildRoad_KeepsLoadWeights_AfterGraphRebuild()
+    {
+        ScenarioDesc d = Line();
+        using Simulation sim = Simulation.Create(in d);
+        Overlay ov = sim.World.Overlay!;
+        RouteGraph g = sim.World.Router.Graph;
+        int segs = sim.World.Net.SegmentCount;
+        for (int s = 0; s < segs; s++)
+        {
+            sim.World.SegmentLoads[s].SpeedRatio = 0.4f;
+        }
+
+        // Оверлей уже считан по весам загрузки (как после обычного пересчёта).
+        g.RecalcCosts(sim.World.SegmentLoads, segs);
+        ov.AfterRecalc(g.WeightsVersion);
+        ov.RunWave(0);
+        Assert.False(ov.WaveActive);
+
+        int versionBefore = g.WeightsVersion;
+        long rowsBefore = ov.CustomizeRows;
+        Road(sim, 30f, 1);
+        sim.Step(1);
+        Assert.Equal(1, (int)sim.Counters.CommandsApplied);
+        Assert.Equal(segs + 1, sim.World.Net.SegmentCount);
+        Assert.True(g.WeightsVersion > versionBefore);
+        for (int s = 0; s < segs; s++)
+        {
+            ref readonly SegmentData sd = ref sim.World.Net.Segments[s];
+            float want = sd.Length / (sd.SpeedLimit * 0.4f);
+            Assert.Equal(want, g.SegCost[2 * s], 3);
+            Assert.Equal(want, g.SegCost[(2 * s) + 1], 3);
+        }
+
+        ref readonly SegmentData fresh = ref sim.World.Net.Segments[segs]; // новая дорога - загрузки нет (1)
+        Assert.Equal(fresh.Length / fresh.SpeedLimit, g.SegCost[2 * segs], 3);
+
+        // Волна (бюджет 10000 - целиком за тик команды) считает только ячейки узлов новой дороги и их предков.
+        Assert.False(ov.WaveActive);
+        var cells = new System.Collections.Generic.HashSet<int>();
+        for (int l = 1; l <= ov.Levels; l++)
+        {
+            cells.Add(ov.CellOfNode(l, fresh.NodeA));
+            cells.Add(ov.CellOfNode(l, fresh.NodeB));
+        }
+
+        long expectedRows = 0;
+        foreach (int gc in cells)
+        {
+            expectedRows += ov.EntryCount[gc];
+        }
+
+        _out.WriteLine($"wave rows after BuildRoad under load: {ov.CustomizeRows - rowsBefore}, expected {expectedRows}");
+        Assert.Equal(expectedRows, ov.CustomizeRows - rowsBefore);
+        Assert.True(OverlayFixture.AssertMatricesMatchReference(ov, g) > 0);
+    }
+
     [Fact]
     public void BuildRoad_UntilArraysOverflow_DisablesOverlay_CommandsStillApplied()
     {
