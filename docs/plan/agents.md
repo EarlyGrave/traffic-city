@@ -13,6 +13,6 @@
 | 7 | intersections-spec (worktree) | fable | спека перекрёстков и маршрутизации + ADR-0004/0005 | wip |
 | 8 | scenarios | haiku | scenarios/*.json по scenario-format.md | done, merged |
 | 9 | network (worktree) | sonnet | 2-C: Network store/builder/geometry | wip |
-| 10 | vehicle-store (worktree) | sonnet | 2-D: VehicleStore, LaneOccupancy, PendingTrips | wip |
-| 11 | json-loader (worktree) | sonnet | 2-I: Headless JSON → ScenarioDesc | wip |
+| 10 | vehicle-store | sonnet | 2-D: VehicleStore, LaneOccupancy, PendingTrips | done, merged (0 B на 100k операций) |
+| 11 | json-loader | sonnet | 2-I: Headless JSON → ScenarioDesc | done, merged (19 тестов) |
 | 12 | scenarios-fix | haiku | max_signalized_nodes по лестнице | done, merged |
