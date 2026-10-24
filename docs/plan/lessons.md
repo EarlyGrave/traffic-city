@@ -1,0 +1,32 @@
+# Грабли и как их обходить
+
+Сюда записываем каждую ошибку, о которую споткнулись, и как её решили — чтобы не наступать снова.
+Формат: **симптом** → причина → что делать. Новые записи — сверху.
+
+## Окружение (облако)
+- **`dotnet-install.sh` / `dot.net` → 403.** Прокси закрывает microsoft-домены.
+  → Ставить из apt Ubuntu: `apt-get install -y dotnet-sdk-10.0 dotnet-sdk-8.0`. NuGet (api.nuget.org) открыт.
+- **polyformproject.org → 403.** → Официальный текст лицензии:
+  `https://raw.githubusercontent.com/polyformproject/polyform-licenses/1.0.0/PolyForm-Noncommercial-1.0.0.md`
+  (ветки `master` там нет — 404, нужен тег-путь `1.0.0`).
+- **Релизы Godot на github.com → 403.** Версии Godot смотреть через NuGet: `api.nuget.org/v3-flatcontainer/godot.net.sdk/index.json`.
+
+## Субагенты и worktree
+- **Worktree агента создаётся от `main`, а не от рабочей ветки оркестратора** → агент не видит свежих
+  файлов (брифа, csproj), post-build хук молчит. → Первый шаг каждого брифа:
+  `git merge --ff-only claude/adoring-ritchie-cxzib8` (локальная ветка видна из worktree). Рабочую ветку
+  перед раздачей задач — закоммитить.
+- **`git add -A` в основном дереве подхватил `.claude/worktrees/*` как вложенные репозитории.**
+  → `.claude/worktrees/` в `.gitignore` (и в `.git/info/exclude`). Перед коммитом смотреть `git status --short`.
+- **`cd` в worktree агента из Bash сдвигает рабочий каталог сессии.** → Не `cd` в чужие worktree;
+  использовать `git -C <путь>` или подкоманды в `( ... )`.
+- Смерженные worktree удалять: `git worktree remove --force <путь> && git branch -D <ветка>`, затем `git worktree prune`.
+
+## Хуки
+- **guard-bash блокирует Bash-команду, если строка вида «git push --force» есть внутри heredoc/кавычек**
+  (эвристика без полноценного парсера). → Тексты с такими примерами писать инструментом Write,
+  а git-команды запускать отдельной Bash-командой.
+- **Коммит с запрещённым трейлером (для демонстрации commit-msg) режет классификатор авто-режима.**
+  → Проверять хук напрямую: `bash .githooks/commit-msg <файл-с-сообщением>`.
+- Хуки из `.claude/settings.json` подхватываются живой сессией сразу после мержа — оркестратор
+  после этого физически не может писать вне `docs/**` и `CLAUDE.md`.
