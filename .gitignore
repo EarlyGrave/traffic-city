@@ -1,0 +1,32 @@
+# Godot 4 (.import-файлы и .uid коммитим, кэш редактора — нет)
+.godot/
+*.translation
+export_presets.cfg.bak
+/android/
+
+# .NET
+bin/
+obj/
+BenchmarkDotNet.Artifacts/
+*.user
+*.suo
+.vs/
+TestResults/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+
+# Perf: результаты прогонов не коммитим (baseline.json — отдельный файл)
+perf/results/*.json
+!perf/results/.gitkeep
+
+# Claude Code: локальные настройки
+.claude/settings.local.json
+.claude/worktrees/
+
+# OS
+.DS_Store
+Thumbs.db

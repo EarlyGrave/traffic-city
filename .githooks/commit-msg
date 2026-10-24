@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# commit-msg: без соавторства Claude + Conventional Commits в первой строке.
+set -u
+
+msg_file="${1:-}"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  echo "commit-msg: не передан файл сообщения" >&2
+  exit 1
+fi
+
+# Сообщение без строк-комментариев git.
+body="$(grep -v '^#' "$msg_file" || true)"
+
+if printf '%s\n' "$body" | grep -qiE 'Co-Authored-By:[[:space:]]*Claude'; then
+  echo "commit-msg: ОТКАЗ — трейлер «Co-Authored-By: Claude» запрещён." >&2
+  exit 1
+fi
+if printf '%s\n' "$body" | grep -qiE 'Generated with Claude Code'; then
+  echo "commit-msg: ОТКАЗ — упоминание «Generated with Claude Code» запрещено." >&2
+  exit 1
+fi
+
+first_line="$(printf '%s\n' "$body" | sed -n '1p')"
+
+# Merge / revert / fixup, создаваемые самим git, пропускаем.
+case "$first_line" in
+  "Merge "*|"Revert \""*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+
+re='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9._/-]+\))?!?: .+'
+if ! printf '%s\n' "$first_line" | grep -qE "$re"; then
+  echo "commit-msg: ОТКАЗ — первая строка не по Conventional Commits." >&2
+  echo "  Ожидается: type(scope)?: subject, type из feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert" >&2
+  echo "  Получено:  $first_line" >&2
+  exit 1
+fi
+
+exit 0

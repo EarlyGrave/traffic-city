@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-commit: формат, сборка без предупреждений, юнит-тесты. Работает в Linux и Git Bash.
+set -u
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+fail() {
+  echo "" >&2
+  echo "pre-commit: ОТКАЗ — $1" >&2
+  echo "Исправь проблему и повтори коммит (обход: git commit --no-verify — только осознанно)." >&2
+  exit 1
+}
+
+echo "pre-commit: dotnet format --verify-no-changes"
+dotnet format traffic-city.sln --verify-no-changes || fail "форматирование не соответствует .editorconfig (запусти: dotnet format traffic-city.sln)"
+
+echo "pre-commit: dotnet build -warnaserror"
+dotnet build traffic-city.sln -warnaserror --nologo -v q || fail "сборка упала или есть предупреждения"
+
+echo "pre-commit: dotnet test"
+dotnet test traffic-city.sln --no-build --nologo -v q || fail "юнит-тесты не проходят"
+
+echo "pre-commit: ok"
