@@ -26,9 +26,9 @@
 | 20 | loader-catchup | sonnet | 3.0: новые поля формата в загрузчике и сценариях | done, merged |
 | 21 | j1-connectors | sonnet | 3-J1: connector'ы, ConnectorStore, конфликты | done, merged |
 | 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, merged |
-| 23 | flaky-hunt (worktree) | sonnet | найти и устранить нестабильный тест (1 падение из 11 прогонов) | wip |
+| 23 | flaky-hunt | sonnet | нестабильный тест | stopped (лимит), WIP в checkpoint/2026-10-24-flaky-wip |
 | 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
 | 25 | merge-fix (s3) | haiku | разрешение конфликтов J1+J2 | done |
-| 26 | gates (worktree) | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | wip |
+| 26 | gates | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | stopped (лимит), код в checkpoint/2026-10-24-gates-wip, не проверен |
 | 27 | route-wiring | sonnet | 3-R4/R5: фаза 3, маршруты, STAGE2-TEMP убран | done, merged (completed 10 мин: 144 → 1775) |
 | 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |
