@@ -181,9 +181,9 @@ public class ScenarioLoaderTests
 
     [Theory]
     [InlineData("s1k", 8192, 262144, 700, 1000)]
-    [InlineData("s10k", 16000, 2000000, 2800, 10000)]
-    [InlineData("s100k", 65000, 16000000, 17000, 100000)]
-    [InlineData("s1m", 262000, 128000000, 170000, 1000000)]
+    [InlineData("s10k", 32000, 4000000, 2800, 10000)]
+    [InlineData("s100k", 250000, 40000000, 17000, 100000)]
+    [InlineData("s1m", 1300000, 128000000, 170000, 1000000)]
     public void LadderCapacities(string name, int routes, int steps, int nodes, int vehicles)
     {
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
@@ -215,6 +215,13 @@ public class ScenarioLoaderTests
     {
         Assert.Equal(48, Load(Minimal("\"city\": { \"scale\": 2.0 }")).City.IrregularNodes);
         Assert.Equal(7, Load(Minimal("\"city\": { \"scale\": 2.0, \"irregular_nodes\": 7 }")).City.IrregularNodes);
+    }
+
+    [Fact]
+    public void NodeJitterDefaultsToZeroAndIsRead()
+    {
+        Assert.Equal(0f, Load(Minimal("\"city\": { \"scale\": 1.0 }")).City.NodeJitter);
+        Assert.Equal(5f, Load(Minimal("\"city\": { \"node_jitter_m\": 5 }")).City.NodeJitter);
     }
 
     [Fact]

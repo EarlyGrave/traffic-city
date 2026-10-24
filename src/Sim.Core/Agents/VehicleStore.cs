@@ -42,7 +42,7 @@ internal sealed class VehicleStore
     public readonly int[] DestZone;
     public readonly int[] DestLane;
     public readonly float[] DestS;
-    public readonly int[] NextConn;        // STAGE2-TEMP: выбранный connector ближайшей развилки (-1 = не выбран); шаг 3 заменит маршрутами
+    public readonly int[] NextConn;        // кэш NextConnector: connector ближайшей развилки по маршруту (-1 = не выбран); пересчитывает конец фазы 7
 
     // --- ворота перекрёстка (intersections.md §4, §5; биты GateState - Rules.Intersections.GateRules) ---
     public readonly byte[] GateState;      // бит0 Granted (допуск выдан), бит1 StoppedAtLine

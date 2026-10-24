@@ -12,9 +12,6 @@ namespace Sim.Core.Agents;
 /// </summary>
 internal sealed class SpawnerData
 {
-    /// <summary>Полоса -> зона (-1 = нет). Полосы спавна зоны + (для внешних зон) полосы выезда того же сегмента. STAGE2-TEMP: условие прибытия.</summary>
-    public readonly int[] LaneZone;
-
     /// <summary>Веса зон-кандидатов при выборе пары (размер MaxZones).</summary>
     public readonly float[] Scratch;
 
@@ -25,12 +22,10 @@ internal sealed class SpawnerData
     public int InternalWithLanes;
     public int ExternalWithLanes;
 
-    public SpawnerData(int maxZones, int maxLanes, int typeCount)
+    public SpawnerData(int maxZones, int typeCount)
     {
-        LaneZone = new int[Math.Max(0, maxLanes)];
         Scratch = new float[Math.Max(0, maxZones)];
         TypeCum = new float[Math.Max(1, typeCount)];
-        Array.Fill(LaneZone, -1);
     }
 }
 
@@ -41,8 +36,10 @@ internal sealed class SpawnerData
 /// модель <c>w_j / d^alpha</c> среди зон с учётом <c>MinTripLength</c> (production-constrained gravity); тип по <c>TypeMix</c>.
 /// (b) из <see cref="PendingTrips"/> ставит машины на полосу спавна зоны-источника в <c>s = Length + MinGap</c>, если зазор безопасен;
 /// иначе поездка не отбрасывается, а уходит в хвост очереди (нет блокировки головы), <c>SpawnDeferredTicks</c> растёт на тик,
-/// когда хотя бы одна поездка не стартовала. Маршруты - шаг 3; до него (STAGE2-TEMP) машина едет без маршрута,
-/// <c>DestZone</c> задаёт зону прибытия (<see cref="ArrivalPhase"/>), развилки выбирает <see cref="TransitionPhase.AssignConnectors"/>.
+/// когда хотя бы одна поездка не стартовала. Маршрут строит фаза 3 (<c>RoutePhase</c>) ДО спавна: на дорогу ставятся только поездки
+/// с готовым маршрутом (<see cref="PendingTrip.HasRoute"/>), поездка без маршрута уходит в хвост; машина получает маршрут, точку
+/// прибытия <c>DestLane/DestS</c> (<see cref="Routing.Destinations"/>) и ставится на полосу того же направленного сегмента,
+/// с которого строился маршрут (соседние полосы зоны на других сегментах не подходят).
 /// </summary>
 internal static class Spawner
 {
@@ -66,56 +63,23 @@ internal static class Spawner
     {
         SpawnerData sd = w.Spawn;
         NetworkStore net = w.Net;
-        Array.Fill(sd.LaneZone, -1);
         sd.InternalWithLanes = 0;
         sd.ExternalWithLanes = 0;
         for (int z = 0; z < net.ZoneCount; z++)
         {
             ref readonly ZoneData zd = ref net.Zones[z];
-            if (zd.SpawnLaneCount > 0)
+            if (zd.SpawnLaneCount <= 0)
             {
-                if (zd.IsExternal != 0)
-                {
-                    sd.ExternalWithLanes++;
-                }
-                else
-                {
-                    sd.InternalWithLanes++;
-                }
+                continue;
             }
 
-            for (int k = 0; k < zd.SpawnLaneCount; k++)
+            if (zd.IsExternal != 0)
             {
-                int lane = net.ZoneLanes[zd.FirstSpawnLane + k];
-                if ((uint)lane >= (uint)sd.LaneZone.Length)
-                {
-                    continue;
-                }
-
-                sd.LaneZone[lane] = z;
-                if (zd.IsExternal == 0)
-                {
-                    continue;
-                }
-
-                // Внешняя зона: выезд "за карту" - полосы противоположного направления того же сегмента.
-                ref readonly LaneData ld = ref net.Lanes[lane];
-                if (ld.Segment < 0)
-                {
-                    continue;
-                }
-
-                ref readonly SegmentData sg = ref net.Segments[ld.Segment];
-                int first = ld.Direction == 0 ? sg.FirstLaneBA : sg.FirstLaneAB;
-                int count = ld.Direction == 0 ? sg.LanesBA : sg.LanesAB;
-                for (int q = 0; q < count; q++)
-                {
-                    int opp = first + q;
-                    if (sd.LaneZone[opp] == -1)
-                    {
-                        sd.LaneZone[opp] = z;
-                    }
-                }
+                sd.ExternalWithLanes++;
+            }
+            else
+            {
+                sd.InternalWithLanes++;
             }
         }
 
@@ -243,7 +207,14 @@ internal static class Spawner
             FromLane = lane,
             FromS = 0f,
             Type = PickType(w),
+            DestLane = -1,
+            Route = -1,
         };
+        if (!Routing.Destinations.Pick(net, to, ref w.RngSpawn, out trip.DestLane, out trip.DestS))
+        {
+            return false;
+        }
+
         return true;
     }
 
@@ -383,7 +354,11 @@ internal static class Spawner
                 break;
             }
 
-            if (TrySpawn(w, in trip))
+            if (!trip.HasRoute)
+            {
+                w.Trips.TryEnqueue(in trip); // маршрута ещё нет (фаза 3): в хвост, без отметки "отложено"
+            }
+            else if (TrySpawn(w, in trip))
             {
                 spawned++;
             }
@@ -439,9 +414,15 @@ internal static class Spawner
             }
 
             int attempts = cnt < MaxLaneAttempts ? cnt : MaxLaneAttempts;
+            int routeDirSeg = (uint)trip.FromLane < (uint)net.LaneCount ? RuleEnv.DirSegOf(net, trip.FromLane) : -1;
             for (int a = 0; a < attempts; a++)
             {
                 int lane = net.ZoneLanes[z.FirstSpawnLane + ((start + a) % cnt)];
+                if (routeDirSeg >= 0 && RuleEnv.DirSegOf(net, lane) != routeDirSeg)
+                {
+                    continue; // маршрут начинается с этого направленного сегмента: соседние полосы зоны на других сегментах не подходят
+                }
+
                 if (TryPlace(w, in trip, in t, lane, s, z.IsExternal != 0))
                 {
                     return true;
@@ -454,6 +435,7 @@ internal static class Spawner
         if ((uint)trip.FromLane >= (uint)net.LaneCount)
         {
             w.Counters.TripsDropped++;
+            w.Routes.Free(new RouteHandle(trip.Route, trip.RouteGen));
             return true;
         }
 
@@ -513,6 +495,11 @@ internal static class Spawner
         v.DesiredSpeed[i] = desired;
         v.SpawnTick[i] = w.Tick;
         v.DestZone[i] = trip.ToZone;
+        v.DestLane[i] = trip.DestLane;
+        v.DestS[i] = trip.DestS;
+        v.Route[i] = trip.Route;
+        v.RouteGen[i] = trip.RouteGen;
+        v.RouteCursor[i] = 0;
         w.Occupancy.InsertBetween(lane, i, ahead, behind);
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;

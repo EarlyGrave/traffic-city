@@ -266,6 +266,8 @@ internal static class CommandDispatcher
             FromLane = fromLane ? t.FromLane : -1,
             FromS = fromLane ? t.FromS : 0f,
             Type = (byte)t.VehicleType,
+            DestLane = -1,   // точку прибытия в зоне ToZone и маршрут выбирает фаза 3
+            Route = -1,
         };
 
         int free = w.Trips.Capacity - w.Trips.Count;

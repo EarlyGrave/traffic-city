@@ -30,5 +30,5 @@
 | 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
 | 25 | merge-fix (s3) | haiku | разрешение конфликтов J1+J2 | done |
 | 26 | gates (worktree) | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | wip |
-| 27 | route-wiring (worktree) | sonnet | 3-R4/R5: фаза 3, маршруты в спавне и движении, убрать STAGE2-TEMP | wip |
-| 28 | straight-roads (worktree) | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | wip |
+| 27 | route-wiring | sonnet | 3-R4/R5: фаза 3, маршруты, STAGE2-TEMP убран | done, merged (completed 10 мин: 144 → 1775) |
+| 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |

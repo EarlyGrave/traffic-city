@@ -314,7 +314,7 @@ internal sealed class FlowDriver
         }
 
         GapViolation ??= Step2.CheckGaps(W);
-        ConflictViolation ??= Step3.CheckConnectorConflicts(W);
+        ConflictViolation ??= Step3Gates.CheckConnectorConflicts(W);
         OnTick?.Invoke(this);
 
         // Стоки: порядок билетов на полосе выезда и деспаун.

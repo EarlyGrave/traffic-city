@@ -34,6 +34,7 @@ public struct SimCounters
     public long HardClamps;               // срабатываний клэмпа I6
     public long PathfindQueries, PathfindCacheHits, RouteDeferred;
     public long PathfindExpandedNodes;
+    public long RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips; // маршрутизация (routing.md 8)
     public long ConnectorEntries;         // сумма проездов через connector'ы (= сумма NodeThroughput)
     public long CommandsApplied, CommandsRejected, CommandsDropped, EventsDropped;
     public long SpawnDeferredTicks, InvalidHandleOps;

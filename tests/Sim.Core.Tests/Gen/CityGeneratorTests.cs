@@ -11,7 +11,7 @@ public class CityGeneratorTests
 {
     // Голден-хэш NetworkStore.Hash() сети s1k (seed 20261024). Менять только вместе с city-generator.md §3.9
     // (порядок PRNG) или изменением геометрии/эмиссии NetworkBuilder.
-    private const ulong GoldenS1kNetworkHash = 0x696A313D2AAE5C8BUL;
+    private const ulong GoldenS1kNetworkHash = 0x579C25BA8FEB8BC8UL;
 
     private readonly ITestOutputHelper _out;
 

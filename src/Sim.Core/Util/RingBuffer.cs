@@ -81,6 +81,45 @@ internal sealed class RingBuffer<T>
         return ref _items[i];
     }
 
+    /// <summary>Заменяет элемент по порядку очереди (0 = голова).</summary>
+    public void Set(int offset, in T item)
+    {
+        Debug.Assert((uint)offset < (uint)_count);
+        int i = _head + offset;
+        if (i >= _items.Length)
+        {
+            i -= _items.Length;
+        }
+
+        _items[i] = item;
+    }
+
+    /// <summary>Удаляет элемент по порядку очереди, сдвигая хвост к голове (O(Count - offset)); порядок остальных сохраняется.</summary>
+    public void RemoveAt(int offset)
+    {
+        Debug.Assert((uint)offset < (uint)_count);
+        int cap = _items.Length;
+        int i = _head + offset;
+        if (i >= cap)
+        {
+            i -= cap;
+        }
+
+        for (int k = offset; k < _count - 1; k++)
+        {
+            int next = i + 1;
+            if (next == cap)
+            {
+                next = 0;
+            }
+
+            _items[i] = _items[next];
+            i = next;
+        }
+
+        _count--;
+    }
+
     public void Clear()
     {
         _head = 0;

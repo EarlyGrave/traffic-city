@@ -313,7 +313,7 @@ public sealed class Step2WorldTests : IClassFixture<Step2Run>
 
         var cmd = new SpawnTripCmd { FromZone = zone, ToZone = to, FromLane = -1, VehicleType = 0, Count = 3 };
         Assert.True(sim.Enqueue(Command.MakeSpawnTrip(in cmd)));
-        sim.Step(1);
+        sim.Step(2); // тик 1: поездки встали в очередь, фаза 3 построила маршруты; тик 2: спавнер упёрся в блокеров
         Assert.Equal(3, w.Trips.Count);
         Assert.Equal(0, sim.Counters.TripsDropped);
         Assert.True(sim.Counters.SpawnDeferredTicks >= 1);
@@ -360,6 +360,11 @@ public sealed class Step2WorldTests : IClassFixture<Step2Run>
         VehicleHandle h = TestScenarios.PlaceCar(sim, feeder, w.Net.Lanes[feeder].Length - 5f, 8f);
         w.Vehicles.DesiredSpeed[h.Index] = 8f;
         w.Vehicles.DestZone[h.Index] = zone;
+        w.Vehicles.DestLane[h.Index] = zoneLane;
+        w.Vehicles.DestS[h.Index] = 1f;
+        Assert.Equal(Sim.Core.Routing.BuildStatus.Ok, w.Router.Build(feeder, w.Net.Lanes[feeder].Length - 5f, zoneLane, 1f, -1, -1, w.Tick, out RouteHandle rh));
+        w.Vehicles.Route[h.Index] = rh.Index;
+        w.Vehicles.RouteGen[h.Index] = rh.Generation;
         w.Vehicles.NextConn[h.Index] = -1;
         Assert.NotEqual(from, feeder);
         long completed = sim.Counters.TripsCompleted;

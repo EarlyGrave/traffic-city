@@ -10,7 +10,7 @@ using Xunit.Abstractions;
 namespace Sim.Core.Tests.Worlds;
 
 /// <summary>Шаг 3, задача J3/J4: правила перекрёстков на s1k (intersections.md §11, T9) - проверки и диагностика.</summary>
-internal static class Step3
+internal static class Step3Gates
 {
     /// <summary>
     /// I6 на connector'ах (intersections.md §11): для каждой Cross-пары (c, c') тела двух машин не покрывают общую точку
@@ -91,7 +91,7 @@ internal static class Step3
 }
 
 /// <summary>Один прогон s1k на 10 минут игрового времени с проверками каждый тик, затем 1000 тиков под замером аллокаций.</summary>
-public sealed class Step3Run
+public sealed class Step3GateRun
 {
     public const int Ticks = 12000;
 
@@ -104,7 +104,7 @@ public sealed class Step3Run
     public SimStats StatsEnd { get; private set; }
     public int ActiveEnd { get; private set; }
 
-    public Step3Run()
+    public Step3GateRun()
     {
         ScenarioDesc d = Step2.S1k();
         using Simulation sim = Simulation.Create(in d);
@@ -112,11 +112,11 @@ public sealed class Step3Run
         {
             sim.Step(1);
             GapViolation ??= Step2.CheckGaps(sim.World);
-            ConflictViolation ??= Step3.CheckConnectorConflicts(sim.World);
+            ConflictViolation ??= Step3Gates.CheckConnectorConflicts(sim.World);
             if (sim.Counters.StuckVehicles > MaxStuck)
             {
                 MaxStuck = sim.Counters.StuckVehicles;
-                StuckInfo = $"tick {t}:\n" + Step3.DescribeStuck(sim.World);
+                StuckInfo = $"tick {t}:\n" + Step3Gates.DescribeStuck(sim.World);
             }
         }
 
@@ -134,12 +134,12 @@ public sealed class Step3Run
     }
 }
 
-public sealed class Step3WorldTests : IClassFixture<Step3Run>
+public sealed class Step3GateWorldTests : IClassFixture<Step3GateRun>
 {
-    private readonly Step3Run _run;
+    private readonly Step3GateRun _run;
     private readonly ITestOutputHelper _out;
 
-    public Step3WorldTests(Step3Run run, ITestOutputHelper output)
+    public Step3GateWorldTests(Step3GateRun run, ITestOutputHelper output)
     {
         _run = run;
         _out = output;
@@ -185,11 +185,11 @@ public sealed class Step3WorldTests : IClassFixture<Step3Run>
 }
 
 /// <summary>Реальные числа s1k за 30 мин игрового времени с правилами перекрёстков (Release). Только при TC_STEP3_REPORT=1.</summary>
-public class Step3ReportTests
+public class Step3GateReportTests
 {
     private readonly ITestOutputHelper _out;
 
-    public Step3ReportTests(ITestOutputHelper output) => _out = output;
+    public Step3GateReportTests(ITestOutputHelper output) => _out = output;
 
     [Theory]
     [InlineData(36000)]
@@ -230,12 +230,12 @@ public class Step3ReportTests
             }
 
             gap ??= Step2.CheckGaps(sim.World);
-            conflict ??= Step3.CheckConnectorConflicts(sim.World);
+            conflict ??= Step3Gates.CheckConnectorConflicts(sim.World);
             if (sim.Counters.StuckVehicles > maxStuck)
             {
                 maxStuck = sim.Counters.StuckVehicles;
                 stuckEventTick = sim.Tick;
-                stuckInfo = Step3.DescribeStuck(sim.World);
+                stuckInfo = Step3Gates.DescribeStuck(sim.World);
             }
         }
 

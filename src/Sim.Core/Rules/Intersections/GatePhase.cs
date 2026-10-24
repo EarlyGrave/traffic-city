@@ -328,7 +328,7 @@ internal static class GatePhase
                 {
                     for (int x = occ.LaneTail[other]; x != -1; x = v.Ahead[x])
                     {
-                        if (BlocksBox(w, x, v.S[x], sOther, tMe))
+                        if (BlocksBox(w, x, v.S[x], sOther, tMe, inside: true))
                         {
                             return GateDeny.Box;
                         }
@@ -337,7 +337,7 @@ internal static class GatePhase
                     float lenOther = net.Lanes[inLane].Length;
                     for (int x = occ.LaneHead[inLane]; x != -1 && GateRules.IsGranted(v, x); x = GateRules.BehindOn(v, x, inLane))
                     {
-                        if (x != i && v.GrantConnector[x] == other && BlocksBox(w, x, v.S[x] - lenOther, sOther, tMe))
+                        if (x != i && v.GrantConnector[x] == other && BlocksBox(w, x, v.S[x] - lenOther, sOther, tMe, inside: false))
                         {
                             return GateDeny.Box;
                         }
@@ -435,8 +435,12 @@ internal static class GatePhase
         return GateDeny.None;
     }
 
-    /// <summary>Машина <paramref name="x"/> (позиция <paramref name="sx"/> в координатах своего connector'а) ещё занимает точку и освободит её позже, чем я к ней подъеду.</summary>
-    private static bool BlocksBox(World w, int x, float sx, float sOther, float tMe)
+    /// <summary>
+    /// Машина <paramref name="x"/> (позиция <paramref name="sx"/> в координатах своего connector'а) ещё занимает точку и освободит её позже,
+    /// чем я к ней подъеду. Стоящая машина <paramref name="inside"/> узла ждёт чего-то (билет, выезд) - время освобождения не определено
+    /// (+inf); допущенная, но ещё стоящая у своей линии трогается свободно - её время считается ETA от нуля.
+    /// </summary>
+    private static bool BlocksBox(World w, int x, float sx, float sOther, float tMe, bool inside)
     {
         VehicleStore v = w.Vehicles;
         float lx = v.Length[x];
@@ -446,7 +450,7 @@ internal static class GatePhase
         }
 
         float vx = v.Speed[x];
-        if (vx < GateRules.CreepSpeed)
+        if (inside && vx < GateRules.CreepSpeed)
         {
             return true;
         }

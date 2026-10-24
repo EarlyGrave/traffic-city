@@ -64,6 +64,7 @@ internal static class GenFixture
             LaneWidth = c.GetProperty("lane_width_m").GetSingle(),
             IrregularNodes = c.GetProperty("irregular_nodes").GetInt32(),
             IrregularJitter = c.GetProperty("irregular_jitter_m").GetSingle(),
+            NodeJitter = c.TryGetProperty("node_jitter_m", out var nj) ? nj.GetSingle() : 0f,
             RemovedStreetShare = c.GetProperty("removed_street_share").GetSingle(),
             ConnectorSamples = c.GetProperty("connector_samples").GetInt32(),
             Signals = c.GetProperty("signals").GetString() switch
