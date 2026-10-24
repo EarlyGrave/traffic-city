@@ -102,7 +102,7 @@ namespace Sim.Core.Util;
 /// Free-list пул слотов фиксированной ёмкости. Поколение слота: 0 = никогда не выдавался,
 /// нечётное = занят, чётное = свободен. Allocate и Free оба делают generation++,
 /// поэтому handle с чётным Generation невалиден по определению, а Generation == 0 — Null.
-internal struct HandlePool
+internal sealed class HandlePool   // class, не struct: readonly-поле со struct давало бы защитные копии и терялись бы мутации
 {
     private readonly int[] _generation;   // [capacity]
     private readonly int[] _freeList;     // [capacity], LIFO-стек свободных индексов
@@ -386,8 +386,8 @@ public struct SetTargetVehicleCountCmd { public int Count; }
 public struct SetNodeControlCmd { public int Node; public NodeControl Control; } // None=0, Yield=1, Stop=2, Signal=3, RightHandRule=4 (int)
 ```
 
-Для удобства хоста — статические фабрики без аллокаций: `Command.BuildRoad(in BuildRoadCmd, uint tag = 0)`,
-`Command.SelectVehicle(VehicleHandle h)` и т.д. (возвращают `Command` по значению).
+Для удобства хоста — статические фабрики без аллокаций (префикс `Make`, т.к. имя `Command.BuildRoad` занято полем): `Command.MakeBuildRoad(in BuildRoadCmd, uint tag = 0)`,
+`Command.MakeSelectVehicle(VehicleHandle h, uint tag = 0)` и т.д. (возвращают `Command` по значению).
 
 ### 4.2 Семантика очереди
 
@@ -982,7 +982,7 @@ public struct SimStats                    // производные, счита�
     public float AvgTripTimeS;            // TripTimeTicksTotal·Dt / TripsCompleted
     public float TripsCompletedPerMin;    // TripsCompleted / (Ticks·Dt/60)
     public int   StuckVehicles;
-    public bool  GridlockFlag;
+    public int   GridlockFlag;            // 0/1 (int, а не bool: blittable-раскладка для FFI)
     public float BusHeadwayDeviationS;    // BusHeadwayDeviationTicksTotal·Dt / BusStopArrivals
     public float PathfindCacheHitRate;
     public float HardClampsPerVehicleMin;
@@ -1062,8 +1062,8 @@ src/Sim.Core/
   Util/           namespace Sim.Core.Util       — Pcg32.cs, Fnv1a64.cs, HandlePool.cs, RingBuffer.cs, FixedHashMap.cs, Vec2.cs, FixedMath.cs
 ```
 
-`Vec2`: `public readonly struct Vec2 { public readonly float X, Z; }` (имена полей `X`/`Z`
-намеренно — плоскость земли Godot). Публичные типы — только в `Api/`, `Network/*Data`,
+`Vec2`: `public readonly struct Vec2 { public readonly float X, Z; public Vec2(float x, float z); }` (имена полей `X`/`Z`
+намеренно — плоскость земли Godot). Публичные `RoadKind`, `NodeControl`, `LaneKind` и `*Data` из §6.1/§6.6 физически лежат в `Api/NetworkData.cs` (namespace `Sim.Core.Network`), т.к. на них ссылаются `Command` и `NetworkView`. `FixedHashMap` — `long→int`, `TrySet/TryGet/Remove`. Публичные типы — только в `Api/`, `Network/*Data`,
 `Util/Pcg32|Fnv1a64|Vec2`; остальное `internal` (+ `InternalsVisibleTo("Sim.Core.Tests")`,
 `"Sim.Bench"`).
 
