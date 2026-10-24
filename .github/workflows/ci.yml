@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # net8.0 (Sim.Core) собирается SDK 10, но для запуска net8.0-сборок нужен рантайм 8.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore traffic-city.sln
+
+      - name: Build
+        run: dotnet build traffic-city.sln -c Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test traffic-city.sln -c Release --no-build
+
+      - name: Bench smoke s1k
+        if: hashFiles('perf/baseline.json') != ''
+        run: dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --out perf/results/s1k.json
+
+      - name: Compare with baseline
+        if: hashFiles('perf/baseline.json') != ''
+        run: dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k.json --baseline perf/baseline.json
+
+      - name: Upload perf results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: perf/results/*.json
+          if-no-files-found: ignore
