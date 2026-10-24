@@ -61,7 +61,7 @@ public class OverlayTests
     public void Geometry_CellsNestAndBoundariesMatchDefinition_S10k()
     {
         RoutingRig r = RoutingFixture.City("s10k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         RoutingDesc d = OverlayFixture.Desc(3, 300f);
         Overlay ov = OverlayFixture.Build(r, in d);
 
@@ -147,7 +147,7 @@ public class OverlayTests
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         Overlay ov = OverlayFixture.Build(r, in d);
         long ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-        int finite = OverlayFixture.AssertMatricesMatchReference(ov, r.Builder.Graph);
+        int finite = OverlayFixture.AssertMatricesMatchReference(ov, r.Graph);
         _out.WriteLine($"s10k cell 300 levels 3: cells {ov.CellCap}, rows {ov.FullRows}, work {ov.FullWork}, finite cells {finite}, build {ms} ms");
         Assert.True(finite > 1000);
         Assert.True(ov.FullRows > 0 && ov.FullWork > 0);
@@ -159,7 +159,7 @@ public class OverlayTests
         RoutingRig r = RoutingFixture.City("s1k");
         RoutingDesc d = OverlayFixture.Desc(3, 400f, fanout: 2);
         Overlay ov = OverlayFixture.Build(r, in d);
-        Assert.True(OverlayFixture.AssertMatricesMatchReference(ov, r.Builder.Graph) > 200);
+        Assert.True(OverlayFixture.AssertMatricesMatchReference(ov, r.Graph) > 200);
     }
 
     // Время препроцессинга оверлея (Create) на лестнице - ключевой риск шага 2.2; параметры как в scenarios/*.json.
@@ -177,7 +177,7 @@ public class OverlayTests
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         long matrixBytes = (long)ov.Matrix.Length * 4;
         _out.WriteLine(
-            $"{scenario}: DirSeg {r.Builder.Graph.DirSegCount}, levels {levels}, cells {ov.CellCap}, rows {ov.FullRows}, relaxations {ov.FullWork}, "
+            $"{scenario}: DirSeg {r.Graph.DirSegCount}, levels {levels}, cells {ov.CellCap}, rows {ov.FullRows}, relaxations {ov.FullWork}, "
             + $"overlay create {ms:F1} ms, matrix {matrixBytes / 1024} KiB, entries+exits arrays {(ov.Entries.Length + ov.Exits.Length) * 4L / 1024} KiB");
         Assert.True(ov.FullRows > 0 && ov.FullWork > 0);
     }
@@ -186,7 +186,7 @@ public class OverlayTests
     public void Create_RejectsBadParameters_AndTinyCells()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         RoutingDesc d = OverlayFixture.Desc(0, 1000f);
         Assert.Equal(CreateStatus.InvalidCapacity, Overlay.TryCreate(r.Net, g, in d, out Overlay? ov));
         Assert.Null(ov);
@@ -203,7 +203,7 @@ public class OverlayTests
     public void Wave_BudgetOne_EqualsFullCustomization_AndIsDeterministic()
     {
         RoutingRig r = RoutingFixture.City("s10k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         RoutingDesc d = OverlayFixture.Desc(3, 300f, customizeBudget: 1);
 
         var free = new SegmentLoad[r.Net.SegmentCount];
@@ -264,7 +264,7 @@ public class OverlayTests
     public void Wave_UnchangedAndSubEpsWeights_DoNotMakeCellsDirty()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         RoutingDesc d = OverlayFixture.Desc(2, 500f);
         Overlay ov = OverlayFixture.Build(r, in d);
 
@@ -306,7 +306,7 @@ public class OverlayTests
     public void Wave_RecalcAndCustomize_DoNotAllocate()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         RoutingDesc d = OverlayFixture.Desc(2, 500f, customizeBudget: 300);
         Overlay ov = OverlayFixture.Build(r, in d);
         SegmentLoad[] a = OverlayFixture.RandomLoads(r.Net.SegmentCount, 1);

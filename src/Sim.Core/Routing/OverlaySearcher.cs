@@ -86,11 +86,14 @@ internal sealed class OverlaySearcher
 
     public long UnpackWork { get; private set; }
 
+    /// <summary>Оверлей запросов (null = плоский поиск).</summary>
+    public Overlay? Overlay => _ov;
+
     private bool Active => _ov != null && !_ov.Disabled;
 
     /// <summary>
     /// Запрос от <paramref name="startLane"/>/<paramref name="startS"/> до <paramref name="destLane"/>/<paramref name="destS"/> (как
-    /// <c>RouteBuilder.Build</c>). Граф должен быть актуален. Возвращает <see cref="SearchStatus.Found"/> и план в <paramref name="plan"/>.
+    /// <see cref="Router.Build"/>). Граф должен быть актуален. Возвращает <see cref="SearchStatus.Found"/> и план в <paramref name="plan"/>.
     /// </summary>
     public SearchStatus Query(int startLane, float startS, int destLane, float destS, Span<int> plan, out int planLen)
     {
@@ -342,7 +345,7 @@ internal sealed class OverlaySearcher
         return SearchStatus.Found;
     }
 
-    /// <summary>Запрос + полное развёртывание + раскладка на полосы (<see cref="RouteBuilder.LayoutLanes(NetworkStore, RouteGraph, ReadOnlySpan{int}, int, int, int, Span{RouteStep})"/>).</summary>
+    /// <summary>Запрос + полное развёртывание + раскладка на полосы (<see cref="RouteLayout.LayoutLanes"/>).</summary>
     public SearchStatus Route(int startLane, float startS, int destLane, float destS, Span<RouteStep> steps, out int stepCount)
     {
         stepCount = 0;
@@ -358,7 +361,7 @@ internal sealed class OverlaySearcher
             return st;
         }
 
-        int count = RouteBuilder.LayoutLanes(_net, _g, new ReadOnlySpan<int>(_path, 0, len), len, startLane, destLane, steps);
+        int count = RouteLayout.LayoutLanes(_net, _g, new ReadOnlySpan<int>(_path, 0, len), len, startLane, destLane, steps);
         if (count < 0)
         {
             return SearchStatus.NoPath;

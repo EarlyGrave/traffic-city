@@ -16,7 +16,6 @@ internal static class Step3
     {
         ScenarioDesc d = Step2.S1k();
         d.Capacities.MaxRoutes = 8192;
-        d.Capacities.MaxRouteSteps = 262144;
         return d;
     }
 
@@ -28,7 +27,7 @@ internal static class Step3
     {
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
-        RouteStep[] steps = w.Routes.Steps;
+        RouteStep[] steps = w.Routes.Window;
         routeless = 0;
         for (int i = 0; i < v.HighWater; i++)
         {
@@ -54,14 +53,14 @@ internal static class Step3
                 return $"tick {w.Tick}: vehicle {i} holds a dead route {r}/{v.RouteGen[i]}";
             }
 
-            int first = w.Routes.First[r];
-            int count = w.Routes.Count[r];
+            int first = r * w.Routes.WindowSteps;
+            int count = w.Routes.WinCount[r];
             int c = v.RouteCursor[i];
             int lane = v.Lane[i];
             ref readonly LaneData ld = ref net.Lanes[lane];
             if (ld.Kind == LaneKind.Normal)
             {
-                if (c < 0 || c >= count || (c & 1) != 0 || Dir(net, steps[first + c].Lane) != Dir(net, lane))
+                if (c < 0 || c >= count || Dir(net, steps[first + c].Lane) != Dir(net, lane))
                 {
                     return $"tick {w.Tick}: vehicle {i} on lane {lane} (dirseg {Dir(net, lane)}) cursor {c}/{count} off its route";
                 }
@@ -95,7 +94,7 @@ public sealed class Step3Run
     public int MaxRouteless { get; private set; }
     public int MaxRerouteQueue { get; private set; }
     public int PeakRoutesAlive { get; private set; }
-    public int PeakStepsUsed { get; private set; }
+    public int PeakPlanUsed { get; private set; }
     public long Allocated1000Ticks { get; private set; }
     public SimCounters Counters10Min { get; private set; }
     public SimCounters CountersEnd { get; private set; }
@@ -128,7 +127,7 @@ public sealed class Step3Run
 
             prevQueries = q;
             PeakRoutesAlive = Math.Max(PeakRoutesAlive, w.Routes.AliveCount);
-            PeakStepsUsed = Math.Max(PeakStepsUsed, w.Routes.StepsUsed);
+            PeakPlanUsed = Math.Max(PeakPlanUsed, w.Routes.PlanUsed);
         }
 
         Counters10Min = sim.Counters;
@@ -177,14 +176,15 @@ public sealed class Step3RoutingTests : IClassFixture<Step3Run>
     public void S1k_NoNegativeGaps_EveryTick() => Assert.Null(_run.GapViolation);
 
     [Fact]
-    public void S1k_PathfindBudgetRespected_AndCacheWorks()
+    public void S1k_PathfindBudgetRespected_AndWindowsAreRefilled()
     {
         Assert.Null(_run.BudgetViolation);
         SimCounters c = _run.Counters10Min;
-        _out.WriteLine($"queries={c.PathfindQueries} cacheHits={c.PathfindCacheHits} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} deferred={c.RouteDeferred} compactions={c.RouteCompactions} cacheSkips={c.RouteCacheSkips}");
-        _out.WriteLine($"peak routes alive={_run.PeakRoutesAlive}/8192, peak arena steps={_run.PeakStepsUsed}/262144");
+        _out.WriteLine($"queries={c.PathfindQueries} work={c.PathfindWork} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} deferred={c.RouteDeferred} refills={c.WindowRefills} refillLate={c.RefillLate} unpacks={c.PlanUnpacks} planCompactions={c.PlanCompactions}");
+        _out.WriteLine($"peak routes alive={_run.PeakRoutesAlive}/8192, peak plan arena={_run.PeakPlanUsed}/81920");
         Assert.True(c.PathfindQueries >= c.VehiclesSpawned);
-        Assert.True(c.PathfindCacheHits > 0);
+        Assert.True(c.WindowRefills > 0);
+        Assert.Equal(0, c.RefillLate);
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public sealed class Step3RoutingTests : IClassFixture<Step3Run>
     {
         ScenarioDesc d = Step3.S1k();
         d.Demand.TargetVehicles = 0;
-        d.Capacities.PathfindBudgetPerTick = 8;
+        d.Routing.PathfindBudgetPerTick = 8;
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
         int zone = FirstZoneWithLanes(w, 0);
@@ -340,9 +340,9 @@ public sealed class Step3RoutingTests : IClassFixture<Step3Run>
         }
 
         Assert.True(foreignConnector >= 0 && foreignLane >= 0);
-        int at = w.Routes.First[r] + w.Vehicles.RouteCursor[i];
-        w.Routes.Steps[at + 1] = new RouteStep { Lane = foreignConnector, Node = -1 };
-        w.Routes.Steps[at + 2] = new RouteStep { Lane = foreignLane, Node = -1 };
+        int at = (r * w.Routes.WindowSteps) + w.Vehicles.RouteCursor[i];
+        w.Routes.Window[at + 1] = new RouteStep { Lane = foreignConnector, Node = -1 };
+        w.Routes.Window[at + 2] = new RouteStep { Lane = foreignLane, Node = -1 };
         long completed = sim.Counters.TripsCompleted;
         for (int t = 0; t < 12000 && sim.Counters.Reroutes == 0; t++)
         {
@@ -415,7 +415,10 @@ public class Step3ReportTests
         long over1ms = 0;
         var samples = new long[ticks];
         int peakRoutes = 0;
-        int peakSteps = 0;
+        int peakPlan = 0;
+        long planSum = 0;
+        long planSamples = 0;
+        int maxPlanLen = 0;
         for (int t = 0; t < ticks; t++)
         {
             long t0 = Stopwatch.GetTimestamp();
@@ -430,7 +433,19 @@ public class Step3ReportTests
             }
 
             peakRoutes = Math.Max(peakRoutes, w.Routes.AliveCount);
-            peakSteps = Math.Max(peakSteps, w.Routes.StepsUsed);
+            peakPlan = Math.Max(peakPlan, w.Routes.PlanUsed);
+            if (t % 200 == 0)
+            {
+                for (int r = 0; r < w.Routes.Pool.HighWater; r++)
+                {
+                    if (w.Routes.Pool.IsAlive(r))
+                    {
+                        planSum += w.Routes.PlanCount[r];
+                        planSamples++;
+                        maxPlanLen = Math.Max(maxPlanLen, w.Routes.PlanCount[r]);
+                    }
+                }
+            }
         }
 
         Array.Sort(samples);
@@ -441,30 +456,9 @@ public class Step3ReportTests
         _out.WriteLine($"active={c.ActiveVehicles} spawned={c.VehiclesSpawned} completed={c.TripsCompleted} dropped={c.TripsDropped} pendingTrips={w.Trips.Count}");
         _out.WriteLine($"avg_speed_kmh={st.AvgSpeedKmh:F2} avg_trip_time_s={st.AvgTripTimeS:F1} trips_per_min={st.TripsCompletedPerMin:F2}");
         _out.WriteLine($"stuck_now={c.StuckVehicles} stuck_events_total={c.StuckEventsTotal} stuck_ticks_total={c.StuckTicksTotal} gridlock_flag={c.GridlockFlag} gridlock_ticks_total={c.GridlockTicksTotal}");
-        _out.WriteLine($"pathfind: queries={c.PathfindQueries} cache_hits={c.PathfindCacheHits} hit_rate={st.PathfindCacheHitRate:F3} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} deferred={c.RouteDeferred} reroutes={c.Reroutes} compactions={c.RouteCompactions} cache_skips={c.RouteCacheSkips}");
-        _out.WriteLine($"routes: peak alive={peakRoutes} (cap {w.Routes.Pool.Capacity}), peak arena={peakSteps} (cap {w.Routes.Steps.Length})");
-        long vehSteps = 0;
-        long trunkSteps = 0;
-        int trunks = 0;
-        for (int r = 0; r < w.Routes.Pool.HighWater; r++)
-        {
-            if (!w.Routes.Pool.IsAlive(r))
-            {
-                continue;
-            }
-
-            if (w.Routes.FromZone[r] >= 0)
-            {
-                trunks++;
-                trunkSteps += w.Routes.Count[r];
-            }
-            else
-            {
-                vehSteps += w.Routes.Count[r];
-            }
-        }
-
-        _out.WriteLine($"live now: vehicle routes steps={vehSteps} (avg {vehSteps / Math.Max(1.0, w.Routes.AliveCount - trunks):F1}/route), trunks={trunks} steps={trunkSteps}");
+        _out.WriteLine($"pathfind: queries={c.PathfindQueries} work={c.PathfindWork} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} deferred={c.RouteDeferred} reroutes={c.Reroutes} timed: checks={c.TimedChecks} triggered={c.TimedTriggered} accepted={c.TimedReroutes}");
+        _out.WriteLine($"windows: refills={c.WindowRefills} refill_late={c.RefillLate} unpacks={c.PlanUnpacks} unpack_work={c.UnpackWork} plan_compactions={c.PlanCompactions}");
+        _out.WriteLine($"routes: peak alive={peakRoutes} (cap {w.Routes.Pool.Capacity}), peak plan arena={peakPlan} (cap {w.Routes.PlanArena.Length}); plan stack avg={planSum / Math.Max(1.0, planSamples):F1} max={maxPlanLen} (sampled every 200 ticks)");
         _out.WriteLine($"hard_clamps={c.HardClamps} lane_changes={c.LaneChanges} aborted={c.LaneChangesAborted} connector_entries={c.ConnectorEntries} spawn_deferred_ticks={c.SpawnDeferredTicks} events_dropped={c.EventsDropped}");
         _out.WriteLine($"tick: mean={sum / (double)ticks * us:F1} us p50={samples[ticks / 2] * us:F1} p95={samples[(int)(ticks * 0.95)] * us:F1} p99={samples[(int)(ticks * 0.99)] * us:F1} max={max * us:F1} us; >1ms: {over1ms}");
         _out.WriteLine($"gap violation (same-lane lists): {Step2.CheckGaps(w) ?? "none"}; route violation: {Step3.CheckRoutes(w, out int rl) ?? "none"}; routeless now: {rl}");

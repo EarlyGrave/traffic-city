@@ -353,12 +353,14 @@ public class SimulationTests
     }
 
     [Fact]
-    public void SelectedRoute_ExposesRoutePoolSlice()
+    public void SelectedRoute_ExposesRouteWindow()
     {
         using Simulation sim = Make();
         VehicleHandle h = TestScenarios.PlaceCar(sim, 0, 10f);
         RouteStep[] steps = { new() { Lane = 0, Node = 1 }, new() { Lane = 2, Node = -1 } };
-        Assert.True(sim.World.Routes.TryAdd(steps, 0, 1, sim.Network.Version, out RouteHandle rh));
+        Assert.True(sim.World.Routes.TryAllocate(out RouteHandle rh));
+        steps.CopyTo(sim.World.Routes.Window, rh.Index * sim.World.Routes.WindowSteps);
+        sim.World.Routes.WinCount[rh.Index] = (byte)steps.Length;
         sim.World.Vehicles.Route[h.Index] = rh.Index;
         sim.World.Vehicles.RouteGen[h.Index] = rh.Generation;
         sim.World.Vehicles.RouteCursor[h.Index] = 1;

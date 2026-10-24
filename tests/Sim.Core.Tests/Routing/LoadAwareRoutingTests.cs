@@ -24,7 +24,7 @@ public class LoadAwareRoutingTests
     public void RecalcCosts_FollowsSpeedRatio_ClampsAndBumpsVersion()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         SegmentLoad[] loads = FreeFlow(r);
         float free0 = g.SegCost[0];
         int v0 = g.WeightsVersion;
@@ -40,10 +40,12 @@ public class LoadAwareRoutingTests
     }
 
     [Fact]
-    public void NewRoute_AvoidsArtificialJam_AndStaleTrunkIsDropped()
+    public void NewRoute_AvoidsArtificialJam()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
+        var search = new OverlaySearcher(r.Net, g, null);
+        var steps = new RouteStep[2 * (g.DirSegCount + 8)];
         var rng = Pcg32.Create(77, 3);
         int avoided = 0;
         for (int k = 0; k < 60; k++)
@@ -51,21 +53,12 @@ public class LoadAwareRoutingTests
             g.RecalcCosts(FreeFlow(r), r.Net.SegmentCount);
             int s = RoutingFixture.RandomLane(r, ref rng);
             int t = RoutingFixture.RandomLane(r, ref rng);
-            r.Builder.BeginTick();
-            if (r.Builder.Build(s, 0f, t, 0f, -1, -1, k, out RouteHandle h) != BuildStatus.Ok)
+            if (search.Route(s, 0f, t, 0f, steps, out int n) != SearchStatus.Found || n < 7)
             {
                 continue;
             }
 
-            ReadOnlySpan<RouteStep> steps = r.Pool.GetSteps(h);
-            if (steps.Length < 7)
-            {
-                r.Pool.Free(h);
-                continue;
-            }
-
-            int jam = RouteGraph.DirSegOfLane(r.Net, steps[(steps.Length / 4) * 2].Lane);
-            r.Pool.Free(h);
+            int jam = RouteGraph.DirSegOfLane(r.Net, steps[(n / 4) * 2].Lane);
             if (jam == RouteGraph.DirSegOfLane(r.Net, s) || jam == RouteGraph.DirSegOfLane(r.Net, t))
             {
                 continue;
@@ -74,69 +67,20 @@ public class LoadAwareRoutingTests
             SegmentLoad[] loads = FreeFlow(r);
             loads[jam >> 1].SpeedRatio = 0.0f;
             g.RecalcCosts(loads, r.Net.SegmentCount);
-            r.Builder.BeginTick();
-            Assert.Equal(BuildStatus.Ok, r.Builder.Build(s, 0f, t, 0f, -1, -1, k, out RouteHandle h2));
-            ReadOnlySpan<RouteStep> steps2 = r.Pool.GetSteps(h2);
+            Assert.Equal(SearchStatus.Found, search.Route(s, 0f, t, 0f, steps, out int n2));
             bool uses = false;
-            for (int j = 0; j < steps2.Length; j += 2)
+            for (int j = 0; j < n2; j += 2)
             {
-                uses |= (RouteGraph.DirSegOfLane(r.Net, steps2[j].Lane) >> 1) == (jam >> 1);
+                uses |= (RouteGraph.DirSegOfLane(r.Net, steps[j].Lane) >> 1) == (jam >> 1);
             }
 
             if (!uses)
             {
                 avoided++;
             }
-
-            r.Pool.Free(h2);
         }
 
         Assert.True(avoided >= 5, $"only {avoided} routes avoided the jam");
-    }
-
-    [Fact]
-    public void StaleTrunk_IsRebuiltAfterWeightsChange()
-    {
-        RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
-        var rng = Pcg32.Create(9, 9);
-        int a = -1;
-        int b = -1;
-        int la = -1;
-        int lb = -1;
-        for (int guard = 0; guard < 10_000 && la < 0; guard++)
-        {
-            a = rng.NextInt(0, r.ZoneCount);
-            b = rng.NextInt(0, r.ZoneCount);
-            if (a == b || r.Net.Zones[a].HubNode < 0 || r.Net.Zones[b].HubNode < 0 || r.Net.Zones[a].HubNode == r.Net.Zones[b].HubNode)
-            {
-                continue;
-            }
-
-            la = RoutingFixture.ZoneLane(r, a, 0);
-            lb = RoutingFixture.ZoneLane(r, b, 0);
-            if (lb < 0)
-            {
-                la = -1;
-            }
-        }
-
-        Assert.True(la >= 0);
-        r.Builder.BeginTick();
-        Assert.Equal(BuildStatus.Ok, r.Builder.Build(la, 0f, lb, 0f, a, b, 1, out RouteHandle h1));
-        r.Builder.BeginTick();
-        Assert.Equal(BuildStatus.Ok, r.Builder.Build(la, 0f, lb, 0f, a, b, 2, out RouteHandle h2));
-        Assert.Equal(1, r.Builder.CacheHits);
-        g.RecalcCosts(FreeFlow(r), r.Net.SegmentCount);
-        r.Builder.BeginTick();
-        Assert.Equal(BuildStatus.Ok, r.Builder.Build(la, 0f, lb, 0f, a, b, 3, out RouteHandle h3));
-        Assert.Equal(1, r.Builder.CacheHits); // магистраль прежней версии весов не использована
-        r.Builder.BeginTick();
-        Assert.Equal(BuildStatus.Ok, r.Builder.Build(la, 0f, lb, 0f, a, b, 4, out _));
-        Assert.Equal(2, r.Builder.CacheHits); // новая магистраль уже в кэше
-        r.Pool.Free(h1);
-        r.Pool.Free(h2);
-        r.Pool.Free(h3);
     }
 
     [Fact]

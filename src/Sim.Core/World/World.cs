@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Gen;
@@ -31,8 +32,10 @@ internal sealed class World
     public readonly VehicleStore Vehicles;
     public readonly LaneOccupancy Occupancy;
     public readonly PendingTrips Trips;
-    public readonly RoutePool Routes;
-    public readonly RouteBuilder Router;               // фаза 3: A*, кэш магистралей, бюджет раскрытий (routing.md)
+    public readonly RouteStore Routes;                 // планы и окна маршрутов (routing.md 9.5)
+    public readonly RouteGraph Graph;                  // граф DirSeg и веса (routing.md 1, ADR-0006)
+    public Router Router = null!;                     // запросы, окна, дозаполнение; создаётся в WorldBuilder после оверлея
+    public readonly RingBuffer<RefillEntry> RefillQueue; // машины, которым пора дозаполнить окно маршрута (routing.md 9.5)
     public Overlay? Overlay;                           // оверлей ячеек (routing.md 9.2); null при routing.levels = 0; строится в Create
     public bool RecalcPending;                         // пересчёт весов по номеру тика наступил, но ждёт конца волны кастомизации
     public readonly RingBuffer<RerouteEntry> Rerouting; // машины, промахнувшиеся мимо полосы (routing.md 3)
@@ -82,6 +85,11 @@ internal sealed class World
     public World(in ScenarioDesc desc, in RulesDesc rules, in RoutingDesc routing, VehicleTypeDesc[] types)
     {
         SimCapacities c = desc.Capacities;
+        if (c.MaxPlanSteps <= 0)
+        {
+            c.MaxPlanSteps = (int)Math.Min(WorldBuilder.MaxPlanStepsCapacity, (long)c.MaxRoutes * (12 + (8 * Math.Max(1, routing.Levels))));
+        }
+
         Caps = c;
         Rules = rules;
         Routing = routing;
@@ -97,9 +105,10 @@ internal sealed class World
         Vehicles = new VehicleStore(c.MaxVehicles);
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
-        Routes = new RoutePool(c.MaxRoutes, c.MaxRouteSteps);
-        Router = new RouteBuilder(Net, Routes, in c);
+        Routes = new RouteStore(c.MaxRoutes, c.MaxPlanSteps, routing.WindowSteps, routing.Levels);
+        Graph = new RouteGraph(Net);
         Rerouting = new RingBuffer<RerouteEntry>(c.MaxVehicles);
+        RefillQueue = new RingBuffer<RefillEntry>(c.MaxVehicles);
         Spawn = new SpawnerData(c.MaxZones, types.Length);
 
         // 0 = по умолчанию (intersections.md §4): MaxNodes * 16 connector'ов, MaxConnectors * 6 записей конфликтов.

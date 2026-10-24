@@ -101,7 +101,7 @@ internal static class StateHash
 
         // 7. Счётчики (по полям в порядке объявления).
         AddCounters(ref h, in w.Counters);
-        h.Add(w.Router.Graph.WeightsVersion);
+        h.Add(w.Graph.WeightsVersion);
 
         // 7a. Оверлей маршрутизации (routing.md 9.8): курсор волны и версия весов; матрицы производные - не хэшируются.
         Routing.Overlay? ov = w.Overlay;
@@ -148,6 +148,33 @@ internal static class StateHash
             h.Add(re.Kind);
         }
 
+        // 8b. Очередь дозаполнения окон в порядке очереди и живые слоты RouteStore (routing.md 9.8): окна и планы целиком не хэшируются -
+        // они производные от маршрута и весов; WinCount, PlanCount, PlanCost достаточны для обнаружения расхождения.
+        int refills = w.RefillQueue.Count;
+        h.Add(refills);
+        for (int p = 0; p < refills; p++)
+        {
+            ref readonly Routing.RefillEntry rf = ref w.RefillQueue.At(p);
+            h.Add(rf.Index);
+            h.Add(rf.Generation);
+        }
+
+        Routing.RouteStore rs = w.Routes;
+        int slots = rs.Pool.HighWater;
+        h.Add(slots);
+        for (int r = 0; r < slots; r++)
+        {
+            h.Add(rs.Pool.GenerationOf(r));
+            if (!rs.Pool.IsAlive(r))
+            {
+                continue;
+            }
+
+            h.Add((int)rs.WinCount[r]);
+            h.Add(rs.PlanCount[r]);
+            h.Add(rs.PlanCost[r]);
+        }
+
         // 9. Управляющее состояние команд.
         h.Add(w.TargetVehicles);
         h.Add(w.Selected.Packed);
@@ -182,13 +209,18 @@ internal static class StateHash
         h.Add(c.LaneChangesAborted);
         h.Add(c.HardClamps);
         h.Add(c.PathfindQueries);
-        h.Add(c.PathfindCacheHits);
         h.Add(c.RouteDeferred);
         h.Add(c.PathfindExpandedNodes);
         h.Add(c.RouteFailed);
         h.Add(c.Reroutes);
-        h.Add(c.RouteCompactions);
-        h.Add(c.RouteCacheSkips);
+        h.Add(c.PathfindWork);
+        h.Add(c.PlanCompactions);
+        h.Add(c.PlanUnpacks);
+        h.Add(c.UnpackWork);
+        h.Add(c.WindowRefills);
+        h.Add(c.RefillLate);
+        h.Add(c.TimedChecks);
+        h.Add(c.TimedTriggered);
         h.Add(c.CostRecalcs);
         h.Add(c.TimedReroutes);
         h.Add(c.ConnectorEntries);

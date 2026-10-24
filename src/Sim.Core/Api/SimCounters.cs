@@ -32,9 +32,12 @@ public struct SimCounters
     public long GridlockTicksTotal;
     public long LaneChanges, LaneChangesAborted;
     public long HardClamps;               // срабатываний клэмпа I6
-    public long PathfindQueries, PathfindCacheHits, RouteDeferred;
-    public long PathfindExpandedNodes;
-    public long RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips; // маршрутизация (routing.md 8)
+    public long PathfindQueries, RouteDeferred;      // запросов Query; сумма по тикам ждущих поездок без маршрута
+    public long PathfindExpandedNodes, PathfindWork; // раскрытий и релаксаций (дуга графа / клетка матрицы) запросов (routing.md 9.10)
+    public long RouteFailed, Reroutes, PlanCompactions; // маршрутизация (routing.md 8, 9.10)
+    public long PlanUnpacks, UnpackWork;  // развёртываний дуг плана и их работа
+    public long WindowRefills, RefillLate; // дозаполнений окон; машин, дошедших до конца окна без дозаполнения (цель 0)
+    public long TimedChecks, TimedTriggered; // проверок дрейфа плановой перемаршрутизации / из них запросов
     public long CostRecalcs, TimedReroutes; // вес по загрузке и перемаршрутизация по времени (ADR-0006)
     public long CustomizeRows, CustomizeWork; // волны кастомизации оверлея: строки и релаксации (routing.md 9.10)
     public long CustomizeLagTicks;        // тики ожидания нового пересчёта весов из-за незаконченной волны
@@ -66,7 +69,6 @@ public struct SimStats
     public int StuckVehicles;
     public int GridlockFlag;              // 0/1 (в спеке bool; int ради blittable-раскладки)
     public float BusHeadwayDeviationS;    // BusHeadwayDeviationTicksTotal*Dt / BusStopArrivals
-    public float PathfindCacheHitRate;
     public float HardClampsPerVehicleMin;
 }
 

@@ -16,6 +16,13 @@ internal struct RerouteEntry
     public int Kind;
 }
 
+/// <summary>Запись очереди дозаполнения окон (routing.md 9.5): машина (индекс + поколение).</summary>
+internal struct RefillEntry
+{
+    public int Index;
+    public int Generation;
+}
+
 /// <summary>
 /// Движение по маршруту (routing.md 6): выбор connector'а по курсору, продвижение курсора при переходах фазы 7 и обработка промахов.
 /// Статический класс без состояния; без аллокаций.
@@ -107,6 +114,7 @@ internal static class RouteNav
                 ProcessMiss(w, i);
             }
 
+            QueueRefill(w, i);
             int cur = v.NextConn[i];
             if (cur >= 0 && net.Lanes[cur].FromLane == lane && net.Lanes[lane].Kind == LaneKind.Normal)
             {
@@ -117,12 +125,60 @@ internal static class RouteNav
         }
     }
 
+    /// <summary>
+    /// Ставит машину в очередь дозаполнения окна (routing.md 9.5), если у плана есть хвост, а впереди в окне осталось
+    /// не больше <see cref="Router.RefillAhead"/> направленных сегментов. Флаг <see cref="VehicleFlags.RefillQueued"/> защищает от дублей.
+    /// </summary>
+    private static void QueueRefill(World w, int i)
+    {
+        VehicleStore v = w.Vehicles;
+        int r = v.Route[i];
+        if (r < 0 || (v.Flags[i] & (byte)(VehicleFlags.RefillQueued | VehicleFlags.RouteMissed)) != 0 || w.Routes.PlanCount[r] == 0)
+        {
+            return;
+        }
+
+        int cur = v.RouteCursor[i];
+        int wc = w.Routes.WinCount[r];
+        int ahead;
+        if (cur < 0)
+        {
+            ahead = (wc + 1) / 2;
+        }
+        else if (cur >= wc)
+        {
+            ahead = 0;
+        }
+        else
+        {
+            bool onConnector = w.Net.Lanes[w.Routes.Window[(r * w.Routes.WindowSteps) + cur].Lane].Kind == LaneKind.Connector;
+            ahead = (wc - 1 - cur + (onConnector ? 1 : 0)) / 2;
+        }
+
+        if (ahead > Router.RefillAhead)
+        {
+            return;
+        }
+
+        var entry = new RefillEntry { Index = i, Generation = v.Pool.GenerationOf(i) };
+        if (w.RefillQueue.TryEnqueue(in entry))
+        {
+            v.Flags[i] |= (byte)VehicleFlags.RefillQueued;
+        }
+    }
+
     private static void ProcessMiss(World w, int i)
     {
         VehicleStore v = w.Vehicles;
         if (v.Route[i] >= 0)
         {
-            w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
+            int r = v.Route[i];
+            if (w.Routes.PlanCount[r] > 0 && v.RouteCursor[i] >= w.Routes.WinCount[r] - 1)
+            {
+                w.Counters.RefillLate++; // дошли до конца непустого окна без дозаполнения (цель 0)
+            }
+
+            w.Routes.Free(new RouteHandle(r, v.RouteGen[i]));
         }
 
         v.Route[i] = -1;

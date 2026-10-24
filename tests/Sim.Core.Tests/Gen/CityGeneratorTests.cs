@@ -497,7 +497,6 @@ public class CityGeneratorTests
                 Assert.Equal(zd.Weight == 0f, zd.SpawnLaneCount == 0);
             }
 
-            Assert.InRange(zd.HubNode, 0, s.NodeCount - 1);
         }
 
         Assert.Equal(96, externalLanes);
