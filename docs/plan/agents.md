@@ -53,5 +53,6 @@
 | 47 | snapshot-impl (worktree) | sonnet | 2.3: реализация ADR-0010 | done, merged (микробенч 22.5 → 16.9 мкс, short-job; хэши прежние) |
 | 49 | routing-h1 (worktree) | sonnet | 2.2 H1: оверлей ячеек, волна, BuildRoad, загрузчик v2 | done, merged (Create оверлея: s100k 248–402 мс, s1m 3.0 с) |
 | 50 | routing-h2 (worktree) | sonnet | 2.2 H2: поиск по оверлею, развёртывание плана, эквивалентность | done, merged (s100k запрос медиана 0.34 мс vs 0.85 мс A* этапа 1) |
-| 51 | routing-h3 (worktree) | sonnet | 2.2 H3: RouteStore, окно, дрейф, фаза 3, удаление старого кэша | wip |
+| 51 | routing-h3 (worktree) | sonnet | 2.2 H3: RouteStore, окно, дрейф, фаза 3, удаление старого кэша | done, merged (s1k 30 мин: completed 5532→6300, stuck 0) |
+| 52 | wave-verify (worktree) | sonnet | верификация волны 2.1–2.3 + профиль s1k/s10k/s100k | wip |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
