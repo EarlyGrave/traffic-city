@@ -733,6 +733,25 @@ internal sealed class VehicleStore
   это даёт I6 без 2D-коллизий. По завершении — `GhostUnlink(i)`.
 - **деспаун**: `Unlink(i)` (+ `GhostUnlink`), `Pool.Free`.
 
+**Уточнения реализации (задача D):**
+- Направление списка: `Ahead` ведёт к `LaneHead`, `Behind` — к `LaneTail`; от головы к хвосту `S` не возрастает.
+- `LaneOccupancy(VehicleStore, maxLanes)` — полоса это просто `int`; `LaneHead/LaneTail/LaneCount` — массивы по `maxLanes`.
+  `LaneCount` считает всех членов списка, ghost включительно.
+- Операции: `PushTail/PushHead(lane, i)`, `InsertBetween(lane, i, ahead, behind)`, `InsertSorted(lane, i)`
+  (по `S[i]`, при равных `S` новая встаёт позади существующих), `FindNeighbours`, `Unlink(i)` (снимает только
+  `Lane[i]`, ставит `Lane[i] = -1`), `BeginLaneChange(i, target, ahead, behind)`, `GhostUnlink(i)`,
+  `CancelLaneChange(i)` (ghost становится основным членством), `UnlinkAll(i)` = `GhostUnlink` + `Unlink` (перед `Despawn`).
+- Ghost не копируется в список: `BeginLaneChange` переносит прежние `Ahead/Behind` в `GhostAhead/GhostBehind`
+  (физически машина остаётся на месте в списке исходной полосы), `Lane[i] = target`, `GhostLane[i] = исходная`.
+  Ссылка соседа на машину выбирается по роли машины на этой полосе (`Lane[v] == lane` ? основная : ghost).
+- `S` ghost-члена в его списке — та же `S[i]` (общая параметризация §6.2); порядок в списке исходной полосы при
+  движении поддерживает фаза интеграции (машина не может обогнать лидера по `S`).
+- `VehicleStore`: `TrySpawn(out VehicleHandle)` (слот инициализирован: ссылки `-1`, остальное `0`; `Lane = -1`),
+  `Despawn(VehicleHandle)` (generation++, требует предварительного `UnlinkAll`), `IsAlive`, `HandleOf(index)`;
+  `VehicleFlags : byte { Stuck=1, AtStop=2, Selected=4, IsBus=8 }` лежит в `Agents/VehicleFlags.cs`.
+- `PendingTrips` — обёртка над `RingBuffer<PendingTrip>`: `TryEnqueue/TryPeek/TryDequeue/At/Clear`; спавнер снимает
+  голову только после успешного спавна.
+
 Поиск соседей на смежной полосе для MOBIL (`FindNeighbours(target, s, out ahead, out behind)`):
 полосы одного сегмента имеют общую параметризацию `s` (§6.2), поэтому идём по списку целевой
 полосы от `LaneTail` вверх, пока `S[cur] < s` — это `behind`, следующий — `ahead`. Сложность
