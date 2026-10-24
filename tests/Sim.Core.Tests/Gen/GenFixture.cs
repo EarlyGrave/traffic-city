@@ -183,7 +183,6 @@ internal static class GenFixture
             h.Add(z.Weight);
             h.Add(z.FirstSpawnLane);
             h.Add(z.SpawnLaneCount);
-            h.Add(z.HubNode);
         }
 
         for (int i = 0; i < run.Zones.ZoneLaneCount; i++)

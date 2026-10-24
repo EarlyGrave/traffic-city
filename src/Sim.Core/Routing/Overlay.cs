@@ -223,6 +223,24 @@ internal sealed partial class Overlay
         return CellBase[level] + (NodeCellZ[node] / div * LevelNx[level]) + (NodeCellX[node] / div);
     }
 
+    /// <summary>
+    /// Стоимость дуги оверлея уровня <paramref name="level"/> <c>a -> b</c> (клетка матрицы ячейки конца <c>a</c>), с; <c>+inf</c> - нет пути или
+    /// <c>a</c>/<c>b</c> не вход/выход ячейки (маршрутизация: остаток стоимости плана, routing.md 9.7).
+    /// </summary>
+    public float ArcCostAt(int level, int a, int b)
+    {
+        int dirCap = _g.DirSegCapacity;
+        int c = CellOfNode(level, _g.EndNode[a]);
+        int r = EntryIdx[((level - 1) * dirCap) + a];
+        int x = ExitIdx[((level - 1) * dirCap) + b];
+        if (r < 0 || x < 0)
+        {
+            return Inf;
+        }
+
+        return Matrix[MatrixFirst[c] + (r * ExitCap[c]) + x];
+    }
+
     /// <summary>Уровень (1..Levels) ячейки с глобальным id.</summary>
     public int LevelOf(int gc)
     {

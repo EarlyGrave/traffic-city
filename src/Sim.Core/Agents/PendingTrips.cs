@@ -14,7 +14,7 @@ internal struct PendingTrip
     public byte Type;
     public int DestLane;     // полоса прибытия или -1 (ещё не выбрана; выбирает спавнер при генерации либо фаза 3)
     public float DestS;
-    public int Route;        // индекс RoutePool; действителен только при RouteGen != 0
+    public int Route;        // слот RouteStore; действителен только при RouteGen != 0
     public int RouteGen;     // поколение маршрута; 0 = маршрут ещё не построен (поколение живого слота всегда нечётное и > 0)
 
     /// <summary>true = маршрут построен (фаза 2 ставит на дорогу только такие поездки).</summary>

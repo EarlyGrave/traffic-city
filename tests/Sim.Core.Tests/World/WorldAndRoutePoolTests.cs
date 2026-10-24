@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Api;
 using Sim.Core.Routing;
 
@@ -79,28 +80,47 @@ public class WorldAndRoutePoolTests
     }
 
     [Fact]
-    public void RoutePool_AddGetFree()
+    public void RouteStore_SlotsWindowsAndPlanArena()
     {
-        var pool = new RoutePool(2, 5);
-        RouteStep[] a = { new() { Lane = 1, Node = 2 }, new() { Lane = 3, Node = -1 } };
-        RouteStep[] b = { new() { Lane = 7, Node = 8 }, new() { Lane = 9, Node = 10 }, new() { Lane = 11, Node = -1 } };
-
-        Assert.True(pool.TryAdd(a, 0, 1, 4, out RouteHandle ha));
-        Assert.True(pool.TryAdd(b, 1, 0, 4, out RouteHandle hb));
-        Assert.Equal(5, pool.StepsUsed);
-        Assert.Equal(2, pool.GetSteps(ha).Length);
-        Assert.Equal(3, pool.GetSteps(hb).Length);
-        Assert.Equal(9, pool.GetSteps(hb)[1].Lane);
-        Assert.Equal(4, pool.NetworkVersion[hb.Index]);
-        Assert.Equal(1, pool.FromZone[hb.Index]);
-
-        Assert.False(pool.TryAdd(a, 0, 1, 4, out RouteHandle none)); // слоты кончились
+        var store = new RouteStore(maxRoutes: 3, maxPlanSteps: 40, windowSteps: 8, levels: 1); // запас блока = 8
+        Assert.True(store.TryAllocate(out RouteHandle ha));
+        Assert.True(store.TryAllocate(out RouteHandle hb));
+        Assert.True(store.TryAllocate(out RouteHandle hc));
+        Assert.False(store.TryAllocate(out RouteHandle none)); // слоты кончились
         Assert.True(none.IsNull);
 
-        Assert.True(pool.Free(ha));
-        Assert.False(pool.Free(ha));
-        Assert.True(pool.GetSteps(ha).IsEmpty);
-        Assert.False(pool.TryAdd(a, 0, 1, 4, out _)); // слот есть, арена исчерпана
-        Assert.Equal(1, pool.AliveCount);
+        // Окно слота лежит по адресу slot * WindowSteps и не двигается.
+        store.Window[(hb.Index * 8) + 1] = new RouteStep { Lane = 9, Node = 10 };
+        store.WinCount[hb.Index] = 2;
+        Assert.Equal(9, store.GetWindow(hb)[1].Lane);
+        Assert.Equal(2, store.GetWindow(hb).Length);
+
+        // План: блок = длина + запас; рост сверх запаса - переезд в хвост; арена кончилась - уплотнение; всё равно мало - false.
+        int[] four = { 1, 2, 3, 4 };
+        Assert.True(store.SetPlan(ha.Index, four));
+        Assert.Equal(12, store.PlanUsed);
+        Assert.True(store.GetPlan(ha.Index).SequenceEqual(four));
+        int[] two = { 7, 8 };
+        Assert.True(store.SetPlan(hb.Index, two));
+        Assert.Equal(22, store.PlanUsed);
+        var twelve = new int[12];
+        for (int i = 0; i < twelve.Length; i++)
+        {
+            twelve[i] = 100 + i;
+        }
+
+        Assert.True(store.SetPlan(ha.Index, twelve)); // помещается в блок (12) - без переезда
+        Assert.Equal(22, store.PlanUsed);
+        var thirteen = new int[13];
+        Assert.True(store.SetPlan(ha.Index, thirteen)); // переезд в хвост: 22 + 21 > 40, уплотнение освобождает старый блок
+        Assert.Equal(1, store.Compactions);
+        Assert.True(store.GetPlan(hb.Index).SequenceEqual(two)); // чужой блок цел после уплотнения
+        Assert.False(store.SetPlan(hc.Index, new int[40])); // больше арены
+        Assert.Equal(0, store.PlanCount[hc.Index]);
+
+        Assert.True(store.Free(ha));
+        Assert.False(store.Free(ha));
+        Assert.True(store.GetWindow(ha).IsEmpty);
+        Assert.Equal(2, store.AliveCount);
     }
 }

@@ -90,7 +90,7 @@ internal sealed class RouteGraph
     /// <summary>Версия сети, по которой построен граф.</summary>
     public int BuiltVersion { get; private set; } = -1;
 
-    /// <summary>Версия весов сегментов: растёт при каждом <see cref="RecalcCosts"/>; магистрали кэша другой версии устаревают (ленивo).</summary>
+    /// <summary>Версия весов сегментов: растёт при каждом <see cref="RecalcCosts"/>; оверлей сравнивает с версией своей последней кастомизации.</summary>
     public int WeightsVersion { get; private set; }
 
     /// <summary>true, если в сети больше дуг, чем помещается (граф усечён).</summary>

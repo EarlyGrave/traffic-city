@@ -120,7 +120,7 @@ public sealed class Simulation : IDisposable
 
     public ReadOnlySpan<byte> LaneSignals => _disposed ? default : _w.LaneSignals;
 
-    /// <summary>Маршрут выбранной машины (срез арены маршрутов); пуст, если ничего не выбрано или маршрута нет.</summary>
+    /// <summary>Окно маршрута выбранной машины (срез массива окон; впереди ≤ 8 сегментов, хвост плана наружу не отдаётся); пуст, если ничего не выбрано или маршрута нет.</summary>
     public RouteView SelectedRoute
     {
         get
@@ -138,7 +138,7 @@ public sealed class Simulation : IDisposable
             }
 
             var rh = new RouteHandle(route, _w.Vehicles.RouteGen[i]);
-            ReadOnlySpan<RouteStep> steps = _w.Routes.GetSteps(rh);
+            ReadOnlySpan<RouteStep> steps = _w.Routes.GetWindow(rh);
             return steps.IsEmpty ? default : new RouteView(_w.Selected, steps, _w.Vehicles.RouteCursor[i]);
         }
     }
@@ -183,11 +183,6 @@ public sealed class Simulation : IDisposable
         if (c.BusHeadwaySamples > 0)
         {
             stats.BusHeadwayDeviationS = (float)(c.BusHeadwayDeviationTicksTotal * (double)Dt / c.BusHeadwaySamples);
-        }
-
-        if (c.PathfindQueries > 0)
-        {
-            stats.PathfindCacheHitRate = (float)((double)c.PathfindCacheHits / c.PathfindQueries);
         }
 
         if (c.VehicleTicksTotal > 0)

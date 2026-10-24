@@ -181,15 +181,15 @@ internal static class Step3Gates
 
             int r = v.Route[i];
             active++;
-            int f = w.Routes.First[r];
-            int n = w.Routes.Count[r];
+            int f = r * w.Routes.WindowSteps;
+            int n = w.Routes.WinCount[r];
             bool anyRemain = false;
             bool anyLaneRemain = false;
             bool anyFull = false;
             var seen = new HashSet<int>();
             for (int k = 0; k < n; k++)
             {
-                RouteStep rs = w.Routes.Steps[f + k];
+                RouteStep rs = w.Routes.Window[f + k];
                 bool inN = rs.Node >= 0 && chainNodes.Contains(rs.Node);
                 anyFull |= inN;
                 if (k >= v.RouteCursor[i])
@@ -446,6 +446,7 @@ public class Step3GateReportTests
         _out.WriteLine($"active={c.ActiveVehicles} spawned={c.VehiclesSpawned} completed={c.TripsCompleted} pendingTrips={sim.World.Trips.Count}");
         _out.WriteLine($"avg_speed_kmh={st.AvgSpeedKmh:F2} avg_trip_time_s={st.AvgTripTimeS:F1} trips_per_min={st.TripsCompletedPerMin:F2}");
         _out.WriteLine($"reroutes={sim.Counters.Reroutes} timed_reroutes={sim.Counters.TimedReroutes} cost_recalcs={sim.Counters.CostRecalcs} queries={sim.Counters.PathfindQueries} deferred={sim.Counters.RouteDeferred}");
+        _out.WriteLine($"routing: work={c.PathfindWork} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} refills={c.WindowRefills} refill_late={c.RefillLate} unpacks={c.PlanUnpacks} unpack_work={c.UnpackWork} plan_compactions={c.PlanCompactions} timed_checks={c.TimedChecks} timed_triggered={c.TimedTriggered} customize_rows={c.CustomizeRows} customize_work={c.CustomizeWork} lag_ticks={c.CustomizeLagTicks}");
         _out.WriteLine($"stuck_now={c.StuckVehicles} stuck_max={maxStuck} stuck_events_total={c.StuckEventsTotal} stuck_ticks_total={c.StuckTicksTotal} gridlock_flag={c.GridlockFlag} gridlock_ticks_total={c.GridlockTicksTotal}");
         _out.WriteLine($"grants={c.Grants} denied_exit={c.GateDeniedExit} inversions={c.PriorityInversions} box_wait_ticks={c.BoxWaitTicks} gate_wait_avg_s={(c.Grants > 0 ? c.GateWaitTicksTotal * 0.05 / c.Grants : 0):F2}");
         _out.WriteLine($"bus: dispatched={c.BusDispatched} stop_arrivals={c.BusStopArrivals} boarded={c.BusPassengersBoarded} headway_samples={c.BusHeadwaySamples} bus_headway_deviation_s={st.BusHeadwayDeviationS:F2}");

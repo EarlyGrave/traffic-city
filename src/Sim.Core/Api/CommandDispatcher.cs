@@ -147,19 +147,19 @@ internal static class CommandDispatcher
     }
 
     // Сеть выросла (routing.md 9.3 "BuildRoad"): граф пересобирается сразу, оверлей дописывает новые узлы/входы/выходы,
-    // помечает ячейки грязными или (не хватило запаса) перестраивается целиком. Без оверлея граф пересоберёт A* лениво.
+    // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
     private static void GrowOverlay(World w)
     {
+        // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
+        // проверка оверлея пометит почти все ячейки и волна будет огромной.
+        w.Graph.Rebuild();
+        w.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
         Routing.Overlay? ov = w.Overlay;
         if (ov == null || ov.Disabled)
         {
             return;
         }
 
-        w.Router.Graph.Rebuild();
-        // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
-        // проверка оверлея пометит почти все ячейки и волна будет огромной.
-        w.Router.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
         ov.OnNetworkGrown();
         w.Counters.OverlayRebuilds = ov.Rebuilds;
         w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;

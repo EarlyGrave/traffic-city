@@ -534,6 +534,8 @@ public partial class SimHost : Node3D
         _routeDirty = false;
         _routeTick = sim.SnapshotTick;
         _routeMesh.ClearSurfaces();
+        // Ядро отдаёт окно маршрута (routing.md 9.5): ≤ 8 сегментов вперёд; хвост плана наружу не выходит, лента короче полного пути.
+        // Окно дозаполняется ядром и сдвигает Cursor - лента перерисовывается каждый снапшот, поэтому конец ленты «растёт» вместе с машиной.
         RouteView route = sim.SelectedRoute;
         if (route.IsEmpty)
         {

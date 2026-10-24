@@ -38,7 +38,7 @@ public class OverlaySearcherTests
         {
             Rig = r,
             Ov = ov,
-            Search = new OverlaySearcher(r.Net, r.Builder.Graph, ov),
+            Search = new OverlaySearcher(r.Net, r.Graph, ov),
             StartLane = new int[Pairs],
             GoalLane = new int[Pairs],
             StartS = new float[Pairs],
@@ -59,7 +59,7 @@ public class OverlaySearcherTests
     // Новые случайные веса: RecalcCosts + волна до конца (матрицы согласованы с весами).
     private static void Reweigh(Setup s, ulong seed)
     {
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var loads = new SegmentLoad[s.Rig.Net.SegmentCount];
         var rng = Pcg32.Create(seed, 9);
         for (int i = 0; i < loads.Length; i++)
@@ -75,7 +75,7 @@ public class OverlaySearcherTests
 
     private static float StartCost(Setup s, int i)
     {
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         int u0 = RouteGraph.DirSegOfLane(s.Rig.Net, s.StartLane[i]);
         float len = s.Rig.Net.Segments[u0 >> 1].Length;
         return g.SegCost[u0] * (1f - Math.Clamp(s.StartS[i] / len, 0f, 1f));
@@ -89,7 +89,7 @@ public class OverlaySearcherTests
     // Плоский эталон: независимый AStarSearcher этапа 1 (двоичная куча) по тем же весам.
     private static float FlatCost(Setup s, int i, AStarSearcher star, int[] buf, out int expanded)
     {
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         int u0 = RouteGraph.DirSegOfLane(s.Rig.Net, s.StartLane[i]);
         int goal = RouteGraph.DirSegOfLane(s.Rig.Net, s.GoalLane[i]);
         var starts = new[] { u0 };
@@ -101,7 +101,7 @@ public class OverlaySearcherTests
 
     private void CheckEquivalence(Setup s, string label)
     {
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var star = new AStarSearcher(g);
         var flatBuf = new int[g.DirSegCount + 2];
         var plan = new int[g.DirSegCount + 2];
@@ -178,7 +178,7 @@ public class OverlaySearcherTests
     public void WithoutOverlay_IsFlatAStar_AndDisabledOverlayToo()
     {
         Setup s = Make("s10k", 2, 1000f);
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var flat = new OverlaySearcher(s.Rig.Net, g, null);
         var star = new AStarSearcher(g);
         var buf = new int[g.DirSegCount + 2];
@@ -228,7 +228,7 @@ public class OverlaySearcherTests
     public void LazyUnpack_EqualsFullExpansion_AndArcCostEqualsMatrixCell()
     {
         Setup s = Make("s10k", 3, 300f);
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var plan = new int[g.DirSegCount + 2];
         var full = new int[g.DirSegCount + 2];
         var lazy = new List<int>();
@@ -302,7 +302,7 @@ public class OverlaySearcherTests
     {
         Setup s = Make("s10k", 3, 300f);
         RoutingRig r = s.Rig;
-        var steps = new RouteStep[2 * (r.Builder.Graph.DirSegCount + 8)];
+        var steps = new RouteStep[2 * (r.Graph.DirSegCount + 8)];
         int ok = 0;
         for (int i = 0; i < 300; i++)
         {
@@ -346,7 +346,7 @@ public class OverlaySearcherTests
     public void Query_SameSegment_AndBadLanes_FollowFlatRules()
     {
         Setup s = Make("s10k", 1, 1000f);
-        var plan = new int[s.Rig.Builder.Graph.DirSegCount + 2];
+        var plan = new int[s.Rig.Graph.DirSegCount + 2];
         int lane = s.StartLane[0];
         Assert.Equal(SearchStatus.Found, s.Search.Query(lane, 5f, lane, 20f, plan, out int pl));
         Assert.Equal(1, pl);
@@ -360,7 +360,7 @@ public class OverlaySearcherTests
     public void Query_WorkCap_StopsSearch()
     {
         Setup s = Make("s10k", 1, 1000f);
-        var plan = new int[s.Rig.Builder.Graph.DirSegCount + 2];
+        var plan = new int[s.Rig.Graph.DirSegCount + 2];
         s.Search.WorkCap = 5;
         int capped = 0;
         for (int i = 0; i < 50; i++)
@@ -382,7 +382,7 @@ public class OverlaySearcherTests
         Setup b = Make("s10k", 3, 300f);
         Reweigh(a, 5);
         Reweigh(b, 5);
-        var pa = new int[a.Rig.Builder.Graph.DirSegCount + 2];
+        var pa = new int[a.Rig.Graph.DirSegCount + 2];
         var pb = new int[pa.Length];
         for (int pass = 0; pass < 2; pass++)
         {
@@ -407,7 +407,7 @@ public class OverlaySearcherTests
     public void Query_Expand_Route_DoNotAllocate()
     {
         Setup s = Make("s10k", 3, 300f);
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var plan = new int[g.DirSegCount + 2];
         var path = new int[g.DirSegCount + 2];
         var steps = new RouteStep[2 * (g.DirSegCount + 8)];
@@ -439,7 +439,7 @@ public class OverlaySearcherTests
         }
 
         Setup s = Make(scenario, levels, cell);
-        RouteGraph g = s.Rig.Builder.Graph;
+        RouteGraph g = s.Rig.Graph;
         var star = new AStarSearcher(g);
         var flatSearch = new OverlaySearcher(s.Rig.Net, g, null);
         var buf = new int[g.DirSegCount + 2];

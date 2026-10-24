@@ -183,6 +183,7 @@ public static class BenchCommand
         SimCounters c = sim.Counters;
         sim.GetStats(out SimStats s);
         r.PathfindQueries = c.PathfindQueries;
+        r.Counters = c;
         r.AvgSpeedKmh = s.AvgSpeedKmh;
         r.AvgTripTimeS = s.AvgTripTimeS;
         r.TripsCompletedPerMin = s.TripsCompletedPerMin;
@@ -346,6 +347,31 @@ public static class BenchCommand
             w.WriteEndArray();
             w.WriteString("note", "traffic counters are cumulative since simulation start (include warmup)");
             w.WriteEndObject();
+
+            // Счётчики маршрутизации и оверлея (routing.md 9.10), накопительные с начала симуляции, кроме overlay_disabled (текущее).
+            SimCounters k = r.Counters;
+            w.WriteStartObject("routing");
+            w.WriteNumber("pathfind_queries", k.PathfindQueries);
+            w.WriteNumber("pathfind_work", k.PathfindWork);
+            w.WriteNumber("pathfind_expanded_nodes", k.PathfindExpandedNodes);
+            w.WriteNumber("route_failed", k.RouteFailed);
+            w.WriteNumber("route_deferred", k.RouteDeferred);
+            w.WriteNumber("reroutes", k.Reroutes);
+            w.WriteNumber("timed_checks", k.TimedChecks);
+            w.WriteNumber("timed_triggered", k.TimedTriggered);
+            w.WriteNumber("timed_reroutes", k.TimedReroutes);
+            w.WriteNumber("plan_unpacks", k.PlanUnpacks);
+            w.WriteNumber("unpack_work", k.UnpackWork);
+            w.WriteNumber("window_refills", k.WindowRefills);
+            w.WriteNumber("refill_late", k.RefillLate);
+            w.WriteNumber("plan_compactions", k.PlanCompactions);
+            w.WriteNumber("cost_recalcs", k.CostRecalcs);
+            w.WriteNumber("customize_rows", k.CustomizeRows);
+            w.WriteNumber("customize_work", k.CustomizeWork);
+            w.WriteNumber("customize_lag_ticks", k.CustomizeLagTicks);
+            w.WriteNumber("overlay_rebuilds", k.OverlayRebuilds);
+            w.WriteNumber("overlay_disabled", k.OverlayDisabled);
+            w.WriteEndObject();
             w.WriteEndObject();
         }
 
@@ -407,6 +433,7 @@ internal sealed class BenchResult
     public double? BytesPerVehicle;
     public double? BusHeadwayDeviationS;
     public long PathfindQueries;
+    public SimCounters Counters;
     public double AvgSpeedKmh;
     public double AvgTripTimeS;
     public double TripsCompletedPerMin;

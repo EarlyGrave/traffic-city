@@ -25,7 +25,7 @@ public class ScenarioLoaderTests
 
     private const string Caps = """
         "capacities": { "max_vehicles": 64, "max_nodes": 8, "max_segments": 8, "max_lanes": 64, "max_lane_points": 512,
-          "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
+          "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64,
           "max_plan_steps": 2048, "max_pending_trips": 64, "max_signalized_nodes": 1 }
         """;
 
@@ -181,15 +181,14 @@ public class ScenarioLoaderTests
     }
 
     [Theory]
-    [InlineData("s1k", 8192, 262144, 81920, 700, 1000)]
-    [InlineData("s10k", 32000, 4000000, 640000, 2800, 10000)]
-    [InlineData("s100k", 250000, 40000000, 7000000, 17000, 100000)]
-    [InlineData("s1m", 1300000, 128000000, 47000000, 170000, 1000000)]
-    public void LadderCapacities(string name, int routes, int steps, int planSteps, int nodes, int vehicles)
+    [InlineData("s1k", 8192, 81920, 700, 1000)]
+    [InlineData("s10k", 32000, 640000, 2800, 10000)]
+    [InlineData("s100k", 250000, 7000000, 17000, 100000)]
+    [InlineData("s1m", 1300000, 47000000, 170000, 1000000)]
+    public void LadderCapacities(string name, int routes, int planSteps, int nodes, int vehicles)
     {
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
         Assert.Equal(routes, d.Capacities.MaxRoutes);
-        Assert.Equal(steps, d.Capacities.MaxRouteSteps);
         Assert.Equal(planSteps, d.Capacities.MaxPlanSteps);
         Assert.Equal(nodes, d.Capacities.MaxNodes);
         Assert.Equal(nodes * 16, d.Capacities.MaxConnectors);
@@ -212,7 +211,6 @@ public class ScenarioLoaderTests
         Assert.Equal(4, r.Fanout);
         Assert.Equal(16, r.WindowSteps);
         Assert.Equal(pathfind, r.PathfindBudgetPerTick);
-        Assert.Equal(pathfind, d.Capacities.PathfindBudgetPerTick); // переходное зеркало для маршрутизации этапа 1
         Assert.Equal(work, r.WorkBudgetPerTick);
         Assert.Equal(customize, r.CustomizeBudgetPerTick);
         Assert.Equal(0.05f, r.CustomizeEps);

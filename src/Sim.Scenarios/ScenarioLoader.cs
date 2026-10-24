@@ -35,7 +35,7 @@ public static class ScenarioLoader
     public const int VehicleTypesFormatVersion = 1;
     private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
     private const int MaxRoutingFanout = 16;      // = Overlay.MaxFanout
-    private const int MaxArenaSteps = 1 << 28;    // предел арен шагов/планов (WorldBuilder.MaxRouteStepsCapacity)
+    private const int MaxArenaSteps = 1 << 28;    // предел арены планов (WorldBuilder.MaxPlanStepsCapacity)
     public const int TicksPerSecond = 20;
     private const string DefaultVehicleTypesFile = "vehicle-types.json";
 
@@ -678,6 +678,7 @@ public static class ScenarioLoader
         d.WindowSteps = r.Int("window_steps", 16, min: 8, max: 32);
         d.PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", 32, min: 1);
         d.WorkBudgetPerTick = r.Int("work_budget_per_tick", WorkBudgetDefault(d.PathfindBudgetPerTick), min: 1);
+        d.QueryWorkCap = r.Int("query_work_cap", 0, min: 0); // 0 = 4 * число направленных сегментов (routing.md 9.4)
         d.CustomizeBudgetPerTick = r.Int("customize_budget_per_tick", 10000, min: 1);
         d.CustomizeEps = (float)r.Num("customize_eps", 0.05, min: 0, max: 1);
         d.CostRecalcTicks = Math.Max(1, Ticks(r.Num("cost_recalc_s", 30, min: 0.05)));
@@ -706,15 +707,12 @@ public static class ScenarioLoader
             MaxPendingTrips = r.Int("max_pending_trips", min: 1),
             CommandQueueCapacity = r.Int("command_queue", 1024, min: 1),
             EventCapacity = r.Int("events", 4096, min: 1),
-            PathfindBudgetPerTick = routing.PathfindBudgetPerTick, // переходно: зеркало routing.pathfind_budget_per_tick до H3
             MaxSignalizedNodes = r.Int("max_signalized_nodes", min: 0),
         };
-        // max_plan_steps: дефолт max_routes * (12 + 8 * levels) (оценка, уточняется замером H3); предел арены - 1 << 28.
+        // max_plan_steps: дефолт max_routes * (12 + 8 * levels) (формула и замер - routing.md 15, H3); предел арены - 1 << 28.
+        // Окна маршрутов (max_routes * window_steps шагов) отдельного ключа не имеют.
         long planDefault = Math.Min(MaxArenaSteps, (long)c.MaxRoutes * (12 + (8 * Math.Max(1, routing.Levels))));
         c.MaxPlanSteps = r.Int("max_plan_steps", (int)planDefault, min: 1, max: MaxArenaSteps);
-        // Переходный ключ: арена шагов кэша маршрутов этапа 1 (RoutePool) живёт до H3, где RouteStore её заменит и ключ уйдёт.
-        long legacySteps = Math.Min(MaxArenaSteps, (long)c.MaxRoutes * 64);
-        c.MaxRouteSteps = r.Int("max_route_steps", (int)legacySteps, min: 1, max: MaxArenaSteps);
         c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
         c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
         r.Finish();

@@ -222,19 +222,19 @@ public class AStarTests
         Assert.Equal(NetworkStatus.Ok, b.AddSegment(d, c, 1, 0, 13.9f, RoadKind.Street, out int s3));
         Assert.Equal(NetworkStatus.Ok, b.BuildAllConnectorsEx());
 
-        var pool = new RoutePool(16, 1024);
-        var rb = new RouteBuilder(store, pool, 4, 8);
+        var graph = new RouteGraph(store);
+        graph.Rebuild();
+        var search = new OverlaySearcher(store, graph, null);
+        var steps = new RouteStep[64];
         int startLane = store.Segments[s1].FirstLaneAB;
         int goodLane = store.Segments[s2].FirstLaneAB;
         int badLane = store.Segments[s3].FirstLaneAB;
 
-        Assert.Equal(BuildStatus.Ok, rb.Build(startLane, 0, goodLane, 10, -1, -1, 1, out RouteHandle h));
-        Assert.Equal(3, pool.Count[h.Index]);
-        Assert.True(pool.Free(h));
+        Assert.Equal(SearchStatus.Found, search.Route(startLane, 0, goodLane, 10, steps, out int count));
+        Assert.Equal(3, count);
         for (int i = 0; i < 50; i++)
         {
-            rb.BeginTick();
-            Assert.Equal(BuildStatus.NoPath, rb.Build(startLane, 0, badLane, 10, -1, -1, 1, out _));
+            Assert.Equal(SearchStatus.NoPath, search.Route(startLane, 0, badLane, 10, steps, out _));
         }
 
         int wrong = 0;
@@ -243,25 +243,22 @@ public class AStarTests
             {
                 for (int i = 0; i < 1000; i++)
                 {
-                    rb.BeginTick();
-                    if (rb.Build(startLane, 0, badLane, 10, -1, -1, 1, out _) != BuildStatus.NoPath)
+                    if (search.Route(startLane, 0, badLane, 10, steps, out _) != SearchStatus.NoPath)
                     {
                         wrong++;
                     }
                 }
             },
-            out int windows);
+            out _);
         Assert.Equal(0, wrong);
         Assert.Equal(0, allocated);
-        Assert.Equal(50 + (1000 * windows), rb.Failed);
-        Assert.Equal(0, pool.AliveCount);
     }
 
     [Fact]
     public void S1k_AStarEqualsDijkstra_100RandomPairs()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         var star = new AStarSearcher(g);
         var path = new int[g.DirSegCount + 1];
         var rng = Pcg32.Create(12345, 7);
@@ -294,7 +291,7 @@ public class AStarTests
     public void Search_IsDeterministic()
     {
         RoutingRig r = RoutingFixture.City("s1k");
-        RouteGraph g = r.Builder.Graph;
+        RouteGraph g = r.Graph;
         var a = new AStarSearcher(g);
         var b = new AStarSearcher(g);
         var pa = new int[g.DirSegCount + 1];

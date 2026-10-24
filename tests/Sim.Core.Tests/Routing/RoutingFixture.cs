@@ -7,19 +7,18 @@ using Sim.Core.Util;
 
 namespace Sim.Core.Tests.Routing;
 
-/// <summary>Сгенерированный город + граф/A*/построитель маршрутов поверх него (без World и фаз).</summary>
+/// <summary>Сгенерированный город + граф маршрутизации поверх него (без World и фаз).</summary>
 internal sealed class RoutingRig
 {
     public GenRun Run = null!;
     public NetworkStore Net = null!;
-    public RoutePool Pool = null!;
-    public RouteBuilder Builder = null!;
+    public RouteGraph Graph = null!;
     public int ZoneCount;
 }
 
 internal static class RoutingFixture
 {
-    public static RoutingRig City(string scenario, int maxRoutes = 8192, int maxSteps = 262_144, int budget = 0)
+    public static RoutingRig City(string scenario)
     {
         GenRun run = GenFixture.Run(scenario);
         if (run.ZoneStatus != CreateStatus.Ok)
@@ -32,13 +31,13 @@ internal static class RoutingFixture
         Array.Copy(run.Zones.ZoneLanes, net.ZoneLanes, run.Zones.ZoneLaneCount);
         net.ZoneCount = run.Zones.ZoneCount;
         net.ZoneLaneCount = run.Zones.ZoneLaneCount;
-        var pool = new RoutePool(maxRoutes, maxSteps);
+        var graph = new RouteGraph(net);
+        graph.Rebuild();
         return new RoutingRig
         {
             Run = run,
             Net = net,
-            Pool = pool,
-            Builder = new RouteBuilder(net, pool, run.Caps.MaxZones, budget),
+            Graph = graph,
             ZoneCount = net.ZoneCount,
         };
     }
@@ -53,7 +52,7 @@ internal static class RoutingFixture
             if (ld.Kind == LaneKind.Normal && ld.Segment >= 0)
             {
                 int u = RouteGraph.DirSegOfLane(r.Net, lane);
-                if (r.Builder.Graph.ArcFirst[u + 1] > r.Builder.Graph.ArcFirst[u])
+                if (r.Graph.ArcFirst[u + 1] > r.Graph.ArcFirst[u])
                 {
                     return lane;
                 }

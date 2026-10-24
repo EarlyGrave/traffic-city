@@ -39,11 +39,9 @@ internal static class TestScenarios
         MaxBusStops = 4,
         MaxBusStopsPerRoute = 4,
         MaxRoutes = 8,
-        MaxRouteSteps = 64,
         MaxPendingTrips = 16,
         CommandQueueCapacity = 8,
         EventCapacity = 64,
-        PathfindBudgetPerTick = 4,
         MaxSignalizedNodes = 2,
     };
 
@@ -55,6 +53,7 @@ internal static class TestScenarios
             Seed = seed,
             DurationTicks = 1000,
             Capacities = Caps(),
+            Routing = new RoutingDesc { PathfindBudgetPerTick = 4 },
             Network = new NetworkDesc
             {
                 Nodes = new[]

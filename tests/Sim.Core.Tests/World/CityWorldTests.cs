@@ -20,11 +20,9 @@ public class CityWorldTests
         SimCapacities c = r.Caps;
         c.MaxVehicles = 1024;
         c.MaxRoutes = 64;
-        c.MaxRouteSteps = 4096;
         c.MaxPendingTrips = 64;
         c.CommandQueueCapacity = 64;
         c.EventCapacity = 256;
-        c.PathfindBudgetPerTick = 4;
         VehicleTypeDesc car = TestScenarios.Car();
         VehicleTypeDesc bus = car;
         bus.Category = VehicleCategory.Bus;
@@ -34,6 +32,7 @@ public class CityWorldTests
             Seed = r.Seed,
             DurationTicks = 1000,
             Capacities = c,
+            Routing = new RoutingDesc { PathfindBudgetPerTick = 4 },
             City = r.City,
             Demand = r.Demand,
             Transit = r.Transit,

@@ -11,7 +11,7 @@ namespace Sim.Core.Transit;
 /// (2) Прибытие: автобус на полосе остановки, не дальше <see cref="BusStopRules.ArriveDistance"/> до её точки и почти стоит
 /// -> <c>AtStop</c>, высаживается треть пассажиров (на конечной - все), садятся ожидающие в пределах вместимости; стоянка =
 /// <c>DwellBase + DwellPerPassenger * (вышло + село)</c>, не больше <see cref="MaxDwellTicks"/>. (3) Отправление по окончании стоянки:
-/// строится маршрут к следующей остановке (<c>Router.Build</c>; при отложенном построении автобус ждёт), остановки без пути пропускаются;
+/// строится маршрут к следующей остановке (<c>Router.Build</c>, тот же иерархический запрос, что у машин; при отложенном построении автобус ждёт), остановки без пути пропускаются;
 /// на конечной (или если дальше пути нет) автобус деспаунится. Метрики: <c>BusStopArrivals</c>, отклонение интервала между последовательными
 /// прибытиями на остановке от планового (<c>HeadwayTicks</c>).
 /// </summary>
@@ -172,7 +172,7 @@ internal static class BusStopPhase
         for (int k = v.BusNextStop[i] + 1; k < br.StopCount; k++)
         {
             ref readonly BusStopData next = ref net.BusStops[br.FirstStop + k];
-            BuildStatus st = w.Router.Build(v.Lane[i], v.S[i], next.Lane, next.S, -1, -1, w.Tick, out RouteHandle h);
+            BuildStatus st = w.Router.Build(v.Lane[i], v.S[i], next.Lane, next.S, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
                 return; // стоим и повторяем на следующем тике (DwellTicks уже 0)

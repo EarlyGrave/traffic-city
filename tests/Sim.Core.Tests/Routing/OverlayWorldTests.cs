@@ -206,10 +206,9 @@ public class OverlayWorldTests
         d.Demand.SpawnRampTicks = 100;
         d.Demand.TypeMix = new[] { 1f, 0f };
         d.Capacities.MaxRoutes = 4096;
-        d.Capacities.MaxRouteSteps = 200_000;
         d.Capacities.MaxPendingTrips = 2048;
-        d.Capacities.PathfindBudgetPerTick = 32;
         d.Routing = OverlayFixture.Desc(2, 1000f, customizeBudget: customizeBudget);
+        d.Routing.PathfindBudgetPerTick = 32;
         d.Routing.CostRecalcTicks = recalcTicks;
         return d;
     }

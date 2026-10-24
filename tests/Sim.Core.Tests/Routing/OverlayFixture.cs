@@ -19,7 +19,7 @@ internal static class OverlayFixture
 
     public static Overlay Build(RoutingRig r, in RoutingDesc d)
     {
-        CreateStatus st = Overlay.TryCreate(r.Net, r.Builder.Graph, in d, out Overlay? ov);
+        CreateStatus st = Overlay.TryCreate(r.Net, r.Graph, in d, out Overlay? ov);
         Assert.Equal(CreateStatus.Ok, st);
         return ov!;
     }
