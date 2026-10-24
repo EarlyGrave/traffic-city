@@ -22,3 +22,5 @@
 | 16 | render | sonnet | 2.5: Sim.Headless render → mp4 | done, merged |
 | 17 | gen-wiring | sonnet | 2-G2: генератор в WorldBuilder/Create | done, merged (Create s1k 13.5 мс) |
 | 18 | spawner-metrics (worktree) | sonnet | 2-H: Spawner, OD, MetricsPhase, подключение фаз | wip |
+| 19 | routing (worktree) | sonnet | 3-R: A*, граф, кэш магистралей (без подключения) | wip |
+| 20 | loader-catchup (worktree) | sonnet | 3.0: новые поля формата в загрузчике и сценариях | wip |
