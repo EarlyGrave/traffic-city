@@ -386,7 +386,7 @@ public class Step3GateReportTests
             return;
         }
 
-        ScenarioDesc d = Step2.S1k();
+        ScenarioDesc d = Step2.S1k(buses: true);
         using Simulation sim = Simulation.Create(in d);
         sim.Step(200);
         long sum = 0;
@@ -448,6 +448,7 @@ public class Step3GateReportTests
         _out.WriteLine($"reroutes={sim.Counters.Reroutes} timed_reroutes={sim.Counters.TimedReroutes} cost_recalcs={sim.Counters.CostRecalcs} queries={sim.Counters.PathfindQueries} deferred={sim.Counters.RouteDeferred}");
         _out.WriteLine($"stuck_now={c.StuckVehicles} stuck_max={maxStuck} stuck_events_total={c.StuckEventsTotal} stuck_ticks_total={c.StuckTicksTotal} gridlock_flag={c.GridlockFlag} gridlock_ticks_total={c.GridlockTicksTotal}");
         _out.WriteLine($"grants={c.Grants} denied_exit={c.GateDeniedExit} inversions={c.PriorityInversions} box_wait_ticks={c.BoxWaitTicks} gate_wait_avg_s={(c.Grants > 0 ? c.GateWaitTicksTotal * 0.05 / c.Grants : 0):F2}");
+        _out.WriteLine($"bus: dispatched={c.BusDispatched} stop_arrivals={c.BusStopArrivals} boarded={c.BusPassengersBoarded} headway_samples={c.BusHeadwaySamples} bus_headway_deviation_s={st.BusHeadwayDeviationS:F2}");
         _out.WriteLine($"hard_clamps={c.HardClamps} lane_changes={c.LaneChanges} aborted={c.LaneChangesAborted} connector_entries={c.ConnectorEntries} spawn_deferred_ticks={c.SpawnDeferredTicks} events_dropped={c.EventsDropped}");
         _out.WriteLine($"tick: mean={sum / (double)ticks * us:F1} us p50={samples[ticks / 2] * us:F1} p95={samples[(int)(ticks * 0.95)] * us:F1} p99={samples[(int)(ticks * 0.99)] * us:F1} max={max * us:F1} us; >1ms: {over1ms}");
         _out.WriteLine($"gap violation: {gap ?? "none"}; conflict overlap: {conflict ?? "none"}");

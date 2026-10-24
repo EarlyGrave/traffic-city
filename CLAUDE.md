@@ -34,7 +34,7 @@ dotnet build traffic-city.sln -warnaserror               # сборка, 0 пр�
 dotnet test traffic-city.sln                             # тесты
 dotnet format traffic-city.sln --verify-no-changes       # стиль
 dotnet build game/TrafficCity.csproj                     # сборка Godot-клиента
-dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --out perf/results/s1k.json
+dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k.json
 dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k.json --baseline perf/baseline.json
 dotnet run --project src/Sim.Headless -c Release -- update-baseline ...   # только осознанно, см. ниже
 dotnet run --project bench/Sim.Bench -c Release -- --filter '*'          # микробенчмарки

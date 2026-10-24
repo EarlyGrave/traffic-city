@@ -238,7 +238,7 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 | `duration_s` | 1800 | 1800 | 1800 | 600 |
 | плотность, маш./полосо-км (оценка) | 3 | 8 | 13 | 13 |
 | `capacities.max_vehicles` | 1 280 | 12 000 | 115 000 | 1 100 000 |
-| `capacities.max_nodes / segments / lanes / lane_points` | 700 / 1 300 / 12 000 / 80 k | 2 800 / 5 200 / 48 k / 320 k | 17 k / 32 k / 300 k / 2 M | 170 k / 330 k / 3 M / 20 M |
+| `capacities.max_nodes / segments / lanes / lane_points` | 700 / 1 300 / 12 000 / 80 k | 2 800 / 5 200 / 48 k / 320 k | 17 k / 32 k / 300 k / 2 M | 170 k / 330 k / 3 M / 15 M |
 | `capacities.max_routes / route_steps` | 8 192 / 256 k | 32 k / 4 M | 250 k / 40 M | 1.3 M / 128 M (*) |
 | `capacities.max_connectors / max_conflicts` | 11.2 k / 67 k | 45 k / 270 k | 270 k / 1.6 M | 2.7 M / 16 M |
 | `capacities.max_pending_trips` | 2 048 | 16 k | 128 k | 1 M |

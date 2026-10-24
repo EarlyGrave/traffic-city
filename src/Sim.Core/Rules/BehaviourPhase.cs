@@ -3,6 +3,7 @@ using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Transit;
 
 namespace Sim.Core.Rules;
 
@@ -46,6 +47,13 @@ internal static class BehaviourPhase
             }
 
             ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
+            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
+            {
+                v.Accel[i] = 0f; // автобус стоит на остановке (посадка)
+                v.LaneChangeDir[i] = 0;
+                continue;
+            }
+
             LeaderInfo li = LeaderSearch.FindFor(e, v.S, i);
             float vi = v.Speed[i];
             float a = Idm.Accel(t, vi, v.DesiredSpeed[i], li.Gap, vi - li.Speed);
@@ -58,6 +66,19 @@ internal static class BehaviourPhase
                     if (ag < a)
                     {
                         a = ag;
+                    }
+                }
+            }
+
+            if ((v.Flags[i] & (byte)VehicleFlags.IsBus) != 0)
+            {
+                float stopGap = BusStopRules.ObstacleGap(net, v, i, t.MinGap);
+                if (stopGap < Idm.FreeGap)
+                {
+                    float ab = Idm.Accel(t, vi, v.DesiredSpeed[i], stopGap, vi);
+                    if (ab < a)
+                    {
+                        a = ab;
                     }
                 }
             }

@@ -41,7 +41,8 @@ public struct SimCounters
     public long SpawnDeferredTicks, InvalidHandleOps;
     public int SignalizedNodes, NodeCount, SegmentCount, LaneCount, ZoneCount; // текущее
     public long BusDispatched, BusStopArrivals;
-    public long BusHeadwayDeviationTicksTotal;   // [шаг 4]
+    public long BusHeadwayDeviationTicksTotal;   // Σ |фактический интервал между автобусами на остановке - плановый|, тики
+    public long BusHeadwaySamples;               // число таких измерений (прибытия, у которых на остановке был предыдущий автобус)
     public long BusPassengersBoarded;
     // --- перекрёстки (intersections.md §10) ---
     public long Grants;                   // выданных допусков

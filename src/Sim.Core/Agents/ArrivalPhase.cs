@@ -27,7 +27,7 @@ internal static class ArrivalPhase
 
             int dest = v.DestLane[i];
             bool arrived = dest >= 0 && v.Lane[i] == dest && v.S[i] >= v.DestS[i];
-            if (!arrived)
+            if (!arrived || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0) // автобусы: BusStopPhase
             {
                 continue;
             }
@@ -63,7 +63,7 @@ internal static class ArrivalPhase
             }
 
             int dest = v.DestLane[i];
-            if (dest < 0 || v.Lane[i] != dest || v.S[i] < v.DestS[i])
+            if (dest < 0 || v.Lane[i] != dest || v.S[i] < v.DestS[i] || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0)
             {
                 continue;
             }

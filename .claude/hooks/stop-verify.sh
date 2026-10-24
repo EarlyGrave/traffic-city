@@ -31,13 +31,19 @@ if [ $rc -ne 0 ]; then
   fail "dotnet test провалился (exit $rc):" "$(printf '%s\n' "$out" | tr -d '\r' | grep -E 'error|Failed|failed|Assert' | awk '!seen[$0]++' | tail -n 40)"
 fi
 
-if [ ! -f scenarios/s1k.json ] || [ ! -f perf/baseline.json ] || [ ! -f src/Sim.Headless/Sim.Headless.csproj ]; then
-  echo "stop-verify: bench/compare пропущены (нужны scenarios/s1k.json, perf/baseline.json, src/Sim.Headless)." >&2
+if [ ! -f scenarios/s1k.json ] || [ ! -f src/Sim.Headless/Sim.Headless.csproj ]; then
+  echo "stop-verify: bench/compare пропущены (нужны scenarios/s1k.json, src/Sim.Headless)." >&2
   exit 0
 fi
 mkdir -p perf/results
-out=$(dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --out perf/results/s1k-smoke.json 2>&1); rc=$?
+out=$(dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k-smoke.json 2>&1); rc=$?
 [ $rc -ne 0 ] && fail "bench s1k провалился (exit $rc):" "$out"
-out=$(dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k-smoke.json --baseline perf/baseline.json 2>&1); rc=$?
-[ $rc -ne 0 ] && fail "регрессия производительности vs perf/baseline.json (compare exit $rc):" "$out"
+# Облачный контейнер: эталон perf/baseline.json (ADR-0007); нет его — абсолютный бюджет p95 <= 1 мс и 0 аллокаций.
+if [ -f perf/baseline.json ]; then
+  out=$(dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k-smoke.json --baseline perf/baseline.json 2>&1); rc=$?
+  [ $rc -ne 0 ] && fail "регрессия производительности vs perf/baseline.json (compare exit $rc):" "$out"
+else
+  out=$(dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k-smoke.json --budget-p95-ms 1.0 2>&1); rc=$?
+  [ $rc -ne 0 ] && fail "бюджет s1k нарушен: p95 > 1.0 мс или аллокации (compare exit $rc):" "$out"
+fi
 exit 0

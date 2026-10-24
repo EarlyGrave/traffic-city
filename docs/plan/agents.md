@@ -42,3 +42,8 @@
 | 36 | ns-fix | haiku | using Sim.Scenarios после мержа Godot | done |
 | 37 | load-routing | sonnet | ADR-0006 | done: stuck 9 → 0 |
 | 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |
+| 39 | buses (worktree) | sonnet | шаг 4: автобусы, остановки, headway | wip |
+| 40 | ci-baseline | sonnet | ADR-0007 | done, merged |
+| 41 | ladder-profile | sonnet | шаг 5: лестница + профиль | done (s1m не создан: ёмкость) |
+| 42 | s1m-fix | haiku | ёмкость s1m + прогон | done (p95 185 мс на 2031 машине) |
+| 43 | buses | sonnet | шаг 4 | done, merged (diff-перенос, ADR переименован в 0008) |

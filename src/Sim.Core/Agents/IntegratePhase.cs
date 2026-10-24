@@ -3,6 +3,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Transit;
 
 namespace Sim.Core.Agents;
 
@@ -85,7 +86,7 @@ internal static class IntegratePhase
 
             v.S[i] = sNew;
             v.Speed[i] = vNew;
-            if (vNew < p.StuckSpeedThreshold)
+            if (vNew < p.StuckSpeedThreshold && !BusStopRules.IsServing(net, v, i))
             {
                 if (v.StillTicks[i] < ushort.MaxValue)
                 {

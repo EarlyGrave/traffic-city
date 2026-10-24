@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Sim.Headless.Bench;
 
@@ -62,6 +63,68 @@ public sealed class BenchCommandTests : IDisposable
         Assert.True(a.TryGetDouble("--t", 0, 1, out double t, 0.1));
         Assert.Equal(0.2, t);
         Assert.False(a.TryGetInt("--t", 1, out _, 9));
+    }
+
+    private static int Budget(string result, string budget, out string stdout)
+    {
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = CompareCommand.Run(new[] { "compare", "--result", result, "--budget-p95-ms", budget }, o, e);
+        stdout = o.ToString() + e.ToString();
+        return code;
+    }
+
+    [Fact]
+    public void Compare_Budget_UnderBudgetNoAlloc_Ok()
+    {
+        Assert.Equal(0, Budget(Write("r.json", 0.9, 0), "1.0", out string o));
+        Assert.Contains("OK", o);
+    }
+
+    [Fact]
+    public void Compare_Budget_OverBudget_Fails()
+    {
+        Assert.Equal(1, Budget(Write("r.json", 1.1, 0), "1.0", out string o));
+        Assert.Contains("OVER BUDGET", o);
+    }
+
+    [Fact]
+    public void Compare_Budget_Alloc_Fails()
+    {
+        Assert.Equal(1, Budget(Write("r.json", 0.5, 24), "1.0", out string o));
+        Assert.Contains("ALLOCATIONS", o);
+    }
+
+    [Fact]
+    public void Compare_NeitherBaselineNorBudget_Usage()
+    {
+        var o = new StringWriter();
+        var e = new StringWriter();
+        Assert.Equal(2, CompareCommand.Run(new[] { "compare", "--result", Write("r.json", 1, 0) }, o, e));
+    }
+
+    [Fact]
+    public void Median_OddAndEven()
+    {
+        Assert.Equal(2, BenchCommand.Median(new[] { 3.0, 1.0, 2.0 }));
+        Assert.Equal(2.5, BenchCommand.Median(new[] { 4.0, 1.0, 2.0, 3.0 }));
+    }
+
+    [Fact]
+    public void Bench_Repeat3_WritesThreeRuns()
+    {
+        string scenarios = FindScenariosDir();
+        string outPath = Path.Combine(_dir, "rep.json");
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "20", "--warmup-ticks", "5", "--repeat", "3", "--out", outPath, "--scenarios-dir", scenarios }, o, e);
+        Assert.True(code == 0, e.ToString());
+        using JsonDocument d = JsonDocument.Parse(File.ReadAllText(outPath));
+        JsonElement perf = d.RootElement.GetProperty("perf");
+        Assert.Equal(3, perf.GetProperty("tick_ms_runs").GetArrayLength());
+        double[] p95s = perf.GetProperty("tick_ms_runs").EnumerateArray().Select(x => x.GetProperty("p95").GetDouble()).OrderBy(x => x).ToArray();
+        Assert.Equal(p95s[1], perf.GetProperty("tick_ms").GetProperty("p95").GetDouble());
     }
 
     [Fact]

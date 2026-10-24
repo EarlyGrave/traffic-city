@@ -1,0 +1,108 @@
+{
+  "scenario": "s1k",
+  "ticks": 2000,
+  "warmup_ticks": 2400,
+  "commit": "ca21af6",
+  "environment": {
+    "runtime": ".NET 10.0.13",
+    "os": "Ubuntu 24.04.5 LTS",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpu_count": 4
+  },
+  "perf": {
+    "tick_ms": {
+      "p50": 0.463105,
+      "p95": 0.630356,
+      "p99": 0.788756,
+      "max": 6.485105
+    },
+    "tick_ms_runs": [
+      {
+        "p50": 0.463105,
+        "p95": 0.630356
+      },
+      {
+        "p50": 0.370916,
+        "p95": 0.5394
+      },
+      {
+        "p50": 0.47953,
+        "p95": 0.707112
+      }
+    ],
+    "ticks_per_sec": 2241.7471574763736,
+    "vehicle_updates_per_sec": 2241489.3565532635,
+    "alloc_bytes_per_tick": 0,
+    "gc_gen0": 0,
+    "gc_gen1": 0,
+    "gc_gen2": 0,
+    "peak_memory_mb": 41.0859375,
+    "bytes_per_vehicle": 6996.124124124124,
+    "bytes_per_vehicle_note": "(GC.GetTotalMemory(true) after run - GC.GetTotalMemory(true) before Simulation.Create) / active vehicles at end",
+    "active_vehicles": 999,
+    "pathfind_queries": 2016,
+    "pathfind_ms_p95": null,
+    "pathfind_ms_p95_note": "core public API does not expose per-query search time"
+  },
+  "traffic": {
+    "avg_speed_kmh": 33.14376449584961,
+    "avg_trip_time_s": 155.60630798339844,
+    "trips_completed_per_min": 28.09090805053711,
+    "stuck_vehicles": 0,
+    "gridlock_flag": false,
+    "bus_headway_deviation_s": null,
+    "top10_intersections": [
+      {
+        "node": 55,
+        "total": 72,
+        "vehicles_per_min": 19.63636334375902
+      },
+      {
+        "node": 54,
+        "total": 66,
+        "vehicles_per_min": 17.999999731779102
+      },
+      {
+        "node": 46,
+        "total": 65,
+        "vehicles_per_min": 17.72727246311578
+      },
+      {
+        "node": 47,
+        "total": 64,
+        "vehicles_per_min": 17.45454519445246
+      },
+      {
+        "node": 48,
+        "total": 63,
+        "vehicles_per_min": 17.181817925789144
+      },
+      {
+        "node": 51,
+        "total": 62,
+        "vehicles_per_min": 16.909090657125823
+      },
+      {
+        "node": 53,
+        "total": 62,
+        "vehicles_per_min": 16.909090657125823
+      },
+      {
+        "node": 56,
+        "total": 60,
+        "vehicles_per_min": 16.36363611979918
+      },
+      {
+        "node": 121,
+        "total": 59,
+        "vehicles_per_min": 16.090908851135865
+      },
+      {
+        "node": 43,
+        "total": 58,
+        "vehicles_per_min": 15.818181582472544
+      }
+    ],
+    "note": "traffic counters are cumulative since simulation start (include warmup)"
+  }
+}

@@ -64,3 +64,10 @@
 ## Godot-клиент
 - **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
 - **Семантический конфликт без текстового**: одна ветка перенесла тип в другой namespace, другая добавила файл со старым using → git сливает чисто, падает сборка в pre-commit. → После мержа параллельных веток всегда build до коммита.
+- **dotnet-trace/dotnet-counters не стартуют дочерний процесс**: в окружении `DOTNET_ROOT=/root/.dotnet`, а рантайм в
+  `/usr/lib/dotnet`. → `DOTNET_ROOT=/usr/lib/dotnet /tmp/dtools/dotnet-trace ...`; профиль `cpu-sampling` в v10 нет —
+  `dotnet-sampled-thread-time`, speedscope в evented-формате.
+- **`validate` пропускает ёмкости, которые ядро отклоняет** (s1m `max_lane_points` 20M > 2^24) → проверять пределы ядра в загрузчике.
+- **compare ложно падает, если baseline и smoke сняты в разных режимах** (baseline: warmup 2400 + repeat 3, после рампы;
+  хук/CI: warmup 200, в рампе) → все места, где гоняется bench для compare (stop-verify.sh, ci.yml, update-baseline),
+  используют одни и те же параметры: `--ticks 2000 --warmup-ticks 2400 --repeat 3`.

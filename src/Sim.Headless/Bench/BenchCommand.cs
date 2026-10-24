@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -22,15 +23,16 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--scenarios-dir <dir>]\n";
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--repeat R] [--scenarios-dir <dir>]\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--scenarios-dir" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
         if (!CliArgs.TryParse(args, _allowed, out CliArgs a)
             || !a.TryGetInt("--ticks", 1, out int ticks, 2000)
-            || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200))
+            || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200)
+            || !a.TryGetInt("--repeat", 1, out int repeat, 1))
         {
             error.WriteLine($"bench: {a.Error}");
             error.Write(Usage);
@@ -51,7 +53,7 @@ public static class BenchCommand
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
-            r = Measure(sc, ticks, warmup);
+            r = MeasureRepeated(sc, ticks, warmup, repeat);
         }
         catch (ScenarioException e)
         {
@@ -70,6 +72,37 @@ public static class BenchCommand
             CultureInfo.InvariantCulture,
             $"bench {r.Scenario}: {r.Ticks} ticks, tick p50/p95/p99/max = {r.P50:0.####}/{r.P95:0.####}/{r.P99:0.####}/{r.Max:0.####} ms, alloc {r.AllocBytesPerTick:0.###} B/tick, stuck {r.StuckVehicles} -> {outPath}"));
         return ExitOk;
+    }
+
+    /// <summary>
+    /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
+    /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
+    /// </summary>
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat)
+    {
+        var runs = new List<BenchResult>(repeat);
+        for (int i = 0; i < repeat; i++)
+        {
+            runs.Add(Measure(sc, ticks, warmup));
+        }
+
+        List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
+        BenchResult med = byP95[(byP95.Count - 1) / 2];
+        med.P50 = Median(runs.Select(x => x.P50));
+        med.AllocBytesPerTick = runs.Max(x => x.AllocBytesPerTick);
+        foreach (BenchResult x in runs)
+        {
+            med.Runs.Add((x.P50, x.P95));
+        }
+
+        return med;
+    }
+
+    public static double Median(IEnumerable<double> values)
+    {
+        double[] a = values.OrderBy(x => x).ToArray();
+        int n = a.Length;
+        return n == 0 ? 0 : n % 2 == 1 ? a[n / 2] : (a[(n / 2) - 1] + a[n / 2]) / 2;
     }
 
     internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup)
@@ -129,7 +162,7 @@ public static class BenchCommand
         r.TripsCompletedPerMin = s.TripsCompletedPerMin;
         r.StuckVehicles = s.StuckVehicles;
         r.Gridlock = s.GridlockFlag != 0;
-        r.BusHeadwayDeviationS = c.BusStopArrivals > 0 ? s.BusHeadwayDeviationS : null;
+        r.BusHeadwayDeviationS = c.BusHeadwaySamples > 0 ? s.BusHeadwayDeviationS : null;
 
         // Топ-10 узлов по пропускной способности: счётчик за всю симуляцию / игровые минуты.
         double minutes = c.Ticks * (double)Simulation.Dt / 60.0;
@@ -236,6 +269,16 @@ public static class BenchCommand
             w.WriteNumber("p99", r.P99);
             w.WriteNumber("max", r.Max);
             w.WriteEndObject();
+            w.WriteStartArray("tick_ms_runs");
+            foreach ((double p50, double p95) in r.Runs)
+            {
+                w.WriteStartObject();
+                w.WriteNumber("p50", p50);
+                w.WriteNumber("p95", p95);
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
             w.WriteNumber("ticks_per_sec", r.TicksPerSec);
             w.WriteNumber("vehicle_updates_per_sec", r.VehicleUpdatesPerSec);
             w.WriteNumber("alloc_bytes_per_tick", r.AllocBytesPerTick);
@@ -335,4 +378,5 @@ internal sealed class BenchResult
     public double TripsCompletedPerMin;
     public bool Gridlock;
     public List<(int Node, uint Total, double PerMin)> Top10 { get; } = new();
+    public List<(double P50, double P95)> Runs { get; } = new();
 }

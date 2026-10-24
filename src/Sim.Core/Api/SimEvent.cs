@@ -13,6 +13,7 @@ public enum SimEventKind : int
     TripCompleted = 11,
     VehicleStuck = 12,
     VehicleUnstuck = 13,
+    BusStopArrived = 14,         // A = индекс маршрута, B = индекс остановки (глобальный)
     GridlockOn = 20,
     GridlockOff = 21,
     CapacityExhausted = 30,      // A = (int)CapacityKind, B = сколько отброшено за тик

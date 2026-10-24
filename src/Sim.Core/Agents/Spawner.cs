@@ -444,8 +444,13 @@ internal static class Spawner
         return TryPlace(w, in trip, in t, trip.FromLane, sCmd < len ? sCmd : len, false);
     }
 
-    private static bool TryPlace(World w, in PendingTrip trip, in VehicleTypeDesc t, int lane, float s, bool moving)
+    private static bool TryPlace(World w, in PendingTrip trip, in VehicleTypeDesc t, int lane, float s, bool moving) =>
+        TryPlace(w, in trip, in t, lane, s, moving, out _);
+
+    /// <summary>Ставит машину на полосу; <paramref name="index"/> - слот новой машины (для автобусов: <c>Transit/BusDispatch</c>).</summary>
+    internal static bool TryPlace(World w, in PendingTrip trip, in VehicleTypeDesc t, int lane, float s, bool moving, out int index)
     {
+        index = -1;
         NetworkStore net = w.Net;
         VehicleStore v = w.Vehicles;
         ref readonly LaneData ld = ref net.Lanes[lane];
@@ -476,6 +481,7 @@ internal static class Spawner
         }
 
         int i = h.Index;
+        index = i;
         float desired = Idm.DesiredSpeed(t, ld.SpeedLimit);
         float speed = 0f;
         if (moving)
