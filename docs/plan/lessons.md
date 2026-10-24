@@ -52,3 +52,6 @@
 - **Оркестратор закоммитил merge с маркерами конфликта**: `git merge ... | grep conflict` в цепочке с
   `git add -A && git commit` — конфликт не остановил цепочку. → После каждого мержа отдельной командой
   `git diff --name-only --diff-filter=U` и `grep -rn '^<<<<<<<' docs src tests scenarios`; коммит — только при пустом выводе.
+
+## Godot-клиент
+- **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
