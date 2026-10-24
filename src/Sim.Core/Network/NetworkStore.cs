@@ -22,6 +22,7 @@ internal sealed class NetworkStore
     public readonly Vec2[] LanePoints;
     public readonly float[] LanePointS;
     public readonly ZoneData[] Zones;
+    public readonly int[] ZoneLanes;         // полосы появления зон подряд; диапазон зоны - ZoneData.FirstSpawnLane/SpawnLaneCount
     public readonly BusStopData[] BusStops;
     public readonly BusRouteData[] BusRoutes;
     public readonly int[] BusRouteStops;
@@ -47,6 +48,7 @@ internal sealed class NetworkStore
         LanePoints = new Vec2[pts];
         LanePointS = new float[pts];
         Zones = new ZoneData[Math.Max(0, caps.MaxZones)];
+        ZoneLanes = new int[lanes];
         BusStops = new BusStopData[Math.Max(0, caps.MaxBusStops)];
         BusRoutes = new BusRouteData[Math.Max(0, caps.MaxBusRoutes)];
         BusRouteStops = new int[Math.Max(0, caps.MaxBusRoutes) * Math.Max(0, caps.MaxBusStopsPerRoute)];
@@ -71,6 +73,8 @@ internal sealed class NetworkStore
     public int LaneNextCount { get; internal set; }
 
     public int ZoneCount { get; internal set; }
+
+    public int ZoneLaneCount { get; internal set; }
 
     public int BusStopCount { get; internal set; }
 

@@ -149,11 +149,11 @@ public class SimulationTests
     }
 
     [Fact]
-    public void Create_CityGenerator_NotSupportedYet()
+    public void Create_CityWithEmptyDesc_InvalidNetwork()
     {
         ScenarioDesc d = TestScenarios.Line();
         d.City.Enabled = true;
-        Assert.Equal(CreateStatus.NotSupported, Simulation.TryCreate(in d, out Simulation? sim));
+        Assert.Equal(CreateStatus.InvalidNetwork, Simulation.TryCreate(in d, out Simulation? sim));
         Assert.Null(sim);
     }
 
