@@ -40,6 +40,13 @@ public class RenderOptionsTests
         Assert.Equal((int)(30.5 * 30 / 2), o.FrameCount);
     }
 
+    [Fact]
+    public void View_WithLeadingMinusValue_IsAcceptedWithoutSpace()
+    {
+        Assert.True(Parse("render --scenario s1k --seconds 5 --out a.mp4 --view -350,-350,350,350", out RenderOptions o, out string err), err);
+        Assert.Equal(new[] { -350f, -350f, 350f, 350f }, o.View);
+    }
+
     [Theory]
     [InlineData("render --seconds 10 --out a.mp4", "--scenario")]
     [InlineData("render --scenario x --out a.mp4", "--seconds")]

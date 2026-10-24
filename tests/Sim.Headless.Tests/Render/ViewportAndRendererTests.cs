@@ -94,6 +94,60 @@ public class ViewportAndRendererTests
     }
 
     [Fact]
+    public void Colors_MatchPalette()
+    {
+        Assert.Equal(new Rgb(51, 221, 255), FrameRenderer.CarColor);
+        Assert.Equal(new Rgb(255, 160, 32), FrameRenderer.BusColor);
+        Assert.Equal(new Rgb(255, 48, 48), FrameRenderer.StuckColor);
+        // Артерии светлее улиц, улицы светлее связок; дороги темнее машин.
+        Assert.True(FrameRenderer.ArterialColor.B > FrameRenderer.StreetColor.B);
+        Assert.True(FrameRenderer.StreetColor.B > FrameRenderer.ConnectorColor.B);
+        Assert.True(FrameRenderer.StreetColor.B > FrameRenderer.Background.B);
+    }
+
+    [Fact]
+    public void DrawVehicles_TinyVehicle_IsDrawnAsAtLeast3x3Dot()
+    {
+        using Simulation sim = DemoSim(out LoadedScenario sc);
+        // 3000 м в 400 px: машина 4.5 м = 0.6 px - должна стать точкой 3x3.
+        float[] view = { 0f, 0f, 3000f, 3000f };
+        var r = new FrameRenderer(sim, sc.Desc.VehicleTypes, 400, 400, view);
+        r.Canvas.Clear(new Rgb(0, 0, 0));
+        VehicleRenderData[] tiny = { Car(0, 1, 1500f, 1500f, 0f) };
+        r.DrawVehicles(tiny, default, 0f);
+
+        int car = 0;
+        for (int y = 0; y < 400; y++)
+        {
+            for (int x = 0; x < 400; x++)
+            {
+                if (r.Canvas.GetPixel(x, y) == FrameRenderer.CarColor)
+                {
+                    car++;
+                }
+            }
+        }
+
+        Assert.Equal(9, car);
+        Assert.Equal(FrameRenderer.CarColor, r.Canvas.GetPixel(200, 200));
+    }
+
+    [Fact]
+    public void DrawVehicles_NormalVehicle_HasDarkOutline()
+    {
+        using Simulation sim = DemoSim(out LoadedScenario sc);
+        // 10 px/м: машина 45 x 18 px, центр (200, 200); обводка 1 px снаружи.
+        float[] view = { 0f, 0f, 40f, 40f };
+        var r = new FrameRenderer(sim, sc.Desc.VehicleTypes, 400, 400, view);
+        r.Canvas.Clear(new Rgb(0, 0, 0));
+        VehicleRenderData[] one = { Car(0, 1, 20f, 20f, 0f) };
+        r.DrawVehicles(one, default, 0f);
+        Assert.Equal(FrameRenderer.CarColor, r.Canvas.GetPixel(200, 200));
+        Assert.Equal(FrameRenderer.VehicleOutlineColor, r.Canvas.GetPixel(200, 190));
+        Assert.Equal(new Rgb(0, 0, 0), r.Canvas.GetPixel(200, 180));
+    }
+
+    [Fact]
     public void Render_ProducesFullFrame_AndNetworkIsDrawn()
     {
         using Simulation sim = DemoSim(out LoadedScenario sc);
