@@ -31,4 +31,4 @@
 | 25 | merge-fix (s3) | haiku | разрешение конфликтов J1+J2 | done |
 | 26 | gates (worktree) | fable | 3-J3+J4: ворота, анти-дедлок, фазы 5/7, подключение сигналов | wip |
 | 27 | route-wiring (worktree) | sonnet | 3-R4/R5: фаза 3, маршруты в спавне и движении, убрать STAGE2-TEMP | wip |
-| 28 | straight-roads (worktree) | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | wip |
+| 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |
