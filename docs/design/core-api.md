@@ -710,6 +710,7 @@ internal sealed class VehicleStore
     public readonly float[] Length;        // копия из типа (чтобы не ходить в VehicleTypes)
     public readonly byte[]  Type;
     public readonly float[] DesiredSpeed;  // v0 на текущей полосе = min(MaxSpeed, SpeedFactor*limit); пересчёт при смене полосы
+    public readonly float[] SOld;          // scratch фазы 6: копия S на начало тика (клэмп I6 читает старые позиции лидеров); не в хэше, не в снапшоте
 
     // --- порядок на полосе (intrusive double-linked list, §6.4) ---
     public readonly int[] Ahead, Behind;          // соседи на Lane; -1 = нет
@@ -910,6 +911,20 @@ Counters.HardClamps++ при срабатывании
 и вставке в середину полосы (смена полосы) проверяется зазор `≥ MinPhysicalGap` с обеих сторон,
 иначе манёвр/спавн откладывается. Тест: прогон s1k 36 000 тиков, после каждого тика проверка
 `S[Ahead[i]] − Length[Ahead[i]] ≥ S[i]` для всех машин (в тесте — O(N) проверка, не в ядре).
+
+**Уточнения реализации (задача F):**
+- Фазы 5-8 принимают компоненты явно (`Run(NetworkStore, VehicleStore, LaneOccupancy, in RouteAccess, ReadOnlySpan<VehicleTypeDesc>, in PhysicsParams, ...)`);
+  обёртки `Run(World w)` есть в каждой фазе, но строки в `PhaseList` пока не раскомментированы (см. отчёт). `RouteAccess` - тонкий вид на `RoutePool` (First/Count/Steps).
+- Лидер ищется по `Ahead` основной полосы и `GhostAhead` (минимум), иначе просмотр цепочки следующих полос по расстоянию
+  `LookaheadDistance = 150 м` и не более 6 полос (вместо фиксированных 2: connector'ы короткие). Полоса без продолжения (тупик, конец маршрута,
+  connector маршрута начинается с другой полосы) - виртуальное неподвижное препятствие в её конце; машина останавливается, не исчезает.
+- Следующая полоса: по маршруту (`RouteCursor`, шаги lane/connector чередуются), без маршрута - первый connector из `LaneNext`, у connector'а - `ToLane`.
+- `v0 = min(MaxSpeed, SpeedFactor * limit)`; `Accel` ограничено снизу -9 м/с². Фаза 6 копирует `S` в `VehicleStore.SOld` и клэмпит по нему (порядок обхода не важен).
+- Смена полосы: намерение (фаза 5) перепроверяется в фазе 7 по текущим позициям; запрещена, если до конца полосы меньше `v*duration + 0.5 м`
+  или задний бампер ближе `LaneEntryClearance = 25 м` к началу полосы (идущий сзади на connector'е не виден в списках целевой полосы).
+  Принудительная смена (маршрут требует другую полосу) проверяет только безопасность; добровольная при заданном маршруте - только при остатке полосы >= 120 м.
+  `Lateral` и `LaneChangeTicks` ведёт фаза 7 (владелец манёвра), не фаза 6. Манёвр, не закончившийся к концу полосы, обрывается (`LaneChangesAborted`).
+- `DestS` должно быть <= `Length - MinGap` полосы-цели (у тупика машина останавливается за `s0` до конца).
 
 ## 8. PRNG — PCG32
 
