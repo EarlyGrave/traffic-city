@@ -33,3 +33,4 @@
 | 27 | route-wiring | sonnet | 3-R4/R5: фаза 3, маршруты, STAGE2-TEMP убран | done, merged (completed 10 мин: 144 → 1775) |
 | 28 | straight-roads | sonnet | 3.G: city.node_jitter_m = 0 (прямые дороги) | done, merged |
 | 29 | verify-gates | sonnet | прогон ветки ворот: build/test/s1k 30 мин | done |
+| 30 | stuck-diag | sonnet | диагностика stuck на ветке ворот | done: корень — спиллбэк ниже узла 53 |
