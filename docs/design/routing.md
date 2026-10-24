@@ -137,7 +137,7 @@ internal sealed class AStarState
 Ожидаемая нагрузка s1k: ≈ 1 000 машин / средняя поездка ≈ 6 мин ⇒ ≈ 3 спавна/с ⇒ 0.15 запроса/тик;
 бюджет 32 нужен только на разгоне (`spawn_ramp`), где `PendingTrips` заполняется заранее.
 
-## 4. Кэш по парам зон и сборка маршрута
+## 4. Кэш по парам зон и сборка маршрута (удалено в H3 — заменено §9, итоги в §15)
 
 ### 4.1 Хаб зоны и магистраль
 
@@ -659,3 +659,76 @@ H3 меряет и уточняет формулу `max_plan_steps` в `scenario
   строка матрицы просматривается целиком (до 96 выходов уровня 2, большая часть `+∞` или дальних), тогда как у плоского ≈ 2.7 дуги на вершину. Выигрыш по времени
   (медиана ×3.1 к IndexedHeap4 и ×2.5 к A* этапа 1 на s100k, p95 ×5.8 / ×4.9; s10k ×1.9 / ×1.7) даёт короткая куча (раскрытия дороже релаксаций). Это вход для H4 (рёбра
   с `+∞` можно пропускать списком достижимых выходов строки; ALT на верхнем уровне).
+
+## Уточнения по факту реализации H3 (`RouteStore`, `Router`, фаза 3, дозаполнение окон)
+
+Совместимость с этапом 1 не держится: удалены `RoutePool`, `RouteCache`, `RouteBuilder` (магистрали, `GetTrunk`, `ComposeViaTrunk`), `ZoneData.HubNode`
+(и `AssignHubs` генератора, `NearestNode` загрузчика явной сети), `SimCapacities.MaxRouteSteps/PathfindBudgetPerTick` и ключ `max_route_steps`,
+счётчики `PathfindCacheHits/RouteCompactions/RouteCacheSkips` и `SimStats.PathfindCacheHitRate`. §3 (кэш по парам зон), §4.1-4.3 и бюджет раскрытий
+в §3 заменены §9; `AStarSearcher` (`AStar.cs`) остался только как независимый эталон тестов (`levels = 0` — `OverlaySearcher` без оверлея).
+
+- **Файлы**: `Routing/RouteStore.cs` (слоты, окна, арена плана), `Routing/Router.cs` (`Build`, `Refill`, `RemainingCost`, `SyncGraph`; метрики пишет прямо
+  в `World.Counters`, потому что запросы идут и из фаз 2b/8b — автобусы), `Routing/RouteLayout.cs` (`LayoutLanes`, перенесён из `RouteBuilder`),
+  `RoutePhase.cs` (фаза 3), `RouteNav.cs` (`QueueRefill`, `RefillLate`). `World`: `Routes: RouteStore`, `Graph: RouteGraph`, `Router`, `Overlay?`, `RefillQueue`.
+  `Router` создаётся в `WorldBuilder.BuildOverlay` после оверлея (поисковику нужна ссылка на него); без оверлея (`levels = 0`) — плоский поиск.
+- **Пределы из H2 приняты**: `UnpackCap = 256` — константа буфера развёртывания (`OverlaySearcher.UnpackCap`), а не `unpack_cap = 64` из §9.5: на уровне 3
+  (ячейка 16 км, ~100 сегментов) 64 дало бы ложные промахи; больше 256 → `PathTooLong` → промах. `WorkCap` вынесен в `RoutingDesc.QueryWorkCap`
+  (JSON `routing.query_work_cap`, 0 = `4 · DirSegCapacity`, значение H2 по умолчанию); превышение — `NoPath`.
+- **Окно**: `WindowSteps = 16` → ≤ 8 DirSeg (`maxDirs = (W + 1) / 2`), раскладка `2k − 1` шагов. Начальное окно: запрос → план → стек в обратном порядке →
+  `Materialize` снимает элементы, пока в буфере не `maxDirs` DirSeg (элементы уровня q > 0 разворачиваются `Unpack` от последнего DirSeg буфера);
+  `LayoutLanes` (цель — `DestLane`, если стек пуст, иначе первая полоса последнего DirSeg), остаток стека → `SetPlan`.
+- **Дозаполнение** (`Router.Refill`): сохраняется префикс — `[Cursor, Cursor+1]` (текущая обычная полоса и connector), для курсора на connector'е — один
+  `[Cursor]`, для `Cursor = -1` — пусто; остальные шаги заново раскладываются из «DirSeg оставшихся нормальных шагов окна + новые из стека» до заполнения
+  слота. Курсор после дозаполнения 0 (или −1), поэтому для машин на connector'е нормальные полосы окна стоят на **нечётных** индексах: проверки вида
+  `(Cursor & 1) == 0` неверны (убрана из `Step3.CheckRoutes`). Повторная раскладка может поменять connector'ы дальше `Cursor+1` — машина их ещё не выбрала,
+  а `NextConn` (индекс полосы, не шага) не трогается; несовпадение `Steps[Cursor+2]` и `ToLane` connector'а допустимо и раньше (§14).
+  Окно, в которое нечего добавлять (уже `capDirs`), — успех без изменений; курсор на последнем шаге, развёртывание не удалось или нет места под план →
+  `false` → `RouteMissed` (маршрут освободит `AssignConnectors`, машина встаёт в `Rerouting`).
+- **Очередь дозаполнения**: ставит `RouteNav.QueueRefill` из `AssignConnectors` (конец фазы 7, обход всех машин и так есть), а не из `Advance` (там нет `World`):
+  `PlanCount > 0` и впереди ≤ `RefillAhead = 3` нормальных шагов окна. `RefillQueue` — `RingBuffer<RefillEntry>` (индекс + поколение) на `MaxVehicles`,
+  флаг `VehicleFlags.RefillQueued` исключает дубли и поэтому переполнения быть не может. Фаза 3 обрабатывает всю очередь первой, затем обнуляет
+  `Router.WorkThisTick` — дозаполнения в бюджет запросов не входят.
+- **`RefillLate`**: считается в `ProcessMiss`, если у маршрута непустой план и курсор на последнем шаге окна (`Cursor ≥ WinCount − 1`) — то есть машина дошла до
+  конца окна без дозаполнения. Промах с другой причиной (неудавшееся развёртывание, нет места) на другом шаге в `RefillLate` не попадает, но даёт `Reroutes++`.
+- **`RuleEnv`**: `RouteAccess` = (`WinCount`, `PlanCount`, `Window`, `Width`), индекс шага `r · Width + c`; `RouteDesiredLane` на последнем шаге окна при
+  `PlanCount > 0` возвращает −1 (полосу прибытия не навязываем). Остальная навигация (`NextLane`, `Advance`) не менялась.
+- **Бюджеты** (`RoutePhase.Budget`): запрос допускается, если `Served < pathfind_budget_per_tick` и `WorkThisTick < work_budget_per_tick`; 0 в `RoutingDesc` = без
+  ограничения. Проверка между запросами, первый запрос тика всегда выполняется. Работа запроса = релаксации поиска + релаксации его развёртываний.
+  Порядок фазы: дозаполнения → проверка дрейфа → промахи → плановые (доля 1/4) → поездки → пересчёт весов → волна. Пересчёт весов теперь **после** запросов
+  (в §9.6 так и записано; на этапе 1 стоял в начале фазы): запросы тика видят веса прошлого пересчёта.
+- **Дрейф** (§9.7): `EnqueueTimed` каждый тик берёт машины `i % 1200 == Tick % 1200` (как раньше), пропускает машины не на обычной полосе, с `Cursor < 0`, без
+  `DestLane` и с остатком сегмента < 80 м, затем (`TimedChecks++`) считает `Router.RemainingCost` — остаток текущего сегмента + окно от курсора + стек плана
+  (`q = 0`: `SegCost + ArcCost`, `q ≥ 1`: `Overlay.ArcCostAt`, клетка матрицы O(1)) — и сравнивает с `max(PlanCost − (Tick − PlanTick)·dt, 0)·(1 + timed_drift) +
+  timed_drift_abs`. Порог `TimedMinRemaining = 1000 м` этапа 1 убран (его заменяет абсолютная добавка 20 с). Превышение → запись `Kind = Timed` (`TimedTriggered++`).
+  Обработка записи: запрос от текущей позиции; принимается, если `PlanCost` нового < остатка·0.9 (`TimedReroutes++`), иначе слот нового освобождается, а у старого
+  `PlanCost/PlanTick` переустанавливаются на текущий остаток (**расхождение со спекой**: без этого повторная проверка срабатывала бы каждые 60 с на
+  том же дрейфе). Остаток включает долю текущего сегмента, потому что `PlanCost` содержит `SegCost(u0)·(1 − s/L)`.
+- **Автобусы**: `BusDispatch`/`BusStopPhase` зовут тот же `Router.Build` (без зон и тика кэша); маршрут от остановки к остановке почти всегда целиком в окне
+  (`PlanCount = 0`).
+- **`BuildRoad`**: `GrowOverlay` теперь всегда пересобирает граф и возвращает веса по загрузке (`Rebuild` + `RecalcCosts`), не только при оверлее; `Router.SyncGraph`
+  (`Build` при `BuiltVersion != Net.Version`) делает то же, сброса весов к свободному потоку нет (в §15 H1 это было отмечено как остаток этапа 1). Оверлей
+  выключен (`Disabled`) при живых планах с q ≥ 1 → `Unpack` возвращает `NoPath` → промах/перемаршрутизация плоским поиском.
+- **Ёмкости**: `MaxPlanSteps = 0` в `SimCapacities` → `max_routes · (12 + 8·max(1, levels))` (в `World`, для тестов и явных сетей); окна `max_routes · window_steps` шагов,
+  предел `1<<28` (`WorldBuilder.MaxWindowCells`). `RoutingDesc.PathfindBudgetPerTick` не подменяется ёмкостями (0 = без ограничения).
+- **Хэш**: добавлены `RefillQueue`, живые слоты `RouteStore` (`Generation`, `WinCount`, `PlanCount`, `PlanCost`), новые счётчики вместо удалённых. Окна, планы и матрицы не хэшируются.
+- **Метрики** (`SimCounters`, секция `routing` в JSON бенча): `PathfindQueries/Work/ExpandedNodes`, `RouteFailed/Deferred`, `Reroutes`, `TimedChecks/Triggered/Reroutes`, `PlanUnpacks/UnpackWork`,
+  `WindowRefills`, `RefillLate`, `PlanCompactions`, `CostRecalcs`, `CustomizeRows/Work/LagTicks`, `OverlayRebuilds/Disabled`.
+- **Формула `max_plan_steps`** подтверждена замером (тест `Report_PlanStackLength`, 1 500 машин, длина стека за окном, живые маршруты после рампы):
+
+  | сеть, уровни | средняя | p95 | максимум | пик занятой арены / живых маршрутов |
+  |---|---|---|---|---|
+  | s1k, L1 | 4.5 | 12 | 19 | 18.3 |
+  | s10k, L1 | 7.5 | 15 | 22 | 26.7 |
+  | s10k, L2 (cell 500) | 5.8 | 12 | 17 | 35.3 |
+  | s10k, L3 (cell 300) | 5.6 | 11 | 15 | 46.8 |
+  | s100k, L2 | 10.2 | 18 | 24 | 28.1 |
+
+  Блок слота = длина + `8·levels`; пик арены включает дыры до компактификации (в замерах компактификаций не было). Формула `12 + 8·levels` оставлена; s1m не измерялся.
+- **Метрики s1k, 30 игровых минут** (тест `Step3GateReportTests.Report_S1k`, Release, окружение 4 vCPU Xeon 2.1 ГГц; детерминированные цифры одинаковы во всех прогонах,
+  времена шумят от прогона к прогону). До H3 (`e16058e`) → после: spawned 6 564 → 7 333; completed 5 532 → 6 300; avg_speed 33.38 → 33.25 км/ч; avg_trip_time 281.2 → 248.7 с;
+  stuck 0 → 0 (stuck_events_total 0 → 0); gridlock 0 → 0; автобусы: dispatched 61 → 61, stop_arrivals 466 → 467, headway_samples 367 → 368, bus_headway_deviation 35.60 → 36.08 с;
+  `RefillLate = 0`, `RouteFailed = 0`. Tick p95, мкс (4 прогона до: 436.5 / 432.8 / 503.4 / 452.8; 4 прогона после: 462.7 / 421.7 / 413.1 / 451.3) — в пределах шума.
+  Новые счётчики за прогон: queries 11 176, work 9.58 M релаксаций (раскрытий 1.94 M), window_refills 15 812, plan_unpacks 6 718 (работа 0.44 M), timed_checks 11 008 /
+  timed_triggered 1 797 / timed_reroutes 892, reroutes (промахи) 1 293 (было 1 056), customize 9 120 строк / 3.60 M релаксаций, plan_compactions 1. Мини-bench s1k
+  (`--ticks 2000 --warmup-ticks 2400 --repeat 3`, один прогон каждый, одна машина): p50/p95/p99 до 0.2827 / 0.421 / 0.6827 мс, после 0.2557 / 0.408 / 0.679 мс; 0 B/тик; stuck 0;
+  `compare` против `perf/baseline.json` — OK (p95 −35.3% к baseline, снятому на другой загрузке машины; baseline не менялся).

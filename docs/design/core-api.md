@@ -263,11 +263,11 @@ public struct SimCapacities
     public int MaxLanePoints;              // суммарно точек полилиний всех полос
     public int MaxZones, MaxBusRoutes, MaxBusStops;
     public int MaxBusStopsPerRoute;        // по умолчанию 32
-    public int MaxRoutes, MaxRouteSteps;   // кэш маршрутов: число маршрутов и суммарно шагов
+    public int MaxRoutes;                  // слоты маршрутов: машины + поездки с построенным маршрутом (routing.md §9.5); окно слота - routing.window_steps
+    public int MaxPlanSteps;               // арена планов маршрутов, элементов int (4 Б); 0 = max_routes · (12 + 8·levels)
     public int MaxPendingTrips;            // очередь ожидающих спавна поездок
     public int CommandQueueCapacity;       // по умолчанию 1024
     public int EventCapacity;              // по умолчанию 4096 за Step
-    public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
     public int MaxSignalizedNodes;
     public int MaxConnectors;              // connector-полос всего (intersections.md §4); по умолчанию MaxNodes * 16 (0 в World = по умолчанию)
     public int MaxConflicts;               // записей ConflictEntry (intersections.md §3); по умолчанию MaxConnectors * 6 (0 в World = по умолчанию)
@@ -421,8 +421,8 @@ public struct SetNodeControlCmd { public int Node; public NodeControl Control; }
   и кодом причины (`SimEvent.A = (int)RejectReason`), плюс события-следствия
   (`NodeCreated`, `SegmentCreated`, `BusRouteCreated`), из которых клиент узнаёт созданные индексы.
 - `BuildRoad` во время движения допустим: только добавление (снос — этап 2). После применения
-  `Network.Version++`; кэшированные магистрали инвалидируются лениво по `NetworkVersion` при обращении,
-  индивидуальные маршруты едущих машин остаются валидными (`routing.md` §4.3); connector'ы и конфликты
+  `Network.Version++`; граф маршрутизации и оверлей достраиваются сразу (`routing.md` §9.3), планы и окна едущих машин остаются
+  валидными (они хранят направленные сегменты и полосы, а не индексы матриц); connector'ы и конфликты
   затронутых узлов перестраиваются, их допуски сбрасываются (`intersections.md` §5.7).
 
 ## 5. Снапшоты
@@ -544,9 +544,10 @@ connector'ы. Детали фаз — **[шаг 3]**.
 
 ### 5.5 Маршрут выбранной машины — без аллокаций
 
-Маршруты живут в `RoutePool` (§6.5): одном массиве `RouteStep[MaxRouteSteps]`, маршрут = диапазон
-`(First, Count)`. Машина хранит `RouteHandle` + `Cursor`. Поэтому «отдать маршрут» = отдать
-срез существующего массива:
+Маршрут машины = **план** (стек граничных DirSeg с уровнем, не отдаётся) + **окно** — до `routing.window_steps` (дефолт 16) полосовых
+шагов `RouteStep` в фиксированном слоте `RouteStore.Window[slot · W ..]` (§6.5). Машина хранит `RouteHandle` слота и `Cursor`; окно
+дозаполняется ядром заранее, поэтому «отдать маршрут» = отдать срез существующего массива — **окно, а не весь путь** (впереди
+≤ 8 направленных сегментов; клиент рисует ленту только на эту длину, хвост плана наружу не выходит):
 
 ```csharp
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 8)]
@@ -555,8 +556,8 @@ public struct RouteStep { public int Lane; public int Node; } // полоса (�
 public readonly ref struct RouteView
 {
     public readonly VehicleHandle Vehicle;        // Null, если ничего не выбрано / машина прибыла
-    public readonly ReadOnlySpan<RouteStep> Steps; // полный маршрут от начала
-    public readonly int Cursor;                   // индекс шага, на котором машина сейчас
+    public readonly ReadOnlySpan<RouteStep> Steps; // окно маршрута: шаги от уже пройденных (после дозаполнения сдвинуты в начало) до ≤ 8 сегментов вперёд
+    public readonly int Cursor;                   // индекс шага окна, на котором машина сейчас (-1 - на connector'е вне маршрута)
     public bool IsEmpty => Steps.Length == 0;
 }
 ```
@@ -564,8 +565,8 @@ public readonly ref struct RouteView
 `RouteStep` — на уровне полос, а не сегментов, чтобы оверлей рисовал реальную траекторию и чтобы
 выбор полосы перед поворотом был частью маршрута (**[шаг 3]**: маршрутизатор ищет по графу
 направленных сегментов, затем «раскладывает» на полосы; структура шага не меняется).
-Если выбранная машина перестроила маршрут, `Steps` указывает на новый диапазон — валидность
-среза только до следующего `Step`.
+Если выбранная машина перестроила маршрут или ядро дозаполнило окно, `Steps` и `Cursor` меняются (курсор сдвигается назад на число
+отброшенных шагов) — валидность среза только до следующего `Step`; лента в клиенте перерисовывается каждый снапшот.
 
 ### 5.6 Статическая геометрия для клиента
 
@@ -830,27 +831,28 @@ O(k), k ≤ машин на полосе (городской сегмент 100�
 амортизированная стоимость ≪ IDM. Оптимизация **[этап 2]**: подсказка `LateralHint[i]` —
 последний найденный сосед, от которого идти в обе стороны.
 
-### 6.5 Маршруты (`Sim.Core.Routing.RoutePool`) — хранилище, без алгоритма
+### 6.5 Маршруты (`Sim.Core.Routing.RouteStore`) — план и окно
 
 ```csharp
-internal sealed class RoutePool
+internal sealed class RouteStore
 {
-    public readonly HandlePool Pool;                   // MaxRoutes
-    public readonly int[] First, Count;                // диапазон в Steps
-    public readonly int[] RefCount;                    // машин, использующих маршрут: 1 у индивидуального, 0 у магистрали (routing.md §4)
-    public readonly int[] FromZone, ToZone;            // ключ кэша магистрали; -1 для индивидуальных маршрутов
-    public readonly int[] NetworkVersion;              // при каком Network.Version построен
-    public readonly long[] LastUsedTick;               // для LRU-вытеснения магистралей
-    public readonly RouteStep[] Steps;                 // MaxRouteSteps, арена с bump-аллокатором и компактификацией
-    public int StepsUsed;
+    public readonly HandlePool Pool;                   // MaxRoutes слотов: слот = handle маршрута
+    public readonly int WindowSteps;                   // routing.window_steps (8..32, дефолт 16)
+    public readonly RouteStep[] Window;                // [MaxRoutes · WindowSteps]: окно слота r = Window[r·W .. r·W + WinCount[r]), слот не двигается
+    public readonly byte[] WinCount;
+    public readonly int[] PlanFirst, PlanCount, PlanCap; // стек плана в PlanArena; вершина стека - ближайший ещё не развёрнутый элемент
+    public readonly int[] PlanArena;                   // [MaxPlanSteps]: DirSeg | level << 28; bump + переезд блока в хвост + компактификация по PlanFirst
+    public readonly float[] PlanCost;                  // стоимость плана при построении / после принятия дрейфа, с
+    public readonly long[] PlanTick;                   // тик, к которому относится PlanCost
+    public int PlanUsed, Compactions;
 }
 ```
 
-Арена `Steps` — bump-аллокация; когда свободного хвоста не хватает, выполняется компактификация
-живых маршрутов (O(StepsUsed), редкая, детерминированная, в фазе 3). Кэш OD-пар — открытая
-хэш-таблица фиксированного размера `MaxRoutes * 2` на массивах `int[]` (ключ `from*MaxZones+to`),
-вытеснение — по `LastUsedTick` в окне пробирования. Алгоритм A*, кэш магистралей, бюджет и веса —
-`routing.md`; здесь фиксируется только то, что маршрут = `RouteStep[]` на уровне полос, доступен без аллокаций.
+План и окно — `routing.md` §9.5; поиск и развёртывание — `Router`/`OverlaySearcher`; фаза 3 — `RoutePhase`. Окно лежит в слоте по адресу
+`slot · W`, поэтому у шагов нет арены и компактификации; арена плана хранит только хвост за окном (≈ 12 + 8·levels элементов на маршрут).
+Нет слота или места под план → `Deferred` (поездка ждёт следующего тика, `RouteDeferred++`). Остальные хранилища, читающие маршрут
+(`RouteAccess`: `WinCount`, `PlanCount`, `Window`, `W`), видят только окно: **последний шаг окна — не финиш, если `PlanCount[r] > 0`**
+(MOBIL не навязывает полосу прибытия, `RefillLate` считает дошедших до конца такого окна).
 
 ### 6.6 Зоны, поездки, транспорт — структуры
 
@@ -863,14 +865,13 @@ public struct ZoneData
     public int FirstSpawnLane, SpawnLaneCount;      // полосы, где можно появиться (диапазон в ZoneLanes)
     public byte IsExternal;                         // краевая зона (машины появляются «из-за карты»)
     public byte Reserved0, Reserved1, Reserved2;
-    public int HubNode;                             // узел-хаб зоны для кэша магистралей (routing.md §4.1)
 }
 
 internal struct PendingTrip                         // очередь MaxPendingTrips, FIFO; маршрут строится до спавна (routing.md §3)
 {
     public int FromZone, ToZone, FromLane; public float FromS; public byte Type;
     public int DestLane; public float DestS;        // точка прибытия, выбирается при генерации поездки
-    public int Route, RouteGen;                     // RouteHandle или -1 (ещё не построен)
+    public int Route, RouteGen;                     // RouteHandle слота RouteStore (план + первое окно); RouteGen == 0 - ещё не построен
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -908,7 +909,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 |---|------|--------|-------|------|
 | 1 | **Команды**: применить всю очередь FIFO, события `CommandApplied/Rejected` | CommandQueue | Network, Signals, Transit, Selection, Events | `Api/CommandDispatcher.cs` |
 | 2 | **Спавн**: (a) генератор OD: пока `Alive < Target` и `Pending` не полна — сгенерировать поездку (PRNG `Spawn`), ramp по `SpawnRampTicks`; (b) автобусы: по `HeadwayTicks` выпустить на маршрут **[шаг 4]**; (c) из `PendingTrips` FIFO ставить машины **с уже построенным маршрутом** (`Route != -1`; голова без маршрута ждёт, порядок сохраняется) на `FromLane` при `s=Length_type+MinGap`, если `LaneTail` достаточно далеко (`S[tail] − L_tail ≥ s + MinGap`), иначе поездка остаётся в очереди | Zones, Lanes, Pending | VehicleStore, LaneLists | `Agents/Spawner.cs` |
-| 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию (`Route == -1`) и ждут нового маршрута), затем поездки из `PendingTrips` без маршрута — кэш магистралей, при промахе A*; всё в пределах `PathfindBudgetPerTick` и бюджета раскрытий; компактификация арены при нехватке | Network, RoutePool, Pending | RoutePool, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
+| 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию (`Route == -1`) и ждут нового маршрута), затем поездки из `PendingTrips` без маршрута — иерархический запрос `OverlaySearcher`; перед ними дозаполнение окон из `RefillQueue` (без бюджета) и проверка дрейфа плановой перемаршрутизации; запросы в пределах `routing.pathfind_budget_per_tick` и `work_budget_per_tick` (релаксации); затем пересчёт весов и волна кастомизации оверлея (`customize_budget_per_tick`) (`routing.md` §9.6) | Network, RouteStore, Graph, Overlay, Pending | RouteStore, Overlay, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
 | 4 | **Перекрёстки и сигналы** (`intersections.md` §5–6): таймеры фаз, `LaneSignals`, `SignalStates`; сбор кандидатов (головы полос у узлов с воротами) и выдача допусков с билетами (сигнал, STOP, выезд свободен, gap acceptance, старшинство); на шаге 2 фаза пустая | Signals, LaneLists, S, Speed, Route | Signals, LaneSignals, GateState, GrantConnector, Ticket, WaitTicks, NodeTicket, OutReserved | `Rules/Intersections/*.cs` |
 | 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение). Пишет **только** `Accel[]` и `LaneChangeDir[]`: это делает фазу параллелизуемой по машинам **[этап 2]** | S, Speed, Lane, списки, Signals | Accel, LaneChangeDir | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
 | 6 | **Интеграция (write)**: `v' = max(0, v + a·dt)`; `s' = s + v'·dt`; **клэмп I6** (§7.6); `Lateral` анимация; `StillTicks` | Accel | S, Speed, Lateral | `Agents/IntegratePhase.cs` |
@@ -963,7 +964,7 @@ Counters.HardClamps++ при срабатывании
 
 **Уточнения реализации (задача F):**
 - Фазы 5-8 принимают компоненты явно (`Run(NetworkStore, VehicleStore, LaneOccupancy, in RouteAccess, ReadOnlySpan<VehicleTypeDesc>, in PhysicsParams, ...)`);
-  обёртки `Run(World w)` есть в каждой фазе, но строки в `PhaseList` пока не раскомментированы (см. отчёт). `RouteAccess` - тонкий вид на `RoutePool` (First/Count/Steps).
+  обёртки `Run(World w)` есть в каждой фазе, но строки в `PhaseList` пока не раскомментированы (см. отчёт). `RouteAccess` - тонкий вид на окна `RouteStore` (WinCount/PlanCount/Window/WindowSteps).
 - Лидер ищется по `Ahead` основной полосы и `GhostAhead` (минимум), иначе просмотр цепочки следующих полос по расстоянию
   `LookaheadDistance = 150 м` и не более 6 полос (вместо фиксированных 2: connector'ы короткие). Полоса без продолжения (тупик, конец маршрута,
   connector маршрута начинается с другой полосы) - виртуальное неподвижное препятствие в её конце; машина останавливается, не исчезает.
@@ -1051,7 +1052,10 @@ public struct Fnv1a64
 6. Transit: по остановкам `Waiting, LastArrivalTick`; по маршрутам `ActiveBuses, LastDispatchTick`.
 7. `SimCounters` целиком, по полям в порядке объявления.
 8. Очередь поездок `PendingTrips` (содержимое FIFO в порядке очереди, включая `Route`), затем
-   очередь перемаршрутизации `RerouteQueue` (индексы машин в порядке очереди).
+   очередь перемаршрутизации `RerouteQueue` (индексы машин в порядке очереди), затем очередь дозаполнения `RefillQueue`
+   (индекс и поколение машины в порядке очереди) и живые слоты `RouteStore` (`Generation`; для живых `WinCount, PlanCount, PlanCost`;
+   окна и планы целиком не хэшируются - производные от маршрута и весов). Оверлей маршрутизации: `WeightsVersion`, курсор волны
+   `(WaveCell, WaveRow)`, флаги (`routing.md` §9.8); матрицы не хэшируются.
 
 9. Управляющее состояние команд: `TargetVehicles`, `Selected.Packed`.
 
@@ -1074,10 +1078,10 @@ seed'ом; при желании — отдельный `ComputeNetworkHash()`, 
 | `MaxVehicles` | поездка остаётся в `PendingTrips`; `Counters.SpawnDeferredTicks++` |
 | `MaxPendingTrips` | новая поездка отбрасывается, `TripsDropped++` |
 | `MaxNodes/Segments/Lanes/LanePoints` | `BuildRoad` → `CommandRejected(Reason = Capacity)`; в `Create` — `CreateStatus.NetworkTooLarge` |
-| `MaxRoutes/MaxRouteSteps` | вытеснение маршрутов с `RefCount == 0`; если нет — машина ждёт следующего тика (`RouteDeferred++`) |
+| `MaxRoutes/MaxPlanSteps` | нет слота маршрута или места под хвост плана (после компактификации арены) — поездка/перемаршрутизация ждёт следующего тика (`RouteDeferred++`) |
 | `CommandQueueCapacity` | `Enqueue` → false, `CommandsDropped++` |
 | `EventCapacity` | `EventsOverflow` |
-| `PathfindBudgetPerTick` | остаток ждёт следующего тика (нормальный режим, не ошибка) |
+| `routing.pathfind_budget_per_tick`, `work_budget_per_tick` | остаток ждёт следующего тика (нормальный режим, не ошибка) |
 
 - Память на машину (цель `bytes_per_vehicle` в бенче): поля §6.3 ≈ 100 B + 2 × 32 B снапшота ≈
   **164 B** + доля маршрутов. Для 1M → ~170 MB, приемлемо; геометрия сети — отдельно.
@@ -1109,8 +1113,9 @@ public struct SimCounters                 // все монотонные, кро
     public long GridlockTicksTotal;
     public long LaneChanges, LaneChangesAborted;
     public long HardClamps;               // срабатываний клэмпа I6 (диагностика: должно быть мало)
-    public long PathfindQueries, PathfindCacheHits, RouteDeferred;
-    public long PathfindExpandedNodes;    // Σ раскрытых узлов A* (замена "времени" поиска)
+    public long PathfindQueries, RouteDeferred;
+    public long PathfindExpandedNodes;    // Σ раскрытых узлов поиска (замена "времени" поиска)
+    public long PathfindWork;             // Σ релаксаций запросов (дуга графа / клетка матрицы оверлея), routing.md §9.10
     public long ConnectorEntries;         // Σ проездов через connector'ы (= Σ NodeThroughput)
     public long CommandsApplied, CommandsRejected, CommandsDropped, EventsDropped;
     public long SpawnDeferredTicks, InvalidHandleOps;
@@ -1127,8 +1132,15 @@ public struct SimCounters                 // все монотонные, кро
     // --- маршрутизация (routing.md §8) ---
     public long RouteFailed;              // нет пути: поездка отброшена
     public long Reroutes;                 // промахов полосы с перепланированием
-    public long RouteCompactions;         // компактификаций арены
-    public long RouteCacheSkips;          // магистраль не закэширована (нет кандидата на вытеснение)
+    public long PlanCompactions;          // компактификаций арены планов
+    public long PlanUnpacks, UnpackWork;  // развёрнуто дуг плана (уровень q -> q-1) и их работа, релаксации
+    public long WindowRefills;            // дозаполнений окон маршрутов
+    public long RefillLate;               // машин, дошедших до конца непустого окна без дозаполнения (цель 0)
+    public long TimedChecks, TimedTriggered; // проверок дрейфа плановой перемаршрутизации / из них поставлено запросов
+    public long CostRecalcs, TimedReroutes;  // пересчётов весов по загрузке; принятых плановых перемаршрутизаций (ADR-0006)
+    public long CustomizeRows, CustomizeWork, CustomizeLagTicks; // волны кастомизации оверлея: строки, релаксации, тики ожидания пересчёта
+    public long OverlayRebuilds;          // полных перестроек оверлея после BuildRoad
+    public int  OverlayDisabled;          // текущее: 1 - оверлей выключен (не влезла перестройка), запросы идут плоским A*
 }
 
 public struct SimStats                    // производные, считаются в GetStats за O(1) из Counters
@@ -1139,7 +1151,6 @@ public struct SimStats                    // производные, счита�
     public int   StuckVehicles;
     public int   GridlockFlag;            // 0/1 (int, а не bool: blittable-раскладка для FFI)
     public float BusHeadwayDeviationS;    // BusHeadwayDeviationTicksTotal·Dt / BusStopArrivals
-    public float PathfindCacheHitRate;
     public float HardClampsPerVehicleMin;
 }
 
@@ -1212,7 +1223,7 @@ src/Sim.Core/
   Gen/            namespace Sim.Core.Gen        — CityGenerator.cs, ZoneGenerator.cs, TransitGenerator.cs, GridPlan.cs (спека docs/design/city-generator.md)
   Agents/         namespace Sim.Core.Agents     — VehicleStore.cs, LaneOccupancy.cs (списки §6.4), Spawner.cs (фаза 2), IntegratePhase.cs (6), TransitionPhase.cs (7), ArrivalPhase.cs (8), PendingTrips.cs
   Rules/          namespace Sim.Core.Rules      — Idm.cs, Mobil.cs, BehaviourPhase.cs (5); Rules/Intersections/ — SignalStore.cs, SignalPhase.cs, Priority.cs (шаг 3)
-  Routing/        namespace Sim.Core.Routing    — RoutePool.cs, RouteCache.cs, AStar.cs (шаг 3), RoutePhase.cs (3)
+  Routing/        namespace Sim.Core.Routing    — RouteStore.cs (план + окно), Router.cs (запрос, окно, дозаполнение, остаток стоимости), Overlay*.cs, OverlaySearcher.cs, IndexedHeap4.cs, RouteLayout.cs, RoutingGraph.cs, RouteNav.cs, RoutePhase.cs (3); AStar.cs - эталон тестов
   Transit/        namespace Sim.Core.Transit    — TransitStore.cs (маршруты/остановки), BusDispatch.cs, BusStopPhase.cs (шаг 4)
   Metrics/        namespace Sim.Core.Metrics    — MetricsPhase.cs (9), StateHash.cs
   Util/           namespace Sim.Core.Util       — Pcg32.cs, Fnv1a64.cs, HandlePool.cs, RingBuffer.cs, FixedHashMap.cs, Vec2.cs, FixedMath.cs
@@ -1238,7 +1249,9 @@ src/Sim.Core/
 | `Vehicles` | `VehicleStore` | SoA машин (§6.3) |
 | `Occupancy` | `LaneOccupancy` | списки порядка на полосах (§6.4) |
 | `Trips` | `PendingTrips` | очередь поездок (§6.6) |
-| `Routes` | `RoutePool` | хранилище маршрутов (§6.5) |
+| `Routes` | `RouteStore` | планы и окна маршрутов (§6.5) |
+| `Graph`, `Overlay`, `Router` | `RouteGraph`, `Overlay?`, `Router` | граф DirSeg и веса; оверлей ячеек (`null` при `levels = 0`); запросы/окна (`routing.md` §9) |
+| `Rerouting`, `RefillQueue` | `RingBuffer<…>` | промахи/плановые перемаршрутизации; очередь дозаполнения окон |
 | `Connectors` | `ConnectorStore` | connector'ы и конфликтные пары (`intersections.md` §3–4); `WorldBuilder.Create` вызывает `Connectors.BuildAll(Net)` после построения сети; `LaneData.ConflictGroup` = индекс записи |
 | `CityInfo` | `CityGenResult` | итог `CityGenerator` (размеры, счётчики); при `City.Enabled == false` - `default` |
 | `SignalPlanSeeds` | `SignalPlanSeed[]` | зерновые планы светофоров генератора (длина = `SignalCount`) - вход шага 3, логики сигналов в `Create` нет |
