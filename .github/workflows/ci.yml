@@ -32,23 +32,22 @@ jobs:
       - name: Test
         run: dotnet test traffic-city.sln -c Release --no-build
 
-      - name: Bench smoke s1k
-        run: dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k.json
+      # Параметры bench и повтор при шуме p95 - в scripts/bench-gate.sh (общие с Stop-хуком, ADR-0007).
+      - name: Bench s1k + compare with CI baseline
+        if: hashFiles('perf/baseline-ci.json') != ''
+        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --baseline perf/baseline-ci.json
+
+      - name: Bench s1k + check budget (no CI baseline yet)
+        if: hashFiles('perf/baseline-ci.json') == ''
+        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --budget-p95-ms 1.0
 
       # CI-baseline снимается из этого вывода (ADR-0007).
       - name: Print bench JSON
+        if: always()
         run: |
           echo "=== BENCH-JSON-BEGIN ==="
           cat perf/results/s1k.json
           echo "=== BENCH-JSON-END ==="
-
-      - name: Compare with CI baseline
-        if: hashFiles('perf/baseline-ci.json') != ''
-        run: dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k.json --baseline perf/baseline-ci.json
-
-      - name: Check budget (no CI baseline yet)
-        if: hashFiles('perf/baseline-ci.json') == ''
-        run: dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k.json --budget-p95-ms 1.0
 
       - name: Upload perf results
         if: always()
