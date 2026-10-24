@@ -49,3 +49,6 @@
 - **После squash-мержа PR ветки, начатые от старой (несквошенной) истории, дают add/add-конфликты почти во
   всех файлах.** → Не `git merge`, а перенос diff'а: `git diff <старый-head-PR> <ветка> | git apply --3way`
   (дерево старого head == дерево squash-коммита в main — проверить `git diff --quiet <head> origin/main`).
+- **Оркестратор закоммитил merge с маркерами конфликта**: `git merge ... | grep conflict` в цепочке с
+  `git add -A && git commit` — конфликт не остановил цепочку. → После каждого мержа отдельной командой
+  `git diff --name-only --diff-filter=U` и `grep -rn '^<<<<<<<' docs src tests scenarios`; коммит — только при пустом выводе.

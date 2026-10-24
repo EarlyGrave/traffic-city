@@ -121,18 +121,12 @@
 `полосы_normal × 2 + connector'ы × connector_samples`. Берём ×1.5. Точные формулы и оценки по
 лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
 arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
-<<<<<<< HEAD
 узлов `node_jitter_m` (дефолт 0). Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
-`max_routes ≥ max_vehicles + число
-используемых пар зон` (кэш магистралей, `routing.md` §4.3).
-=======
-узлов `0.25 · irregular_jitter_m`. Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
 `max_routes ≥ max_vehicles + routed_pending + trunk_slots`: каждая машина (и каждая поездка с уже построенным маршрутом)
 держит свою запись, плюс слоты кэша магистралей (`routing.md` §4.3; при нехватке работает как LRU). `max_route_steps ≥
 (max_vehicles + routed_pending) · avg_steps + trunk_slots · avg_trunk_steps`, замер `gravity α=1`: `avg_steps` ≈ 41 / 68 / 149
 (s1k / s10k / s100k, ≈ 29·`scale`), `avg_trunk_steps` ≈ 14 / 27 / 68; запас ×1.5 на фрагментацию арены между компактификациями.
 Предел арены - `1<<28` шагов (8 байт на шаг).
->>>>>>> worktree-agent-aa601881ea3482b00
 
 ### 2.2 Полный пример `scenarios/s1k.json`
 
