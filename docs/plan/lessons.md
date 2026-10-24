@@ -12,6 +12,8 @@
 - **Релизы Godot на github.com → 403.** Версии Godot смотреть через NuGet: `api.nuget.org/v3-flatcontainer/godot.net.sdk/index.json`.
 
 ## Субагенты и worktree
+- **Bash в worktree агента отказывает на «сложных» командах** (heredoc-скрипт + слово git в одной строке, `time -v ...`: «не удаётся доказать, что остаётся внутри worktree»).
+  → Python-правки класть файлом в scratchpad и запускать отдельной командой; git-команды — отдельно; без `time`/`/usr/bin/time`.
 - **Worktree агента создаётся от `main`, а не от рабочей ветки оркестратора** → агент не видит свежих
   файлов (брифа, csproj), post-build хук молчит. → Первый шаг каждого брифа:
   `git merge --ff-only claude/adoring-ritchie-cxzib8` (локальная ветка видна из worktree). Рабочую ветку
