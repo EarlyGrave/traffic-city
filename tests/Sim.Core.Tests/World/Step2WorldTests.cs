@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Tests.Gen;
 using Xunit.Abstractions;
 
@@ -176,13 +177,13 @@ public sealed class Step2Run
         Counters5Min = sim.Counters;
 
         sim.Step(1200); // прогрев после рампы (JIT, холодные пути)
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int t = 0; t < 1000; t++)
+        Allocated1000Ticks = AllocationProbe.Measure(() =>
         {
-            sim.Step(1);
-        }
-
-        Allocated1000Ticks = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int t = 0; t < 1000; t++)
+            {
+                sim.Step(1);
+            }
+        });
         CountersEnd = sim.Counters;
         HashEnd = sim.ComputeStateHash();
     }

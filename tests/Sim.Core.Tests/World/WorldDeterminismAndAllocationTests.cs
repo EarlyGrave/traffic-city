@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Tests.Fixtures;
 
 namespace Sim.Core.Tests.Worlds;
 
@@ -135,14 +136,8 @@ public class WorldDeterminismAndAllocationTests
 
         RunTicks(300); // прогрев: JIT-тиринг
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        RunTicks(1000);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
-
-        before = GC.GetAllocatedBytesForCurrentThread();
-        sim.Step(1000); // и просто крупный Step
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationProbe.Measure(() => RunTicks(1000)));
+        Assert.Equal(0, AllocationProbe.Measure(() => sim.Step(1000))); // и просто крупный Step
     }
 
     [Fact]
@@ -151,9 +146,7 @@ public class WorldDeterminismAndAllocationTests
         using Simulation sim = Setup(5);
         sim.Step(10);
         _ = sim.ComputeStateHash();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        _ = sim.ComputeStateHash();
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationProbe.Measure(() => _ = sim.ComputeStateHash()));
     }
 
     [Fact]
