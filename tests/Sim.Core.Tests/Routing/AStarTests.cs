@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Routing;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Tests.Network;
 using Sim.Core.Util;
 using Xunit.Abstractions;
@@ -236,21 +237,23 @@ public class AStarTests
             Assert.Equal(BuildStatus.NoPath, rb.Build(startLane, 0, badLane, 10, -1, -1, 1, out _));
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
         int wrong = 0;
-        for (int i = 0; i < 1000; i++)
-        {
-            rb.BeginTick();
-            if (rb.Build(startLane, 0, badLane, 10, -1, -1, 1, out _) != BuildStatus.NoPath)
+        long allocated = AllocationProbe.Measure(
+            () =>
             {
-                wrong++;
-            }
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                for (int i = 0; i < 1000; i++)
+                {
+                    rb.BeginTick();
+                    if (rb.Build(startLane, 0, badLane, 10, -1, -1, 1, out _) != BuildStatus.NoPath)
+                    {
+                        wrong++;
+                    }
+                }
+            },
+            out int windows);
         Assert.Equal(0, wrong);
         Assert.Equal(0, allocated);
-        Assert.Equal(1050, rb.Failed);
+        Assert.Equal(50 + (1000 * windows), rb.Failed);
         Assert.Equal(0, pool.AliveCount);
     }
 

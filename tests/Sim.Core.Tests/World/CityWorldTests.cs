@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Tests.Gen;
 using Xunit.Abstractions;
 
@@ -112,11 +113,9 @@ public class CityWorldTests
         ScenarioDesc d = Desc("s1k");
         using Simulation sim = Simulation.Create(in d);
         sim.Step(50);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        sim.Step(200);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.Equal(0, after - before);
-        Assert.Equal(250, sim.Tick);
+        long allocated = AllocationProbe.Measure(() => sim.Step(200), out int windows);
+        Assert.Equal(0, allocated);
+        Assert.Equal(50 + (200 * windows), sim.Tick);
     }
 
     [Fact]

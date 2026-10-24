@@ -123,10 +123,7 @@ public class RingPhaseTests
     {
         PhysicsFixture f = MixedRing(carsPerLane: 40, slow: true);
         f.Run(400); // прогрев JIT
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        f.Run(1000);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.Equal(0, after - before);
+        Assert.Equal(0, AllocationProbe.Measure(() => f.Run(1000)));
         Assert.True(f.Counters.LaneChanges > 0);
     }
 

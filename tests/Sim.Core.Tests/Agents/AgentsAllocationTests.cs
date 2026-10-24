@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Util;
 
 namespace Sim.Core.Tests.Agents;
@@ -62,10 +63,6 @@ public class AgentsAllocationTests
 
         Churn(v, occ, q, ref rng, 5_000); // прогрев JIT
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Churn(v, occ, q, ref rng, 100_000);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before);
+        Assert.Equal(0, AllocationProbe.Measure(() => Churn(v, occ, q, ref rng, 100_000)));
     }
 }
