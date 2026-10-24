@@ -94,7 +94,8 @@
     "mobil_every_ticks": 10,
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
-    "yield_gap_s": 3.0
+    "yield_gap_s": 3.0,
+    "max_yield_wait_s": 20              // инверсия приоритета у ворот (intersections.md §5.4)
   },
 
   "capacities": {                       // → SimCapacities; обязательны max_vehicles и сетевые
@@ -105,7 +106,9 @@
     "max_pending_trips": int,
     "command_queue": 1024, "events": 4096,
     "pathfind_budget_per_tick": int,
-    "max_signalized_nodes": int
+    "max_signalized_nodes": int,
+    "max_connectors": int,              // дефолт max_nodes * 16 (intersections.md §4)
+    "max_conflicts": int                // дефолт max_connectors * 6
   }
 }
 ```
@@ -118,6 +121,8 @@
 лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
 arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
 узлов `0.25 · irregular_jitter_m`. Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
+`max_routes ≥ max_vehicles + число
+используемых пар зон` (кэш магистралей, `routing.md` §4.3).
 
 ### 2.2 Полный пример `scenarios/s1k.json`
 
@@ -183,7 +188,8 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
     "mobil_every_ticks": 10,
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
-    "yield_gap_s": 3.0
+    "yield_gap_s": 3.0,
+    "max_yield_wait_s": 20
   },
 
   "capacities": {
@@ -196,13 +202,15 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
     "max_bus_routes": 16,
     "max_bus_stops": 256,
     "max_bus_stops_per_route": 32,
-    "max_routes": 4096,
+    "max_routes": 8192,
     "max_route_steps": 262144,
     "max_pending_trips": 2048,
     "command_queue": 1024,
     "events": 4096,
     "pathfind_budget_per_tick": 32,
-    "max_signalized_nodes": 64
+    "max_signalized_nodes": 64,
+    "max_connectors": 11200,
+    "max_conflicts": 67200
   }
 }
 ```
@@ -226,7 +234,8 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 | плотность, маш./полосо-км (оценка) | 3 | 8 | 13 | 13 |
 | `capacities.max_vehicles` | 1 280 | 12 000 | 115 000 | 1 100 000 |
 | `capacities.max_nodes / segments / lanes / lane_points` | 700 / 1 300 / 12 000 / 80 k | 2 800 / 5 200 / 48 k / 320 k | 17 k / 32 k / 300 k / 2 M | 170 k / 330 k / 3 M / 20 M |
-| `capacities.max_routes / route_steps` | 4 096 / 256 k | 16 k / 2 M | 65 k / 16 M | 262 k / 128 M |
+| `capacities.max_routes / route_steps` | 8 192 / 256 k | 16 k / 2 M | 65 k / 16 M | 262 k / 128 M |
+| `capacities.max_connectors / max_conflicts` | 11.2 k / 67 k | 45 k / 270 k | 270 k / 1.6 M | 2.7 M / 16 M |
 | `capacities.max_pending_trips` | 2 048 | 16 k | 128 k | 1 M |
 | `capacities.pathfind_budget_per_tick` | 32 | 128 | 512 | 2 048 |
 | `capacities.max_zones` | 64 | 256 | 1 024 | 10 000 |
