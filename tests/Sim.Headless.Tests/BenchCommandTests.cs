@@ -113,20 +113,12 @@ public sealed class BenchCommandTests : IDisposable
     [Fact]
     public void Bench_Repeat3_WritesThreeRuns()
     {
-        string root = AppContext.BaseDirectory;
-        string? dir = root;
-        while (dir != null && !Directory.Exists(Path.Combine(dir, "scenarios")))
-        {
-            dir = Path.GetDirectoryName(dir);
-        }
-
-        Assert.NotNull(dir);
-        string scenarioFile = Directory.GetFiles(Path.Combine(dir, "scenarios"), "*.json")[0];
+        string scenarios = FindScenariosDir();
         string outPath = Path.Combine(_dir, "rep.json");
         var o = new StringWriter();
         var e = new StringWriter();
         int code = BenchCommand.Run(
-            new[] { "bench", "--scenario", scenarioFile, "--ticks", "20", "--warmup-ticks", "5", "--repeat", "3", "--out", outPath }, o, e);
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "20", "--warmup-ticks", "5", "--repeat", "3", "--out", outPath, "--scenarios-dir", scenarios }, o, e);
         Assert.True(code == 0, e.ToString());
         using JsonDocument d = JsonDocument.Parse(File.ReadAllText(outPath));
         JsonElement perf = d.RootElement.GetProperty("perf");
