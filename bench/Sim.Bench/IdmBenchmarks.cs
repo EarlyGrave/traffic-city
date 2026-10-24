@@ -89,7 +89,7 @@ public class IdmBenchmarks
     private void Step()
     {
         BehaviourPhase.Run(_net, _v, _occ, RouteAccess.None, _types, _p, _tick);
-        IntegratePhase.Run(_net, _v, _occ, RouteAccess.None, _types, _p, ref _c);
+        IntegratePhase.Run(_net, _v, _types, _p, ref _c);
         TransitionPhase.Run(_net, _v, _occ, RouteAccess.None, _types, _p, _throughput, ref _c);
         _tick++;
     }

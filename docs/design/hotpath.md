@@ -262,3 +262,21 @@ tick=6300 `c73832373fb67bd3`).
 conflict_gap_calls_behaviour 3 149, conflict_gap_calls_integrate 3 149, conflict_gap_mask_rejects 0 (до H3),
 conflict_entries_scanned 24 246, conflict_occupants_scanned 4 083, gate_candidates 1 085, gate_trygrant_calls 1 085,
 gate_trygrant_entries 1 358, route_refill_checks 9 994, next_conn_recomputes 809, snapshot_slots 9 996.
+
+## 7.1 H2 выполнена (D2: зазоры клэмпа из фазы 5)
+Реализовано как в D2: `VehicleStore.ClampLeadGap/ClampFlags/ClampGateGap` (сброс в `Idm.FreeGap`/0 при освобождении слота), `SOld` и
+`Array.Copy` удалены; `GateRules.ObstacleGap` вместо `visibilityLimited` возвращает сырой зазор и `out bool beyondDecision`
+(IDM фазы 5 пропускает стоп-линию дальше дистанции решения, клэмп берёт зазор всегда). Фаза 5 считает лидера и ворота и для `AtStop`
+(`Accel = 0`, `LaneChangeDir = 0`); `behaviour_vehicles` по-прежнему без `AtStop`, `leader_lookahead_hops`/`obstacle_gap_calls` их включают.
+`IntegratePhase.Run` теперь `(net, v, types, p, ref c)`: `occ`, `routes`, `work`, `connectors` не нужны. Тесты `PhasesTests` (клэмп фазы 6)
+перед `IntegratePhase.Run` вызывают `BehaviourPhase.Run`, потому что зазоры пишет фаза 5.
+
+Приёмка: golden-хэши `HotPathGoldenHashTests` (s1k, s10k) не менялись; `hash --scenario s10k --warmup-until-full --ticks 400 --every 200`:
+tick=6100 `861672e99fa95a39`, tick=6300 `c73832373fb67bd3` (как до правок); `dotnet test` зелёный (Core 393, Headless 107); 0 B/тик.
+
+«После»: `bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases` (активных 9 818 -> 9 997, 0 B/тик, stuck 0,
+tick p50/p95 4.73/6.39 мс при load ~3 на общем контейнере; «до» 5.12/7.96), мс на тик (mean, в скобках «до»):
+behaviour 2.076 (1.813), **integrate 0.165 (1.608)**, gate 0.960 (0.870), transition 0.540 (0.419), snapshot 0.436 (0.417), route 0.294 (0.281);
+рост прочих фаз - шум общего контейнера. `work_per_tick`: `conflict_gap_calls_integrate` 3 149 -> **0**, `leader_lookahead_hops` 16 536 -> 8 278,
+`obstacle_gap_calls` 19 975 -> 9 994, `conflict_entries_scanned` 24 246 -> 12 123, `conflict_occupants_scanned` 4 083 -> 2 041,
+`conflict_gap_calls_behaviour` 3 149 -> 3 149. `scripts/bench-gate.sh --baseline perf/baseline.json` (s1k): OK.

@@ -14,9 +14,10 @@ public class PhasesTests
         PhysicsFixture f = PhysicsFixture.Straight();
         int leader = f.Spawn(0, 100f, 0f);
         int follower = f.Spawn(0, 94.5f, 20f); // зазор 1 м на скорости 20 м/с: нужен клэмп
+        BehaviourPhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, f.Tick); // зазоры клэмпа пишет фаза 5
         f.V.Accel[leader] = 0f;
         f.V.Accel[follower] = 5f; // принудительно "газ": фаза 6 обязана остановить на S_old[лидер] - L - MinGap
-        IntegratePhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, ref f.Counters);
+        IntegratePhase.Run(f.Net, f.V, f.Types, f.P, ref f.Counters);
         Assert.Equal(1, f.Counters.HardClamps);
         float expected = 100f - 4.5f - 0.5f;
         Assert.Equal(expected, f.V.S[follower], 4);
@@ -32,9 +33,10 @@ public class PhasesTests
         int leader = f.Spawn(0, 100f, 10f);
         int follower = f.Spawn(0, 94f, 10f);
         Assert.True(leader < follower);
+        BehaviourPhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, f.Tick);
         f.V.Accel[leader] = 0f;
         f.V.Accel[follower] = 0f;
-        IntegratePhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, ref f.Counters);
+        IntegratePhase.Run(f.Net, f.V, f.Types, f.P, ref f.Counters);
         Assert.Equal(100.5f, f.V.S[leader], 4);
         Assert.Equal(94.5f, f.V.S[follower], 4); // ограничение 100 - 4.5 - 0.5 = 95 по СТАРОЙ позиции лидера - не сработало
         Assert.Equal(0, f.Counters.HardClamps);
@@ -48,8 +50,9 @@ public class PhasesTests
         int behindOnSource = f.Spawn(0, 94.5f, 15f);
         f.Occ.FindNeighbours(1, f.V.S[changer], out int ahead, out int behind);
         f.Occ.BeginLaneChange(changer, 1, ahead, behind); // ghost остаётся в полосе 0
+        BehaviourPhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, f.Tick);
         f.V.Accel[behindOnSource] = 3f;
-        IntegratePhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, ref f.Counters);
+        IntegratePhase.Run(f.Net, f.V, f.Types, f.P, ref f.Counters);
         Assert.True(f.V.S[behindOnSource] <= 100f - 4.5f - 0.5f + 1e-4f);
         Assert.Equal(1, f.Counters.HardClamps);
     }
@@ -62,13 +65,13 @@ public class PhasesTests
         f.FillRing(1, 20, 8f, offsetIndex: 1);
         f.Run(200);
         ulong before = f.Hash();
-        float[] sOld = (float[])f.V.SOld.Clone();
+        float[] s = (float[])f.V.S.Clone();
         int[] lane = (int[])f.V.Lane.Clone();
         int[] ahead = (int[])f.V.Ahead.Clone();
         float[] speed = (float[])f.V.Speed.Clone();
         BehaviourPhase.Run(f.Net, f.V, f.Occ, f.Routes, f.Types, f.P, f.Tick);
         Assert.Equal(before, f.Hash());
-        Assert.Equal(sOld, f.V.SOld);
+        Assert.Equal(s, f.V.S);
         Assert.Equal(lane, f.V.Lane);
         Assert.Equal(ahead, f.V.Ahead);
         Assert.Equal(speed, f.V.Speed);

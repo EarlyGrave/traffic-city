@@ -117,13 +117,14 @@ internal static class GateRules
     /// <summary>
     /// Зазор (м) от текущего положения машины <paramref name="i"/> до ближайшего виртуального препятствия ворот (§7.1, §7.2) либо
     /// <see cref="Idm.FreeGap"/>; <paramref name="speed"/> - скорость препятствия (0 для стоп-линии и конфликтной точки, скорость партнёра
-    /// при следовании за ним в горловине слияния). <paramref name="s"/> - массив позиций (S либо SOld для клэмпа I6). Для недопущенной
-    /// машины на Normal-полосе к узлу с воротами - стоп-линия (с <paramref name="visibilityLimited"/> - только в пределах дистанции
-    /// решения); для допущенной и для машины на connector'е - конфликтные точки, занятые/ожидаемые машинами с меньшим билетом.
+    /// при следовании за ним в горловине слияния). <paramref name="s"/> - массив позиций (S на начало тика). Для недопущенной
+    /// машины на Normal-полосе к узлу с воротами - стоп-линия; <paramref name="beyondDecision"/> = true, если она дальше дистанции решения
+    /// (IDM фазы 5 такую стоп-линию не видит и берёт свободную дорогу, клэмп I6 фазы 6 использует возвращённый зазор в любом случае); для допущенной и для машины на connector'е - конфликтные точки, занятые/ожидаемые машинами с меньшим билетом.
     /// </summary>
-    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ref SimWork work, float[] s, int i, float comfortDecel, bool visibilityLimited, out float speed)
+    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ref SimWork work, float[] s, int i, float comfortDecel, out bool beyondDecision, out float speed)
     {
         speed = 0f;
+        beyondDecision = false;
         int lane = v.Lane[i];
         ref readonly LaneData ld = ref net.Lanes[lane];
         float si = s[i];
@@ -145,11 +146,7 @@ internal static class GateRules
         float d = ld.Length - si;
         if (!IsGranted(v, i))
         {
-            if (visibilityLimited && d > DecisionDistance(v.Speed[i], comfortDecel))
-            {
-                return Idm.FreeGap;
-            }
-
+            beyondDecision = d > DecisionDistance(v.Speed[i], comfortDecel);
             return d - StopLineOffset;
         }
 

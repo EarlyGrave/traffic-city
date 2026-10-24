@@ -9,7 +9,8 @@ namespace Sim.Core.Rules;
 
 /// <summary>
 /// Фаза 5 (core-api §7): поведение. Read-only по позициям/скоростям/спискам; пишет только
-/// <c>Accel[]</c> и <c>LaneChangeDir[]</c> (намерение смены полосы, исполняет фаза 7).
+/// <c>Accel[]</c>, <c>LaneChangeDir[]</c> (намерение смены полосы, исполняет фаза 7) и зазоры клэмпа I6 для фазы 6
+/// (<c>ClampLeadGap</c>, <c>ClampFlags</c>, <c>ClampGateGap</c>, ADR-0016 D2).
 /// IDM считается каждый тик; MOBIL - раз в <c>MobilEveryTicks</c> на машину, разнесено по индексу: <c>(tick + i) % N == 0</c>.
 /// Перекрёстки (intersections.md §7, при переданном <see cref="ConnectorStore"/>): IDM берёт минимум ускорения по обычному
 /// лидеру и по виртуальному препятствию ворот - стоп-линии без допуска (в пределах дистанции решения) либо конфликтной точке,
@@ -66,29 +67,42 @@ internal static class BehaviourPhase
             }
 
             ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
-            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
+            bool atStop = (v.Flags[i] & (byte)VehicleFlags.AtStop) != 0;
+            if (!atStop)
+            {
+                vehicles++;
+            }
+
+            // Зазоры клэмпа I6 для фазы 6 (ADR-0016, D2): по позициям на начало тика, для каждой машины фазы 6, включая автобус на остановке.
+            LeaderInfo li = LeaderSearch.FindFor(e, v.S, i);
+            hops += li.Hops;
+            v.ClampLeadGap[i] = li.Gap;
+            v.ClampFlags[i] = (byte)((li.Vehicle != -1 || li.Virtual ? IntegratePhase.ClampLeaderPresent : 0) | (li.Virtual ? IntegratePhase.ClampLeaderVirtual : 0));
+            float vi = v.Speed[i];
+            float gateGap = Idm.FreeGap;
+            float gateSpeed = 0f;
+            bool beyondDecision = false;
+            if (connectors != null)
+            {
+                obstacleCalls++;
+                gateGap = GateRules.ObstacleGap(net, v, occ, connectors, ref work, v.S, i, t.ComfortDecel, out beyondDecision, out gateSpeed);
+            }
+
+            v.ClampGateGap[i] = gateGap;
+            if (atStop)
             {
                 v.Accel[i] = 0f; // автобус стоит на остановке (посадка)
                 v.LaneChangeDir[i] = 0;
                 continue;
             }
 
-            vehicles++;
-            LeaderInfo li = LeaderSearch.FindFor(e, v.S, i);
-            hops += li.Hops;
-            float vi = v.Speed[i];
             float a = Idm.Accel(t, vi, v.DesiredSpeed[i], li.Gap, vi - li.Speed);
-            if (connectors != null)
+            if (gateGap < Idm.FreeGap && !beyondDecision)
             {
-                obstacleCalls++;
-                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, ref work, v.S, i, t.ComfortDecel, visibilityLimited: true, out float gateSpeed);
-                if (gateGap < Idm.FreeGap)
+                float ag = Idm.Accel(t, vi, v.DesiredSpeed[i], gateGap, vi - gateSpeed);
+                if (ag < a)
                 {
-                    float ag = Idm.Accel(t, vi, v.DesiredSpeed[i], gateGap, vi - gateSpeed);
-                    if (ag < a)
-                    {
-                        a = ag;
-                    }
+                    a = ag;
                 }
             }
 

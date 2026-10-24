@@ -1,5 +1,7 @@
+using System;
 using System.Diagnostics;
 using Sim.Core.Api;
+using Sim.Core.Rules;
 using Sim.Core.Util;
 
 namespace Sim.Core.Agents;
@@ -21,7 +23,9 @@ internal sealed class VehicleStore
     public readonly float[] Length;
     public readonly byte[] Type;
     public readonly float[] DesiredSpeed;
-    public readonly float[] SOld;          // scratch фазы 6: S на начало тика (клэмп I6), не входит в хэш
+    public readonly float[] ClampLeadGap;  // зазор до лидера для клэмпа I6: пишет фаза 5, читает фаза 6 (ADR-0016, D2); не в хэше
+    public readonly byte[] ClampFlags;     // бит0 - лидер/препятствие есть, бит1 - виртуальное (без MinPhysicalGap)
+    public readonly float[] ClampGateGap;  // сырой зазор ворот (без ограничения видимости); Idm.FreeGap - нет
 
     // --- порядок на полосе (intrusive double-linked list, 6.4) ---
     public readonly int[] Ahead;
@@ -74,7 +78,10 @@ internal sealed class VehicleStore
         Length = new float[maxVehicles];
         Type = new byte[maxVehicles];
         DesiredSpeed = new float[maxVehicles];
-        SOld = new float[maxVehicles];
+        ClampLeadGap = new float[maxVehicles];
+        ClampFlags = new byte[maxVehicles];
+        ClampGateGap = new float[maxVehicles];
+        Array.Fill(ClampGateGap, Idm.FreeGap);
         Ahead = new int[maxVehicles];
         Behind = new int[maxVehicles];
         GhostLane = new int[maxVehicles];
@@ -165,7 +172,9 @@ internal sealed class VehicleStore
         Length[i] = 0f;
         Type[i] = 0;
         DesiredSpeed[i] = 0f;
-        SOld[i] = 0f;
+        ClampLeadGap[i] = 0f;
+        ClampFlags[i] = 0;
+        ClampGateGap[i] = Idm.FreeGap;
         Ahead[i] = -1;
         Behind[i] = -1;
         GhostLane[i] = -1;
