@@ -85,6 +85,7 @@ public struct ZoneData
     public int FirstSpawnLane, SpawnLaneCount; // диапазон в ZoneLanes
     public byte IsExternal;         // краевая зона
     public byte Reserved0, Reserved1, Reserved2;
+    public int HubNode;             // узел-хаб зоны для кэша магистралей (routing.md §4.1); -1 — нет
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
