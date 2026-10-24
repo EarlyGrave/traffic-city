@@ -21,7 +21,7 @@
 - 2.5 (sonnet) `Sim.Headless render`: растровый 2D-вид сверху из снапшотов ядра → кадры → ffmpeg → mp4 (запрос владельца: видео прогресса; Godot 4 в облаке недоступен).
 - Критерий: тест детерминизма (хэш), 0 B/тик в тесте, бенчи запускаются, первое видео.
 
-## Шаг 3. Перекрёстки, светофоры, знаки, маршрутизация — `todo` (спеки готовы: intersections.md J1–J5, routing.md R1–R5)
+## Шаг 3. Перекрёстки, светофоры, знаки, маршрутизация — `done` (PR шага 3), stuck = 0 (спеки готовы: intersections.md J1–J5, routing.md R1–R5)
 - 3.0 (haiku+sonnet) догнать формат: загрузчик читает `rules.max_yield_wait_s`, `capacities.max_connectors/max_conflicts`; s1k `max_routes` 4096→8192; лестница по таблице scenario-format.md.
 - 3.0c `max_routes` < `max_vehicles` у s100k/s1m (65k/115k, 262k/1.1M), а routing.md хранит маршрут на машину (RefCount=1) → поднять ёмкости или пересмотреть хранение; уточнить формулу в scenario-format §2.1.
 - 3.I интеграция шага 3: `Signals.InitFromSeeds` в WorldBuilder; `SignalPhase.Run` в фазе 4 до ворот; сигналы и ConnectorStore в StateHash; RoutePhase (фаза 3) + маршрут в PendingTrip; убрать STAGE2-TEMP; J3 ворота + J4 фазы 5/7; J5 тесты T1–T8.
@@ -37,11 +37,11 @@
 ## Шаг 4. Автобусы и остановки — `todo`
 - маршруты как последовательность остановок, карман/обочина, стоянка от числа пассажиров, интервал, headway deviation.
 
-## Шаг 5. Headless-бенч, baseline s1k, лестница s10k/s100k/s1m — `todo`
+## Шаг 5. Headless-бенч, baseline s1k, лестница s10k/s100k/s1m — `wip` (bench/compare/update-baseline готовы)
 - bench/compare/update-baseline, полный JSON метрик; baseline s1k; цифры по лестнице в REPORT.
 - Бюджет s1k: tick p95 ≤ 1 мс, 0 B/тик, stuck = 0 за 30 мин.
 
-## Шаг 6. Godot-клиент — `todo`
+## Шаг 6. Godot-клиент — `done` (сборка; ручная проверка — владелец)
 - MultiMesh по типу ТС, ленты дорог, RTS-камера, интерполяция 20 Гц → 60+ FPS, оверлеи (heatmap, фазы, маршрут), HUD F3.
 - Критерий: `dotnet build game/` без предупреждений; импорт Godot — если доступен бинарь.
 

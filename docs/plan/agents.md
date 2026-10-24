@@ -40,4 +40,5 @@
 | 34 | bench-cmd | sonnet | шаг 5: bench/compare/update-baseline | done, merged (s1k 2000 тиков p95 0.47 мс, 0 B) |
 | 35 | godot-client | sonnet | шаг 6: MultiMesh, камера, интерполяция, оверлеи, HUD | done, merged (сборка ок, ручная проверка владельцем) |
 | 36 | ns-fix | haiku | using Sim.Scenarios после мержа Godot | done |
-| 37 | load-routing (gates worktree) | sonnet | ADR-0006: веса по загрузке + перемаршрутизация | wip |
+| 37 | load-routing | sonnet | ADR-0006 | done: stuck 9 → 0 |
+| 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |
