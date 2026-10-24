@@ -222,6 +222,14 @@ ushort[] WaitTicks;        // тиков подряд кандидатом бе�
 int[] NodeCandHead;        // [MaxNodes], -1; голова intrusive-списка кандидатов узла
 int[] CandNext;            // [MaxVehicles]
 int[] TouchedNodes; int TouchedCount;   // узлы, у которых есть кандидаты в этом тике
+ulong[] NodeBusy;          // [MaxNodes] (ADR-0016, D3): биты LocalBit connector'ов узла, на которых есть машина или
+                           // на которые выдан допуск; строит фаза 4, читает ConflictGap фазы 5; обнуление по BusyTouched
+int[] BusyTouched; int BusyTouchedCount;
+
+/// Производные статические массивы (ADR-0016, D4–D5; вне хэша, пересчёт при построении/BuildRoad/SetNodeControl):
+/// NetworkStore.LaneGateNode[MaxLanes] (узел с воротами в конце Normal-полосы / узел gated connector'а, иначе -1),
+/// NetworkStore.LaneLength[MaxLanes]; ConnectorStore.Length[], InLength[] (длины connector'а и его входной полосы).
+/// Горячий код правил ворот читает их и SoA ConnectorStore (группа чужого: g − LocalBit[g] + OtherLocal), а не LaneData.
 ```
 
 `SignalStore` — как в `core-api.md` §6.7 плюс `ulong[] PhaseMask` (`[MaxSignalizedNodes * 8]`) и
@@ -448,7 +456,11 @@ Phase = (Phase+1) % PhaseCount, Green(Green_Phase)`. Нулевая длител
 - Обычный лидер: `Ahead[i]`, иначе `LaneTail(o)` (через границу полосы), далее по `LookaheadLanes`.
 
 Стоимость: машин на connector'ах ≈ 5 % живых (доля длины connector'ов), на каждой ≤ ~6 записей ×
-≤ 3 машины — пренебрежимо.
+≤ 3 машины — пренебрежимо. **Факт s10k (2.4b):** 3 174 вызова/тик (829 на connector'ах + допущенные на входе),
+10 639 записей, 282 машины-участника; 67 % вызовов без единого участника. Поэтому (ADR-0016, D3): если
+`ConflictMask[c] & NodeBusy[node] == 0` — сразу «свободно», запись с незанятым битом чужого connector'а пропускается.
+Маска — надмножество участников (машины на `c'` и допущенные на `c'`), результат тот же. Зазоры §7.1–7.2 считаются
+один раз в фазе 5 и используются фазой 6 для клэмпа (core-api §7, ADR-0016 D2).
 
 ### 7.3 Переходы (фаза 7) и инварианты
 
@@ -468,6 +480,8 @@ Phase = (Phase+1) % PhaseCount, Green(Green_Phase)`. Нулевая длител
 2. Сбор кандидатов: один проход по машинам `0.._highWater`.
 3. Разрешение по `TouchedNodes`; внутри узла — порядок §5.2.
 4. Сброс scratch: `NodeCandHead[n] = -1` для затронутых узлов, `TouchedCount = 0`.
+5. `NodeBusy` (ADR-0016): в начале фазы — обнулить по `BusyTouched`; бит ставится в проходе сбора (машина на gated
+   connector'е; допущенная с действительным `GrantConnector`) и при каждом допуске в п. 3. Валидна до конца фазы 6.
 
 Фаза 5 читает `GateState/GrantConnector/Ticket`, `OutReserved` не читает. Фаза 7 пишет
 `OutReserved`, `GateState`. Никаких зависимостей от порядка обхода, кроме явно заданных (индекс
@@ -486,6 +500,10 @@ Phase = (Phase+1) % PhaseCount, Green(Green_Phase)`. Нулевая длител
 | Ворота | ≈ 100–200 кандидатов × (≤ 6 конфликтов × ≤ 4 машины) | ≈ 20–40 мкс |
 | Фаза 5, connector'ы | ≈ 50 машин × ≤ 6 × ≤ 3 | < 5 мкс |
 | Итого | | **< 50 мкс** из бюджета 1 мс |
+
+Факт s10k при 10 000 активных (2.4b, `hotpath.md` §1.2), на тик: кандидатов 1 121, `TryGrant` 494 (3 114 записей),
+`ConflictGap` 3 174 (до ADR-0016 — ещё столько же в фазе 6). Узкое место — не число операций, а случайные чтения
+`LaneData` (60 B × 48 000 полос = 2.9 МБ); отсюда SoA-чтения и `LaneGateNode` (ADR-0016).
 
 Масштабирование: всё линейно по числу машин (кандидаты — подмножество голов полос), а не по числу
 узлов; память линейна по connector'ам. Для 100k/1M машин алгоритм не меняется; стоимость ворот

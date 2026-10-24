@@ -192,6 +192,9 @@ public sealed class Simulation : IDisposable
     /// проверяет поле. Хост (Sim.Headless) меряет длительность фаз своим Stopwatch (pathfind_ms_p95 —
     /// фаза 3). Делегат задаётся один раз, аллокаций в Step не создаёт. FFI: tc_sim_set_phase_probe.
     public PhaseProbe? OnPhaseEnd { get; set; }
+    /// Счётчики работы (ADR-0016, `hotpath.md` §3 D1): число вызовов дорогих правил по фазам. Детерминированы,
+    /// НЕ входят в хэш (меняются при оптимизациях). Мера прогресса горячего пути без шума таймера.
+    public ref readonly SimWork Work { get; }
 
     // ---- детерминизм ----
     public ulong ComputeStateHash();                                 // §9, O(N), не вызывать каждый тик в проде
@@ -202,7 +205,7 @@ public sealed class Simulation : IDisposable
     public bool TryPickVehicle(float x, float z, float radius, out VehicleHandle h); // O(N) по живым, для клика
 }
 
-public delegate void PhaseProbe(int phase);
+public delegate void PhaseProbe(int phase);   // phase = номер фазы §7 (1..10); подфазы 2b/4a/8b — в составе своих номеров
 
 public enum CreateStatus : int
 {
@@ -737,7 +740,7 @@ internal sealed class VehicleStore
     public readonly float[] Length;        // копия из типа (чтобы не ходить в VehicleTypes)
     public readonly byte[]  Type;
     public readonly float[] DesiredSpeed;  // v0 на текущей полосе = min(MaxSpeed, SpeedFactor*limit); пересчёт при смене полосы
-    public readonly float[] SOld;          // scratch фазы 6: копия S на начало тика (клэмп I6 читает старые позиции лидеров); не в хэше, не в снапшоте
+    public readonly float[] ClampLeadGap, ClampGateGap; public readonly byte[] ClampFlags; // ADR-0016: зазоры клэмпа I6, пишет фаза 5, читает фаза 6; не в хэше (заменили SOld)
 
     // --- порядок на полосе (intrusive double-linked list, §6.4) ---
     public readonly int[] Ahead, Behind;          // соседи на Lane; -1 = нет
@@ -911,8 +914,8 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 2 | **Спавн**: (a) генератор OD: пока `Alive < Target` и `Pending` не полна — сгенерировать поездку (PRNG `Spawn`), ramp по `SpawnRampTicks`; (b) автобусы: по `HeadwayTicks` выпустить на маршрут **[шаг 4]**; (c) из `PendingTrips` FIFO ставить машины **с уже построенным маршрутом** (`Route != -1`; голова без маршрута ждёт, порядок сохраняется) на `FromLane` при `s=Length_type+MinGap`, если `LaneTail` достаточно далеко (`S[tail] − L_tail ≥ s + MinGap`), иначе поездка остаётся в очереди | Zones, Lanes, Pending | VehicleStore, LaneLists | `Agents/Spawner.cs` |
 | 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию (`Route == -1`) и ждут нового маршрута), затем поездки из `PendingTrips` без маршрута — иерархический запрос `OverlaySearcher`; перед ними дозаполнение окон из `RefillQueue` (без бюджета) и проверка дрейфа плановой перемаршрутизации; запросы в пределах `routing.pathfind_budget_per_tick` и `work_budget_per_tick` (релаксации); затем пересчёт весов и волна кастомизации оверлея (`customize_budget_per_tick`) (`routing.md` §9.6) | Network, RouteStore, Graph, Overlay, Pending | RouteStore, Overlay, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
 | 4 | **Перекрёстки и сигналы** (`intersections.md` §5–6): таймеры фаз, `LaneSignals`, `SignalStates`; сбор кандидатов (головы полос у узлов с воротами) и выдача допусков с билетами (сигнал, STOP, выезд свободен, gap acceptance, старшинство); на шаге 2 фаза пустая | Signals, LaneLists, S, Speed, Route | Signals, LaneSignals, GateState, GrantConnector, Ticket, WaitTicks, NodeTicket, OutReserved | `Rules/Intersections/*.cs` |
-| 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение). Пишет **только** `Accel[]` и `LaneChangeDir[]`: это делает фазу параллелизуемой по машинам **[этап 2]** | S, Speed, Lane, списки, Signals | Accel, LaneChangeDir | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
-| 6 | **Интеграция (write)**: `v' = max(0, v + a·dt)`; `s' = s + v'·dt`; **клэмп I6** (§7.6); `Lateral` анимация; `StillTicks` | Accel | S, Speed, Lateral | `Agents/IntegratePhase.cs` |
+| 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение); **зазоры клэмпа I6** для фазы 6 (ADR-0016): до лидера и до препятствия ворот без ограничения видимости — для каждой машины фазы 6, включая автобусы `AtStop`. Пишет **только** поля машины `i` (`Accel`, `LaneChangeDir`, `ClampLeadGap`, `ClampFlags`, `ClampGateGap`): результат не зависит от порядка обхода, фаза параллелизуема по машинам **[этап 2]** | S, Speed, Lane, списки, Signals, `NodeBusy` | Accel, LaneChangeDir, Clamp* | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
+| 6 | **Интеграция (write, потоковая)**: `v' = clamp(v + a·dt, 0, MaxSpeed)`; `s' = s + v'·dt`; **клэмп I6** (§7.6) по зазорам фазы 5 — без чтения чужих машин; `StillTicks` (`Lateral` ведёт фаза 7) | Accel, Clamp*, свои S/Speed | S, Speed, StillTicks | `Agents/IntegratePhase.cs` |
 | 7 | **Переходы**: (a) начало смены полосы для `LaneChangeDir != 0` — вставка в целевую, ghost в исходной; завершение манёвров; (b) `s' ≥ Length` → перенос на следующую полосу маршрута (`RouteCursor++`, `s' −= Length`, PushTail, пересчёт `DesiredSpeed`, `PointHint = 0`); фиксация `NodeThroughput[node]++` при выходе с connector'а | S, Route | Lane, списки, RouteCursor | `Agents/TransitionPhase.cs` |
 | 8 | **Прибытие/деспаун**: `Lane == DestLane && S >= DestS` → `TripCompleted`, счётчики времени поездки, `Free`; автобус на конечной — **[шаг 4]**. Деспаун застрявших запрещён | S, Dest | VehicleStore, Counters, Events | `Agents/ArrivalPhase.cs` |
 | 9 | **Метрики**: stuck/unstuck (§11), gridlock, `SegmentLoads`, `BusRouteStats`, счётчики | всё | Counters, SegmentLoads | `Metrics/MetricsPhase.cs` |
@@ -955,7 +958,8 @@ v'   = (s' − s) / dt                                 (если клэмп ср
 Counters.HardClamps++ при срабатывании
 ```
 
-Используется позиция лидера **на начало тика** (`S_old`): лидер за тик только увеличивает `s`
+Зазор до лидера и до препятствия ворот считает фаза 5 (ADR-0016) — по позициям на начало фазы 6, так как фаза 5
+никого не двигает; фаза 6 только применяет `sMax`. Используется позиция лидера **на начало тика** (`S_old`): лидер за тик только увеличивает `s`
 (нет движения назад: `v ≥ 0`), поэтому клэмп по `S_old` всегда консервативен и **не зависит от
 порядка обработки** — фаза 6 параллелизуема. Инвариант `sMax ≥ s` держится индуктивно: при спавне
 и вставке в середину полосы (смена полосы) проверяется зазор `≥ MinPhysicalGap` с обеих сторон,
@@ -969,7 +973,8 @@ Counters.HardClamps++ при срабатывании
   `LookaheadDistance = 150 м` и не более 6 полос (вместо фиксированных 2: connector'ы короткие). Полоса без продолжения (тупик, конец маршрута,
   connector маршрута начинается с другой полосы) - виртуальное неподвижное препятствие в её конце; машина останавливается, не исчезает.
 - Следующая полоса: по маршруту (`RouteCursor`, шаги lane/connector чередуются), без маршрута - первый connector из `LaneNext`, у connector'а - `ToLane`.
-- `v0 = min(MaxSpeed, SpeedFactor * limit)`; `Accel` ограничено снизу -9 м/с². Фаза 6 копирует `S` в `VehicleStore.SOld` и клэмпит по нему (порядок обхода не важен).
+- `v0 = min(MaxSpeed, SpeedFactor * limit)`; `Accel` ограничено снизу -9 м/с². Клэмп I6 (ADR-0016, D2, вместо копии `SOld`): зазоры клэмпа считает фаза 5 по тем же позициям (она никого не двигает, это и есть `S_old`), фаза 6 применяет их
+  в прежнем порядке (лидер, затем ворота; `HardClamps++` на каждый сработавший), `SOld` удалён. Порядок обхода не важен.
 - Смена полосы: намерение (фаза 5) перепроверяется в фазе 7 по текущим позициям; запрещена, если до конца полосы меньше `v*duration + 0.5 м`
   или задний бампер ближе `LaneEntryClearance = 25 м` к началу полосы (идущий сзади на connector'е не виден в списках целевой полосы).
   Принудительная смена (маршрут требует другую полосу) проверяет только безопасность; добровольная при заданном маршруте - только при остатке полосы >= 120 м.
