@@ -22,6 +22,7 @@ internal sealed class World
     public readonly ulong Seed;
     public readonly VehicleTypeDesc[] Types;
     public readonly DemandDesc Demand;
+    public readonly TransitDesc TransitCfg;
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -82,6 +83,7 @@ internal sealed class World
         Seed = desc.Seed;
         Types = types;
         Demand = desc.Demand;
+        TransitCfg = desc.Transit;
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled

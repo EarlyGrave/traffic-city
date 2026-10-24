@@ -124,6 +124,9 @@ internal static class GenFixture
                 _ => StopKindMode.Mixed,
             },
             BusType = 1,
+            DwellBaseTicks = (int)(t.GetProperty("dwell_base_s").GetSingle() * 20f),
+            DwellPerPassengerTicks = t.GetProperty("dwell_per_passenger_s").GetSingle() * 20f,
+            PassengerRatePerMin = t.GetProperty("passenger_rate_per_min").GetSingle(),
         };
         return run;
     }

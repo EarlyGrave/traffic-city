@@ -31,8 +31,19 @@ internal static class Step2
         LaneChangeDurationTicks = 40,
     };
 
+    // Без buses автобусные маршруты не создаются (старые тесты считают машины и не ждут автобусов).
+    private static TransitDesc Transit(TransitDesc t, bool buses)
+    {
+        if (!buses)
+        {
+            t.Routes = 0;
+        }
+
+        return t;
+    }
+
     /// <summary>s1k: ёмкости и demand как в scenarios/s1k.json (max_vehicles 1280, 1000 машин, рампа 120 с).</summary>
-    public static ScenarioDesc S1k()
+    public static ScenarioDesc S1k(bool buses = false)
     {
         GenRun r = GenFixture.Load("s1k");
         SimCapacities c = r.Caps;
@@ -62,7 +73,7 @@ internal static class Step2
             Capacities = c,
             City = r.City,
             Demand = dem,
-            Transit = r.Transit,
+            Transit = Transit(r.Transit, buses),
             Rules = new RulesDesc
             {
                 MinPhysicalGap = 0.5f,

@@ -190,6 +190,7 @@ internal static class StateHash
         h.Add(c.BusDispatched);
         h.Add(c.BusStopArrivals);
         h.Add(c.BusHeadwayDeviationTicksTotal);
+        h.Add(c.BusHeadwaySamples);
         h.Add(c.BusPassengersBoarded);
         h.Add(c.Grants);
         h.Add(c.GateDeniedExit);

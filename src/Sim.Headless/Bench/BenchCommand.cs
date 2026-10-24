@@ -162,7 +162,7 @@ public static class BenchCommand
         r.TripsCompletedPerMin = s.TripsCompletedPerMin;
         r.StuckVehicles = s.StuckVehicles;
         r.Gridlock = s.GridlockFlag != 0;
-        r.BusHeadwayDeviationS = c.BusStopArrivals > 0 ? s.BusHeadwayDeviationS : null;
+        r.BusHeadwayDeviationS = c.BusHeadwaySamples > 0 ? s.BusHeadwayDeviationS : null;
 
         // Топ-10 узлов по пропускной способности: счётчик за всю симуляцию / игровые минуты.
         double minutes = c.Ticks * (double)Simulation.Dt / 60.0;

@@ -4,6 +4,7 @@ using Sim.Core.Metrics;
 using Sim.Core.Routing;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Transit;
 
 namespace Sim.Core;
 
@@ -16,6 +17,7 @@ internal static class PhaseList
     {
         CommandDispatcher.Run(w);                 // 1. команды
         Spawner.Run(w);                           // 2. спавн
+        BusDispatch.Run(w);                       // 2b. автобусы: выпуск по интервалу
         RoutePhase.Run(w);                        // 3. маршруты: перемаршрутизация и поездки без маршрута
         SignalPhase.Run(w);                       // 4a. сигналы: таймеры, LaneSignals, SignalStates
         GatePhase.Run(w);                         // 4b. ворота перекрёстков: допуски, билеты, OutReserved
@@ -23,6 +25,7 @@ internal static class PhaseList
         IntegratePhase.Run(w);                    // 6. интеграция
         TransitionPhase.Run(w);                   // 7. переходы между полосами
         ArrivalPhase.Run(w);                      // 8. прибытие/деспаун
+        BusStopPhase.Run(w);                      // 8b. автобусы: остановки, посадка, отправление, конечная
         MetricsPhase.Run(w);                      // 9. метрики
         SnapshotPhase.Run(w);                     // 10. снапшот (SnapshotTick = Tick + 1)
 

@@ -178,9 +178,9 @@ public sealed class Simulation : IDisposable
 
         stats.StuckVehicles = c.StuckVehicles;
         stats.GridlockFlag = c.GridlockFlag;
-        if (c.BusStopArrivals > 0)
+        if (c.BusHeadwaySamples > 0)
         {
-            stats.BusHeadwayDeviationS = (float)(c.BusHeadwayDeviationTicksTotal * (double)Dt / c.BusStopArrivals);
+            stats.BusHeadwayDeviationS = (float)(c.BusHeadwayDeviationTicksTotal * (double)Dt / c.BusHeadwaySamples);
         }
 
         if (c.PathfindQueries > 0)
