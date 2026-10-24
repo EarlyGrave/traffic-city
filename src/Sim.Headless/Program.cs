@@ -1,4 +1,5 @@
 using System;
+using Sim.Headless.Scenarios;
 
 namespace Sim.Headless;
 
@@ -16,6 +17,7 @@ public static class Program
         "  bench            run a scenario and write perf JSON\n" +
         "  compare          compare a result with the baseline\n" +
         "  update-baseline  replace perf/baseline.json with a result\n" +
+        "  validate         load a scenario and print a summary (--scenario <name|path> [--scenarios-dir <dir>])\n" +
         "\n" +
         "Options:\n" +
         "  --help, -h       show this help\n";
@@ -36,6 +38,14 @@ public static class Program
             case "help":
                 Console.Out.WriteLine(Usage);
                 return ExitOk;
+            case "validate":
+                if (HasHelp(args))
+                {
+                    Console.Out.WriteLine(Usage);
+                    return ExitOk;
+                }
+
+                return ValidateCommand.Run(args, Console.Out, Console.Error);
             case "run":
             case "bench":
             case "compare":
