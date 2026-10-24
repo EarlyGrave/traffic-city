@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -89,6 +90,22 @@ internal readonly struct RuleEnv
         int r = V.Route[i];
         int c = V.RouteCursor[i] + k;
         return c >= 0 && c < Routes.Count![r] ? (r * Routes.Width) + c : -1;
+    }
+
+    /// <summary>
+    /// Первый переход <c>NextLane(i, lane, 1, useRoute: true)</c> для машины на её текущей полосе (ADR-0016, D6): берётся готовый
+    /// <see cref="VehicleStore.NextConn"/>, если он посчитан (&gt;= 0), иначе полный расчёт. В Debug - сверка с полным расчётом.
+    /// </summary>
+    public int FirstHop(int i, int lane)
+    {
+        int nc = V.NextConn[i];
+        if (nc >= 0)
+        {
+            Debug.Assert(nc == NextLane(i, lane, 1, useRoute: true), "NextConn out of sync with NextLane");
+            return nc;
+        }
+
+        return NextLane(i, lane, 1, useRoute: true);
     }
 
     /// <summary>

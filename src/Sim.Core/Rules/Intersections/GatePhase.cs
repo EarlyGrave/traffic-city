@@ -80,7 +80,7 @@ internal static class GatePhase
                 continue;
             }
 
-            int node = GateRules.GateNode(net, lane);
+            int node = GateRules.GateNodeOfNormal(net, lane);
             if (node < 0)
             {
                 v.WaitTicks[i] = 0;
@@ -106,7 +106,7 @@ internal static class GatePhase
             }
 
             ref readonly VehicleTypeDesc t = ref w.Types[v.Type[i]];
-            float d = ld.Length - v.S[i];
+            float d = net.LaneLength[lane] - v.S[i];
             if (v.Speed[i] < 0.1f && d <= t.MinGap + GateRules.StopLineTolerance)
             {
                 v.GateState[i] |= GateRules.StoppedAtLine;
@@ -128,7 +128,7 @@ internal static class GatePhase
                 continue;
             }
 
-            int conn = e.NextLane(i, lane, 1, useRoute: true);
+            int conn = e.FirstHop(i, lane);
             if (conn < 0 || net.Lanes[conn].Kind != LaneKind.Connector || net.Lanes[conn].FromLane != lane)
             {
                 v.WaitTicks[i] = 0;   // маршрут требует другую полосу - connector'а с этой полосы нет (routing.md §6.2)
@@ -279,7 +279,7 @@ internal static class GatePhase
         ref readonly LaneData cl = ref net.Lanes[conn];
         ref readonly VehicleTypeDesc t = ref w.Types[v.Type[i]];
         int lane = v.Lane[i];
-        float lenIn = net.Lanes[lane].Length;
+        float lenIn = net.LaneLength[lane];
         float dLine = lenIn - v.S[i];
         float vi = v.Speed[i];
         float v0 = v.DesiredSpeed[i];

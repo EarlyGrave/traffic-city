@@ -300,3 +300,29 @@ tick=6300 `c73832373fb67bd3`; `dotnet test` зелёный (Core 395, Headless 1
 transition 0.509 (0.540), snapshot 0.427 (0.436), route 0.280 (0.294). Выигрыш виден в фазе 5; gate не изменился (шум контейнера).
 `work_per_tick` (после H2 -> H3): `conflict_gap_mask_rejects` 0 -> **2 046** (65% из 3 149 вызовов), `conflict_entries_scanned` 12 123 -> **3 844** (-68%),
 `conflict_occupants_scanned` 2 041 -> 1 130, `conflict_gap_calls_behaviour` 3 149 -> 3 149, `gate_trygrant_entries` 1 358 (как было).
+
+## 7.3 H4 выполнена (D5+D6: `LaneGateNode`/`LaneLength`, первый переход через `NextConn`)
+Реализовано как в D5/D6. `NetworkStore.LaneGateNode` (`int[MaxLanes]`, заполнен -1) и `LaneLength` (`float[MaxLanes]`) - производные, в `Hash()` не входят.
+`LaneLength` пишут `EmitLane` и построение connector'ов. `LaneGateNode` пересчитывает `NetworkStore.RefreshLaneGateNode(node)` (connector'ы узла и их входные полосы:
+`Control != None` ? узел : -1) в конце `BuildConnectorsEx` (после `RefreshArmFlags`, который может нормализовать `Control`; это же покрывает `BuildRoad` - он строит
+connector'ы только новых узлов, достроенный узел отклоняется `NotSupported`) и в `NetworkBuilder.SetNodeControl` (им пользуется команда `SetNodeControl`).
+`GateRules`: `GateNodeOfNormal` / `IsGatedConnector(net, lane)` - одно чтение массива + `Debug.Assert` против прежнего расчёта (`GateNodeSlow`, `IsGatedConnectorSlow`);
+`GateNode(net, lane)` оставлен для тестов (для connector'а по-прежнему -1). Через них идут `ObstacleGap`, сбор кандидатов фазы 4, `TryAdvanceLane` (фаза 7);
+`ld.Length` в `ObstacleGap`, фазе 4 (кандидат, `TryGrant`) и `LeaderSearch` заменён на `LaneLength`.
+D6: `RuleEnv.FirstHop(i, lane)` - `NextConn[i]`, если `>= 0` (в Debug - `Debug.Assert(NextConn == NextLane(i, lane, 1, true))`), иначе прежний `NextLane`. Используют
+`LeaderSearch.Find` (при `hop == 1 && useRoute && lane == V.Lane[self]`) и выбор connector'а кандидата ворот в `GatePhase`.
+Тесты: `LaneDerivedArraysTests` (массивы == прежний расчёт для всех полос после `Create`, после `BuildRoad`, после `SetNodeControl` Signal/Yield/Stop/RHR, переключение
+None <-> Yield через `Builder.SetNodeControl`). Debug-сверка нашла нарушение инварианта D6 только в тестовой фикстуре `GateFixture.Place` (выставляла `NextConn` в произвольный
+connector без маршрута, хотя ядро берёт тогда connector по умолчанию) - фикстура теперь ставит `ChooseConnector`; ядро инвариант не нарушало.
+
+Приёмка: golden-хэши `HotPathGoldenHashTests` не менялись; `hash --scenario s10k --warmup-until-full --ticks 400 --every 200`: tick=6100 `861672e99fa95a39`, tick=6300
+`c73832373fb67bd3` (active 9 997); `dotnet test traffic-city.sln` зелёный в Debug со всеми сверками (Core 402, Headless 107); `dotnet build -warnaserror` и `dotnet format --verify-no-changes` чисто.
+
+«После» (`bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases`, активных 9 818 -> 9 997, 0 B/тик, stuck 0, tick p50/p95/p99 3.47/4.41/5.39 мс при load ~3
+на общем контейнере; после H3 было 4.42/5.57 при load ~5), мс на тик (mean, в скобках после H3): behaviour 1.287 (1.736), gate 0.758 (1.035), integrate 0.159 (0.174),
+transition 0.482 (0.509), snapshot 0.373 (0.427), route 0.271 (0.280). Падение всех фаз, включая не тронутые snapshot/route, показывает, что часть выигрыша - разная загрузка
+контейнера, а не код; чистый вклад H4 оценивать по фазам, где менялся код (behaviour, gate, transition), и по `work_per_tick`.
+`work_per_tick` не меняется (H4 убирает зависимые чтения, а не вызовы): `leader_lookahead_hops` 8 278, `obstacle_gap_calls` 9 994, `conflict_gap_calls_behaviour` 3 149,
+`conflict_gap_mask_rejects` 2 046, `conflict_entries_scanned` 3 844, `gate_trygrant_entries` 1 358, `next_conn_recomputes` 809 - как после H3. Счётчик `leader_lookahead_hops`
+считает переходы, а не вызовы `NextLane`, поэтому «-45%» из таблицы §5 по нему не наблюдается; эффект D6 - в замене цепочки `RouteStepIndex -> Steps -> Lanes` на одно чтение.
+`scripts/bench-gate.sh --baseline perf/baseline.json` (s1k): OK.

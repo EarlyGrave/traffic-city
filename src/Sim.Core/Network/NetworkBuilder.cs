@@ -97,6 +97,8 @@ internal sealed partial class NetworkBuilder
                 RefreshArmFlags(node);
             }
 
+            _s.RefreshLaneGateNode(node);
+
             _s.Version++;
         }
     }
@@ -410,6 +412,7 @@ internal sealed partial class NetworkBuilder
         _s.LanePointS[first] = 0f;
         _s.LanePointS[first + m - 1] = length;
         _s.FillPieceHeadings(first, m);
+        _s.LaneLength[laneIdx] = length;
         _s.Lanes[laneIdx] = new LaneData
         {
             Kind = LaneKind.Normal,

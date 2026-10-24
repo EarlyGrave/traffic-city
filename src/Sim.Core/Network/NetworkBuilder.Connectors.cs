@@ -114,6 +114,7 @@ internal sealed partial class NetworkBuilder
 
             int first = _s.LanePointCount + (p * samples);
             float length = EmitBezier(li, lo, first, samples, _planMan[p] == Maneuver.UTurn, out float speed);
+            _s.LaneLength[laneIdx] = length;
             _s.Lanes[laneIdx] = new LaneData
             {
                 Kind = LaneKind.Connector,
@@ -151,6 +152,7 @@ internal sealed partial class NetworkBuilder
         nd.FirstConnector = baseLane;
         nd.ConnectorCount = plan;
         RefreshArmFlags(node);
+        _s.RefreshLaneGateNode(node);
         _s.Version++;
         return NetworkStatus.Ok;
     }

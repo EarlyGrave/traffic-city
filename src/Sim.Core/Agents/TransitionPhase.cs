@@ -167,7 +167,7 @@ internal static class TransitionPhase
         }
 
         int next = e.NextLane(i, lane, 1, useRoute: true);
-        if (ld.Kind == LaneKind.Normal && GateRules.GateNode(e.Net, lane) >= 0)
+        if (ld.Kind == LaneKind.Normal && GateRules.GateNodeOfNormal(e.Net, lane) >= 0)
         {
             // Узел с воротами: только с допуском и только на connector допуска (intersections.md §5, §7.3).
             if (!GateRules.IsGranted(v, i))

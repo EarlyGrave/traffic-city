@@ -30,6 +30,8 @@ internal sealed class NetworkStore
     public readonly BusRouteData[] BusRoutes;
     public readonly int[] BusRouteStops;
     public readonly uint[] NodeTicket;       // [MaxNodes] следующий билет узла; ++ при каждом допуске (intersections.md §4)
+    public readonly int[] LaneGateNode;      // [MaxLanes] (ADR-0016, D5) узел с воротами в конце Normal-полосы / узел gated connector'а, иначе -1; производное, вне хэша
+    public readonly float[] LaneLength;      // [MaxLanes] (ADR-0016, D5) горячая копия LaneData.Length; производное, вне хэша
     public readonly float[] OutReserved;     // [MaxLanes] Σ длин машин, допущенных/находящихся в узле с выездом на полосу; пересобирается фазой 4
 
     // Служебные индексы построения: список инцидентности (по концам сегментов) и сетка прилипания.
@@ -58,6 +60,27 @@ internal sealed class NetworkStore
         LanePieceHeading[first + m - 1] = 0f;
     }
 
+    /// <summary>
+    /// Пересчёт <see cref="LaneGateNode"/> для полос узла <paramref name="node"/> (ADR-0016, D5): его connector'ы и их входные полосы получают
+    /// номер узла, если у узла есть ворота (<c>Control != None</c>), иначе -1. Зовётся после построения connector'ов узла и при смене режима.
+    /// </summary>
+    internal void RefreshLaneGateNode(int node)
+    {
+        ref readonly NodeData nd = ref Nodes[node];
+        if (nd.FirstArm < 0)
+        {
+            return;
+        }
+
+        int gate = nd.Control != NodeControl.None ? node : -1;
+        for (int p = 0; p < nd.ConnectorCount; p++)
+        {
+            int c = nd.FirstConnector + p;
+            LaneGateNode[c] = gate;
+            LaneGateNode[Lanes[c].FromLane] = gate;
+        }
+    }
+
     public NetworkStore(in SimCapacities caps)
     {
         int nodes = Math.Max(0, caps.MaxNodes);
@@ -82,6 +105,9 @@ internal sealed class NetworkStore
         BusRouteStops = new int[Math.Max(0, caps.MaxBusRoutes) * Math.Max(0, caps.MaxBusStopsPerRoute)];
         NodeTicket = new uint[nodes];
         OutReserved = new float[lanes];
+        LaneGateNode = new int[lanes];
+        Array.Fill(LaneGateNode, -1);
+        LaneLength = new float[lanes];
         IncHead = new int[nodes];
         IncNext = new int[2 * segs];
         CellNext = new int[nodes];

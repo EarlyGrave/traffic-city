@@ -41,11 +41,11 @@ internal static class LeaderSearch
             };
         }
 
-        float dist = e.Net.Lanes[lane].Length - sSelf;
+        float dist = e.Net.LaneLength[lane] - sSelf;
         int cur = lane;
         for (int hop = 1; hop <= MaxLookaheadLanes; hop++)
         {
-            int next = e.NextLane(self, cur, hop, useRoute);
+            int next = hop == 1 && useRoute && lane == e.V.Lane[self] ? e.FirstHop(self, lane) : e.NextLane(self, cur, hop, useRoute);
             if (next < 0)
             {
                 return new LeaderInfo { Vehicle = -1, Gap = dist, Speed = 0f, Virtual = true, Hops = hop };
@@ -69,7 +69,7 @@ internal static class LeaderSearch
                 };
             }
 
-            dist += e.Net.Lanes[next].Length;
+            dist += e.Net.LaneLength[next];
             if (dist > LookaheadDistance)
             {
                 return new LeaderInfo { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false, Hops = hop };

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -42,7 +43,30 @@ internal static class GateRules
     public static bool IsGranted(VehicleStore v, int i) => (v.GateState[i] & Granted) != 0;
 
     /// <summary>Узел с воротами (<c>Control != None</c>) в конце Normal-полосы или -1 (connector, тупик, узел без правил).</summary>
-    public static int GateNode(NetworkStore net, int lane)
+    public static int GateNode(NetworkStore net, int lane) =>
+        net.Lanes[lane].Kind == LaneKind.Normal ? GateNodeOfNormal(net, lane) : -1;
+
+    /// <summary>
+    /// То же для полосы, про которую вызывающий уже знает, что она <see cref="LaneKind.Normal"/>: одно чтение <see cref="NetworkStore.LaneGateNode"/>
+    /// (ADR-0016, D5). В Debug - сверка со старым расчётом (<see cref="GateNodeSlow"/>).
+    /// </summary>
+    public static int GateNodeOfNormal(NetworkStore net, int lane)
+    {
+        int node = net.LaneGateNode[lane];
+        Debug.Assert(node == GateNodeSlow(net, lane), "LaneGateNode out of sync (Normal lane)");
+        return node;
+    }
+
+    /// <summary>true: connector <paramref name="lane"/> принадлежит узлу с воротами (одно чтение <see cref="NetworkStore.LaneGateNode"/>).</summary>
+    public static bool IsGatedConnector(NetworkStore net, int lane)
+    {
+        bool gated = net.LaneGateNode[lane] >= 0;
+        Debug.Assert(gated == IsGatedConnectorSlow(net, in net.Lanes[lane]), "LaneGateNode out of sync (connector)");
+        return gated;
+    }
+
+    /// <summary>Прежний расчёт (цепочка LaneData -> LaneNext -> LaneData -> NodeData): эталон для Debug-сверки.</summary>
+    internal static int GateNodeSlow(NetworkStore net, int lane)
     {
         ref readonly LaneData ld = ref net.Lanes[lane];
         if (ld.Kind != LaneKind.Normal || ld.NextCount <= 0)
@@ -54,8 +78,7 @@ internal static class GateRules
         return node >= 0 && net.Nodes[node].Control != NodeControl.None ? node : -1;
     }
 
-    /// <summary>true: connector принадлежит узлу с воротами.</summary>
-    public static bool IsGatedConnector(NetworkStore net, in LaneData ld) =>
+    internal static bool IsGatedConnectorSlow(NetworkStore net, in LaneData ld) =>
         ld.Kind == LaneKind.Connector && ld.Node >= 0 && net.Nodes[ld.Node].Control != NodeControl.None;
 
     /// <summary>
@@ -130,7 +153,7 @@ internal static class GateRules
         float si = s[i];
         if (ld.Kind == LaneKind.Connector)
         {
-            if (!IsGatedConnector(net, in ld))
+            if (!IsGatedConnector(net, lane))
             {
                 return Idm.FreeGap;
             }
@@ -138,12 +161,13 @@ internal static class GateRules
             return ConflictGap(net, v, occ, cs, nodeBusy, ref work, s, i, lane, si, out speed);
         }
 
-        if (GateNode(net, lane) < 0)
+        if (GateNodeOfNormal(net, lane) < 0)
         {
             return Idm.FreeGap;
         }
 
-        float d = ld.Length - si;
+        float laneLen = net.LaneLength[lane];
+        float d = laneLen - si;
         if (!IsGranted(v, i))
         {
             beyondDecision = d > DecisionDistance(v.Speed[i], comfortDecel);
@@ -156,7 +180,7 @@ internal static class GateRules
             return Idm.FreeGap;
         }
 
-        return ConflictGap(net, v, occ, cs, nodeBusy, ref work, s, i, conn, si - ld.Length, out speed);
+        return ConflictGap(net, v, occ, cs, nodeBusy, ref work, s, i, conn, si - laneLen, out speed);
     }
 
     /// <summary>

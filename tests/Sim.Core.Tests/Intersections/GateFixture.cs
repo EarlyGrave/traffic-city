@@ -124,7 +124,7 @@ internal static class GateFixture
         v.SpawnTick[i] = w.Tick;
         v.DestZone[i] = -1;
         w.Occupancy.InsertSorted(lane, i);
-        v.NextConn[i] = connector >= 0 ? connector : TransitionPhase.ChooseConnector(w, i, lane);
+        v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane); // инвариант ADR-0016 D6: NextConn == NextLane(i, lane, 1) (без маршрута - connector по умолчанию)
         if (routed && connector >= 0)
         {
             // Без маршрута фазы 4-5 берут connector по умолчанию (PhysicsTypes.DefaultConnector), а не NextConn: настоящий манёвр задаёт только маршрут.
