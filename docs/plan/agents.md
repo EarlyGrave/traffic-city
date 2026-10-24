@@ -20,4 +20,4 @@
 | 14 | physics (worktree) | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | wip |
 | 15 | citygen | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | done, merged (s1k 4 мс, голден-хэш) |
 | 16 | render (worktree) | sonnet | 2.5: Sim.Headless render → mp4 | wip |
-| 17 | gen-wiring (worktree) | sonnet | 2-G2: генератор в WorldBuilder/Create | wip |
+| 17 | gen-wiring | sonnet | 2-G2: генератор в WorldBuilder/Create | done, merged (Create s1k 13.5 мс) |
