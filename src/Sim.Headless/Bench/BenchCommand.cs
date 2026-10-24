@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless.Bench;
 

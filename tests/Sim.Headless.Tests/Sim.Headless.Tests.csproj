@@ -16,6 +16,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/Sim.Headless/Sim.Headless.csproj" />
+    <ProjectReference Include="../../src/Sim.Scenarios/Sim.Scenarios.csproj" />
   </ItemGroup>
 
 </Project>

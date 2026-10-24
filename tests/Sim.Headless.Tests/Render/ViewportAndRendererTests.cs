@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Render;
-using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless.Tests.Render;
 
