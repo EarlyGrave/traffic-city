@@ -60,6 +60,8 @@ internal sealed class World
     // ---- время, команды, события, метрики ----
     public long Tick;
     public SimCounters Counters;
+    public SimWork Work;                  // счётчики работы горячего пути (ADR-0016), вне хэша
+    public PhaseProbe? PhaseProbe;        // зонд конца фазы (core-api §3); задаёт хост, ядро время не читает
     public readonly RingBuffer<Command> Commands;
     public readonly SimEvent[] Events;
     public int EventCount;

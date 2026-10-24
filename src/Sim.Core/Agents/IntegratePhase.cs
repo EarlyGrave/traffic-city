@@ -21,7 +21,7 @@ namespace Sim.Core.Agents;
 internal static class IntegratePhase
 {
     public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), ref w.Counters, w.Connectors);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), ref w.Counters, ref w.Work, w.Connectors);
 
     public static void Run(
         NetworkStore net,
@@ -33,6 +33,24 @@ internal static class IntegratePhase
         ref SimCounters c,
         ConnectorStore? connectors = null)
     {
+        SimWork scratch = default;
+        Run(net, v, occ, routes, types, p, ref c, ref scratch, connectors);
+    }
+
+    public static void Run(
+        NetworkStore net,
+        VehicleStore v,
+        LaneOccupancy occ,
+        in RouteAccess routes,
+        ReadOnlySpan<VehicleTypeDesc> types,
+        in PhysicsParams p,
+        ref SimCounters c,
+        ref SimWork work,
+        ConnectorStore? connectors)
+    {
+        int hops = 0;
+        int obstacleCalls = 0;
+        long conflictCallsBefore = work.ConflictGapCallsRaw;
         int hw = v.HighWater;
         Array.Copy(v.S, v.SOld, hw);
         var e = new RuleEnv(net, v, occ, routes);
@@ -58,6 +76,7 @@ internal static class IntegratePhase
 
             float sNew = s + (vNew * dt);
             LeaderInfo li = LeaderSearch.FindFor(e, v.SOld, i);
+            hops += li.Hops;
             if (li.Vehicle != -1 || li.Virtual)
             {
                 float sMax = s + li.Gap - (li.Virtual ? 0f : p.MinPhysicalGap);
@@ -71,7 +90,8 @@ internal static class IntegratePhase
 
             if (connectors != null)
             {
-                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, v.SOld, i, t.ComfortDecel, visibilityLimited: false, out _);
+                obstacleCalls++;
+                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, ref work, v.SOld, i, t.ComfortDecel, visibilityLimited: false, out _);
                 if (gateGap < Idm.FreeGap)
                 {
                     float sMax = s + gateGap;
@@ -98,5 +118,9 @@ internal static class IntegratePhase
                 v.StillTicks[i] = 0;
             }
         }
+
+        work.LeaderLookaheadHops += hops;
+        work.ObstacleGapCalls += obstacleCalls;
+        work.ConflictGapCallsIntegrate += work.ConflictGapCallsRaw - conflictCallsBefore;
     }
 }

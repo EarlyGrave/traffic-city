@@ -39,6 +39,7 @@ internal static class GatePhase
 
         // 1. Сбор кандидатов.
         int hw = v.HighWater;
+        int candidates = 0;
         for (int i = 0; i < hw; i++)
         {
             if (!v.Pool.IsAlive(i))
@@ -130,6 +131,7 @@ internal static class GatePhase
             }
 
             g.CandConn[i] = conn;
+            candidates++;
             if (g.NodeCandHead[node] == -1)
             {
                 g.TouchedNodes[g.TouchedCount++] = node;
@@ -138,6 +140,8 @@ internal static class GatePhase
             g.CandNext[i] = g.NodeCandHead[node];
             g.NodeCandHead[node] = i;
         }
+
+        w.Work.GateCandidates += candidates;
 
         // 2. Разрешение по узлам.
         Span<int> buf = stackalloc int[MaxCandidatesPerNode];
@@ -237,6 +241,7 @@ internal static class GatePhase
     /// <summary>Условия допуска §5.4 по порядку; первое нарушенное - код отказа. <see cref="GateDeny.None"/> = допуск выдан.</summary>
     private static GateDeny TryGrant(World w, in RuleEnv e, int node, int i, int conn)
     {
+        w.Work.GateTryGrantCalls++;
         NetworkStore net = w.Net;
         VehicleStore v = w.Vehicles;
         LaneOccupancy occ = w.Occupancy;
@@ -322,6 +327,7 @@ internal static class GatePhase
             int wait = v.WaitTicks[i];
             for (int k = cs.FirstConflict[g]; k < end; k++)
             {
+                w.Work.GateTryGrantEntries++;
                 ref readonly ConflictEntry ce = ref cs.Conflicts[k];
                 int other = firstConn + ce.OtherLocal;
                 float sMine = ce.SMineCm * 0.01f;

@@ -7,6 +7,7 @@ internal struct LeaderInfo
     public float Gap;        // зазор бампер-в-бампер до лидера / препятствия, м (Idm.FreeGap = свободно)
     public float Speed;      // скорость лидера (0 для препятствия)
     public bool Virtual;     // препятствие в конце полосы без продолжения (тупик, закрытый выезд)
+    public int Hops;         // переходов по цепочке полос при поиске (счётчик работы SimWork; 0 - лидер на своей полосе)
 
     public static LeaderInfo Free => new() { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false };
 }
@@ -47,7 +48,7 @@ internal static class LeaderSearch
             int next = e.NextLane(self, cur, hop, useRoute);
             if (next < 0)
             {
-                return new LeaderInfo { Vehicle = -1, Gap = dist, Speed = 0f, Virtual = true };
+                return new LeaderInfo { Vehicle = -1, Gap = dist, Speed = 0f, Virtual = true, Hops = hop };
             }
 
             int tail = e.Occ.LaneTail[next];
@@ -55,7 +56,7 @@ internal static class LeaderSearch
             {
                 if (tail == self)
                 {
-                    return LeaderInfo.Free;
+                    return new LeaderInfo { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false, Hops = hop };
                 }
 
                 return new LeaderInfo
@@ -64,19 +65,20 @@ internal static class LeaderSearch
                     Gap = dist + s[tail] - e.V.Length[tail],
                     Speed = e.V.Speed[tail],
                     Virtual = false,
+                    Hops = hop,
                 };
             }
 
             dist += e.Net.Lanes[next].Length;
             if (dist > LookaheadDistance)
             {
-                break;
+                return new LeaderInfo { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false, Hops = hop };
             }
 
             cur = next;
         }
 
-        return LeaderInfo.Free;
+        return new LeaderInfo { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false, Hops = MaxLookaheadLanes };
     }
 
     /// <summary>
@@ -89,10 +91,13 @@ internal static class LeaderSearch
         if (e.V.GhostLane[i] != -1 && e.V.GhostAhead[i] != -1)
         {
             LeaderInfo g = Find(e, s, i, e.V.GhostLane[i], s[i], e.V.GhostAhead[i], useRoute: false);
+            int hops = li.Hops + g.Hops;
             if (g.Gap < li.Gap)
             {
                 li = g;
             }
+
+            li.Hops = hops;
         }
 
         return li;

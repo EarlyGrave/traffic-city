@@ -18,7 +18,7 @@ namespace Sim.Core.Rules;
 internal static class BehaviourPhase
 {
     public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, w.Connectors);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, ref w.Work, w.Connectors);
 
     public static void Run(
         NetworkStore net,
@@ -30,8 +30,27 @@ internal static class BehaviourPhase
         long tick,
         ConnectorStore? connectors = null)
     {
+        SimWork scratch = default;
+        Run(net, v, occ, routes, types, p, tick, ref scratch, connectors);
+    }
+
+    public static void Run(
+        NetworkStore net,
+        VehicleStore v,
+        LaneOccupancy occ,
+        in RouteAccess routes,
+        ReadOnlySpan<VehicleTypeDesc> types,
+        in PhysicsParams p,
+        long tick,
+        ref SimWork work,
+        ConnectorStore? connectors)
+    {
         var e = new RuleEnv(net, v, occ, routes);
         int hw = v.HighWater;
+        int vehicles = 0;
+        int hops = 0;
+        int obstacleCalls = 0;
+        long conflictCallsBefore = work.ConflictGapCallsRaw;
         for (int i = 0; i < hw; i++)
         {
             if (!v.Pool.IsAlive(i))
@@ -54,12 +73,15 @@ internal static class BehaviourPhase
                 continue;
             }
 
+            vehicles++;
             LeaderInfo li = LeaderSearch.FindFor(e, v.S, i);
+            hops += li.Hops;
             float vi = v.Speed[i];
             float a = Idm.Accel(t, vi, v.DesiredSpeed[i], li.Gap, vi - li.Speed);
             if (connectors != null)
             {
-                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, v.S, i, t.ComfortDecel, visibilityLimited: true, out float gateSpeed);
+                obstacleCalls++;
+                float gateGap = GateRules.ObstacleGap(net, v, occ, connectors, ref work, v.S, i, t.ComfortDecel, visibilityLimited: true, out float gateSpeed);
                 if (gateGap < Idm.FreeGap)
                 {
                     float ag = Idm.Accel(t, vi, v.DesiredSpeed[i], gateGap, vi - gateSpeed);
@@ -93,5 +115,10 @@ internal static class BehaviourPhase
 
             v.LaneChangeDir[i] = (sbyte)dir;
         }
+
+        work.BehaviourVehicles += vehicles;
+        work.LeaderLookaheadHops += hops;
+        work.ObstacleGapCalls += obstacleCalls;
+        work.ConflictGapCallsBehaviour += work.ConflictGapCallsRaw - conflictCallsBefore;
     }
 }

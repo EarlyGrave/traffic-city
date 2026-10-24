@@ -4,6 +4,9 @@ using Sim.Core.Network;
 
 namespace Sim.Core.Api;
 
+/// <summary>Зонд конца фазы: номер фазы core-api §7 (1..10). Вызывается из <see cref="Simulation.Step"/>; не должен бросать исключений.</summary>
+public delegate void PhaseProbe(int phase);
+
 /// <summary>
 /// Фасад ядра (core-api 3): единственная публичная точка входа. Однопоточный; снапшоты (спаны) валидны до следующего
 /// <see cref="Step"/>. После <see cref="Dispose"/> любой вызов - no-op (спаны пусты, запросы возвращают false).
@@ -196,6 +199,21 @@ public sealed class Simulation : IDisposable
     public ReadOnlySpan<uint> NodeThroughput => _disposed ? default : _w.NodeThroughput;
 
     public ReadOnlySpan<BusRouteStats> BusRouteStats => _disposed ? default : _w.BusRouteStats;
+
+    // ---- профилирование (core-api §3, routing.md §8) ----
+
+    /// <summary>
+    /// Зонд: вызывается после каждой из фаз 1..10 тика (подфазы 2b/4a/4b/8b - в составе своих номеров). По умолчанию null - ядро только
+    /// проверяет поле. Ядро время не читает: длительность фаз меряет хост. Делегат задаётся один раз, аллокаций в <see cref="Step"/> нет.
+    /// </summary>
+    public PhaseProbe? OnPhaseEnd
+    {
+        get => _w.PhaseProbe;
+        set => _w.PhaseProbe = value;
+    }
+
+    /// <summary>Счётчики работы горячего пути (ADR-0016): детерминированы, не входят в хэш. Монотонные; хост берёт разности.</summary>
+    public ref readonly SimWork Work => ref _w.Work;
 
     // ---- детерминизм ----
 

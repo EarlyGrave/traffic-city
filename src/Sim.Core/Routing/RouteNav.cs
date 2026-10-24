@@ -101,6 +101,8 @@ internal static class RouteNav
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
         int hw = v.HighWater;
+        int refillChecks = 0;
+        int recomputes = 0;
         for (int i = 0; i < hw; i++)
         {
             int lane = v.Lane[i];
@@ -114,6 +116,7 @@ internal static class RouteNav
                 ProcessMiss(w, i);
             }
 
+            refillChecks++;
             QueueRefill(w, i);
             int cur = v.NextConn[i];
             if (cur >= 0 && net.Lanes[cur].FromLane == lane && net.Lanes[lane].Kind == LaneKind.Normal)
@@ -121,8 +124,12 @@ internal static class RouteNav
                 continue;
             }
 
+            recomputes++;
             v.NextConn[i] = NextConnector(w, i, lane);
         }
+
+        w.Work.RouteRefillChecks += refillChecks;
+        w.Work.NextConnRecomputes += recomputes;
     }
 
     /// <summary>

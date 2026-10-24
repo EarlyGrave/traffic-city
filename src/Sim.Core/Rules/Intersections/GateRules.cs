@@ -121,7 +121,7 @@ internal static class GateRules
     /// машины на Normal-полосе к узлу с воротами - стоп-линия (с <paramref name="visibilityLimited"/> - только в пределах дистанции
     /// решения); для допущенной и для машины на connector'е - конфликтные точки, занятые/ожидаемые машинами с меньшим билетом.
     /// </summary>
-    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, float[] s, int i, float comfortDecel, bool visibilityLimited, out float speed)
+    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ref SimWork work, float[] s, int i, float comfortDecel, bool visibilityLimited, out float speed)
     {
         speed = 0f;
         int lane = v.Lane[i];
@@ -134,7 +134,7 @@ internal static class GateRules
                 return Idm.FreeGap;
             }
 
-            return ConflictGap(net, v, occ, cs, s, i, lane, si, out speed);
+            return ConflictGap(net, v, occ, cs, ref work, s, i, lane, si, out speed);
         }
 
         if (GateNode(net, lane) < 0)
@@ -159,7 +159,7 @@ internal static class GateRules
             return Idm.FreeGap;
         }
 
-        return ConflictGap(net, v, occ, cs, s, i, conn, si - ld.Length, out speed);
+        return ConflictGap(net, v, occ, cs, ref work, s, i, conn, si - ld.Length, out speed);
     }
 
     /// <summary>
@@ -169,9 +169,10 @@ internal static class GateRules
     /// минус его длина, пока он её не прошёл (zipper без остановки и без «лидера позади»). Записи отсортированы по SMine - первая
     /// блокирующая Cross-точка ближайшая; Merge-точка лежит в конце connector'а.
     /// </summary>
-    public static float ConflictGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, float[] s, int i, int conn, float sOnConn, out float speed)
+    public static float ConflictGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ref SimWork work, float[] s, int i, int conn, float sOnConn, out float speed)
     {
         speed = 0f;
+        work.ConflictGapCallsRaw++;
         int g = net.Lanes[conn].ConflictGroup;
         if (g < 0 || cs.ConflictCount[g] == 0)
         {
@@ -182,8 +183,11 @@ internal static class GateRules
         uint myTicket = v.Ticket[i];
         int end = cs.FirstConflict[g] + cs.ConflictCount[g];
         float best = Idm.FreeGap;
+        int scanned = 0;
+        int occupants = 0;
         for (int e = cs.FirstConflict[g]; e < end; e++)
         {
+            scanned++;
             ref readonly ConflictEntry ce = ref cs.Conflicts[e];
             float sMine = ce.SMineCm * 0.01f;
             if (sMine < sOnConn)
@@ -199,27 +203,32 @@ internal static class GateRules
             int other = firstConn + ce.OtherLocal;
             if (ce.Kind == ConflictKind.Merge)
             {
-                float mg = MergeGap(net, v, occ, s, i, myTicket, other, sMine, sOnConn, out float ms);
+                float mg = MergeGap(net, v, occ, s, i, myTicket, other, sMine, sOnConn, ref occupants, out float ms);
                 if (mg < best)
                 {
                     best = mg;
                     speed = ms;
                 }
             }
-            else if (CrossBlocked(v, occ, s, i, myTicket, other, ce.SOtherCm * 0.01f, net.Lanes[other].FromLane))
+            else if (CrossBlocked(v, occ, s, i, myTicket, other, ce.SOtherCm * 0.01f, net.Lanes[other].FromLane, ref occupants))
             {
+                work.ConflictEntriesScanned += scanned;
+                work.ConflictOccupantsScanned += occupants;
                 return sMine - ConflictMargin - sOnConn;
             }
         }
 
+        work.ConflictEntriesScanned += scanned;
+        work.ConflictOccupantsScanned += occupants;
         return best;
     }
 
     /// <summary>true: на connector'е <paramref name="other"/> или среди допущенных на его входной полосе есть машина с меньшим билетом, не освободившая точку.</summary>
-    private static bool CrossBlocked(VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sOther, int inLane)
+    private static bool CrossBlocked(VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sOther, int inLane, ref int occupants)
     {
         for (int x = occ.LaneTail[other]; x != -1; x = v.Ahead[x])
         {
+            occupants++;
             if (x != i && TicketLess(v.Ticket[x], myTicket) && s[x] - v.Length[x] < sOther + ClearMargin)
             {
                 return true;
@@ -228,6 +237,7 @@ internal static class GateRules
 
         for (int x = occ.LaneHead[inLane]; x != -1 && IsGranted(v, x); x = BehindOn(v, x, inLane))
         {
+            occupants++;
             if (x != i && v.GrantConnector[x] == other && TicketLess(v.Ticket[x], myTicket))
             {
                 return true;
@@ -238,13 +248,14 @@ internal static class GateRules
     }
 
     /// <summary>Зазор до самого ограничивающего партнёра слияния с меньшим билетом (см. <see cref="ConflictGap"/>) или FreeGap.</summary>
-    private static float MergeGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sMine, float sOnConn, out float speed)
+    private static float MergeGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sMine, float sOnConn, ref int occupants, out float speed)
     {
         speed = 0f;
         float best = Idm.FreeGap;
         float lenOther = net.Lanes[other].Length;
         for (int x = occ.LaneTail[other]; x != -1; x = v.Ahead[x])
         {
+            occupants++;
             if (x != i && TicketLess(v.Ticket[x], myTicket))
             {
                 Consider(v, x, sMine - (lenOther - s[x]), sMine, sOnConn, ref best, ref speed);
@@ -255,6 +266,7 @@ internal static class GateRules
         float lenIn = net.Lanes[inLane].Length;
         for (int x = occ.LaneHead[inLane]; x != -1 && IsGranted(v, x); x = BehindOn(v, x, inLane))
         {
+            occupants++;
             if (x != i && v.GrantConnector[x] == other && TicketLess(v.Ticket[x], myTicket))
             {
                 Consider(v, x, sMine - lenOther - (lenIn - s[x]), sMine, sOnConn, ref best, ref speed);

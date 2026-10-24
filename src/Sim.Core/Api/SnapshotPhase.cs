@@ -63,6 +63,7 @@ internal static class SnapshotPhase
             r.LateralOffset = lateral;
         }
 
+        w.Work.SnapshotSlots += high;
         w.SnapshotSlots[(int)(snapTick & 1)] = high;
         w.SnapshotTick = snapTick;
     }
