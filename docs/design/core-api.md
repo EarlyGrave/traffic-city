@@ -15,7 +15,7 @@
 | I1 | Ни одного `using Godot`, ввода, файлов, времени | хук + BannedApiAnalyzers; ядро получает `ScenarioDesc` уже распарсенным |
 | I2 | Сущности — struct в плотных массивах, адресация через handle | §2, §6 |
 | I3 | 0 B/тик в стационаре | все буферы выделяются в `Create` по ёмкостям из `ScenarioDesc` (§10); в `Step` нет `new`, нет `string`, нет замыканий, нет `params`, нет boxing, нет `throw` |
-| I4 | Детерминизм: `dt = 1/20 с`, PCG32, фиксированный порядок | §7, §8; запрет `Parallel`/`Task`; порядок обхода — всегда по возрастанию индекса |
+| I4 | Детерминизм: `dt = 1/20 с`, PCG32, фиксированный порядок; результат не зависит от числа потоков | §7, §8; запрет `Parallel`/`Task`/`ThreadPool`; последовательные фазы — обход по возрастанию индекса; фазы 5, 6, 10 — чанками на воркерах ядра по контракту ADR-0017 (пишут только `[i]` и целые аккумуляторы воркера) |
 | I5 | Узкое API как будущий FFI | §3, §12: только blittable-struct, `ReadOnlySpan<T>` = указатель + длина |
 | I6 | Машины не проходят сквозь друг друга | §7.6 — жёсткий клэмп интеграции по позиции лидера на начало тика |
 
@@ -237,9 +237,10 @@ public enum CreateStatus : int
 `Step(n)` с `n > 1` — просто цикл; снапшот `PreviousVehicles` после него относится к `Tick-1`,
 а не к состоянию до вызова.
 
-Потокобезопасность: `Simulation` однопоточный. Чтение спанов и `Step` не должны пересекаться
-(клиент читает в том же потоке, где зовёт `Step`). Параллелизм фаз внутри тика — **[этап 2]**,
-API это не меняет.
+Потокобезопасность: `Simulation` для хоста однопоточный. Чтение спанов и `Step` не должны пересекаться
+(клиент читает в том же потоке, где зовёт `Step`). Параллелизм фаз внутри тика (ADR-0017): `Simulation.Create(desc, in SimRuntimeOptions)`,
+`WorkerThreads` (по умолчанию 1 — без потоков); воркеры ядра создаются в `Create`, останавливаются в `Dispose`, работают только внутри `Step`.
+Число потоков не входит в хэш, сейв и сценарий; хэш при любом числе потоков одинаков.
 
 ### 3.1 `ScenarioDesc` (входные данные `Create`)
 
@@ -921,7 +922,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 2 | **Спавн**: (a) генератор OD: пока `Alive < Target` и `Pending` не полна — сгенерировать поездку (PRNG `Spawn`), ramp по `SpawnRampTicks`; (b) автобусы: по `HeadwayTicks` выпустить на маршрут **[шаг 4]**; (c) из `PendingTrips` FIFO ставить машины **с уже построенным маршрутом** (`Route != -1`; голова без маршрута ждёт, порядок сохраняется) на `FromLane` при `s=Length_type+MinGap`, если `LaneTail` достаточно далеко (`S[tail] − L_tail ≥ s + MinGap`), иначе поездка остаётся в очереди | Zones, Lanes, Pending | VehicleStore, LaneLists | `Agents/Spawner.cs` |
 | 3 | **Маршруты** (`routing.md` §3): сначала очередь перемаршрутизации (машины, промахнувшиеся мимо полосы, едут по умолчанию (`Route == -1`) и ждут нового маршрута), затем поездки из `PendingTrips` без маршрута — иерархический запрос `OverlaySearcher`; перед ними дозаполнение окон из `RefillQueue` (без бюджета) и проверка дрейфа плановой перемаршрутизации; запросы в пределах `routing.pathfind_budget_per_tick` и `work_budget_per_tick` (релаксации); затем пересчёт весов и волна кастомизации оверлея (`customize_budget_per_tick`) (`routing.md` §9.6) | Network, RouteStore, Graph, Overlay, Pending | RouteStore, Overlay, Pending.Route, VehicleStore.Route* | `Routing/RoutePhase.cs` |
 | 4 | **Перекрёстки и сигналы** (`intersections.md` §5–6): таймеры фаз, `LaneSignals`, `SignalStates`; сбор кандидатов (головы полос у узлов с воротами) и выдача допусков с билетами (сигнал, STOP, выезд свободен, gap acceptance, старшинство); на шаге 2 фаза пустая | Signals, LaneLists, S, Speed, Route | Signals, LaneSignals, GateState, GrantConnector, Ticket, WaitTicks, NodeTicket, OutReserved | `Rules/Intersections/*.cs` |
-| 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение); **зазоры клэмпа I6** для фазы 6 (ADR-0016): до лидера и до препятствия ворот без ограничения видимости — для каждой машины фазы 6, включая автобусы `AtStop`. Пишет **только** поля машины `i` (`Accel`, `LaneChangeDir`, `ClampLeadGap`, `ClampFlags`, `ClampGateGap`): результат не зависит от порядка обхода, фаза параллелизуема по машинам **[этап 2]** | S, Speed, Lane, списки, Signals, `NodeBusy` | Accel, LaneChangeDir, Clamp* | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
+| 5 | **Поведение (read-only по состоянию)**: для каждой машины — IDM-ускорение по лидеру (§6.4) и по виртуальному препятствию (закрытый connector → стоп-линия в конце полосы; остановка автобуса; конец маршрута); каждые `MobilEveryTicks` — решение о смене полосы (записывается только `LaneChangeDir`-намерение); **зазоры клэмпа I6** для фазы 6 (ADR-0016): до лидера и до препятствия ворот без ограничения видимости — для каждой машины фазы 6, включая автобусы `AtStop`. Пишет **только** поля машины `i` (`Accel`, `LaneChangeDir`, `ClampLeadGap`, `ClampFlags`, `ClampGateGap`): результат не зависит от порядка обхода (проверено: обход по полосам даёт тот же хэш), фаза выполняется чанками на воркерах (ADR-0017) | S, Speed, Lane, списки, Signals, `NodeBusy` | Accel, LaneChangeDir, Clamp* | `Rules/Idm.cs`, `Rules/Mobil.cs`, `Rules/BehaviourPhase.cs` |
 | 6 | **Интеграция (write, потоковая)**: `v' = clamp(v + a·dt, 0, MaxSpeed)`; `s' = s + v'·dt`; **клэмп I6** (§7.6) по зазорам фазы 5 — без чтения чужих машин; `StillTicks` (`Lateral` ведёт фаза 7) | Accel, Clamp*, свои S/Speed | S, Speed, StillTicks | `Agents/IntegratePhase.cs` |
 | 7 | **Переходы**: (a) начало смены полосы для `LaneChangeDir != 0` — вставка в целевую, ghost в исходной; завершение манёвров; (b) `s' ≥ Length` → перенос на следующую полосу маршрута (`RouteCursor++`, `s' −= Length`, PushTail, пересчёт `DesiredSpeed`, `PointHint = 0`); фиксация `NodeThroughput[node]++` при выходе с connector'а | S, Route | Lane, списки, RouteCursor | `Agents/TransitionPhase.cs` |
 | 8 | **Прибытие/деспаун**: `Lane == DestLane && S >= DestS` → `TripCompleted`, счётчики времени поездки, `Free`; автобус на конечной — **[шаг 4]**. Деспаун застрявших запрещён | S, Dest | VehicleStore, Counters, Events | `Agents/ArrivalPhase.cs` |
@@ -1089,7 +1090,8 @@ seed'ом; при желании — отдельный `ComputeNetworkHash()`, 
 ## 10. Аллокации и ёмкости
 
 - `Create` выделяет все массивы по `SimCapacities`; `Step` не аллоцирует. Тест: `GC.GetAllocatedBytesForCurrentThread()`
-  до/после 1 000 тиков в стационаре == 0 (первые 200 тиков прогрева исключены: JIT-тиринг).
+  до/после 1 000 тиков в стационаре == 0 (первые 200 тиков прогрева исключены: JIT-тиринг). При `WorkerThreads > 1` —
+  `GC.GetTotalAllocatedBytes(precise: true)` (аллокации воркеров не видны в счётчике текущего потока; ADR-0017).
 - Исчерпание ёмкости — **никогда не исключение**, а предсказуемое поведение + счётчик + событие
   `CapacityExhausted(kind)`:
 
