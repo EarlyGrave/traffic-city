@@ -34,7 +34,9 @@ dotnet build traffic-city.sln -warnaserror               # сборка, 0 пр�
 dotnet test traffic-city.sln                             # тесты
 dotnet format traffic-city.sln --verify-no-changes       # стиль
 dotnet build game/TrafficCity.csproj                     # сборка Godot-клиента
-dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k.json
+bash scripts/bench-gate.sh --out perf/results/s1k.json --baseline perf/baseline.json   # bench-smoke s1k + compare (единые параметры, до 3 попыток при провале p95)
+# справочно, то же вручную:
+dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --warmup-until-full --out perf/results/s1k.json
 dotnet run --project src/Sim.Headless -c Release -- compare --result perf/results/s1k.json --baseline perf/baseline.json
 dotnet run --project src/Sim.Headless -c Release -- update-baseline ...   # только осознанно, см. ниже
 dotnet run --project bench/Sim.Bench -c Release -- --filter '*'          # микробенчмарки
@@ -44,7 +46,9 @@ bash .claude/hooks/test-hooks.sh                         # самопровер�
 ## Бюджеты
 - s1k (1 000 машин + 10 автобусных маршрутов): tick p95 ≤ 1 мс, 0 B/тик, stuck = 0 за 30 мин игрового времени.
 - s10k / s100k / s1m: бюджетов на этапе 1 нет, только базовые цифры в отчёте.
-- `compare`: регрессия tick p95 > 10% или любые аллокации → exit 1.
+- `compare`: регрессия tick p95 > 10% или любые аллокации → exit 1; разный `ramp_complete` у результата и baseline → exit 1.
+- Одиночный p95 в общем облачном контейнере шумит на ±25–40% (скорость VM, соседи), поэтому допуск 10% применяется
+  через `scripts/bench-gate.sh`: провал по p95 засчитывается, только если не прошла ни одна из 3 попыток.
 - Все цифры — только из реальных прогонов. Не придумывать, не округлять «на глаз».
 
 ## Baseline
@@ -54,7 +58,7 @@ bash .claude/hooks/test-hooks.sh                         # самопровер�
 ## Definition of Done
 - `dotnet build -warnaserror` без предупреждений, `dotnet format --verify-no-changes` чисто.
 - Тесты зелёные (включая детерминизм и 0 B/тик).
-- bench-smoke s1k (2 000 тиков) + `compare` без регрессии.
+- bench-smoke s1k + `compare` без регрессии — через `scripts/bench-gate.sh`.
 - При архитектурном решении — ADR. Baseline менялся только осознанно.
 - В описании PR — before/after из bench.
 
@@ -63,7 +67,7 @@ bash .claude/hooks/test-hooks.sh                         # самопровер�
   основная сессия (нет `agent_id`) пишет только `docs/**` и `CLAUDE.md`.
 - PreToolUse Bash: защита main — нет push в main/master, нет force push, нет `branch -D main`, нет `reset --hard` на main.
 - PostToolUse Edit|Write `*.cs`: сборка затронутого проекта, ошибка → exit 2.
-- Stop: если изменены `.cs` — test + bench-smoke s1k + compare.
+- Stop: если изменены `.cs` — test + `scripts/bench-gate.sh` (bench-smoke s1k + compare с повторами).
 - SessionStart (облако): доустановка .NET SDK из `global.json`.
 
 ## Оркестрация

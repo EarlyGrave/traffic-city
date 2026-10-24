@@ -47,7 +47,7 @@
 | 41 | ladder-profile | sonnet | шаг 5: лестница + профиль | done (s1m не создан: ёмкость) |
 | 42 | s1m-fix | haiku | ёмкость s1m + прогон | done (p95 185 мс на 2031 машине) |
 | 43 | buses | sonnet | шаг 4 | done, merged (diff-перенос, ADR переименован в 0008) |
-| 44 | bench-stability (worktree) | sonnet | 2.1: прогрев до полной рампы, шум p95 | wip |
+| 44 | bench-stability (worktree) | sonnet | 2.1: прогрев до полной рампы, шум p95 | done, merged (bench-gate; s10k full p95 13.2 мс) |
 | 45 | routing-hier-spec (worktree) | opus | 2.2: спека иерархии маршрутов + ADR-0009 | done, merged (оверлей ячеек, H1–H4) |
 | 46 | snapshot-spec (worktree) | opus | 2.3: ADR-0010 снапшот без копирования | done, merged (копирования нет; удешевление фазы 10) |
 | 47 | snapshot-impl (worktree) | sonnet | 2.3: реализация ADR-0010 | done, merged (микробенч 22.5 → 16.9 мкс, short-job; хэши прежние) |
