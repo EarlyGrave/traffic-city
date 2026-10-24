@@ -24,7 +24,7 @@
 | 18 | spawner-metrics | sonnet | 2-H: Spawner, OD, MetricsPhase, подключение фаз | done, merged |
 | 19 | routing | sonnet | 3-R: A*, граф, кэш магистралей (без подключения) | done, merged (s1k A* 32 мкс, s100k 1.35 мс) |
 | 20 | loader-catchup | sonnet | 3.0: новые поля формата в загрузчике и сценариях | done, merged |
-| 21 | j1-connectors (worktree) | sonnet | 3-J1: connector'ы по правилам, ConnectorStore, конфликты | wip (мерж после PR шага 2) |
+| 21 | j1-connectors | sonnet | 3-J1: connector'ы по правилам, ConnectorStore, конфликты | done, ветка ждёт мержа после PR шага 2 |
 | 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, ветка ждёт мержа после PR шага 2 |
 | 23 | flaky-hunt (worktree) | sonnet | найти и устранить нестабильный тест (1 падение из 11 прогонов) | wip |
 | 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
