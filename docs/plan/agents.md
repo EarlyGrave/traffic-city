@@ -27,4 +27,4 @@
 | 21 | j1-connectors (worktree) | sonnet | 3-J1: connector'ы по правилам, ConnectorStore, конфликты | wip (мерж после PR шага 2) |
 | 22 | j2-signals | sonnet | 3-J2: SignalStore, автомат фаз, SetSignalPlan/SetNodeControl | done, ветка ждёт мержа после PR шага 2 |
 | 23 | flaky-hunt (worktree) | sonnet | найти и устранить нестабильный тест (1 падение из 11 прогонов) | wip |
-| 24 | render-contrast (worktree) | haiku | контраст машин в рендере, разбор --view с минусом | wip |
+| 24 | render-contrast | haiku | контраст машин в рендере, разбор --view с минусом | done, merged |
