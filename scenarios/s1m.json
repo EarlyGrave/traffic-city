@@ -69,7 +69,7 @@
     "max_bus_routes": 3000,
     "max_bus_stops": 40000,
     "max_bus_stops_per_route": 32,
-    "max_routes": 262000,
+    "max_routes": 1300000,
     "max_route_steps": 128000000,
     "max_pending_trips": 1000000,
     "command_queue": 1024,

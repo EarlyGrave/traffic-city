@@ -121,8 +121,11 @@
 лестнице — `docs/design/city-generator.md` §4; артериальные линии — `i % arterial_every ==
 arterial_every / 2` (при дефолтах 5 на ось, 25 светофоров), периметр — улица; фоновый джиттер всех
 узлов `0.25 · irregular_jitter_m`. Зон: `Zx·Zz + 2·(Zx+Zz)`, `Zx = ceil(w·scale / zone_m)` (s1k: 60).
-`max_routes ≥ max_vehicles + число
-используемых пар зон` (кэш магистралей, `routing.md` §4.3).
+`max_routes ≥ max_vehicles + routed_pending + trunk_slots`: каждая машина (и каждая поездка с уже построенным маршрутом)
+держит свою запись, плюс слоты кэша магистралей (`routing.md` §4.3; при нехватке работает как LRU). `max_route_steps ≥
+(max_vehicles + routed_pending) · avg_steps + trunk_slots · avg_trunk_steps`, замер `gravity α=1`: `avg_steps` ≈ 41 / 68 / 149
+(s1k / s10k / s100k, ≈ 29·`scale`), `avg_trunk_steps` ≈ 14 / 27 / 68; запас ×1.5 на фрагментацию арены между компактификациями.
+Предел арены - `1<<28` шагов (8 байт на шаг).
 
 ### 2.2 Полный пример `scenarios/s1k.json`
 
@@ -234,13 +237,15 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 | плотность, маш./полосо-км (оценка) | 3 | 8 | 13 | 13 |
 | `capacities.max_vehicles` | 1 280 | 12 000 | 115 000 | 1 100 000 |
 | `capacities.max_nodes / segments / lanes / lane_points` | 700 / 1 300 / 12 000 / 80 k | 2 800 / 5 200 / 48 k / 320 k | 17 k / 32 k / 300 k / 2 M | 170 k / 330 k / 3 M / 20 M |
-| `capacities.max_routes / route_steps` | 8 192 / 256 k | 16 k / 2 M | 65 k / 16 M | 262 k / 128 M |
+| `capacities.max_routes / route_steps` | 8 192 / 256 k | 32 k / 4 M | 250 k / 40 M | 1.3 M / 128 M (*) |
 | `capacities.max_connectors / max_conflicts` | 11.2 k / 67 k | 45 k / 270 k | 270 k / 1.6 M | 2.7 M / 16 M |
 | `capacities.max_pending_trips` | 2 048 | 16 k | 128 k | 1 M |
 | `capacities.pathfind_budget_per_tick` | 32 | 128 | 512 | 2 048 |
 | `capacities.max_zones` | 64 | 256 | 1 024 | 10 000 |
 | `capacities.max_bus_routes / stops` | 16 / 256 | 64 / 1 024 | 320 / 4 096 | 3 000 / 40 000 |
 | `capacities.max_signalized_nodes` (светофоров `A²`: 25 / 100 / 625 / 6 400) | 64 | 160 | 800 | 8 000 |
+
+(*) s1m: ≈ 470 шагов на маршрут × 1.1 M машин ≈ 4 ГБ арены не помещается в 128 M шагов - без оконных маршрутов/иерархии (routing.md §14) все машины маршрут не получат.
 
 Всё остальное (`block_m`, скорости, `demand`, `rules`, типы ТС) **одинаково** на всей лестнице,
 чтобы различия метрик объяснялись только размером. Плотность растёт с 3 до ~13 маш./полосо-км —
@@ -339,7 +344,7 @@ MOBIL (Kesting, Treiber, Helbing, *Transportation Research Record* 1999, 2007):
   "demand": { "zone_m": 1000, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
   "capacities": {
     "max_vehicles": 64, "max_nodes": 8, "max_segments": 8, "max_lanes": 64, "max_lane_points": 512,
-    "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
+    "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_route_steps": 16384,
     "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1
   }
 }
