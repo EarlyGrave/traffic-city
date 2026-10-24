@@ -318,6 +318,7 @@ internal static class GatePhase
             int end = cs.FirstConflict[g] + cs.ConflictCount[g];
             float yieldGap = w.Rules.YieldGapTime;
             int maxWait = w.Rules.MaxYieldWaitTicks;
+            int starveWait = maxWait / GateRules.StarvationDivisor;
             int wait = v.WaitTicks[i];
             for (int k = cs.FirstConflict[g]; k < end; k++)
             {
@@ -354,11 +355,6 @@ internal static class GatePhase
 
                 // 4b. Подъезжающие: первая недопущенная на входной полосе чужого connector'а.
                 ConflictRel rel = ce.Rel;
-                if (rel == ConflictRel.Priority)
-                {
-                    continue;
-                }
-
                 int y = occ.LaneHead[inLane];
                 while (y != -1 && GateRules.IsGranted(v, y))
                 {
@@ -368,6 +364,13 @@ internal static class GatePhase
                 if (y == -1 || y == i)
                 {
                     continue;
+                }
+
+                int wy = v.WaitTicks[y];
+                bool starving = nd.Control != NodeControl.RightHandRule && wy >= starveWait && (wy > wait || (wy == wait && y < i));
+                if (rel == ConflictRel.Priority && !starving)
+                {
+                    continue; // у меня приоритет и Y не голодает: Y после моего допуска увидит меня допущенной и уступит
                 }
 
                 if (e.NextLane(y, inLane, 1, useRoute: true) != other)
@@ -382,6 +385,35 @@ internal static class GatePhase
                     {
                         continue;
                     }
+                }
+
+                // 4b-bis (правило A, 2.4a2): долго ждущая (WaitTicks >= MaxYieldWaitTicks / StarvationDivisor, 10 с) голова Y, старше меня по (WaitTicks, -Index) и блокируемая
+                // именно конфликтами (не выездом/сигналом/STOP), не должна голодать перед потоком, который проходит по приоритету или gap acceptance:
+                // новые допуски через её точку ей отказывают (любое Rel), допущенные проезжают (4a), ящик очищается, Y проходит. Порядок по
+                // (WaitTicks, -Index) строгий: отказывает только более младшему, поэтому взаимный отказ невозможен. На узлах RightHandRule (все
+                // равнозначны, правило справа + тай-брейки) не действует: там оно только снижает пропускную способность (T2).
+                if (starving)
+                {
+                    // Отказ Y по выезду оправдывает пропуск потока (иначе перекрытый выезд запирал бы пересекающиеся потоки, don't-block-the-box),
+                    // только если хвост выезда стоит. Если хвост движется, занятость выезда мимолётна, и без учёта очередь встречных «перепрыгивала»
+                    // бы Y в каждый тик, когда выезд на миг занят.
+                    byte dy = w.Gate.DenyReason[y];
+                    bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop;
+                    if (dy == (byte)GateDeny.Exit)
+                    {
+                        int exitTail = occ.LaneTail[net.Lanes[other].ToLane];
+                        excused = exitTail != -1 && v.Speed[exitTail] < GateRules.CreepSpeed;
+                    }
+
+                    if (!excused)
+                    {
+                        return GateDeny.Yield;
+                    }
+                }
+
+                if (rel == ConflictRel.Priority)
+                {
+                    continue;
                 }
 
                 float vy = v.Speed[y];

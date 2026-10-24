@@ -38,6 +38,7 @@ internal static class GateRules
     public const float InversionGapTime = 1.0f;    // с: зазор при инверсии приоритета (§5.4 п. 4c)
     public const float DefaultYieldGapTime = 3f;   // с
     public const int DefaultMaxYieldWaitTicks = 400;
+    public const int StarvationDivisor = 2;       // правило A (§5.4 п. 4b-bis): голова, ждущая >= MaxYieldWaitTicks / 2 (10 с), старшая по (WaitTicks, -Index), отказывает младшим через свою точку
 
     public static bool IsGranted(VehicleStore v, int i) => (v.GateState[i] & Granted) != 0;
 
