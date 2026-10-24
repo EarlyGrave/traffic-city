@@ -30,3 +30,7 @@
   → Проверять хук напрямую: `bash .githooks/commit-msg <файл-с-сообщением>`.
 - Хуки из `.claude/settings.json` подхватываются живой сессией сразу после мержа — оркестратор
   после этого физически не может писать вне `docs/**` и `CLAUDE.md`.
+
+## Git-хуки
+- **pre-commit падает в worktree без `.sln`** (core.hooksPath общий для всех worktree). Причина — worktree
+  от старого `main`. → Синхронизация по `agent-preamble.md` п.1; `--no-verify` не использовать.
