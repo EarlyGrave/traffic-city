@@ -116,6 +116,16 @@ internal readonly struct RuleEnv
             return next;
         }
 
+        // STAGE2-TEMP: пока нет маршрутов, ближайшая развилка - connector, выбранный TransitionPhase.AssignConnectors (k == 1).
+        if (k == 1)
+        {
+            int chosen = V.NextConn[i];
+            if (chosen >= 0 && Net.Lanes[chosen].FromLane == lane)
+            {
+                return chosen;
+            }
+        }
+
         return l.NextCount > 0 ? Net.LaneNext[l.FirstNext] : -1;
     }
 
