@@ -49,6 +49,10 @@ internal static class StateHash
             h.Add(v.DestZone[i]);
             h.Add(v.NextConn[i]);
             h.Add(v.SpawnTick[i]);
+            h.Add(v.GateState[i]);
+            h.Add(v.GrantConnector[i]);
+            h.Add(v.Ticket[i]);
+            h.Add((int)v.WaitTicks[i]);
         }
 
         // 4. Полосы.
@@ -59,6 +63,15 @@ internal static class StateHash
             h.Add(w.Occupancy.LaneHead[l]);
             h.Add(w.Occupancy.LaneTail[l]);
             h.Add(w.Occupancy.LaneCount[l]);
+            h.Add(w.Net.OutReserved[l]);
+        }
+
+        // 4a. Узлы: билеты ворот.
+        int nodes = w.Net.NodeCount;
+        h.Add(nodes);
+        for (int n = 0; n < nodes; n++)
+        {
+            h.Add(w.Net.NodeTicket[n]);
         }
 
         // 5. Сигналы.
@@ -152,5 +165,10 @@ internal static class StateHash
         h.Add(c.BusStopArrivals);
         h.Add(c.BusHeadwayDeviationTicksTotal);
         h.Add(c.BusPassengersBoarded);
+        h.Add(c.Grants);
+        h.Add(c.GateDeniedExit);
+        h.Add(c.PriorityInversions);
+        h.Add(c.BoxWaitTicks);
+        h.Add(c.GateWaitTicksTotal);
     }
 }

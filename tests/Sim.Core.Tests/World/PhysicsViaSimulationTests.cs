@@ -2,10 +2,11 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Rules;
+using Sim.Core.Rules.Intersections;
 
 namespace Sim.Core.Tests.Worlds;
 
-/// <summary>Фазы 5-8 через обёртки Run(World) на мире, созданном Simulation.Create (PhaseList их пока не вызывает).</summary>
+/// <summary>Фазы 4-8 через обёртки Run(World) на мире, созданном Simulation.Create (без команд, спавна и метрик).</summary>
 public class PhysicsViaSimulationTests
 {
     private static void Step(Simulation sim, int ticks)
@@ -13,6 +14,8 @@ public class PhysicsViaSimulationTests
         World w = sim.World;
         for (int n = 0; n < ticks; n++)
         {
+            SignalPhase.Run(w);
+            GatePhase.Run(w);
             BehaviourPhase.Run(w);
             IntegratePhase.Run(w);
             TransitionPhase.Run(w);

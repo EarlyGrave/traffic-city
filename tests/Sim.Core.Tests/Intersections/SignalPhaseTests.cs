@@ -10,6 +10,8 @@ public class SignalPhaseTests
 {
     private static readonly int[] _g = { 10, 6 };
 
+    // MakeWithPlan делает Step(1): команда применяется в фазе 1, и фаза 4 того же тика уже один раз продвинула автомат
+    // (позиция 0 цикла), поэтому n-й ручной вызов SignalPhase.Run соответствует позиции n + 1.
     private static Simulation MakeWithPlan(SetSignalPlanCmd plan, int lanes = 1)
     {
         ScenarioDesc d = SignalFixture.Crosses(2, lanes, 4);
@@ -30,7 +32,7 @@ public class SignalPhaseTests
         for (int n = 0; n < 24 * 3; n++)
         {
             SignalPhase.Run(w);
-            (int ph, SignalInterval iv, int left) = SignalFixture.Expected(_g, 3, 1, n);
+            (int ph, SignalInterval iv, int left) = SignalFixture.Expected(_g, 3, 1, n + 1);
             SignalState st = w.SignalStates[0];
             Assert.Equal(0, st.Node);
             Assert.Equal(ph, st.Phase);
@@ -68,7 +70,7 @@ public class SignalPhaseTests
         for (int n = 0; n < 30; n++)
         {
             SignalPhase.Run(w);
-            (int ph, SignalInterval iv, _) = SignalFixture.Expected(g, 0, 0, n);
+            (int ph, SignalInterval iv, _) = SignalFixture.Expected(g, 0, 0, n + 1);
             Assert.Equal(SignalInterval.Green, iv);
             Assert.Equal(ph, w.SignalStates[0].Phase);
             Assert.Equal(SignalInterval.Green, w.SignalStates[0].Interval);
@@ -89,7 +91,7 @@ public class SignalPhaseTests
         for (int n = 0; n < 60; n++)
         {
             SignalPhase.Run(w);
-            (int ph, SignalInterval iv, int left) = SignalFixture.Expected(_g, 3, 1, offset + n);
+            (int ph, SignalInterval iv, int left) = SignalFixture.Expected(_g, 3, 1, offset + n + 1);
             Assert.Equal(ph, w.SignalStates[0].Phase);
             Assert.Equal(iv, w.SignalStates[0].Interval);
             Assert.Equal(left, w.SignalStates[0].TicksToChange);
@@ -105,7 +107,7 @@ public class SignalPhaseTests
         for (int n = 0; n < 24; n++)
         {
             SignalPhase.Run(w);
-            (int ph, SignalInterval iv, _) = SignalFixture.Expected(_g, 3, 1, n);
+            (int ph, SignalInterval iv, _) = SignalFixture.Expected(_g, 3, 1, n + 1);
             for (int c = 0; c < nd.ConnectorCount; c++)
             {
                 int lane = nd.FirstConnector + c;

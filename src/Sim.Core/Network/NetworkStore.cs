@@ -28,6 +28,8 @@ internal sealed class NetworkStore
     public readonly BusStopData[] BusStops;
     public readonly BusRouteData[] BusRoutes;
     public readonly int[] BusRouteStops;
+    public readonly uint[] NodeTicket;       // [MaxNodes] следующий билет узла; ++ при каждом допуске (intersections.md §4)
+    public readonly float[] OutReserved;     // [MaxLanes] Σ длин машин, допущенных/находящихся в узле с выездом на полосу; пересобирается фазой 4
 
     // Служебные индексы построения: список инцидентности (по концам сегментов) и сетка прилипания.
     internal readonly int[] IncHead;         // [MaxNodes] -> код конца (2*seg + end) или -1
@@ -56,6 +58,8 @@ internal sealed class NetworkStore
         BusStops = new BusStopData[Math.Max(0, caps.MaxBusStops)];
         BusRoutes = new BusRouteData[Math.Max(0, caps.MaxBusRoutes)];
         BusRouteStops = new int[Math.Max(0, caps.MaxBusRoutes) * Math.Max(0, caps.MaxBusStopsPerRoute)];
+        NodeTicket = new uint[nodes];
+        OutReserved = new float[lanes];
         IncHead = new int[nodes];
         IncNext = new int[2 * segs];
         CellNext = new int[nodes];

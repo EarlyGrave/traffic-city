@@ -104,7 +104,8 @@ public class SignalCommandTests
 
         Send(sim, Command.MakeSetNodeControl(0, NodeControl.Yield, 3));
         Assert.True(Last(sim, 3).Applied);
-        Assert.Equal(NodeControl.Yield, w.Net.Nodes[0].Control);
+        // Yield на 4-way без второстепенных рукавов нормализуется в RightHandRule (intersections.md §2.3 п. 3).
+        Assert.Equal(NodeControl.RightHandRule, w.Net.Nodes[0].Control);
         Assert.Equal(-1, w.Net.Nodes[0].Signal);
         Assert.Equal(1, w.SignalCount);
         Assert.Equal(0, w.Net.Nodes[5].Signal); // переставленный узел
@@ -134,9 +135,11 @@ public class SignalCommandTests
         Assert.Equal(6, w.Signals.GreenTicks[1]);
         (int ph, SignalInterval iv, int left) = SignalFixture.Expected(_greens, 3, 1, 12);
         Assert.Equal(SignalInterval.Yellow, iv); // позиция 12 в цикле [10,3,1,6,3,1]: жёлтый фазы 0, остаток 1
-        Assert.Equal(ph, w.Signals.Phase[0]);
-        Assert.Equal(iv, w.Signals.Interval[0]);
-        Assert.Equal(left, w.Signals.TicksLeft[0]);
+        // Фаза 4 того же тика уже опубликовала состояние позиции 12 (TicksToChange = остаток) и списала тик.
+        Assert.Equal(ph, w.SignalStates[0].Phase);
+        Assert.Equal(iv, w.SignalStates[0].Interval);
+        Assert.Equal(left, w.SignalStates[0].TicksToChange);
+        Assert.Equal(left - 1, w.Signals.TicksLeft[0]);
     }
 
     [Fact]
