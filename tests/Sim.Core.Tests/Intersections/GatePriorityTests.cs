@@ -365,4 +365,37 @@ public class GatePriorityTests
         Assert.True(!granted || sig == (byte)LaneSignal.Green || sig == (byte)LaneSignal.Yellow);
         Assert.Equal(0, w.Gate.TouchedCount);
     }
+    // Порядок допусков по полосе: ghost (машина, уходящая на соседнюю полосу), допущенный на целевой полосе, не должен открывать допуск
+    // ведомому за недопущенным лидером (иначе билет ведомого раньше, чем у лидера, -> взаимная блокировка).
+    [Fact]
+    public void GhostGrantedAhead_DoesNotEnableFollower_BehindUngrantedLeader()
+    {
+        ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(2), Arm.S(1), Arm.W(1), Arm.N(1));
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        VehicleStore v = w.Vehicles;
+        int lane0 = GateFixture.InLane(w, 0, 0);
+        int lane1 = GateFixture.InLane(w, 0, 1);
+        int cDefault = w.Net.LaneNext[w.Net.Lanes[lane0].FirstNext];  // без маршрута все машины полосы идут на connector по умолчанию
+        int cGhost = w.Net.LaneNext[w.Net.Lanes[lane1].FirstNext];
+        // Лидер длинный (30 м): на выезде для него места нет (Exit), а обычной машине - есть (свободно ~20 м).
+        w.Net.OutReserved[w.Net.Lanes[cDefault].ToLane] = w.Net.Lanes[w.Net.Lanes[cDefault].ToLane].Length - 20f;
+
+        int leader = GateFixture.Place(sim, lane0, GateFixture.ArmLength - 3f, 0f, cDefault);
+        v.Length[leader] = 30f;
+        int ghost = GateFixture.Place(sim, lane0, GateFixture.ArmLength - 14f, 0f, cDefault);
+        int follower = GateFixture.Place(sim, lane0, GateFixture.ArmLength - 25f, 0f, cDefault);
+        w.Occupancy.FindNeighbours(lane1, v.S[ghost], out int ahead, out int behind);
+        w.Occupancy.BeginLaneChange(ghost, lane1, ahead, behind);
+        v.GateState[ghost] = GateRules.Granted;
+        v.GrantConnector[ghost] = cGhost;
+        Assert.Equal(lane0, v.GhostLane[ghost]);
+        Assert.Equal(ghost, v.Ahead[follower]);
+
+        w.Tick++;
+        GatePhase.Run(w);
+
+        Assert.False(GateRules.IsGranted(v, leader), "лидер: на выезде нет места для 30-метровой машины");
+        Assert.False(GateRules.IsGranted(v, follower), "ведомый ждёт недопущенного лидера, ghost не в счёт");
+    }
 }

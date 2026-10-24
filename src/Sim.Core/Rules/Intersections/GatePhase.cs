@@ -100,7 +100,15 @@ internal static class GatePhase
                 v.GateState[i] |= GateRules.StoppedAtLine;
             }
 
+            // Порядок допусков идёт по машинам, чей основной список - эта полоса. Ghost (машина, уходящая на соседнюю полосу) здесь не в счёт:
+            // допуск он получил на целевой полосе, и если считать его «допущенным впереди», ведомый получит билет раньше недопущенного лидера
+            // за ghost'ом (лидер физически впереди, но билет позже -> взаимная блокировка «лидер ждёт ведомого по билету, ведомый - лидера физически»).
             int ahead = v.Ahead[i];
+            while (ahead != -1 && v.Lane[ahead] != lane)
+            {
+                ahead = v.GhostAhead[ahead];
+            }
+
             if ((ahead != -1 && !GateRules.IsGranted(v, ahead)) || d > GateRules.DecisionDistance(v.Speed[i], t.ComfortDecel))
             {
                 v.WaitTicks[i] = 0;

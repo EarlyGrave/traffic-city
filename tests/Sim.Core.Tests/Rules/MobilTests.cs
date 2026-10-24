@@ -98,6 +98,32 @@ public class MobilTests
         Assert.True(f.V.Pool.IsAlive(chaser));
     }
 
+    // intersections.md 7.1: вставка перед допущенной машиной целевой полосы запрещена (иначе лидер получит билет позже ведомого -
+    // взаимная блокировка «физический лидер ждёт ведомого по билету»). Контроль: тот же сценарий без допуска - смена полосы идёт.
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void GrantedFollowerOnTargetLane_BlocksInsertionAhead(bool followerGranted, bool expectChange)
+    {
+        PhysicsFixture f = PhysicsFixture.Straight(2000f);
+        f.Spawn(0, 200f, 6f, PhysicsFixture.Slow);
+        int car = f.Spawn(0, 120f, 15f);
+        int follower = f.Spawn(1, 40f, 5f); // на левой полосе далеко позади: по зазорам вставка безопасна
+        if (followerGranted)
+        {
+            f.V.GateState[follower] = Sim.Core.Rules.Intersections.GateRules.Granted;
+        }
+
+        bool changed = false;
+        for (int n = 0; n < 200; n++)
+        {
+            f.Step();
+            changed |= f.V.GhostLane[car] != -1 || f.V.Lane[car] != 0;
+        }
+
+        Assert.Equal(expectChange, changed);
+    }
+
     [Fact]
     public void RouteNeedsOtherLane_CarChangesLaneBeforeTurnAndFollowsRoute()
     {

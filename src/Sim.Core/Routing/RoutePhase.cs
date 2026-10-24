@@ -173,6 +173,11 @@ internal static class RoutePhase
         int n = q.Count;
         int timedCap = budget.MaxQueries == int.MaxValue ? int.MaxValue : Math.Max(1, budget.MaxQueries / TimedBudgetDivisor);
         int timedServed = 0;
+
+        // Плановые запросы (дрейф) не должны вытеснять поездки: им не больше 1/TimedBudgetDivisor и числа запросов, и работы (на s100k
+        // запрос стоит ~20 тыс. релаксаций, и без лимита по работе плановые съедали половину work_budget, поездки голодали - рампа вставала).
+        int timedWorkCap = budget.MaxWork == int.MaxValue ? int.MaxValue : Math.Max(1, budget.MaxWork / TimedBudgetDivisor);
+        int timedWork = 0;
         for (int k = 0; k < n; k++)
         {
             q.TryPeek(out RerouteEntry e);
@@ -187,9 +192,9 @@ internal static class RoutePhase
                     continue;
                 }
 
-                if (timedServed >= timedCap)
+                if (timedServed >= timedCap || timedWork >= timedWorkCap)
                 {
-                    q.TryDequeue(out _); // доля бюджета на плановые запросы исчерпана: в хвост
+                    q.TryDequeue(out _); // доля бюджета (запросы/работа) на плановые запросы исчерпана: в хвост
                     q.TryEnqueue(in e);
                     continue;
                 }
@@ -200,7 +205,9 @@ internal static class RoutePhase
                     return;
                 }
 
+                int work0 = rt.WorkThisTick;
                 BuildStatus ts = TimedReroute(w, rt, i);
+                timedWork += rt.WorkThisTick - work0;
                 if (ts == BuildStatus.Deferred)
                 {
                     budget.Stopped = true;

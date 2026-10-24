@@ -111,6 +111,14 @@ internal static class Mobil
         }
 
         e.Occ.FindNeighbours(target, si, out int ahead, out int behind);
+
+        // intersections.md 7.1: порядок допущенных у стоп-линии не меняется. Вставка перед допущенным (билет уже выдан) дала бы лидеру
+        // билет позже, чем у ведомого, и пару «ведомый ждёт лидера физически, лидер ждёт ведомого по билету» (взаимная блокировка).
+        if (behind != -1 && GateRules.IsGranted(v, behind))
+        {
+            return Infeasible;
+        }
+
         LeaderInfo front = LeaderSearch.Find(e, v.S, i, target, si, ahead, useRoute: false);
         if (front.Gap < p.MinPhysicalGap)
         {
