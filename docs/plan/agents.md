@@ -44,4 +44,5 @@
 | 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |
 | 39 | buses (worktree) | sonnet | шаг 4: автобусы, остановки, headway | wip |
 | 40 | ci-baseline (worktree) | sonnet | ADR-0007: CI baseline-ci, печать JSON, бюджет | wip |
-| 41 | ladder-profile (worktree) | sonnet | шаг 5: прогоны s10k/s100k/s1m + профиль топ-3 | wip |
+| 41 | ladder-profile | sonnet | шаг 5: лестница + профиль | done (s1m не создан: ёмкость) |
+| 42 | s1m-fix (worktree) | haiku | ёмкость точек s1m + прогон s1m | wip |
