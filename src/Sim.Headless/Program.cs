@@ -1,6 +1,7 @@
 using System;
 using Sim.Headless.Render;
 using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless;
 

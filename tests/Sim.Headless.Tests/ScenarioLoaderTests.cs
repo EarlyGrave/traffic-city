@@ -3,6 +3,7 @@ using System.IO;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Headless.Scenarios;
+using Sim.Scenarios;
 
 namespace Sim.Headless.Tests;
 

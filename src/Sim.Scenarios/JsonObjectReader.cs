@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 
-namespace Sim.Headless.Scenarios;
+namespace Sim.Scenarios;
 
 /// <summary>
 /// Читатель JSON-объекта с отслеживанием пути и учётом прочитанных ключей:

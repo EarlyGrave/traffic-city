@@ -5,7 +5,7 @@ using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Core.Network;
 
-namespace Sim.Headless.Scenarios;
+namespace Sim.Scenarios;
 
 /// <summary>Результат загрузки: desc плюс информативные поля, которых нет в <see cref="ScenarioDesc"/>.</summary>
 public sealed class LoadedScenario
