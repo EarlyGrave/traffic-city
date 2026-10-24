@@ -1,0 +1,322 @@
+# Маршрутизация: граф, A*, кэш по парам зон, бюджет, движение по маршруту (спецификация, шаг 3)
+
+Статус: принято (ADR-0005). Реализуется задачей J (`core-api.md` §14) в `Routing/` поверх `RoutePool`
+(`core-api.md` §6.5), `RouteStep`/`RouteView` (§5.5), фазы 3 (§7). Перекрёстки — `intersections.md`.
+Изменения в `core-api.md`, вызванные этой спекой, — §12.
+
+Требования ТЗ: A* с весом = время в пути; кэш маршрутов по парам зон; бюджет запросов на тик;
+машина появляется на краю/парковке и исчезает только по прибытии; метрики `pathfind_queries`,
+`pathfind_ms_p95`; 0 B/тик; детерминизм.
+
+## 0. Решения коротко
+
+| Вопрос | Решение |
+|--------|---------|
+| Граф поиска | **направленные сегменты** (`DirSeg = segment·2 + dir`) + дуги-манёвры (есть хотя бы один connector между ними). Полосы раскладываются после поиска (§5). |
+| Вес | статическое время: `Length / SpeedLimit` + штраф манёвра + штраф узла (светофор/знак). Текущая загрузка — этап 2 (§9). |
+| Эвристика | евклидово расстояние до узла цели / `VMax` (максимальный лимит в сети) — допустимая и монотонная. |
+| Кэш | по `(FromZone, ToZone)` хранится **магистраль** хаб(A) → хаб(B); маршрут машины = префикс + магистраль + суффикс, собирается в индивидуальную запись `RoutePool`. |
+| Бюджет | `PathfindBudgetPerTick` запросов + предел раскрытий на тик; очередь — `PendingTrips` (маршрут строится **до** спавна) и кольцо перемаршрутизации. |
+| Перемаршрутизация | только при промахе полосы (нужный connector недостижим); по времени — этап 2. |
+| `pathfind_ms_p95` | меряет `Sim.Headless` через зонд `Simulation.OnPhaseEnd` (ядро wall-clock не трогает). |
+
+## 1. Граф поиска
+
+`DirSegCount = 2·SegmentCount`, `u = seg·2 + dir` (`dir` 0 = A→B, 1 = B→A). Направление без полос
+(`LanesAB == 0`) существует как вершина, но без входящих/исходящих дуг. `EndNode(u)` — узел, в
+который ведёт `u`; `StartNode(u)`.
+
+CSR-смежность, перестраивается целиком в `Create` и после каждого применённого `BuildRoad`
+(O(connector'ов); `BuildRoad` — редкая команда пользователя, инкрементальность — этап 2):
+
+```csharp
+namespace Sim.Core.Routing;
+
+internal sealed class RouteGraph
+{
+    public int DirSegCount, ArcCount;
+    public readonly int[]   ArcFirst;     // [2*MaxSegments + 1]
+    public readonly int[]   ArcTo;        // [MaxConnectors]  целевой DirSeg
+    public readonly float[] ArcCost;      // [MaxConnectors]  штраф манёвра + узла, с
+    public readonly byte[]  ArcManeuver;  // [MaxConnectors]  Straight/Right/Left/UTurn (минимальный по штрафу среди connector'ов пары)
+    public readonly float[] SegCost;      // [2*MaxSegments]  Length / SpeedLimit, с
+    public readonly Vec2[]  EndPos;       // [2*MaxSegments]  позиция EndNode(u)
+    public float VMax;                    // max SpeedLimit по сети
+}
+```
+
+Дуга `u → w` существует, если есть connector с `FromLane ∈ lanes(u)`, `ToLane ∈ lanes(w)`; дубликаты
+(несколько полос) схлопываются в одну дугу с минимальным штрафом. Дуги вершины упорядочены по `w`
+(детерминированно). Дуг ≤ connector'ов.
+
+### 1.1 Веса (секунды)
+
+`cost(u → w) = SegCost[w] + ArcCost(u → w)`; стартовая вершина даёт `SegCost(u) · (1 − S/Length)`
+(остаток текущего сегмента), целевая — `SegCost(goal) · DestS/Length` вместо полного (учитывается при
+проверке цели, см. §2).
+
+| Штраф | Значение |
+|-------|----------|
+| Манёвр: Straight / Right / Left / UTurn | 0 / 3 / 6 / 20 с |
+| Узел `Signal` (любой режим `Fixed`) | `+ (Cycle − Green_моей_фазы)² / (2·Cycle)` — средняя задержка равномерного прибытия; при плане по умолчанию (56/24) ≈ 9 с; считается при построении графа из текущего плана |
+| Узел `Yield`/`Stop`, въезд с minor-рукава | + 6 / + 9 с |
+| Узел `RightHandRule` (≥ 3 рукава) | + 3 с |
+| Узел без ворот (`None`, ≤ 2 рукава) | 0 |
+
+Константы — `internal static class RoutingCosts` (одно место; калибровка после шага 5, формат не
+меняется). `SetSignalPlan`/`SetNodeControl` меняют штрафы дуг узла на месте (без полного rebuild) и не
+инвалидируют кэш: маршруты остаются корректными, лишь слегка неоптимальными.
+
+## 2. A*
+
+Состояние поиска (выделяется в `Create`, живёт в `World`):
+
+```csharp
+internal sealed class AStarState
+{
+    public readonly float[] G;            // [DirSegCount]
+    public readonly int[]   Parent;       // [DirSegCount]  предыдущий DirSeg или -1
+    public readonly uint[]  SeenStamp;    // [DirSegCount]  == SearchId → G/Parent валидны
+    public readonly uint[]  ClosedStamp;  // [DirSegCount]  == SearchId → раскрыт
+    public readonly float[] HeapKey;      // [HeapCapacity] f
+    public readonly int[]   HeapVal;      // [HeapCapacity] DirSeg
+    public int HeapCount; public uint SearchId;
+    public readonly int[]   Path;         // [DirSegCount] буфер восстановления пути (в обратном порядке)
+}
+```
+
+- `SearchId++` на каждый поиск; штампы заменяют очистку массивов (O(1) старт). Переполнение `uint`
+  (4·10⁹ поисков) — обнулить штампы один раз, допустимая O(N) операция.
+- Куча — бинарная min-heap по `(HeapKey, HeapVal)` лексикографически (равные `f` → меньший `DirSeg`;
+  это и есть детерминированный тай-брейк). **Ленивое обновление**: при улучшении `G` вершина
+  добавляется повторно, устаревшая запись отбрасывается при извлечении (`G[v] + h(v) < key` или
+  `Closed`). `HeapCapacity = MaxConnectors + 2·MaxSegments` (не больше одного добавления на ослабление
+  дуги + старты); переполнение невозможно по построению, но проверяется → отказ поиска (`RouteFailed`).
+- Эвристика `h(v) = |EndPos[v] − EndPos[goal]| / VMax`. Дуга `v → w` стоит ≥ `Length(w)/VMax ≥ (|EndPos[w] − EndPos[v]|)/VMax`
+  (длина оси ≥ хорды) → монотонна, повторных раскрытий нет, `ClosedStamp` корректен.
+- Цель: `DirSeg` целевой полосы (`DestLane`), либо множество целей для магистрали (§4).
+  Многоисточниковый старт: все стартовые вершины кладутся в кучу с их `G`.
+- Ограничения: `MaxExpansions` на поиск (`DirSegCount` для полного, `LocalExpansionCap = 512` для
+  префикса/суффикса) и бюджет тика (§3). Превышение — отказ **этого** поиска с кодом.
+- Восстановление пути: по `Parent` в `Path` (обратно), длина `k+1 ≤ DirSegCount`; затем раскладка на
+  полосы (§5) пишет `RouteStep` прямо в арену.
+
+Сложность: O((V + E) log V) в худшем случае; на s1k (≈ 1 700 вершин, ≈ 5 000 дуг) полный поиск
+≈ 300–800 раскрытий ≈ 20–60 мкс; локальный ≤ 512 раскрытий. Память: 16 B/вершина + 8 B/запись кучи
+(s1m: ≈ 660 k вершин → ≈ 11 MB + 24 MB).
+
+## 3. Фаза 3: очередь и бюджет
+
+Маршрут строится **до спавна**: `PendingTrip` получает поля `Route, RouteGen, DestLane, DestS`
+(`core-api.md` §6.6). Фаза 2 ставит на дорогу только поездки с `Route != -1` (голова FIFO без
+маршрута ждёт, порядок сохраняется). Поэтому машины с `Route == -1` на дороге появляются лишь после
+промаха полосы (§6.3) и в этот момент **едут**, а не стоят.
+
+Фаза 3 (`Routing/RoutePhase.cs`) каждый тик:
+
+1. `ExpansionsThisTick = 0`, `Served = 0`.
+2. **Перемаршрутизация** (кольцо `RerouteQueue[MaxVehicles]`, FIFO; машина кладётся в фазе 7 при
+   промахе): пока очередь не пуста и `Served < PathfindBudgetPerTick` и `ExpansionsThisTick < ExpansionBudget`:
+   `Build(StartLane = Lane[i], StartS = S[i], DestLane[i], DestS[i], FromZone = -1, ToZone = DestZone[i])`.
+   Неуспех → машина остаётся без маршрута, едет по умолчанию, повторная заявка через `RerouteRetryTicks = 100`
+   (хранится как `WaitTicks`-подобный счётчик в самой очереди: запись возвращается в хвост с меткой тика).
+3. **Поездки**: обход `PendingTrips` от головы, не более `PathfindBudgetPerTick − Served` поездок без маршрута
+   (по порядку очереди; поездки с маршрутом пропускаются без затрат). `Build(FromLane, FromS, DestLane, DestS, FromZone, ToZone)`.
+   `RouteFailed` (нет пути) → поездка удаляется из очереди, `TripsDropped++`, `RouteFailed++`.
+   Дефицит бюджета → `RouteDeferred++` за каждую необслуженную поездку с маршрутом `-1` в этом тике
+   (одно значение на тик — считать как число ждущих, не суммировать по машинам в цикле).
+4. Компактификация арены — только из `Build` при нехватке места (§4.3).
+
+`ExpansionBudget = 256 · PathfindBudgetPerTick` раскрытий на тик (s1k: 8 192 ≈ 0.4 мс в худшем случае —
+отказы по бюджету ждут следующего тика, это не ошибка). Проверяется **между** поисками; один поиск
+не прерывается (иначе бессмысленно раскрытое тратится зря).
+
+Ожидаемая нагрузка s1k: ≈ 1 000 машин / средняя поездка ≈ 6 мин ⇒ ≈ 3 спавна/с ⇒ 0.15 запроса/тик;
+бюджет 32 нужен только на разгоне (`spawn_ramp`), где `PendingTrips` заполняется заранее.
+
+## 4. Кэш по парам зон и сборка маршрута
+
+### 4.1 Хаб зоны и магистраль
+
+У каждой зоны `ZoneData.HubNode` — узел с воротами (или любой при их отсутствии), ближайший к центру
+зоны (`ZoneGenerator` этап 2.2; при `city.enabled = false` — ближайший узел сети). **Магистраль**
+`Trunk(A, B)` — путь `DirSeg[0..k]` от `HubNode(A)` до `HubNode(B)`: многоисточниковый старт (все `u` с
+`StartNode(u) == HubNode(A)`, `G = SegCost(u)`), цель — любая `w` с `EndNode(w) == HubNode(B)`
+(при `h` — расстояние до `HubNode(B)`). `HubNode(A) == HubNode(B)` → магистраль пуста, маршрут
+строится прямым поиском.
+
+Кэш — `FixedHashMap` открытой адресации (линейное пробирование, вместимость `2·MaxRoutes`, ключ
+`from·MaxZones + to`, значение — индекс маршрута; удаление — backward-shift, без tombstone).
+Запись `RoutePool`: `FromZone/ToZone` = ключ, `RefCount = 0` (магистраль никем не используется напрямую —
+её **копируют**), `LastUsedTick` (новое поле), `NetworkVersion`.
+
+### 4.2 `Build(start, dest, fromZone, toZone)` → `RouteHandle`
+
+```
+1. if fromZone >= 0 && toZone >= 0:
+       t = Cache.Lookup(fromZone, toZone)
+       if t != -1 && Pool.NetworkVersion[t] != Network.Version: Cache.Remove; Pool.Free(t); t = -1   // ленивая инвалидация
+       if t == -1:
+           Trunk search (полный A*, учитывается в бюджете раскрытий); при успехе — вставить в кэш (вытеснение §4.3);
+           при отказе по бюджету → вернуть Deferred; при «нет пути» → перейти к прямому поиску (п. 3).
+       else PathfindCacheHits++
+       Pool.LastUsedTick[t] = Tick
+   PathfindQueries++
+2. if trunk:
+       prefix = A*(start DirSeg → Trunk[0]) с LocalExpansionCap        // обычно ≤ 50 раскрытий: зона 500 м
+       suffix = A*(Trunk[k] → dest DirSeg) с LocalExpansionCap
+       если любой из них упёрся в cap или не нашёл пути → п. 3
+       dirsegs = prefix ++ Trunk[1..k] ++ suffix[1..]                  // стыки без дублей
+3. else: dirsegs = A*(start → dest) (полный)
+4. LayoutLanes(dirsegs, startLane, destLane) → RouteStep[] в арену (§5); RefCount = 1; FromZone = ToZone = -1
+```
+
+Маршрут через хаб может быть длиннее прямого на ≤ ~2 стороны зоны; принято (цена кэша). Стартовая
+полоса `StartLane` — та, где машина (или где появится); если её `DirSeg` уже лежит на магистрали,
+префикс вырождается в один элемент.
+
+### 4.3 Вместимость, вытеснение, компактификация
+
+- Таблица/пул полны при вставке магистрали: среди 8 слотов пробного окна от хэша ключа выбирается
+  магистраль (`RefCount == 0`, `FromZone ≥ 0`) с минимальным `LastUsedTick` → удаляется (O(1),
+  детерминированно). Если окно без магистралей — маршрут не кэшируется (`RouteCacheSkips++`),
+  машина всё равно получает индивидуальный маршрут.
+- Пул `MaxRoutes` полон при выделении индивидуального маршрута → та же процедура вытеснения
+  магистрали; если ни одной (все слоты — живые машины) → `Deferred`.
+- Арена `Steps`: bump-аллокация; `Free` помечает слот мёртвым (`Count` сохраняется для прохода);
+  при нехватке хвоста — компактификация: обход слотов пула по возрастанию индекса, живые
+  переносятся вплотную (`First` обновляется; машины держат handle, не указатель, поэтому ничего не
+  ломается), `RouteCompactions++`. O(StepsUsed) ≤ 262 k × 8 B для s1k ≈ 0.1 мс — редкий всплеск.
+  Если и после компактификации места нет → `Deferred`.
+- Размер: `max_routes ≥ max_vehicles + число используемых пар зон`; для s1k (64 зоны, `min_trip` 600 м
+  ⇒ ≈ 3 000 пар + 1 280 машин) — **8 192** (правка примера в `scenario-format.md`); `max_route_steps`
+  262 144 достаточно (магистраль ≈ 30 шагов, индивидуальный ≈ 50). На лестнице s10k+ пар больше, чем
+  слотов, — кэш работает как LRU, промахи считаются в бюджет.
+- `BuildRoad`: `Network.Version++`; магистрали инвалидируются лениво (п. 1), индивидуальные маршруты
+  остаются валидными (сеть только растёт, индексы полос стабильны). Это снимает вопрос 2 из
+  `core-api.md` §15.
+
+## 5. Раскладка на полосы (`LayoutLanes`)
+
+Вход: `DirSeg D[0..k]`, `StartLane` (на `D[0]`), `DestLane` (на `D[k]`). Выход: `RouteStep`
+`[L0, C0, L1, C1, …, L_k]` (`2k + 1` шагов), где `L_j` — **целевая полоса** на `D[j]` (та, с которой
+нужно уйти с сегмента), `C_j` — connector `L_j → ToLane(C_j) ∈ lanes(D[j+1])`.
+
+Обратный проход, `L_k = DestLane`:
+
+```
+for j = k-1 .. 0:
+    кандидаты = connector'ы из lanes(D[j]) в lanes(D[j+1])
+    выбрать C_j с минимумом (|LaneNo(ToLane) − LaneNo(L_{j+1})|, индекс connector'а)   // меньше перестроений на D[j+1], детерминированно
+    если |LaneNo(ToLane) − LaneNo(L_{j+1})| · LaneChangeDistance > Length(D[j+1]) и есть connector точно в L_{j+1} → взять его
+    L_j = FromLane(C_j)
+```
+
+`LaneChangeDistance = 60 м` на одно перестроение (оценка для города). `RouteStep.Node`: для `L_j` —
+`EndNode(D[j])`, для `C_j` — узел connector'а, для `L_k` — `-1`. Если `L_0 != StartLane`, машина
+перестраивается на `D[0]`; спавнер выбирает `FromS ≤ Length − 60·|ΔLaneNo| − NoLaneChangeZone`, когда
+может (иначе машина промахнётся и перепланируется — не ошибка).
+
+## 6. Движение по маршруту
+
+### 6.1 Курсор
+
+`RouteCursor` указывает на шаг текущей полосы; на `Normal`-полосе `Steps[Cursor]` — шаг сегмента (целевая
+полоса; `Lane[i]` может отличаться, пока машина не перестроилась), на connector'е — шаг connector'а.
+`TargetLane(i) = Steps[Cursor].Lane` на `Normal`-полосе; при `Route == -1` — текущая полоса.
+
+### 6.2 `NextConnector(i)` (O(NextCount) ≤ 4, вызывается воротами и фазой 7)
+
+```
+if Route == -1 or Cursor+1 >= Count: return LaneNext[FirstNext(Lane)]      // прямо по умолчанию; на последнем шаге не используется (прибытие раньше)
+c = Steps[Cursor+1].Lane
+if FromLane(c) == Lane: return c                                             // на целевой полосе
+nextSeg = Segment(Steps[Cursor+2].Lane)
+среди LaneNext(Lane): connector с Segment(ToLane) == nextSeg → вернуть (первый по порядку LaneNext)   // тот же сегмент, другая полоса
+return LaneNext[FirstNext(Lane)]  с флагом Missed                           // промах
+```
+
+### 6.3 Фаза 7
+
+- Переход `Normal → connector c`: если `c == Steps[Cursor+1].Lane` → `Cursor++`; иначе если `c` ведёт
+  в `Segment(Steps[Cursor+2].Lane)` → `Cursor++` (маршрут продолжается, на следующем сегменте
+  `Lane != TargetLane`, MOBIL доведёт); иначе (**промах**): `RefCount--`/`Free` маршрута, `Route = -1`,
+  положить `i` в `RerouteQueue`, `Reroutes++`. `DestLane/DestS/DestZone` сохраняются.
+- Переход `connector → Normal`: `Cursor++` если `Route != -1`.
+- Прибытие (фаза 8): `Lane == DestLane && S ≥ DestS` → как в `core-api.md`. Машина без маршрута
+  прибывает, если случайно оказалась на `DestLane`.
+
+### 6.4 MOBIL: подготовка к повороту (контракт для `Rules/Mobil.cs`)
+
+`d = Length − S` на текущей полосе, `Δ = LaneNo(TargetLane) − LaneNo(Lane)` (знак → направление),
+срочность `u = clamp((D_prep − d) / (D_prep − NoLaneChangeZone), 0, 1)`, `D_prep = 150 м`,
+`NoLaneChangeZone = 30 м` (`intersections.md` §7.1).
+
+- К стимулу MOBIL в сторону цели прибавляется `+u·A_route`, в противоположную — `−u·A_route`,
+  `A_route = 1.0 м/с²` (при `u = 0` — обычный MOBIL с `RightBias`).
+- Критерий безопасности смягчается: `b_safe_eff = b_safe + 2·u` (до 6 м/с²).
+- При `u > 0.5` MOBIL оценивается каждый тик (а не раз в `MobilEveryTicks`).
+- При `u ≥ 0.8` и `Δ != 0` желаемая скорость ограничивается `v0_eff = max(3 м/с, v0·(1 − u))` — машина
+  замедляется, чтобы найти зазор («вежливый поиск окна»); следующий сзади подстраивается IDM.
+- В зоне `d < NoLaneChangeZone` смена запрещена; дальше работает §6.2/§6.3 (промах → перепланирование).
+  Машина никогда не ждёт перестроения стоя — отсюда отсутствие тупиков по этой причине.
+
+## 7. Детерминизм
+
+Поиск не использует PRNG (стрим `Routing` остаётся зарезервированным под будущие ничьи/шум весов).
+Все ничьи — по индексу `DirSeg`/connector'а; порядок обслуживания — порядок очередей; штампы и
+компактификация — по возрастанию индекса. Хэш состояния дополняется содержимым `RerouteQueue` и
+`PendingTrip.Route`; `SearchId` в хэш не входит (служебный), но влияет только на корректность
+штампов.
+
+## 8. Метрики
+
+| Метрика | Кто считает | Как |
+|---------|-------------|-----|
+| `pathfind_queries` | ядро, `Counters.PathfindQueries` | число вызовов `Build` (успешных и нет) |
+| `PathfindCacheHits`, `PathfindCacheHitRate` | ядро | попадания магистралей / запросы |
+| `PathfindExpandedNodes` | ядро | Σ раскрытий (все поиски) |
+| `RouteDeferred`, `RouteFailed`, `Reroutes`, `RouteCompactions`, `RouteCacheSkips` | ядро | новые поля `SimCounters` |
+| `pathfind_ms_p95` | **`Sim.Headless`** | зонд `Simulation.OnPhaseEnd(phase)`: хост ставит `Stopwatch` между концом фазы 2 и концом фазы 3 каждого тика, собирает p50/p95; ядро wall-clock не видит. В FFI — `tc_sim_set_phase_probe(cb, user)`. По умолчанию `null`, нулевая стоимость (одна проверка на фазу). |
+
+## 9. Этап 2 (не делаем сейчас, но структуры готовы)
+
+- **Вес по загрузке**: `SegCost[w] = Length / (SpeedLimit · max(SpeedRatio[w], 0.2))` из `SegmentLoads`,
+  пересчёт раз в `N` с + периодическое протухание магистралей (`LastUsedTick` + возраст). Даёт
+  обход пробок и снижает сетевой gridlock.
+- **Перемаршрутизация по времени** (каждые 60 с для машин с остатком > 1 км) — тот же `RerouteQueue`.
+- **Иерархия** для s100k/s1m: граф зон (хаб → хаб) + локальные поиски уже заложены; добавить
+  предрасчёт матрицы хабов или contraction hierarchies.
+- Инкрементальный rebuild `RouteGraph` при `BuildRoad`.
+
+## 10. Тест-план
+
+| # | Тест | Ожидание |
+|---|------|----------|
+| R1 | Решётка 5×5, все веса равны: A* против Дейкстры (эталон в тесте) на 200 случайных пар | равная стоимость, путь совпадает при равных ничьих по `DirSeg` |
+| R2 | Штрафы: прямой путь через `Signal` vs объезд через `None`-узлы | выбор зависит от констант `RoutingCosts` ожидаемым образом |
+| R3 | Односторонние сегменты, недостижимая цель | `RouteFailed`, поездка удалена, 0 аллокаций, кучи не переполняются |
+| R4 | Кэш: 1 000 поездок по 10 парам | `PathfindCacheHits ≥ 990`, в пуле ровно 10 магистралей, `LastUsedTick` обновляется |
+| R5 | Вытеснение: `MaxRoutes = 16`, 40 пар | пул не переполняется, вытесняются наименее свежие из окна; детерминированно |
+| R6 | `BuildRoad` во время прогона | `Network.Version++`; старые магистрали удаляются при следующем обращении; маршруты едущих машин не меняются; граф содержит новые дуги |
+| R7 | Раскладка: `2+2 → левый поворот`, старт на `LaneNo 0` | `L_0 = LaneNo 1`, MOBIL перестраивает до `D_prep`; при `FromS` слишком близко — промах, `Reroutes = 1`, машина прибывает |
+| R8 | Бюджет: 500 поездок в `PendingTrips`, `PathfindBudgetPerTick = 8` | за тик ≤ 8 `Build`, `RouteDeferred` > 0, порядок спавна = порядок очереди |
+| R9 | Компактификация: много коротких поездок, `MaxRouteSteps` впритык | `RouteCompactions > 0`, маршруты едущих машин после компактификации совпадают пошагово (сравнение до/после) |
+| R10 | Детерминизм и 0 B/тик на s1k с маршрутизацией | хэши равны; аллокации 0 после прогрева |
+
+## 11. Разбиение на задачи (sonnet)
+
+| ID | Задача | Папка | Зависит |
+|----|--------|-------|---------|
+| R1 | `RouteGraph` (CSR, веса, `VMax`, rebuild), `AStarState`, A* с ленивой кучей и штампами; тесты R1–R3 | Routing/ | C, J1 (connector'ы), J2 (штрафы сигналов) |
+| R2 | `RouteCache` (`FixedHashMap`), `RoutePool` аллокация/компактификация/вытеснение, `Build` с магистралью; тесты R4–R6, R9 | Routing/ | R1 |
+| R3 | `LayoutLanes`, `NextConnector`, фаза 3 с очередями и бюджетом, фаза 7 курсор/промах, изменения `PendingTrip`/спавнера; тесты R7, R8 | Routing/, Agents/ | R2, H |
+| R4 | MOBIL: подготовка к повороту (§6.4) | Rules/Mobil.cs | F, R3 |
+| R5 | Headless: `OnPhaseEnd`-зонд, `pathfind_ms_p95`, `pathfind_queries` в JSON бенча | src/Sim.Headless | I, R3 |
+
+## 12. Изменения в `core-api.md` (отдельный коммит)
+
+- §3 `Simulation.OnPhaseEnd`; §6.5 `RoutePool.LastUsedTick`; §6.6 `PendingTrip.Route/RouteGen/DestLane/DestS`,
+  `ZoneData.HubNode`; §7 фаза 2/3 — маршрут до спавна; §9 хэш — `RerouteQueue`, `PendingTrip.Route`;
+  §11 — `RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips`; §15 — вопрос 2 и 4 закрыты.
+- `scenario-format.md`: пример s1k `max_routes: 8192`.
