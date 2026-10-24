@@ -8,6 +8,7 @@ namespace Sim.Headless.Bench;
 /// <summary>
 /// <c>compare --result f --baseline perf/baseline.json [--tolerance 0.10]</c>: exit 1 при регрессии tick p95
 /// сверх допуска или любых аллокациях в результате; 2 — ошибка ввода (в т.ч. нет baseline).
+/// Без baseline: <c>compare --result f --budget-p95-ms 1.0</c> — exit 1 при alloc &gt; 0 или p95 &gt; бюджета.
 /// </summary>
 public static class CompareCommand
 {
@@ -15,14 +16,15 @@ public static class CompareCommand
     public const int ExitRegression = 1;
     public const int ExitUsage = 2;
 
-    public const string Usage = "Usage: Sim.Headless compare --result <file.json> --baseline <perf/baseline.json> [--tolerance 0.10]\n";
+    public const string Usage = "Usage: Sim.Headless compare --result <file.json> --baseline <perf/baseline.json> [--tolerance 0.10]\n       Sim.Headless compare --result <file.json> --budget-p95-ms <ms>\n";
 
-    private static readonly string[] _allowed = { "--result", "--baseline", "--tolerance" };
+    private static readonly string[] _allowed = { "--result", "--baseline", "--tolerance", "--budget-p95-ms" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
         if (!CliArgs.TryParse(args, _allowed, out CliArgs a)
-            || !a.TryGetDouble("--tolerance", 0, 10, out double tol, 0.10))
+            || !a.TryGetDouble("--tolerance", 0, 10, out double tol, 0.10)
+            || !a.TryGetDouble("--budget-p95-ms", 0, 1e6, out double budget, -1))
         {
             error.WriteLine($"compare: {a.Error}");
             error.Write(Usage);
@@ -31,9 +33,9 @@ public static class CompareCommand
 
         string? resultPath = a.Get("--result");
         string? basePath = a.Get("--baseline");
-        if (resultPath == null || basePath == null)
+        if (resultPath == null || (basePath == null && budget < 0))
         {
-            error.WriteLine("compare: --result and --baseline are required");
+            error.WriteLine("compare: --result and (--baseline or --budget-p95-ms) are required");
             error.Write(Usage);
             return ExitUsage;
         }
@@ -42,6 +44,11 @@ public static class CompareCommand
         {
             error.WriteLine($"compare: result file not found: {resultPath}");
             return ExitUsage;
+        }
+
+        if (basePath == null)
+        {
+            return RunBudget(resultPath, budget, output, error);
         }
 
         if (!File.Exists(basePath))
@@ -83,6 +90,23 @@ public static class CompareCommand
 
         output.WriteLine(slow || alloc ? "FAIL" : "OK");
         return slow || alloc ? ExitRegression : ExitOk;
+    }
+
+    private static int RunBudget(string resultPath, double budget, TextWriter output, TextWriter error)
+    {
+        if (!TryRead(resultPath, out double p95, out double alloc, out _, out string err))
+        {
+            error.WriteLine($"compare: {err}");
+            return ExitUsage;
+        }
+
+        bool slow = p95 > budget;
+        bool hasAlloc = alloc > 0;
+        CultureInfo ci = CultureInfo.InvariantCulture;
+        output.WriteLine(string.Create(ci, $"tick_ms.p95 {p95:0.#####} ms (budget {budget:0.#####} ms){(slow ? "  OVER BUDGET" : string.Empty)}"));
+        output.WriteLine(string.Create(ci, $"alloc_bytes_per_tick {alloc:0.###}{(hasAlloc ? "   ALLOCATIONS" : string.Empty)}"));
+        output.WriteLine(slow || hasAlloc ? "FAIL" : "OK");
+        return slow || hasAlloc ? ExitRegression : ExitOk;
     }
 
     private static bool TryRead(string path, out double p95, out double alloc, out string scenario, out string err)
