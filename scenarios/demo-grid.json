@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "name": "demo-grid",
+  "seed": 1,
+  "duration_s": 60,
+  "city": { "enabled": false },
+  "network": {
+    "nodes": [
+      { "id": "n00", "x": 0, "z": 0, "control": "none" },
+      { "id": "n10", "x": 200, "z": 0, "control": "none" },
+      { "id": "n20", "x": 400, "z": 0, "control": "none" },
+      { "id": "n01", "x": 0, "z": 200, "control": "none" },
+      { "id": "n11", "x": 200, "z": 200, "control": "none" },
+      { "id": "n21", "x": 400, "z": 200, "control": "none" },
+      { "id": "n02", "x": 0, "z": 400, "control": "none" },
+      { "id": "n12", "x": 200, "z": 400, "control": "none" },
+      { "id": "n22", "x": 400, "z": 400, "control": "none" }
+    ],
+    "segments": [
+      { "a": "n00", "b": "n10", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n10", "b": "n20", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n01", "b": "n11", "lanes_ab": 2, "lanes_ba": 2, "speed_kmh": 60, "kind": "arterial" },
+      { "a": "n11", "b": "n21", "lanes_ab": 2, "lanes_ba": 2, "speed_kmh": 60, "kind": "arterial" },
+      { "a": "n02", "b": "n12", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n12", "b": "n22", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n00", "b": "n01", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n01", "b": "n02", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n10", "b": "n11", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n11", "b": "n12", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n20", "b": "n21", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" },
+      { "a": "n21", "b": "n22", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40, "kind": "street" }
+    ]
+  },
+  "vehicles": { "count": 30, "spawn_ramp_s": 10 },
+  "demand": { "zone_m": 200, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
+  "capacities": {
+    "max_vehicles": 64, "max_nodes": 16, "max_segments": 16, "max_lanes": 256, "max_lane_points": 2048,
+    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
+    "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1
+  }
+}
