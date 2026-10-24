@@ -852,6 +852,13 @@ public struct BusStopData { public int Lane; public float S; public BusStopKind 
 public struct BusRouteData { public int FirstStop, StopCount; public int HeadwayTicks; public int VehicleType; public int ActiveBuses; public long LastDispatchTick; public int Generation; }
 ```
 
+**Где лежат результаты генераторов (`City.Enabled`).** Зоны - в `NetworkStore`: `Zones[ZoneCount]` и
+`ZoneLanes[MaxLanes]` + `ZoneLaneCount` (диапазон зоны - `FirstSpawnLane/SpawnLaneCount` в `ZoneLanes`;
+`NetworkView.Zones` их показывает). Автобусные маршруты и остановки копируются в `Net.BusRoutes/BusStops/BusRouteStops`
+(видны в `NetworkView`), полный результат с путями - `World.Transit`. `WorldBuilder.BuildCity` вызывает
+`CityGenerator` -> `ZoneGenerator` -> `TransitGenerator` со стримами `RngCityGen/RngZones/RngTransit`;
+временные `GenZones/GenTransit` существуют только внутри `Create`. При явной сети зоны из `Demand.Zones` (без полос появления).
+
 Правила стоянки, посадки, кармана — **[шаг 4]**; поля `Waiting`, `DwellTicks`, `Passengers`
 зарезервированы, чтобы спека шага 4 не меняла раскладку.
 
@@ -1168,6 +1175,9 @@ src/Sim.Core/
 | `Occupancy` | `LaneOccupancy` | списки порядка на полосах (§6.4) |
 | `Trips` | `PendingTrips` | очередь поездок (§6.6) |
 | `Routes` | `RoutePool` | хранилище маршрутов (§6.5) |
+| `CityInfo` | `CityGenResult` | итог `CityGenerator` (размеры, счётчики); при `City.Enabled == false` - `default` |
+| `SignalPlanSeeds` | `SignalPlanSeed[]` | зерновые планы светофоров генератора (длина = `SignalCount`) - вход шага 3, логики сигналов в `Create` нет |
+| `Transit` | `GenTransit?` | результат `TransitGenerator` (маршруты, остановки, пути по сегментам `PathSeg/PathDir`) - вход шага 4; `null` без генератора |
 | `Tick` | `long` | число завершённых тиков; во время фаз 1–10 — номер тика, который идёт сейчас (инкремент после фазы 10) |
 | `Counters` | `SimCounters` (поле, менять через `w.Counters.X++`) | метрики (§11) |
 | `RngCityGen`, `RngZones`, `RngSpawn`, `RngBehaviour`, `RngTransit`, `RngRouting` | `Pcg32` (мутабельные поля) | подпотоки §8 |

@@ -54,12 +54,12 @@ public class WorldAndRoutePoolTests
     }
 
     [Fact]
-    public void BuildNetwork_City_ReturnsNotSupported()
+    public void BuildNetwork_CityWithEmptyDesc_ReturnsInvalidNetwork()
     {
         ScenarioDesc d = TestScenarios.Line();
         WorldBuilder.Create(in d, out World? w);
         d.City.Enabled = true;
-        Assert.Equal(CreateStatus.NotSupported, WorldBuilder.BuildNetwork(w!, in d));
+        Assert.Equal(CreateStatus.InvalidNetwork, WorldBuilder.BuildNetwork(w!, in d));
     }
 
     [Fact]

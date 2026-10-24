@@ -1,5 +1,6 @@
 using System;
 using Sim.Core.Api;
+using Sim.Core.Gen;
 using Sim.Core.Network;
 using Sim.Core.Util;
 
@@ -69,8 +70,7 @@ internal static class WorldBuilder
     {
         if (desc.City.Enabled)
         {
-            // TODO(gen): генератор города (Gen/CityGenerator, city-generator.md) подключит отдельная задача.
-            return CreateStatus.NotSupported;
+            return BuildCity(w, in desc);
         }
 
         NodeDesc[]? nodes = desc.Network.Nodes;
@@ -108,8 +108,63 @@ internal static class WorldBuilder
         return built.ToCreateStatus();
     }
 
+    /// <summary>
+    /// Генератор города (city-generator 7): сеть, затем зоны (ZoneGenerator -> <c>Net.Zones</c>/<c>Net.ZoneLanes</c>)
+    /// и автобусные маршруты (TransitGenerator -> <c>Net.Bus*</c> + <c>w.Transit</c> с путями); планы светофоров - в <c>w.SignalPlanSeeds</c>.
+    /// </summary>
+    private static CreateStatus BuildCity(World w, in ScenarioDesc desc)
+    {
+        CreateStatus st = CityGenerator.Generate(in desc.City, in w.Rules, in w.Caps, w.Builder, ref w.RngCityGen, out CityGenResult city);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        w.CityInfo = city;
+        w.SignalPlanSeeds = city.SignalPlans ?? System.Array.Empty<SignalPlanSeed>();
+        w.SignalCount = w.SignalPlanSeeds.Length;
+        if (w.SignalCount > w.SignalStates.Length)
+        {
+            return CreateStatus.NetworkTooLarge;
+        }
+
+        NetworkStore net = w.Net;
+        var zones = new GenZones(w.Caps.MaxZones, w.Caps.MaxLanes);
+        st = ZoneGenerator.Generate(in desc.Demand, city.Width, city.Height, net, zones, ref w.RngZones, out _);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        Array.Copy(zones.Zones, net.Zones, zones.ZoneCount);
+        Array.Copy(zones.ZoneLanes, net.ZoneLanes, zones.ZoneLaneCount);
+        net.ZoneCount = zones.ZoneCount;
+        net.ZoneLaneCount = zones.ZoneLaneCount;
+
+        var transit = new GenTransit(w.Caps.MaxBusRoutes, w.Caps.MaxBusStops, w.Caps.MaxBusStopsPerRoute);
+        st = TransitGenerator.Generate(in desc.Transit, city.Width, city.Height, net, transit, ref w.RngTransit, out _);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        Array.Copy(transit.Routes, net.BusRoutes, transit.RouteCount);
+        Array.Copy(transit.Stops, net.BusStops, transit.StopCount);
+        Array.Copy(transit.RouteStops, net.BusRouteStops, transit.StopCount);
+        net.BusRouteCount = transit.RouteCount;
+        net.BusStopCount = transit.StopCount;
+        net.BusRouteStopCount = transit.StopCount;
+        w.Transit = transit;
+        return CreateStatus.Ok;
+    }
+
     private static CreateStatus BuildZones(World w, in ScenarioDesc desc)
     {
+        if (desc.City.Enabled)
+        {
+            return CreateStatus.Ok; // зоны уже построены ZoneGenerator в BuildCity
+        }
+
         ZoneDesc[]? zones = desc.Demand.Zones;
         int n = zones?.Length ?? 0;
         if (n > w.Net.Zones.Length)

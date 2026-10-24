@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.Gen;
 using Sim.Core.Network;
 using Sim.Core.Routing;
 using Sim.Core.Util;
@@ -27,6 +28,11 @@ internal sealed class World
     public readonly LaneOccupancy Occupancy;
     public readonly PendingTrips Trips;
     public readonly RoutePool Routes;
+
+    // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
+    public CityGenResult CityInfo;
+    public SignalPlanSeed[] SignalPlanSeeds = System.Array.Empty<SignalPlanSeed>();
+    public GenTransit? Transit;
 
     // ---- PRNG: по подпотоку на подсистему (core-api 8) ----
     public Pcg32 RngCityGen;
@@ -67,7 +73,9 @@ internal sealed class World
         Types = types;
 
         Net = new NetworkStore(c);
-        Builder = new NetworkBuilder(Net);
+        Builder = desc.City.Enabled
+            ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples)
+            : new NetworkBuilder(Net);
         Vehicles = new VehicleStore(c.MaxVehicles);
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
