@@ -23,15 +23,24 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--repeat R] [--scenarios-dir <dir>]\n";
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--scenarios-dir <dir>]\n" +
+        "  --warmup-until-full  after --warmup-ticks keep warming up (in chunks of 20 ticks) until active vehicles >= 98% of the scenario target,\n" +
+        "                       but not beyond --warmup-max-ticks in total (default 30000); JSON gets ramp_complete/active_*/target_vehicles.\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir" };
+    /// <summary>Доля цели сценария, с которой считаем рампу завершённой (машины в стационаре колеблются у цели).</summary>
+    public const double FullShare = 0.98;
+    public const int WarmupChunkTicks = 20;
+    public const int DefaultWarmupMaxTicks = 30000;
+
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks" };
+    private static readonly string[] _flags = { "--warmup-until-full" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
-        if (!CliArgs.TryParse(args, _allowed, out CliArgs a)
+        if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
             || !a.TryGetInt("--ticks", 1, out int ticks, 2000)
             || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200)
+            || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, DefaultWarmupMaxTicks)
             || !a.TryGetInt("--repeat", 1, out int repeat, 1))
         {
             error.WriteLine($"bench: {a.Error}");
@@ -53,7 +62,7 @@ public static class BenchCommand
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
-            r = MeasureRepeated(sc, ticks, warmup, repeat);
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0);
         }
         catch (ScenarioException e)
         {
@@ -78,12 +87,12 @@ public static class BenchCommand
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -105,7 +114,10 @@ public static class BenchCommand
         return n == 0 ? 0 : n % 2 == 1 ? a[n / 2] : (a[(n / 2) - 1] + a[n / 2]) / 2;
     }
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup)
+    /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
+    public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
+
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0)
     {
         var r = new BenchResult { Scenario = sc.Name, Ticks = ticks, WarmupTicks = warmup };
         double[] samples = new double[ticks];
@@ -116,6 +128,19 @@ public static class BenchCommand
         {
             sim.Step(warmup);
         }
+
+        int target = sc.Desc.Demand.TargetVehicles;
+        int warmedUp = warmup;
+        while (warmupUntilFullMax > 0 && warmedUp < warmupUntilFullMax && !IsFull(sim.ActiveVehicleCount, target))
+        {
+            int chunk = Math.Min(WarmupChunkTicks, warmupUntilFullMax - warmedUp);
+            sim.Step(chunk);
+            warmedUp += chunk;
+        }
+
+        r.WarmupTicksActual = warmedUp;
+        r.TargetVehicles = target;
+        r.ActiveAtStart = sim.ActiveVehicleCount;
 
         long vtBefore = sim.Counters.VehicleTicksTotal;
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
@@ -151,6 +176,7 @@ public static class BenchCommand
         }
 
         r.ActiveVehicles = sim.ActiveVehicleCount;
+        r.RampComplete = IsFull(r.ActiveAtStart, target) && IsFull(r.ActiveVehicles, target);
         long memAfter = GC.GetTotalMemory(true);
         r.BytesPerVehicle = r.ActiveVehicles > 0 ? (memAfter - memBefore) / (double)r.ActiveVehicles : null;
 
@@ -291,6 +317,10 @@ public static class BenchCommand
                 "bytes_per_vehicle_note",
                 "(GC.GetTotalMemory(true) after run - GC.GetTotalMemory(true) before Simulation.Create) / active vehicles at end");
             w.WriteNumber("active_vehicles", r.ActiveVehicles);
+            w.WriteNumber("active_vehicles_start", r.ActiveAtStart);
+            w.WriteNumber("target_vehicles", r.TargetVehicles);
+            w.WriteBoolean("ramp_complete", r.RampComplete);
+            w.WriteNumber("warmup_ticks_actual", r.WarmupTicksActual);
             w.WriteNumber("pathfind_queries", r.PathfindQueries);
             w.WriteNull("pathfind_ms_p95");
             w.WriteString("pathfind_ms_p95_note", "core public API does not expose per-query search time");
@@ -369,6 +399,10 @@ internal sealed class BenchResult
     public int Gen1;
     public int Gen2;
     public int ActiveVehicles;
+    public int ActiveAtStart;
+    public int TargetVehicles;
+    public bool RampComplete;
+    public int WarmupTicksActual;
     public int StuckVehicles;
     public double? BytesPerVehicle;
     public double? BusHeadwayDeviationS;

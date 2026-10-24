@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
@@ -70,6 +71,12 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        RampInfo rRamp = ReadRamp(resultPath);
+        RampInfo bRamp = ReadRamp(basePath);
+        bool rampMismatch = false;
+        var notes = new List<string>();
+        EvaluateRamp(rRamp, bRamp, notes, out rampMismatch);
+
         double limit = bP95 * (1 + tol);
         bool slow = rP95 > limit;
         bool alloc = rAlloc > 0;
@@ -88,9 +95,90 @@ public static class CompareCommand
             output.WriteLine($"warning: scenario differs (baseline '{bScenario}', result '{rScenario}')");
         }
 
-        output.WriteLine(slow || alloc ? "FAIL" : "OK");
-        return slow || alloc ? ExitRegression : ExitOk;
+        foreach (string n in notes)
+        {
+            output.WriteLine(n);
+        }
+
+        bool fail = slow || alloc || rampMismatch;
+        output.WriteLine(fail ? "FAIL" : "OK");
+        return fail ? ExitRegression : ExitOk;
     }
+
+    /// <summary>Сведения о рампе из JSON (поля необязательны: старые файлы их не содержат).</summary>
+    internal readonly record struct RampInfo(bool? Complete, int? ActiveStart, int? ActiveEnd, int? Target);
+
+    /// <summary>Максимальная относительная разница активных машин, выше которой compare предупреждает.</summary>
+    internal const double ActiveWarnShare = 0.10;
+
+    /// <summary>
+    /// Разный <c>ramp_complete</c> у результата и baseline — FAIL: p95 при разгоне и в стационаре несопоставимы
+    /// (ложная регрессия или ложный «ок»). Сильно разное число активных и отсутствие сведений — только предупреждение.
+    /// </summary>
+    internal static void EvaluateRamp(RampInfo result, RampInfo baseline, List<string> notes, out bool mismatch)
+    {
+        mismatch = false;
+        if (result.Complete is null || baseline.Complete is null)
+        {
+            if (result.Complete == false || baseline.Complete == false)
+            {
+                notes.Add("warning: " + (result.Complete == false ? "result" : "baseline")
+                    + " ramp_complete=false, the other side has no ramp info (old format): p95 may be incomparable");
+            }
+            else if (result.Complete is null != baseline.Complete is null)
+            {
+                notes.Add("warning: ramp info is missing on one side (old format baseline?): cannot verify that both runs are past the spawn ramp");
+            }
+
+            return;
+        }
+
+        if (result.Complete != baseline.Complete)
+        {
+            mismatch = true;
+            notes.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"ramp_complete differs (baseline {baseline.Complete.ToString()!.ToLowerInvariant()}, result {result.Complete.ToString()!.ToLowerInvariant()}): p95 of a partially loaded and a fully loaded city are incomparable  RAMP MISMATCH"));
+            return;
+        }
+
+        if (result.ActiveEnd is int ra && baseline.ActiveEnd is int ba && ba > 0
+            && Math.Abs(ra - ba) > ActiveWarnShare * ba)
+        {
+            notes.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"warning: active vehicles differ by more than {ActiveWarnShare * 100:0}% (baseline {ba}, result {ra})"));
+        }
+    }
+
+    private static RampInfo ReadRamp(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            if (!d.RootElement.TryGetProperty("perf", out JsonElement perf))
+            {
+                return default;
+            }
+
+            bool? complete = perf.TryGetProperty("ramp_complete", out JsonElement c)
+                && c.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? c.GetBoolean()
+                : null;
+            return new RampInfo(complete, Int(perf, "active_vehicles_start"), Int(perf, "active_vehicles"), Int(perf, "target_vehicles"));
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+        catch (InvalidOperationException)
+        {
+            return default;
+        }
+    }
+
+    private static int? Int(JsonElement e, string name) =>
+        e.TryGetProperty(name, out JsonElement v) && v.TryGetInt32(out int i) ? i : null;
 
     private static int RunBudget(string resultPath, double budget, TextWriter output, TextWriter error)
     {
