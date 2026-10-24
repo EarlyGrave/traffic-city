@@ -18,5 +18,6 @@
 | 12 | scenarios-fix | haiku | max_signalized_nodes по лестнице | done, merged |
 | 13 | facade | sonnet | 2-E: World + Simulation фасад, команды, снапшот, хэш | done, merged (0 B/тик, детерминизм) |
 | 14 | physics (worktree) | sonnet | 2-F: IDM, MOBIL, интеграция, переходы, прибытие | wip |
-| 15 | citygen (worktree) | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | wip |
+| 15 | citygen | sonnet | 2-G: CityGenerator/ZoneGenerator/TransitGenerator по спеке | done, merged (s1k 4 мс, голден-хэш) |
 | 16 | render (worktree) | sonnet | 2.5: Sim.Headless render → mp4 | wip |
+| 17 | gen-wiring (worktree) | sonnet | 2-G2: генератор в WorldBuilder/Create | wip |
