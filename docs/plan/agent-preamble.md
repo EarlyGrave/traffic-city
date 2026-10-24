@@ -3,8 +3,8 @@
 1. **Сначала синхронизируй worktree:** `git merge --ff-only claude/adoring-ritchie-cxzib8`.
    Worktree создаётся от `main`, а актуальная работа — в этой ветке. Если ff невозможен — остановись и сообщи.
 2. Прочитай `CLAUDE.md` (правила, команды, DoD) и `docs/plan/lessons.md` (грабли).
-   Спеки: `docs/design/core-api.md` (API ядра — обязательна для любой задачи в Sim.Core),
-   `docs/design/scenario-format.md` (JSON), полное ТЗ — `docs/plan/brief-stage1.md`.
+   Спеки (`docs/design/*.md`, ТЗ `docs/plan/brief-stage1.md`) — читай только разделы, названные в брифе;
+   за остальным заглядывай точечно (`grep -n`), а не целиком.
 3. Трогай только файлы из своего брифа. Нужна правка чужой папки или спеки — сделай минимальным
    отдельным коммитом и явно перечисли в отчёте.
 4. Sim.Core: никакого Godot/IO/LINQ/Random/DateTime/Console/Task (анализатор RS0030), struct + handle,
