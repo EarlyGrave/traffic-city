@@ -685,6 +685,7 @@ internal sealed class VehicleStore
     public readonly float[] Length;        // копия из типа (чтобы не ходить в VehicleTypes)
     public readonly byte[]  Type;
     public readonly float[] DesiredSpeed;  // v0 на текущей полосе = min(MaxSpeed, SpeedFactor*limit); пересчёт при смене полосы
+    public readonly float[] SOld;          // scratch фазы 6: копия S на начало тика (клэмп I6 читает старые позиции лидеров); не в хэше, не в снапшоте
 
     // --- порядок на полосе (intrusive double-linked list, §6.4) ---
     public readonly int[] Ahead, Behind;          // соседи на Lane; -1 = нет

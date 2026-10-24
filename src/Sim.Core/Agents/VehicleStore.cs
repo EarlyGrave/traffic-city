@@ -21,6 +21,7 @@ internal sealed class VehicleStore
     public readonly float[] Length;
     public readonly byte[] Type;
     public readonly float[] DesiredSpeed;
+    public readonly float[] SOld;          // scratch фазы 6: S на начало тика (клэмп I6), не входит в хэш
 
     // --- порядок на полосе (intrusive double-linked list, 6.4) ---
     public readonly int[] Ahead;
@@ -66,6 +67,7 @@ internal sealed class VehicleStore
         Length = new float[maxVehicles];
         Type = new byte[maxVehicles];
         DesiredSpeed = new float[maxVehicles];
+        SOld = new float[maxVehicles];
         Ahead = new int[maxVehicles];
         Behind = new int[maxVehicles];
         GhostLane = new int[maxVehicles];
@@ -151,6 +153,7 @@ internal sealed class VehicleStore
         Length[i] = 0f;
         Type[i] = 0;
         DesiredSpeed[i] = 0f;
+        SOld[i] = 0f;
         Ahead[i] = -1;
         Behind[i] = -1;
         GhostLane[i] = -1;
