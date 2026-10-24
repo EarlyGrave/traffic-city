@@ -42,7 +42,7 @@
     "arterial_speed_kmh": number,       // дефолт 60
     "street_speed_kmh": number,         // дефолт 40
     "lane_width_m": number,             // дефолт 3.5
-    "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт 12 (масштабируется scale²)
+    "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт round(12·scale²) (если ключ опущен)
     "irregular_jitter_m": number,       // макс. сдвиг нерегулярного узла, м. Дефолт 40
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
