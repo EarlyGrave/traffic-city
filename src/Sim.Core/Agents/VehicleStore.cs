@@ -1,0 +1,184 @@
+using System.Diagnostics;
+using Sim.Core.Api;
+using Sim.Core.Util;
+
+namespace Sim.Core.Agents;
+
+/// <summary>
+/// SoA-хранилище машин (core-api 6.3). Все массивы длиной MaxVehicles, индекс = <see cref="VehicleHandle.Index"/>.
+/// Слоты выдаёт <see cref="HandlePool"/>; свежий слот инициализирован значениями по умолчанию
+/// (ссылки = -1, остальное = 0). Порядок на полосах ведёт <see cref="LaneOccupancy"/>.
+/// </summary>
+internal sealed class VehicleStore
+{
+    public readonly HandlePool Pool;
+
+    // --- горячие, читаются IDM каждый тик ---
+    public readonly int[] Lane;
+    public readonly float[] S;
+    public readonly float[] Speed;
+    public readonly float[] Accel;
+    public readonly float[] Length;
+    public readonly byte[] Type;
+    public readonly float[] DesiredSpeed;
+    public readonly float[] SOld;          // scratch фазы 6: S на начало тика (клэмп I6), не входит в хэш
+
+    // --- порядок на полосе (intrusive double-linked list, 6.4) ---
+    public readonly int[] Ahead;
+    public readonly int[] Behind;
+    public readonly int[] GhostLane;
+    public readonly int[] GhostAhead;
+    public readonly int[] GhostBehind;
+
+    // --- смена полосы ---
+    public readonly sbyte[] LaneChangeDir;
+    public readonly ushort[] LaneChangeTicks;
+    public readonly ushort[] NextMobilTick;
+
+    // --- маршрут ---
+    public readonly int[] Route;
+    public readonly int[] RouteGen;
+    public readonly int[] RouteCursor;
+    public readonly int[] DestZone;
+    public readonly int[] DestLane;
+    public readonly float[] DestS;
+    public readonly int[] NextConn;        // STAGE2-TEMP: выбранный connector ближайшей развилки (-1 = не выбран); шаг 3 заменит маршрутами
+
+    // --- геометрия/рендер ---
+    public readonly int[] PointHint;
+    public readonly float[] Lateral;
+
+    // --- метрики/состояние ---
+    public readonly long[] SpawnTick;
+    public readonly ushort[] StillTicks;
+    public readonly byte[] Flags;
+    public readonly int[] BusRoute;
+    public readonly int[] BusNextStop;
+    public readonly ushort[] DwellTicks;
+    public readonly ushort[] Passengers;
+
+    public VehicleStore(int maxVehicles)
+    {
+        Debug.Assert(maxVehicles >= 0);
+        Pool = new HandlePool(maxVehicles);
+        Lane = new int[maxVehicles];
+        S = new float[maxVehicles];
+        Speed = new float[maxVehicles];
+        Accel = new float[maxVehicles];
+        Length = new float[maxVehicles];
+        Type = new byte[maxVehicles];
+        DesiredSpeed = new float[maxVehicles];
+        SOld = new float[maxVehicles];
+        Ahead = new int[maxVehicles];
+        Behind = new int[maxVehicles];
+        GhostLane = new int[maxVehicles];
+        GhostAhead = new int[maxVehicles];
+        GhostBehind = new int[maxVehicles];
+        LaneChangeDir = new sbyte[maxVehicles];
+        LaneChangeTicks = new ushort[maxVehicles];
+        NextMobilTick = new ushort[maxVehicles];
+        Route = new int[maxVehicles];
+        RouteGen = new int[maxVehicles];
+        RouteCursor = new int[maxVehicles];
+        DestZone = new int[maxVehicles];
+        DestLane = new int[maxVehicles];
+        DestS = new float[maxVehicles];
+        NextConn = new int[maxVehicles];
+        PointHint = new int[maxVehicles];
+        Lateral = new float[maxVehicles];
+        SpawnTick = new long[maxVehicles];
+        StillTicks = new ushort[maxVehicles];
+        Flags = new byte[maxVehicles];
+        BusRoute = new int[maxVehicles];
+        BusNextStop = new int[maxVehicles];
+        DwellTicks = new ushort[maxVehicles];
+        Passengers = new ushort[maxVehicles];
+        for (int i = 0; i < maxVehicles; i++)
+        {
+            ResetSlot(i);
+        }
+    }
+
+    public int Capacity => Pool.Capacity;
+
+    public int AliveCount => Pool.AliveCount;
+
+    /// <summary>Верхняя граница для обходов «по всем слотам».</summary>
+    public int HighWater => Pool.HighWater;
+
+    /// <summary>false = ёмкость MaxVehicles исчерпана (вызывающий инкрементирует счётчик). Слот не привязан ни к одной полосе.</summary>
+    public bool TrySpawn(out VehicleHandle handle)
+    {
+        if (!Pool.TryAllocate(out int index, out int generation))
+        {
+            handle = VehicleHandle.Null;
+            return false;
+        }
+
+        ResetSlot(index);
+        handle = new VehicleHandle(index, generation);
+        return true;
+    }
+
+    /// <summary>
+    /// Освобождает слот (generation++). Машина должна быть уже снята со всех списков
+    /// (<see cref="LaneOccupancy.UnlinkAll"/>). false = handle невалиден (no-op).
+    /// </summary>
+    public bool Despawn(VehicleHandle handle)
+    {
+        if (!IsAlive(handle))
+        {
+            return false;
+        }
+
+        Debug.Assert(Lane[handle.Index] == -1 && GhostLane[handle.Index] == -1, "despawn: машина ещё в списке полосы");
+        ResetSlot(handle.Index);
+        Pool.Free(handle.Index);
+        return true;
+    }
+
+    public bool IsAlive(VehicleHandle handle) => !handle.IsNull && Pool.IsAlive(handle.Index, handle.Generation);
+
+    /// <summary>Handle живого слота (для снапшотов/событий); слот должен быть жив.</summary>
+    public VehicleHandle HandleOf(int index)
+    {
+        Debug.Assert(Pool.IsAlive(index));
+        return new VehicleHandle(index, Pool.GenerationOf(index));
+    }
+
+    private void ResetSlot(int i)
+    {
+        Lane[i] = -1;
+        S[i] = 0f;
+        Speed[i] = 0f;
+        Accel[i] = 0f;
+        Length[i] = 0f;
+        Type[i] = 0;
+        DesiredSpeed[i] = 0f;
+        SOld[i] = 0f;
+        Ahead[i] = -1;
+        Behind[i] = -1;
+        GhostLane[i] = -1;
+        GhostAhead[i] = -1;
+        GhostBehind[i] = -1;
+        LaneChangeDir[i] = 0;
+        LaneChangeTicks[i] = 0;
+        NextMobilTick[i] = 0;
+        Route[i] = -1;
+        RouteGen[i] = 0;
+        RouteCursor[i] = 0;
+        DestZone[i] = -1;
+        DestLane[i] = -1;
+        DestS[i] = 0f;
+        NextConn[i] = -1;
+        PointHint[i] = 0;
+        Lateral[i] = 0f;
+        SpawnTick[i] = 0;
+        StillTicks[i] = 0;
+        Flags[i] = 0;
+        BusRoute[i] = -1;
+        BusNextStop[i] = 0;
+        DwellTicks[i] = 0;
+        Passengers[i] = 0;
+    }
+}

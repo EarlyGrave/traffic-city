@@ -11,4 +11,9 @@
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)../../BannedSymbols.txt" Link="BannedSymbols.txt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sim.Core.Tests" />
+    <InternalsVisibleTo Include="Sim.Bench" />
+  </ItemGroup>
+
 </Project>

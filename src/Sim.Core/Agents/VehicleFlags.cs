@@ -1,0 +1,14 @@
+using System;
+
+namespace Sim.Core.Agents;
+
+/// <summary>Биты <see cref="VehicleStore.Flags"/> (core-api 6.3).</summary>
+[Flags]
+internal enum VehicleFlags : byte
+{
+    None = 0,
+    Stuck = 1,
+    AtStop = 2,
+    Selected = 4,
+    IsBus = 8,
+}

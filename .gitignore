@@ -30,3 +30,6 @@ perf/results/*.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Ролики render (perf/results)
+perf/results/*.mp4

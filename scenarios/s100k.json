@@ -1,0 +1,82 @@
+{
+  "format_version": 1,
+  "name": "s100k",
+  "seed": 20261024,
+  "duration_s": 1800,
+  "vehicle_types_file": "vehicle-types.json",
+  "city": {
+    "enabled": true,
+    "size_m": [3000, 3000],
+    "scale": 5.0,
+    "block_m": 150,
+    "arterial_every": 4,
+    "arterial_speed_kmh": 60,
+    "street_speed_kmh": 40,
+    "lane_width_m": 3.5,
+    "irregular_nodes": 300,
+    "irregular_jitter_m": 40,
+    "removed_street_share": 0.15,
+    "connector_samples": 8,
+    "signals": "arterial_x_arterial",
+    "minor_control": "yield"
+  },
+  "vehicles": {
+    "count": 100000,
+    "spawn_ramp_s": 600,
+    "type_mix": {
+      "car": 1.0
+    }
+  },
+  "demand": {
+    "zone_m": 500,
+    "model": "gravity",
+    "gravity_exponent": 1.0,
+    "weight_jitter": 0.5,
+    "external_share": 0.3,
+    "min_trip_m": 600
+  },
+  "transit": {
+    "routes": 250,
+    "headway_s": 300,
+    "stops_per_route": [8, 14],
+    "stop_spacing_m": 400,
+    "stop_kind": "mixed",
+    "bus_type": "bus",
+    "dwell_base_s": 8,
+    "dwell_per_passenger_s": 1.5,
+    "passenger_rate_per_min": 2
+  },
+  "rules": {
+    "min_physical_gap_m": 0.5,
+    "stuck_threshold_s": 60,
+    "stuck_speed_mps": 0.1,
+    "gridlock_stuck_share": 0.05,
+    "gridlock_min_stuck": 10,
+    "gridlock_hold_s": 60,
+    "mobil_every_ticks": 10,
+    "signal_yellow_s": 3,
+    "signal_all_red_s": 1,
+    "yield_gap_s": 3.0,
+    "max_yield_wait_s": 20
+  },
+  "capacities": {
+    "max_vehicles": 115000,
+    "max_nodes": 17000,
+    "max_segments": 32000,
+    "max_lanes": 300000,
+    "max_lane_points": 2000000,
+    "max_zones": 1024,
+    "max_bus_routes": 320,
+    "max_bus_stops": 4096,
+    "max_bus_stops_per_route": 32,
+    "max_routes": 65000,
+    "max_route_steps": 16000000,
+    "max_pending_trips": 128000,
+    "command_queue": 1024,
+    "events": 4096,
+    "pathfind_budget_per_tick": 512,
+    "max_signalized_nodes": 800,
+    "max_connectors": 272000,
+    "max_conflicts": 1632000
+  }
+}
