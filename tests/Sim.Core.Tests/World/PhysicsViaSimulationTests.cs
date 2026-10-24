@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Rules;
+using Sim.Core.Tests.Fixtures;
 
 namespace Sim.Core.Tests.Worlds;
 
@@ -86,10 +87,8 @@ public class PhysicsViaSimulationTests
         Step(b, 200);
         Assert.Equal(Hash(a), Hash(b));
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Step(a, 300);
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
-        Step(b, 300);
+        Assert.Equal(0, AllocationProbe.Measure(() => Step(a, 300), out int windows));
+        Step(b, 300 * windows);
         Assert.Equal(Hash(a), Hash(b));
         Assert.True(a.World.Vehicles.AliveCount > 0);
     }

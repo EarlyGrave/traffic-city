@@ -5,6 +5,11 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>Sim.Core.Tests</RootNamespace>
+    <!-- Тесты 0 B меряют GC.GetAllocatedBytesForCurrentThread. Любая сборка мусора, запущенная другим потоком (xunit гоняет
+         классы параллельно), обнуляет allocation context потока, и счётчик прыгает на неиспользованный остаток контекста
+         (до ~8 КБ) без аллокаций. Фоновый (concurrent) GC такой прыжок делает, не увеличивая GC.CollectionCount(0), так что
+         AllocationProbe его не видит. Блокирующий GC всегда виден в CollectionCount. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

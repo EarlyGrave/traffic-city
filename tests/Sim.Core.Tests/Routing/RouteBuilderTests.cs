@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Routing;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Util;
 using Xunit.Abstractions;
 
@@ -367,13 +368,14 @@ public class RouteBuilderTests
             One(i);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 400; i < 1400; i++)
+        int next = 400;
+        long allocated = AllocationProbe.Measure(() =>
         {
-            One(i);
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int k = 0; k < 1000; k++)
+            {
+                One(next++);
+            }
+        });
         Assert.Equal(0, allocated);
         Assert.True(r.Builder.CacheHits > 100);
     }

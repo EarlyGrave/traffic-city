@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Tests.Worlds;
 
 namespace Sim.Core.Tests.Intersections;
@@ -232,13 +233,15 @@ public class SignalPhaseTests
             SignalPhase.Run(w);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
+        long allocated = AllocationProbe.Measure(() =>
         {
-            SignalPhase.Run(w);
-        }
+            for (int i = 0; i < 1000; i++)
+            {
+                SignalPhase.Run(w);
+            }
+        });
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, allocated);
     }
 
     private readonly struct SignalPlanSeed2
