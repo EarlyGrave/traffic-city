@@ -15,6 +15,9 @@ internal static class WorldBuilder
     /// <summary>Верхний предел любой ёмкости (защита от случайных значений вроде int.MaxValue).</summary>
     public const int MaxCapacity = 1 << 24;
 
+    /// <summary>Предел арены шагов маршрутов (RouteStep = 8 байт, s100k: ~40 M шагов = 320 МБ); отдельно от <see cref="MaxCapacity"/>.</summary>
+    public const int MaxRouteStepsCapacity = 1 << 28;
+
     public const int MaxVehicleTypes = 256; // VehicleStore.Type - byte
 
     public static CreateStatus Create(in ScenarioDesc desc, out World? world)
@@ -189,11 +192,31 @@ internal static class WorldBuilder
                 FirstSpawnLane = 0, // TODO(gen): полосы появления назначает ZoneGenerator
                 SpawnLaneCount = 0,
                 IsExternal = z.IsExternal ? (byte)1 : (byte)0,
+                HubNode = NearestNode(w.Net, new Vec2(z.CenterX, z.CenterZ)),
             };
         }
 
         w.Net.ZoneCount = n;
         return CreateStatus.Ok;
+    }
+
+    // Хаб зоны явной сети (routing.md 4.1): ближайший к центру узел (ничья - меньший индекс); -1 - узлов нет.
+    private static int NearestNode(NetworkStore net, Vec2 c)
+    {
+        int best = -1;
+        float bestD = float.MaxValue;
+        for (int n = 0; n < net.NodeCount; n++)
+        {
+            Vec2 p = net.Nodes[n].Position;
+            float d = ((p.X - c.X) * (p.X - c.X)) + ((p.Z - c.Z) * (p.Z - c.Z));
+            if (d < bestD)
+            {
+                bestD = d;
+                best = n;
+            }
+        }
+
+        return best;
     }
 
     public static void SyncStructuralCounters(World w)
@@ -218,7 +241,7 @@ internal static class WorldBuilder
 
         // Необязательные (>= 0).
         if (!InRange(c.MaxZones, 0) || !InRange(c.MaxBusRoutes, 0) || !InRange(c.MaxBusStops, 0) ||
-            !InRange(c.MaxBusStopsPerRoute, 0) || !InRange(c.MaxRoutes, 0) || !InRange(c.MaxRouteSteps, 0) ||
+            !InRange(c.MaxBusStopsPerRoute, 0) || !InRange(c.MaxRoutes, 0) || c.MaxRouteSteps < 0 || c.MaxRouteSteps > MaxRouteStepsCapacity ||
             !InRange(c.PathfindBudgetPerTick, 0) || !InRange(c.MaxSignalizedNodes, 0))
         {
             return CreateStatus.InvalidCapacity;

@@ -30,6 +30,8 @@ internal sealed class World
     public readonly LaneOccupancy Occupancy;
     public readonly PendingTrips Trips;
     public readonly RoutePool Routes;
+    public readonly RouteBuilder Router;               // фаза 3: A*, кэш магистралей, бюджет раскрытий (routing.md)
+    public readonly RingBuffer<RerouteEntry> Rerouting; // машины, промахнувшиеся мимо полосы (routing.md 3)
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
@@ -87,7 +89,9 @@ internal sealed class World
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
         Routes = new RoutePool(c.MaxRoutes, c.MaxRouteSteps);
-        Spawn = new SpawnerData(c.MaxZones, c.MaxLanes, types.Length);
+        Router = new RouteBuilder(Net, Routes, in c);
+        Rerouting = new RingBuffer<RerouteEntry>(c.MaxVehicles);
+        Spawn = new SpawnerData(c.MaxZones, types.Length);
 
         // 0 = по умолчанию (intersections.md §4): MaxNodes * 16 connector'ов, MaxConnectors * 6 записей конфликтов.
         int maxConnectors = c.MaxConnectors > 0 ? c.MaxConnectors : checked(c.MaxNodes * 16);
