@@ -178,6 +178,10 @@ public sealed class Simulation : IDisposable
     public ReadOnlySpan<SignalState> SignalStates { get; }           // [SignalCount], см. §5.4
     public ReadOnlySpan<byte> LaneSignals { get; }                   // [MaxLanes], LaneSignal enum (§5.4)
     public RouteView SelectedRoute { get; }                          // маршрут выбранной машины, §5.5
+    /// Вид для снапшота (ADR-0013): фаза 10 пишет только машины ячеек, пересекающих прямоугольник, остальные Flags = 0.
+    /// НЕ команда и НЕ в хэше — на состояние не влияет. По умолчанию — всё. FFI: tc_sim_set_render_view.
+    public void SetRenderView(float x0, float z0, float x1, float z1);
+    public void SetRenderViewAll();
     public NetworkView Network { get; }                              // статическая геометрия, §5.6
     public ReadOnlySpan<SimEvent> Events { get; }                    // события последнего Step, §5.7
 
@@ -256,6 +260,7 @@ public struct ScenarioDesc
     public DemandDesc Demand;
     public TransitDesc Transit;
     public RulesDesc Rules;
+    public LodDesc Lod;                    // уровни детализации (ADR-0013, `sim-lod.md` §4); Mode = Off — LOD нет, поведение прежнее
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }
 
@@ -337,6 +342,7 @@ public enum CommandKind : int
     ClearSelection = 8,
     SetTargetVehicleCount = 9,  // целевое число живых машин (спавнер догоняет)
     SetNodeControl = 10,        // тип регулирования узла: none/yield/stop/signal [шаг 3]
+    SetLodFocus = 11,           // слот фокуса/закрепления LOD {Slot 0..7, Kind Clear/Focus/Pin, X, Z, RadiusM} (ADR-0013, `sim-lod.md` §4)
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
@@ -458,6 +464,7 @@ public struct VehicleRenderData
     AtStop = 16,         // автобус стоит на остановке
     Selected = 32,
     OnConnector = 64,
+    Meso = 128,          // машина в meso-ячейке (ADR-0013); позиция настоящая, поведение упрощённое
 }
 ```
 
@@ -923,6 +930,12 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
 
+**LOD (ADR-0013, `sim-lod.md` §2–3), при `Lod.Mode != Off`.** Машины meso-ячеек: фаза 4 — кандидаты и решения ворот их узлов только
+в тик цвета ячейки (`(Tick & 3) == color`), `WaitTicks += 4`; фаза 5 — кинематика 1-го порядка вместо IDM/MOBIL в тик цвета или при
+`MesoFresh`, пишет `Speed`, `MesoAllow`, `LaneChangeDir` (вынужденная/объезд); фаза 6 — каждый тик `d = min(v·dt, MesoAllow)`;
+фаза 7 — `Lod` по ячейке новой полосы, поправка `MesoAllow` ведомого при вставке; **9b** — контроллер уровней (раз в `eval_s`
+или после `SetLodFocus`), смена уровня ячеек; фаза 10 — `RenderView`, бит `Meso`. Фазы 5–6 остаются чистыми по машине.
+
 **Маршруты в симуляции (шаг 3, 3-R4/R5; `routing.md` §13).** Маршрут строится фазой 3 ДО спавна: фаза 2 ставит на дорогу только поездки с
 `PendingTrip.HasRoute` (`RouteGen != 0`; поездка без маршрута уходит в хвост очереди). Точка прибытия `DestLane/DestS` выбирается при
 генерации поездки (`Routing/Destinations`: полоса `LaneNo 0` встречного направления сегмента случайной полосы спавна зоны назначения,
@@ -1063,6 +1076,8 @@ public struct Fnv1a64
    `(WaveCell, WaveRow)`, флаги (`routing.md` §9.8); матрицы не хэшируются.
 
 9. Управляющее состояние команд: `TargetVehicles`, `Selected.Packed`.
+10. LOD (только при `Lod.Mode != Off`, ADR-0013): в п.3 для живых ещё `Lod`, для meso — `MesoAllow`; затем по ячейкам
+    `CellLevel, CellHoldUntil, CellCongStreak`, слоты `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick`. `RenderView` не входит.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
@@ -1146,6 +1161,10 @@ public struct SimCounters                 // все монотонные, кро
     public long CustomizeRows, CustomizeWork, CustomizeLagTicks; // волны кастомизации оверлея: строки, релаксации, тики ожидания пересчёта
     public long OverlayRebuilds;          // полных перестроек оверлея после BuildRoad
     public int  OverlayDisabled;          // текущее: 1 - оверлей выключен (не влезла перестройка), запросы идут плоским A*
+    // --- уровни детализации (ADR-0013, `sim-lod.md` §4, §8) ---
+    public int  MicroVehicles, MesoVehicles;              // текущее
+    public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;
+    public long LodEvals, LodCellFlips, LodBudgetSkips, MesoClamps, MesoLaneChanges;
 }
 
 public struct SimStats                    // производные, считаются в GetStats за O(1) из Counters
@@ -1305,7 +1324,8 @@ src/Sim.Core/
 
 ## 15. Открытые вопросы (не блокируют шаг 2)
 
-1. Компактный список живых слотов для снапшота при 1M (сейчас — полный массив `MaxVehicles`).
+1. Компактный список живых слотов для снапшота при 1M (сейчас — полный массив `MaxVehicles`). Частично — `SetRenderView`
+   (ADR-0013): пишутся только видимые; обход префикса `HighWater` клиентом на stress-1m остаётся — решать в ADR-0014.
 2. ~~Инвалидация кэша маршрутов при `BuildRoad`~~ — решено: лениво по `NetworkVersion` (`routing.md` §4.3).
 3. Стоит ли считать stuck ожидание на красном (сейчас — да; план по умолчанию держит красный ≤ 32 с,
    `intersections.md` §5.6; при ложных срабатываниях ввести исключение «стоит перед закрытым
