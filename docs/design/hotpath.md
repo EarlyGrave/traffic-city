@@ -280,3 +280,23 @@ behaviour 2.076 (1.813), **integrate 0.165 (1.608)**, gate 0.960 (0.870), transi
 рост прочих фаз - шум общего контейнера. `work_per_tick`: `conflict_gap_calls_integrate` 3 149 -> **0**, `leader_lookahead_hops` 16 536 -> 8 278,
 `obstacle_gap_calls` 19 975 -> 9 994, `conflict_entries_scanned` 24 246 -> 12 123, `conflict_occupants_scanned` 4 083 -> 2 041,
 `conflict_gap_calls_behaviour` 3 149 -> 3 149. `scripts/bench-gate.sh --baseline perf/baseline.json` (s1k): OK.
+
+## 7.2 H3 выполнена (D3+D4: маска занятых connector'ов, SoA-чтения ворот)
+Реализовано как в D3/D4. `GateScratch.NodeBusy/BusyTouched` (обнуление по `BusyTouched` в начале фазы 4). Бит `LocalBit` ставит `GatePhase.MarkBusy`
+в проходе сбора (машина на connector'е; допущенная на Normal-полосе после проверки «допуск от этой полосы») и в `TryGrant` при каждом новом допуске.
+Обновлять маску между фазой 4 и фазой 5 не нужно: списки connector'ов, `GateState` и `GrantConnector` меняются только в фазе 7 и в `TryGrant`;
+после D2 `ConflictGap` зовётся только из фазы 5, фаза 6 маску не читает. Маска валидна от конца фазы 4 до конца фазы 5 (в спеке - «до конца фазы 6»,
+это то же самое, раз фаза 6 потоковая).
+`ConflictGap`/`ObstacleGap` получили параметр `ulong[]? nodeBusy`; `null` (юнит-тесты без фазы 4) = без отсечения. Выход: `ConflictMask[g] & NodeBusy[node] == 0`
+(`conflict_gap_mask_rejects++`), в цикле - `continue` для записи с незанятым битом (после проверки дистанции/`break`). D4: `ConnectorStore.Length/InLength`
+(заполняются в `Register`, в хэш не входят); `ConflictGap`, `MergeGap`, `CrossBlocked`, `TryGrant` берут `InLane/OutLane/Length/InLength/Lane/LocalBit` по
+`gOther = g - LocalBit[g] + OtherLocal` вместо `LaneData`. Тест `NodeBusyMaskTests`: после каждой фазы 4 маска ⊇ участников (перебор), `ObstacleGap` с маской == без маски.
+
+Приёмка: golden-хэши `HotPathGoldenHashTests` не менялись; `hash --scenario s10k --warmup-until-full --ticks 400 --every 200`: tick=6100 `861672e99fa95a39`,
+tick=6300 `c73832373fb67bd3`; `dotnet test` зелёный (Core 395, Headless 107); 0 B/тик; `dotnet format` чисто; `scripts/bench-gate.sh` (s1k): OK.
+
+«После» (`bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases`, активных -> 9 997, 0 B/тик, stuck 0, tick p50/p95 4.42/5.57 мс при load ~5
+на общем контейнере; после H2 было 4.73/6.39), мс на тик (mean, в скобках после H2): behaviour 1.736 (2.076), gate 1.035 (0.960), integrate 0.174 (0.165),
+transition 0.509 (0.540), snapshot 0.427 (0.436), route 0.280 (0.294). Выигрыш виден в фазе 5; gate не изменился (шум контейнера).
+`work_per_tick` (после H2 -> H3): `conflict_gap_mask_rejects` 0 -> **2 046** (65% из 3 149 вызовов), `conflict_entries_scanned` 12 123 -> **3 844** (-68%),
+`conflict_occupants_scanned` 2 041 -> 1 130, `conflict_gap_calls_behaviour` 3 149 -> 3 149, `gate_trygrant_entries` 1 358 (как было).
