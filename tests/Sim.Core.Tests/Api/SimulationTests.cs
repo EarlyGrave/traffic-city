@@ -263,7 +263,7 @@ public class SimulationTests
         sim.Enqueue(Command.MakeSpawnTrip(in badCount));
         sim.Step(1);
 
-        Assert.Equal(1, sim.World.Trips.Count);
+        Assert.Equal(1, sim.World.Trips.Count + sim.World.Vehicles.AliveCount); // валидная поездка с полосы уже могла стартовать (фаза 2)
         ReadOnlySpan<SimEvent> ev = sim.Events;
         Assert.Equal(SimEventKind.CommandApplied, ev[0].Kind);
         for (int i = 1; i < 5; i++)
@@ -460,8 +460,7 @@ public class SimulationTests
         Assert.NotEqual(0, first.Flags & (byte)VehicleRenderFlags.Active);
         Assert.Equal(0, sim.PreviousVehicles[i].Flags); // до первого Step слот был пуст
 
-        sim.World.Vehicles.S[i] = 60f; // движение вместо ещё не подключённых фаз 5-8
-        sim.Step(1);
+        sim.Step(1); // фазы 5-8 подключены: машина едет сама
         Assert.Equal(2, sim.SnapshotTick);
         VehicleRenderData cur = sim.Vehicles[i];
         VehicleRenderData prev = sim.PreviousVehicles[i];
@@ -471,8 +470,9 @@ public class SimulationTests
         Assert.Equal(prev.Generation, cur.Generation);
         Assert.Equal(i, cur.Index);
 
-        sim.Step(1); // без движения: оба буфера равны, но это два разных массива
-        Assert.Equal(sim.PreviousVehicles[i].X, sim.Vehicles[i].X);
+        sim.Step(1); // буферы меняются местами: прежний текущий становится предыдущим
+        Assert.Equal(cur.X, sim.PreviousVehicles[i].X);
+        Assert.NotEqual(sim.PreviousVehicles[i].X, sim.Vehicles[i].X);
     }
 
     [Fact]
@@ -482,11 +482,13 @@ public class SimulationTests
         VehicleHandle h = TestScenarios.PlaceCar(sim, 0, 50f, 3f);
         sim.Step(1);
         VehicleRenderData r = sim.Vehicles[h.Index];
-        (Sim.Core.Util.Vec2 pos, float heading) = LaneGeometry.Evaluate(sim.Network, 0, 50f - (4.5f * 0.5f));
+        float s = sim.World.Vehicles.S[h.Index]; // машина уже сдвинулась на тик фазами 5-8
+        (Sim.Core.Util.Vec2 pos, float heading) = LaneGeometry.Evaluate(sim.Network, 0, s - (4.5f * 0.5f));
         Assert.Equal(pos.X, r.X, 3);
         Assert.Equal(pos.Z, r.Z, 3);
         Assert.Equal(heading, r.Heading, 3);
-        Assert.Equal(3f, r.Speed);
+        Assert.Equal(sim.World.Vehicles.Speed[h.Index], r.Speed);
+        Assert.InRange(r.Speed, 1f, 3.5f);
         Assert.Equal(0, r.Type);
         Assert.Equal(h.Index, r.Index);
         Assert.Equal((ushort)h.Generation, r.Generation);
@@ -519,8 +521,10 @@ public class SimulationTests
         Assert.True(sim.IsAlive(a));
         Assert.True(sim.TryGetVehicleInfo(b, out VehicleInfo info));
         Assert.Equal(0, info.Lane);
-        Assert.Equal(120f, info.S);
-        Assert.Equal(7f, info.Speed);
+        Assert.Equal(sim.World.Vehicles.S[b.Index], info.S);
+        Assert.InRange(info.S, 120f, 121f); // фазы 5-8 сдвинули машину за тик
+        Assert.Equal(sim.World.Vehicles.Speed[b.Index], info.Speed);
+        Assert.InRange(info.Speed, 6f, 8f);
         Assert.NotEqual(0, info.Flags & (byte)VehicleRenderFlags.Active);
         Assert.False(sim.TryGetVehicleInfo(VehicleHandle.Null, out _));
 

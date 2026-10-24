@@ -42,6 +42,7 @@ internal sealed class VehicleStore
     public readonly int[] DestZone;
     public readonly int[] DestLane;
     public readonly float[] DestS;
+    public readonly int[] NextConn;        // STAGE2-TEMP: выбранный connector ближайшей развилки (-1 = не выбран); шаг 3 заменит маршрутами
 
     // --- геометрия/рендер ---
     public readonly int[] PointHint;
@@ -82,6 +83,7 @@ internal sealed class VehicleStore
         DestZone = new int[maxVehicles];
         DestLane = new int[maxVehicles];
         DestS = new float[maxVehicles];
+        NextConn = new int[maxVehicles];
         PointHint = new int[maxVehicles];
         Lateral = new float[maxVehicles];
         SpawnTick = new long[maxVehicles];
@@ -168,6 +170,7 @@ internal sealed class VehicleStore
         DestZone[i] = -1;
         DestLane[i] = -1;
         DestS[i] = 0f;
+        NextConn[i] = -1;
         PointHint[i] = 0;
         Lateral[i] = 0f;
         SpawnTick[i] = 0;

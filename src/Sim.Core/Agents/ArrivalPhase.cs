@@ -8,7 +8,7 @@ namespace Sim.Core.Agents;
 /// (A = индекс слота, B = поколение), счётчики <c>TripsCompleted/TripTimeTicksTotal</c>, <see cref="LaneOccupancy.UnlinkAll"/> и
 /// <see cref="VehicleStore.Despawn"/>. Это единственный путь деспауна: машина без прибытия никогда не исчезает.
 /// <c>DestS</c> должно быть не больше <c>Length - MinGap</c> полосы-цели: у конца полосы без продолжения машина останавливается
-/// раньше. Событийный буфер принадлежит вызывающему: пишем, пока есть место, последний слот резервируем под
+/// раньше. STAGE2-TEMP: без <c>DestLane</c> (маршрутов нет) - прибытие при въезде на любую полосу зоны <c>DestZone</c>. Событийный буфер принадлежит вызывающему: пишем, пока есть место, последний слот резервируем под
 /// <see cref="SimEventKind.EventsOverflow"/>; потерянные события - в <c>EventsDropped</c>.
 /// </summary>
 internal static class ArrivalPhase
@@ -25,7 +25,15 @@ internal static class ArrivalPhase
             }
 
             int dest = v.DestLane[i];
-            if (dest < 0 || v.Lane[i] != dest || v.S[i] < v.DestS[i])
+            bool arrived = dest >= 0 && v.Lane[i] == dest && v.S[i] >= v.DestS[i];
+            if (!arrived && dest < 0 && v.DestZone[i] >= 0 && v.RouteCursor[i] > 0 && v.Lane[i] >= 0)
+            {
+                // STAGE2-TEMP (до маршрутов шага 3): прибыл, когда въехал на любую полосу зоны назначения.
+                // RouteCursor > 0 = уже был переход между полосами, т.е. полоса спавна не считается.
+                arrived = w.Spawn.LaneZone[v.Lane[i]] == v.DestZone[i];
+            }
+
+            if (!arrived)
             {
                 continue;
             }
