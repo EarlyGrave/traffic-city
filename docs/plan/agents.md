@@ -51,5 +51,6 @@
 | 45 | routing-hier-spec (worktree) | opus | 2.2: спека иерархии маршрутов + ADR-0009 | done, merged (оверлей ячеек, H1–H4) |
 | 46 | snapshot-spec (worktree) | opus | 2.3: ADR-0010 снапшот без копирования | done, merged (копирования нет; удешевление фазы 10) |
 | 47 | snapshot-impl (worktree) | sonnet | 2.3: реализация ADR-0010 | done, merged (микробенч 22.5 → 16.9 мкс, short-job; хэши прежние) |
-| 49 | routing-h1 (worktree) | sonnet | 2.2 H1: оверлей ячеек, волна, BuildRoad, загрузчик v2 | wip |
+| 49 | routing-h1 (worktree) | sonnet | 2.2 H1: оверлей ячеек, волна, BuildRoad, загрузчик v2 | done, merged (Create оверлея: s100k 248–402 мс, s1m 3.0 с) |
+| 50 | routing-h2 (worktree) | sonnet | 2.2 H2: поиск по оверлею, развёртывание плана, эквивалентность | wip |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
