@@ -46,3 +46,4 @@
 | 40 | ci-baseline | sonnet | ADR-0007 | done, merged |
 | 41 | ladder-profile | sonnet | шаг 5: лестница + профиль | done (s1m не создан: ёмкость) |
 | 42 | s1m-fix | haiku | ёмкость s1m + прогон | done (p95 185 мс на 2031 машине) |
+| 43 | buses | sonnet | шаг 4 | done, merged (diff-перенос, ADR переименован в 0008) |
