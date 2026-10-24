@@ -152,6 +152,11 @@ internal sealed partial class Overlay
     public static CreateStatus TryCreate(NetworkStore net, RouteGraph g, in RoutingDesc cfg, out Overlay? overlay)
     {
         overlay = null;
+        if (g.DirSegCapacity >= (1 << OverlaySearcher.LevelShift))
+        {
+            return CreateStatus.InvalidCapacity; // план кодирует DirSeg | level << 28 (routing.md 9.2)
+        }
+
         if (cfg.Levels < 1 || cfg.Levels > MaxLevels || cfg.Fanout < 2 || cfg.Fanout > MaxFanout ||
             !float.IsFinite(cfg.CellSize) || cfg.CellSize <= 0f || !float.IsFinite(cfg.CustomizeEps) || cfg.CustomizeEps < 0f)
         {

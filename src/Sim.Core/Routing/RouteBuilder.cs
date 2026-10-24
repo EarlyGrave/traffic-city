@@ -185,7 +185,11 @@ internal sealed class RouteBuilder
     /// Выбор connector'а: минимум |LaneNo(ToLane) - LaneNo(L_{j+1})|; для первого сегмента ничья - ближе к стартовой полосе,
     /// далее - меньший индекс connector'а.
     /// </summary>
-    public int LayoutLanes(ReadOnlySpan<int> path, int len, int startLane, int destLane, Span<RouteStep> output)
+    public int LayoutLanes(ReadOnlySpan<int> path, int len, int startLane, int destLane, Span<RouteStep> output) =>
+        LayoutLanes(_net, Graph, path, len, startLane, destLane, output);
+
+    /// <summary>Статическая форма <see cref="LayoutLanes(ReadOnlySpan{int}, int, int, int, Span{RouteStep})"/> (используется <see cref="OverlaySearcher"/>).</summary>
+    public static int LayoutLanes(NetworkStore net, RouteGraph graph, ReadOnlySpan<int> path, int len, int startLane, int destLane, Span<RouteStep> output)
     {
         if (len < 1 || output.Length < (2 * len) - 1)
         {
@@ -195,30 +199,30 @@ internal sealed class RouteBuilder
         int k = len - 1;
         int lane = destLane;
         output[2 * k] = new RouteStep { Lane = lane, Node = -1 };
-        int startNo = _net.Lanes[startLane].LaneNo;
+        int startNo = net.Lanes[startLane].LaneNo;
         for (int j = k - 1; j >= 0; j--)
         {
             int u = path[j];
             int w = path[j + 1];
-            int firstLane = (u & 1) == 0 ? _net.Segments[u >> 1].FirstLaneAB : _net.Segments[u >> 1].FirstLaneBA;
-            int laneCount = (u & 1) == 0 ? _net.Segments[u >> 1].LanesAB : _net.Segments[u >> 1].LanesBA;
-            int targetNo = _net.Lanes[lane].LaneNo;
+            int firstLane = (u & 1) == 0 ? net.Segments[u >> 1].FirstLaneAB : net.Segments[u >> 1].FirstLaneBA;
+            int laneCount = (u & 1) == 0 ? net.Segments[u >> 1].LanesAB : net.Segments[u >> 1].LanesBA;
+            int targetNo = net.Lanes[lane].LaneNo;
             int bestConn = -1;
             int bestDist = int.MaxValue;
             int bestTie = int.MaxValue;
             for (int li = 0; li < laneCount; li++)
             {
-                ref readonly LaneData ld = ref _net.Lanes[firstLane + li];
+                ref readonly LaneData ld = ref net.Lanes[firstLane + li];
                 for (int c = 0; c < ld.NextCount; c++)
                 {
-                    int conn = _net.LaneNext[ld.FirstNext + c];
-                    ref readonly LaneData cd = ref _net.Lanes[conn];
+                    int conn = net.LaneNext[ld.FirstNext + c];
+                    ref readonly LaneData cd = ref net.Lanes[conn];
                     if (cd.Kind != LaneKind.Connector)
                     {
                         continue;
                     }
 
-                    ref readonly LaneData to = ref _net.Lanes[cd.ToLane];
+                    ref readonly LaneData to = ref net.Lanes[cd.ToLane];
                     if (((to.Segment * 2) + to.Direction) != w)
                     {
                         continue;
@@ -240,10 +244,10 @@ internal sealed class RouteBuilder
                 return -1;
             }
 
-            ref readonly LaneData best = ref _net.Lanes[bestConn];
+            ref readonly LaneData best = ref net.Lanes[bestConn];
             output[(2 * j) + 1] = new RouteStep { Lane = bestConn, Node = best.Node };
             lane = best.FromLane;
-            output[2 * j] = new RouteStep { Lane = lane, Node = Graph.EndNode[u] };
+            output[2 * j] = new RouteStep { Lane = lane, Node = graph.EndNode[u] };
         }
 
         return (2 * len) - 1;

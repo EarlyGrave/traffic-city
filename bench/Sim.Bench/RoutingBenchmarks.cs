@@ -11,7 +11,7 @@ using Sim.Core.Util;
 namespace Sim.Bench;
 
 /// <summary>
-/// Маршрутизация (routing.md): A* на случайной паре DirSeg, сборка маршрута с попаданием в кэш магистралей
+/// Маршрутизация (routing.md): A* на случайной паре DirSeg, запрос по оверлею (H2) и плоский на IndexedHeap4, сборка маршрута с попаданием в кэш магистралей
 /// и прямая сборка. Сеть генерируется из scenarios/{s1k,s100k}.json (как GenFixture в тестах).
 /// </summary>
 [MemoryDiagnoser]
@@ -23,6 +23,9 @@ public class RoutingBenchmarks
     private RoutePool _pool = null!;
     private RouteBuilder _builder = null!;
     private AStarSearcher _star = null!;
+    private OverlaySearcher _overlayQuery = null!;
+    private OverlaySearcher _flatQuery = null!;
+    private int[] _plan = null!;
     private int[] _path = null!;
     private readonly int[] _starts1 = new int[1];
     private readonly float[] _startG1 = new float[1];
@@ -33,7 +36,7 @@ public class RoutingBenchmarks
     private int _cacheFrom, _cacheTo, _cacheStartLane, _cacheGoalLane;
     private int _i;
 
-    [Params("s1k", "s100k")]
+    [Params("s1k", "s10k", "s100k")]
     public string Scenario { get; set; } = "s1k";
 
     [GlobalSetup]
@@ -128,6 +131,15 @@ public class RoutingBenchmarks
         _builder = new RouteBuilder(_net, _pool, caps.MaxZones, 0);
         _star = new AStarSearcher(_builder.Graph);
         _path = new int[_builder.Graph.DirSegCount + 1];
+        _plan = new int[_builder.Graph.DirSegCount + 8];
+        var routing = new RoutingDesc { Levels = Scenario == "s100k" ? 2 : 1, Fanout = 4, CellSize = 1000f, CustomizeEps = 0.05f };
+        if (Overlay.TryCreate(_net, _builder.Graph, in routing, out Overlay? overlay) != CreateStatus.Ok)
+        {
+            throw new InvalidOperationException("overlay creation failed");
+        }
+
+        _overlayQuery = new OverlaySearcher(_net, _builder.Graph, overlay);
+        _flatQuery = new OverlaySearcher(_net, _builder.Graph, null);
 
         var rng = Pcg32.Create(2026, 1);
         for (int i = 0; i < Pairs; i++)
@@ -182,6 +194,24 @@ public class RoutingBenchmarks
         int goal = _pairGoal[i];
         _star.Search(_starts1, _startG1, goal, -1, g.EndPos[goal], g.DirSegCount, _path, out _);
         return _star.LastCost;
+    }
+
+    /// <summary>Запрос по оверлею (план без развёртывания) на той же паре, что <see cref="AStarRandomPair"/>.</summary>
+    [Benchmark]
+    public float OverlayQueryRandomPair()
+    {
+        int i = _i++ & (Pairs - 1);
+        _overlayQuery.Query(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, _plan, out _);
+        return _overlayQuery.PlanCost;
+    }
+
+    /// <summary>Плоский поиск на IndexedHeap4 (эталон H2: тот же код без оверлея).</summary>
+    [Benchmark]
+    public float FlatIndexedQueryRandomPair()
+    {
+        int i = _i++ & (Pairs - 1);
+        _flatQuery.Query(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, _plan, out _);
+        return _flatQuery.PlanCost;
     }
 
     [Benchmark]
