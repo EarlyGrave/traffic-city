@@ -42,3 +42,6 @@
 | 36 | ns-fix | haiku | using Sim.Scenarios после мержа Godot | done |
 | 37 | load-routing | sonnet | ADR-0006 | done: stuck 9 → 0 |
 | 38 | gates-merge | haiku | конфликт теста при мерже ворот | done |
+| 39 | buses (worktree) | sonnet | шаг 4: автобусы, остановки, headway | wip |
+| 40 | ci-baseline (worktree) | sonnet | ADR-0007: CI baseline-ci, печать JSON, бюджет | wip |
+| 41 | ladder-profile (worktree) | sonnet | шаг 5: прогоны s10k/s100k/s1m + профиль топ-3 | wip |
