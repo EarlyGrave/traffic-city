@@ -11,6 +11,11 @@
   калибровочный цикл (корреляция 0.1). Помогает только повтор при провале: `scripts/bench-gate.sh` (до 3 независимых
   процессов, провал - если не прошёл ни один). Параметры bench - только там. Снимать baseline на тихой машине
   (`uptime`, `top`), лучше несколько раз.
+- **Профиль s10k/s100k без `BehaviourPhase.Run` и с огромным «собственным» временем `Simulation.Step`**: tier-1 PGO вклинивает
+  `BehaviourPhase.Run(World)` (и `RunTick`) в `Step`, фрейм фазы пропадает. → Долю фазы считать как self(`Step`) + её листья
+  (`ConflictGap`/`ObstacleGap`/`Mobil.Decide` под `Step`); у `ConflictGap` смотреть родителей (Step = Behaviour, Integrate). Окно
+  замера - только после рампы (отсечь по времени в speedscope, `at` в мс). s100k рампа не заканчивается за 14000 тиков
+  (~19 мин, 87% активных); трассировка этого прогона - 120 МБ speedscope JSON, парсится python за ~1 мин.
 - **`dotnet-install.sh` / `dot.net` → 403.** Прокси закрывает microsoft-домены.
   → Ставить из apt Ubuntu: `apt-get install -y dotnet-sdk-10.0 dotnet-sdk-8.0`. NuGet (api.nuget.org) открыт.
 - **polyformproject.org → 403.** → Официальный текст лицензии:
