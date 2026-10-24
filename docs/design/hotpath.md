@@ -326,3 +326,40 @@ transition 0.482 (0.509), snapshot 0.373 (0.427), route 0.271 (0.280). Паде�
 `conflict_gap_mask_rejects` 2 046, `conflict_entries_scanned` 3 844, `gate_trygrant_entries` 1 358, `next_conn_recomputes` 809 - как после H3. Счётчик `leader_lookahead_hops`
 считает переходы, а не вызовы `NextLane`, поэтому «-45%» из таблицы §5 по нему не наблюдается; эффект D6 - в замене цепочки `RouteStepIndex -> Steps -> Lanes` на одно чтение.
 `scripts/bench-gate.sh --baseline perf/baseline.json` (s1k): OK.
+
+## 7.4 H5 выполнена (D7: `AssignConnectors` по флагу) и итог шага 2.4
+Реализовано как в D7. `VehicleStore.RouteDirty` (`byte[]`, вне хэша; свежий слот и `ResetSlot` = 1). Флаг ставится: каждым присвоением `Lane` в `LaneOccupancy`
+(`PushTail`/`PushHead`/`InsertBetween`/`BeginLaneChange`/`CancelLaneChange` - это смена полосы, переход, спавн, MOBIL); при каждом изменении `Route`/`RouteCursor`/`RouteGen`
+(`RouteNav.Advance` - три `RouteCursor++` и `RouteMissed`, `RoutePhase`: новый маршрут из очереди поездок/перемаршрутизации и плановая замена, `BusStopPhase`, `Spawner`);
+при снятии `RefillQueued` и отметке `RouteMissed` в `RefillWindows` (окно/план меняет `Router.Refill`); командами `BuildRoad` (`GrowOverlay`), `SetNodeControl`, `SetSignalPlan` -
+`MarkAllRouteDirty()` (все машины). Сама `AssignConnectors` снимает флаг после обработки и оставляет его, если `RefillQueue` полна (постановка в очередь не удалась - повтор на
+следующем тике, как раньше). `QueueRefill` разделён на чистый предикат `NeedsRefill` и постановку. В Debug для каждой машины без флага `Debug.Assert(UnchangedByFullRecalc)`:
+нет `RouteMissed`, `NeedsRefill == false`, `NextConn` валиден либо равен `NextConnector` - то есть полный старый расчёт ничего бы не изменил. Порядок очереди дозаполнения
+прежний (обход по возрастанию индекса, в очередь попадают только изменившиеся - неизменившиеся и раньше не ставились). Тест `RouteDirtyTests`: в стационаре проверок < 1/4 живых;
+после `BuildRoad` - не меньше 90% машин на полосах.
+
+Приёмка: golden-хэши `HotPathGoldenHashTests` не менялись; `hash --scenario s10k --warmup-until-full --ticks 400 --every 200`: tick=6100 `861672e99fa95a39`, tick=6300
+`c73832373fb67bd3` (active 9 997). `Report_S1k` (`TC_STEP3_REPORT=1`, Release, 36 000 тиков = 30.2 мин игрового времени) до и после правки совпал во всех счётчиках: spawned 7 253,
+completed 6 220, trips/min 206.19, avg_speed 32.88, reroutes 1 372, timed_reroutes 835, queries 11 024, grants 106 049, denied_exit 408 376, inversions 121, hard_clamps 1 055,
+lane_changes 9 580, connector_entries 103 335, **stuck 0** (tick mean/p50/p95 до 186.9/160.3/295.5 мкс, после 164.8/139.7/279.4). `dotnet test traffic-city.sln` в Debug со всеми сверками
+зелёный (Core 404, Headless 107); `dotnet build -warnaserror`, `dotnet format --verify-no-changes` чисто; 0 B/тик; `scripts/bench-gate.sh --baseline perf/baseline.json` (s1k): OK.
+
+Замер «до/после» (`bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases`, поочерёдно «до» (дерево `3d206a6`), «после», 2 раунда; load average 1.4-1.8, активных 9 818 -> 9 997,
+0 B/тик, stuck 0), мс на тик:
+
+| | tick p50 | tick p95 | tick p99 | transition mean | behaviour mean | gate mean |
+|---|---|---|---|---|---|---|
+| до, раунд 1 | 3.344 | 5.004 | 5.663 | 0.483 | 1.302 | 0.786 |
+| после, раунд 1 | 3.144 | 4.739 | 5.642 | 0.221 | 1.371 | 0.780 |
+| до, раунд 2 | 3.010 | 4.742 | 5.934 | 0.441 | 1.190 | 0.718 |
+| после, раунд 2 | 2.962 | 4.329 | 4.959 | 0.198 | 1.274 | 0.737 |
+
+Вклад D7 - фаза 7: **-0.26 ms** (0.48/0.44 -> 0.22/0.20), остальные фазы в пределах шума контейнера (behaviour в «после» даже выше на 0.07-0.08 - шум). `work_per_tick`: `route_refill_checks` 9 993.6 -> **51.0**
+(-99.5%), `next_conn_recomputes` 809.4 -> 46.3 (рост проверок/пересчётов прежних машин с `NextConn = -1` исчез: результат у них не менялся); остальные счётчики те же.
+tick p95 ниже на 0.26-0.41 мс при том же шуме (-5…-9%) - в рамках ожидания -3…-4% по доле фазы плюс разброс.
+
+### Итог шага 2.4b (P2-P5): s10k, 10 000 активных
+Исходно (H1, «до» всего): tick p50/p95 5.12/7.96 мс. После H2 4.73/6.39, после H3 4.42/5.57, после H4 3.47/4.41 (разная загрузка контейнера, load 3-5), после H5 (этот шаг, load ~1.5):
+**p50 2.96-3.14, p95 4.33-4.74 мс** (два прогона), p99 4.96-5.64. Цель шага ≤ 4 мс p95 **не достигнута** на этом контейнере (4.33 и 4.74 против 4.0), хотя с 7.96 мс снижение -40…-46%; фазовая структура
+(mean, мс): behaviour 1.27-1.37, gate 0.74-0.78, snapshot 0.35-0.39, route 0.25-0.26, transition 0.20-0.22, integrate 0.15-0.16, metrics 0.13-0.14. По плану §5 дальше - решение архитектора (резерв:
+обход фазы 5 по полосам, затем 2 потока фазы 5, ADR-0016). Основной остаток - фаза 5 (behaviour, ~45% тика) и ворота.
