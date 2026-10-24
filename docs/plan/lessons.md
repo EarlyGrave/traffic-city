@@ -68,3 +68,6 @@
   `/usr/lib/dotnet`. → `DOTNET_ROOT=/usr/lib/dotnet /tmp/dtools/dotnet-trace ...`; профиль `cpu-sampling` в v10 нет —
   `dotnet-sampled-thread-time`, speedscope в evented-формате.
 - **`validate` пропускает ёмкости, которые ядро отклоняет** (s1m `max_lane_points` 20M > 2^24) → проверять пределы ядра в загрузчике.
+- **compare ложно падает, если baseline и smoke сняты в разных режимах** (baseline: warmup 2400 + repeat 3, после рампы;
+  хук/CI: warmup 200, в рампе) → все места, где гоняется bench для compare (stop-verify.sh, ci.yml, update-baseline),
+  используют одни и те же параметры: `--ticks 2000 --warmup-ticks 2400 --repeat 3`.

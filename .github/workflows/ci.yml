@@ -33,7 +33,7 @@ jobs:
         run: dotnet test traffic-city.sln -c Release --no-build
 
       - name: Bench smoke s1k
-        run: dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --repeat 3 --out perf/results/s1k.json
+        run: dotnet run --project src/Sim.Headless -c Release -- bench --scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --out perf/results/s1k.json
 
       # CI-baseline снимается из этого вывода (ADR-0007).
       - name: Print bench JSON
