@@ -152,8 +152,11 @@
     "command_queue": 1024, "events": 4096,
     "max_signalized_nodes": int,
     "max_connectors": int,              // дефолт max_nodes * 16 (intersections.md §4)
-    "max_conflicts": int                // дефолт max_connectors * 6
-  }
+    "max_conflicts": int,               // дефолт max_connectors * 6
+    "max_peds": int, "max_residents": int, "max_ped_path_steps": 64   // только при секции peds (§2.4)
+  },
+
+  "peds": { ... }                       // необязательно: пешеходы и жители (ADR-0020), §2.4; нет секции — выключено
 }
 ```
 
@@ -324,6 +327,45 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 намеренно: у больших сценариев должны появляться очереди, иначе они не нагружают перекрёстки и
 MOBIL; s1m реже (7) — средняя по большому городу, пробки локальны. `stress-1m` короче (10 мин) — он только фиксирует
 предел. Бюджеты s1k/s10k — в CI (bench-gate); s100k и s1m — отчётный прогон верификатора с порогом.
+
+### 2.4 Секция `peds` и пассажиры (этап 3.1, ADR-0020, `docs/design/pedestrians.md`)
+
+Секция необязательна. Без неё пешеходов, жителей, тротуаров и переходов нет, и всё побитово как раньше. `format_version` остаётся 2.
+
+```
+"peds": {                               // → PedDesc
+  "enabled": bool,                      // дефолт true, если секция есть
+  "count": int,                         // цель активных пешеходов (в пути, у переходов, на остановках, в автобусах)
+  "residents": int,                     // жителей-источников; дефолт 2 · count
+  "spawn_ramp_s": number,               // дефолт 120
+  "speed_kmh": [min, max],              // скорость пешехода, выбирается при старте поездки. Дефолт [4.0, 5.4]
+  "activity_s": [min, max],             // пребывание дома/на работе между поездками. Дефолт [600, 1800]
+  "walk_only_m": number,                // пешком без автобуса до (по центрам зон). Дефолт 800
+  "max_walk_to_stop_m": number,         // радиус остановок у зоны. Дефолт 500
+  "max_walk_m": number,                 // предел пешей ноги (запасной режим, поиск пути). Дефолт 1500
+  "sidewalk_width_m": number,           // дефолт 3
+  "crosswalk_width_m": number,          // дефолт 3
+  "arterial_crossings": "signal_only" | "all",   // переходы через артерии вне светофоров. Дефолт "signal_only"
+  "midblock_at_stops": bool,            // переход на перегоне у остановок на улицах. Дефолт true
+  "walk_s": number,                     // «Walk» пешеходной фазы по вызову. Дефолт 5
+  "clear_speed_kmh": number,            // скорость для расчёта «Clear». Дефолт 4.3 (1.2 м/с)
+  "max_close_s": number,                // нерегулируемый переход закрыт для машин не дольше. Дефолт 10
+  "car_window_s": number,               // окно машинам после max_close_s. Дефолт 5
+  "pathfind_budget_per_tick": int,      // дефолт 8
+  "work_budget_per_tick": int,          // релаксаций за тик. Дефолт 8000
+  "stuck_cross_s": number,              // порог ped_stuck у перехода. Дефолт 120
+  "stuck_stop_s": number                // порог ped_stuck на остановке. Дефолт max(3 · transit.headway_s, 900)
+}
+```
+
+`transit.passenger_model`: `"counter"` (ADR-0008, счётчик и `passenger_rate_per_min`) | `"agents"` (пассажиры — пешеходы). Дефолт:
+`"agents"`, если секция `peds` включена, иначе `"counter"`. `"agents"` без `peds` — ошибка загрузчика.
+`transit.bidirectional` (bool, дефолт false): к каждому маршруту генератор добавляет обратный по тем же рёбрам. Это открытый вопрос владельцу
+(`pedestrians.md` §17 п. 3); ключ вводится вместе с решением.
+
+Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64).
+Загрузчик переводит скорости в мм/тик (`round(kmh / 3.6 · 50)`), секунды — в тики, метры — в мм для `PedDesc`, где ядро ждёт целые.
+Сценарии: `s1k-peds.json` (s1k + `count` 2 000), `s10k-peds.json` (s10k + `count` 20 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`).
 
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
