@@ -138,6 +138,24 @@ internal sealed class NetworkStore
 
     public int BusRouteStopCount { get; internal set; }
 
+    /// <summary>
+    /// Наибольший индекс узла с построенными рукавами/connector'ами (<c>FirstArm &gt;= 0</c>) или -1. Канонический порядок раскладки
+    /// (save-format.md §13 п. 5): connector'ы и конфликты узлов лежат по возрастанию индекса узла, поэтому новый узел можно строить,
+    /// только если его индекс больше этого.
+    /// </summary>
+    public int HighestBuiltNode()
+    {
+        for (int n = NodeCount - 1; n >= 0; n--)
+        {
+            if (Nodes[n].FirstArm >= 0)
+            {
+                return n;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
     public int Version { get; internal set; }
 

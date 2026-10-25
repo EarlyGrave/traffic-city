@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Agents;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
@@ -103,6 +104,16 @@ internal static class CommandDispatcher
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 return;
             }
+
+            // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла,
+            // поэтому ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных построить нельзя (вставка в середину
+            // перенумеровала бы connector'ы). Новые узлы всегда выше всех существующих.
+            int top = w.Net.HighestBuiltNode();
+            if ((na >= 0 && na < top) || (nb >= 0 && nb < top))
+            {
+                Rejected(w, in cmd, RejectReason.NotSupported);
+                return;
+            }
         }
 
         int nodesBefore = w.Net.NodeCount;
@@ -122,14 +133,16 @@ internal static class CommandDispatcher
         if (!noConnectors)
         {
             ref readonly SegmentData sd = ref w.Net.Segments[seg];
-            NetworkStatus c1 = w.Builder.BuildConnectorsEx(sd.NodeA);
-            NetworkStatus c2 = w.Builder.BuildConnectorsEx(sd.NodeB);
+            int lo = Math.Min(sd.NodeA, sd.NodeB);   // по возрастанию индекса узла (канонический порядок раскладки)
+            int hi = Math.Max(sd.NodeA, sd.NodeB);
+            NetworkStatus c1 = w.Builder.BuildConnectorsEx(lo);
+            NetworkStatus c2 = w.Builder.BuildConnectorsEx(hi);
             NetworkStatus bad = c1 != NetworkStatus.Ok ? c1 : c2;
             if (bad == NetworkStatus.Ok)
             {
                 // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений.
-                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, sd.NodeA);
-                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, sd.NodeB);
+                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, lo);
+                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, hi);
                 bad = k1 != NetworkStatus.Ok ? k1 : k2;
             }
 

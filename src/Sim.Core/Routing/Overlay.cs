@@ -311,16 +311,35 @@ internal sealed partial class Overlay
         }
     }
 
-    // Запас строк/столбцов под BuildRoad: count + max(4, count / 4).
+    /// <summary>Минимальный запас строк/столбцов ячейки под <c>BuildRoad</c> (routing.md 9.2): после любой операции <c>Cap &gt;= Count + MinSlack</c>.</summary>
+    internal const int MinSlack = 4;
+
+    /// <summary>
+    /// Канонический запас строки/столбца ячейки (routing.md 9.2, save-format.md §13 п. 5): наименьшая ступенька лестницы 4, 8, 12, 16, 20, ..., 32, 40, ..., 64,
+    /// 80, ... не меньшая <c>count + MinSlack</c> (шаг ступеньки: 4 до 16, дальше четверть степени двойки, то есть запас не больше <c>max(4, count / 4)</c>
+    /// сверх минимума). Зависит только от числа входов/выходов, а не от истории роста сети: раскладка живого мира после <c>BuildRoad</c> (дописывание
+    /// в запас; нехватка запаса - полная перестройка) совпадает с раскладкой, построенной заново по той же сети.
+    /// </summary>
+    internal static int CapFor(int count)
+    {
+        int need = count + MinSlack;
+        if (need <= 16)
+        {
+            return (need + 3) & ~3;
+        }
+
+        int step = 1 << (System.Numerics.BitOperations.Log2((uint)(need - 1)) - 2);
+        return (need + step - 1) / step * step;
+    }
+
+    // Запас строк/столбцов под BuildRoad: ступенька лестницы CapFor (канонический, не зависит от истории).
     private void ComputeCaps(out long entryTotal, out long exitTotal, out long matrixTotal)
     {
         long e = 0, x = 0, m = 0;
         for (int c = 0; c < CellCap; c++)
         {
-            int ec = EntryCount[c];
-            int xc = ExitCount[c];
-            EntryCap[c] = ec + Math.Max(4, ec / 4);
-            ExitCap[c] = xc + Math.Max(4, xc / 4);
+            EntryCap[c] = CapFor(EntryCount[c]);
+            ExitCap[c] = CapFor(ExitCount[c]);
             e += EntryCap[c];
             x += ExitCap[c];
             m += (long)EntryCap[c] * ExitCap[c];
@@ -405,7 +424,7 @@ internal sealed partial class Overlay
             {
                 int ce = CellOfNode(l, b);
                 int cx = CellOfNode(l, a);
-                if (EntryCount[ce] >= EntryCap[ce] || ExitCount[cx] >= ExitCap[cx])
+                if (EntryCount[ce] + 1 + MinSlack > EntryCap[ce] || ExitCount[cx] + 1 + MinSlack > ExitCap[cx])
                 {
                     overflow = true;
                     break;
