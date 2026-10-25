@@ -213,6 +213,7 @@ public static class BenchCommand
         sim.CopySignalMetrics(sigBefore);
         sim.ResetSignalWindow();
         SimWork workBefore = sim.Work;
+        PedWindow? pedBefore = sim.HasPeds ? PedWindow.Snapshot(sim) : null;
         if (timer != null)
         {
             sim.OnPhaseEnd = timer.OnPhaseEnd;
@@ -256,6 +257,7 @@ public static class BenchCommand
         }
 
         r.Signal = SignalWindow.Compute(sim, in cBefore, sigBefore);
+        r.Peds = pedBefore != null ? PedWindow.Compute(sim, pedBefore, in cBefore, in workBefore, ticks) : null;
         r.ActiveVehicles = sim.ActiveVehicleCount;
         r.RampComplete = IsFull(r.ActiveAtStart, target) && IsFull(r.ActiveVehicles, target);
         long memAfter = GC.GetTotalMemory(true);
@@ -421,7 +423,8 @@ public static class BenchCommand
             if (r.PhaseMs is { } phaseMs)
             {
                 w.WriteStartObject("phase_ms");
-                for (int ph = 0; ph < PhaseTimer.PhaseCount; ph++)
+                int phaseCount = r.Peds != null ? PhaseTimer.TotalCount : PhaseTimer.PhaseCount;
+                for (int ph = 0; ph < phaseCount; ph++)
                 {
                     w.WriteStartObject(PhaseTimer.Names[ph]);
                     w.WriteNumber("p50", phaseMs[ph].P50);
@@ -498,6 +501,11 @@ public static class BenchCommand
             WriteSignal(w, r.Signal);
             w.WriteEndObject();
 
+            if (r.Peds != null)
+            {
+                WritePeds(w, r.Peds);
+            }
+
             // Счётчики маршрутизации и оверлея (routing.md 9.10), накопительные с начала симуляции, кроме overlay_disabled (текущее).
             SimCounters k = r.Counters;
             w.WriteStartObject("routing");
@@ -529,6 +537,35 @@ public static class BenchCommand
     }
 
     private static readonly string[] _maneuverNames = { "straight", "right", "left", "uturn" };
+
+    /// <summary>Метрики пешеходов и пассажиров за окно замера (pedestrians.md §9); <c>compare</c> их не гейтит, нужны отчёту и верификатору.</summary>
+    private static void WritePeds(Utf8JsonWriter w, PedWindow p)
+    {
+        w.WriteStartObject("peds");
+        w.WriteNumber("ped_active", p.ActiveNow);
+        w.WriteNumber("ped_target", p.Target);
+        w.WriteNumber("ped_active_mean", p.ActiveMean);
+        w.WriteNumber("ped_trips_completed", p.Trips);
+        w.WriteNumber("ped_trips_per_min", p.TripsPerMin);
+        WriteNullable(w, "ped_cross_wait_mean_s", p.CrossWaitMeanS);
+        WriteNullable(w, "ped_cross_wait_p95_s", p.CrossWaitP95S);
+        WriteNullable(w, "ped_stop_wait_mean_s", p.StopWaitMeanS);
+        WriteNullable(w, "ped_stop_wait_p95_s", p.StopWaitP95S);
+        w.WriteNumber("ped_stuck_events", p.StuckEvents);
+        WriteNullable(w, "car_cross_delay_s_per_veh_h", p.CarCrossDelaySPerVehH);
+        WriteNullable(w, "crossing_closed_share", p.CrossingClosedShare);
+        w.WriteNumber("bus_passengers_boarded", p.Boarded);
+        w.WriteNumber("bus_passengers_alighted", p.Alighted);
+        w.WriteNumber("bus_pax_on_board_mean", p.PaxOnBoardMean);
+        w.WriteNumber("ped_path_queries", p.PathQueries);
+        w.WriteNumber("ped_path_work", p.PathWork);
+        w.WriteNumber("ped_no_path", p.NoPath);
+        w.WriteNumber("ped_mode_fallback", p.ModeFallback);
+        w.WriteNumber("ped_events_per_tick", p.EventsPerTick);
+        w.WriteNumber("ped_alloc_failed", p.AllocFailed);
+        w.WriteNumber("ped_net_resets", p.NetResets);
+        w.WriteEndObject();
+    }
 
     /// <summary>Метрики светофоров за окно замера (intersections.md §10, 2.5); поля только добавляются, <c>compare</c> их не гейтит.</summary>
     private static void WriteSignal(Utf8JsonWriter w, SignalWindow s)
@@ -625,6 +662,7 @@ internal sealed class BenchResult
     public string SignalMode = "fixed";
     public string SignalCoordination = "legacy";
     public SignalWindow Signal = new();
+    public PedWindow? Peds;
     public string? Commit;
     public string? Cpu;
     public string Runtime = "";
