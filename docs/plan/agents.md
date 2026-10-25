@@ -73,6 +73,7 @@
 | 67 | signals-spec (worktree) | opus | 2.5: ADR адаптивных светофоров + координация («зелёная волна») | done, merged (ADR-0018, S1–S4) |
 | 68 | saves-spec (worktree) | opus | 2.6b: ADR-0012 сохранения и версия мира | done, merged (save-format.md, SV1–SV3) |
 | 69 | lod-l1 (worktree) | sonnet | 2.6 L1: каркас LOD (секция lod, ячейки, режим off) | done, merged (off = прежний хэш) |
-| 70 | lod-l2 (worktree) | sonnet | 2.6 L2: meso-динамика, all_meso, эквивалентность коридора | wip |
+| 70 | lod-l2 (worktree) | sonnet | 2.6 L2: meso-динамика, all_meso, эквивалентность коридора | done, merged (perf-критерий не выполнен, stuck meso) |
+| 73 | lod-rethink (worktree) | opus | 2.6r: пересмотр стоимости LOD + stuck meso | wip |
 | 71 | signals-s1 (worktree) | sonnet | 2.5 S1: метрики светофоров и замер «до» | done, merged (левые ждут 21–22 с, max 70 с) |
 | 72 | saves-sv1 (worktree) | sonnet | 2.6b SV1: контейнер сейва (XXH64, блоки, столбцы) | done, merged (27 тестов, fuzz) |
