@@ -70,6 +70,8 @@ internal sealed class World : IDisposable
     public BehaviourJob Behaviour = new(1);  // задание фазы 5 (ADR-0017); счётчики по воркерам
     public IntegrateJob Integrate = new(1);  // задание фазы 6 (ADR-0017); HardClamps по воркерам
     public SnapshotJob SnapshotJob = new(); // задание фазы 10 (ADR-0017)
+    public SnapshotClearJob SnapshotClearJob = new(); // обнуление слотов прошлого вида (фаза 10, ADR-0019)
+    public readonly RenderViewState RenderView = new(); // вид снапшота (SetRenderView); презентация, вне хэша
     public WorkerPool? Pool;              // воркеры параллельных фаз; null = один поток (SimRuntimeOptions.WorkerThreads <= 1)
     public readonly RingBuffer<Command> Commands;
     public readonly SimEvent[] Events;

@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Sim.Core.Api;
+using Sim.Core.Network;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
 
@@ -23,10 +24,12 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--seed S] [--signal-mode fixed] [--signal-coordination legacy] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode fixed] [--signal-coordination legacy] [--scenarios-dir <dir>]\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
+        "  --view V             what the snapshot phase writes (SetRenderView): all (default), focus (3x3 km around the network centre) or a rectangle\n" +
+        "                       x0,z0,x1,z1 in metres; JSON gets view, compare refuses to mix values\n" +
         "  --seed S             override the scenario seed (unsigned 64-bit); JSON gets seed\n" +
         "  --signal-mode M      override city.signal_mode (adaptive|fixed; the core supports only fixed until step 2.5 S2); JSON gets signal_mode\n" +
         "  --signal-coordination K  override city.signal_coordination (alternate|legacy|none; only legacy until S3); JSON gets signal_coordination\n" +
@@ -38,7 +41,7 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--seed", "--signal-mode", "--signal-coordination" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -70,7 +73,15 @@ public static class BenchCommand
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
             sc = ApplyOverrides(sc, a);
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads);
+            string view = a.Get("--view") ?? "all";
+            if (!ViewSpec.TryParse(view, out ViewSpec viewSpec))
+            {
+                error.WriteLine($"bench: --view: expected all, focus or x0,z0,x1,z1, got '{view}'");
+                error.Write(Usage);
+                return ExitUsage;
+            }
+
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec);
         }
         catch (ScenarioException e)
         {
@@ -130,12 +141,12 @@ public static class BenchCommand
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads, view));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -160,7 +171,7 @@ public static class BenchCommand
     /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
     public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1)
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
     {
         var r = new BenchResult
         {
@@ -168,6 +179,7 @@ public static class BenchCommand
             Ticks = ticks,
             WarmupTicks = warmup,
             Threads = threads,
+            View = view.ToString(),
             Seed = sc.Desc.Seed,
             SignalMode = sc.Desc.City.SignalMode == CitySignalMode.Adaptive ? "adaptive" : "fixed",
             SignalCoordination = sc.Desc.City.SignalCoordination switch
@@ -182,6 +194,7 @@ public static class BenchCommand
 
         long memBefore = GC.GetTotalMemory(true);
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        view.Apply(sim);
         if (warmup > 0)
         {
             sim.Step(warmup);
@@ -386,6 +399,7 @@ public static class BenchCommand
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
             w.WriteNumber("threads", r.Threads);
+            w.WriteString("view", r.View);
             w.WriteNumber("seed", r.Seed);
             w.WriteString("signal_mode", r.SignalMode);
             w.WriteString("signal_coordination", r.SignalCoordination);
@@ -596,6 +610,7 @@ internal sealed class BenchResult
     public int Ticks;
     public int WarmupTicks;
     public int Threads = 1;
+    public string View = "all";
     public ulong Seed;
     public string SignalMode = "fixed";
     public string SignalCoordination = "legacy";
@@ -707,4 +722,102 @@ internal sealed class SignalWindow
 
         return s;
     }
+}
+
+/// <summary>Вид снапшота для <c>bench --view</c> (эмуляция клиента): <c>all</c>, <c>focus</c> (3x3 км вокруг центра сети) или прямоугольник.</summary>
+public readonly struct ViewSpec
+{
+    /// <summary>Сторона вида <c>focus</c>, м.</summary>
+    public const float FocusSizeM = 3000f;
+
+    private enum Kind : byte { All, Focus, Rect }
+
+    private readonly Kind _kind;
+    private readonly float _x0, _z0, _x1, _z1;
+
+    private ViewSpec(Kind kind, float x0, float z0, float x1, float z1)
+    {
+        _kind = kind;
+        _x0 = x0;
+        _z0 = z0;
+        _x1 = x1;
+        _z1 = z1;
+    }
+
+    public static bool TryParse(string text, out ViewSpec spec)
+    {
+        spec = default;
+        if (text == "all")
+        {
+            return true;
+        }
+
+        if (text == "focus")
+        {
+            spec = new ViewSpec(Kind.Focus, 0, 0, 0, 0);
+            return true;
+        }
+
+        string[] p = text.Split(',');
+        if (p.Length != 4)
+        {
+            return false;
+        }
+
+        var v = new float[4];
+        for (int i = 0; i < 4; i++)
+        {
+            if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i]) || !float.IsFinite(v[i]))
+            {
+                return false;
+            }
+        }
+
+        spec = new ViewSpec(Kind.Rect, v[0], v[1], v[2], v[3]);
+        return true;
+    }
+
+    public void Apply(Simulation sim)
+    {
+        switch (_kind)
+        {
+            case Kind.Focus:
+                {
+                    NetworkView net = sim.Network;
+                    if (net.Nodes.Length == 0)
+                    {
+                        return;
+                    }
+
+                    float minX = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
+                    foreach (NodeData n in net.Nodes)
+                    {
+                        minX = Math.Min(minX, n.Position.X);
+                        maxX = Math.Max(maxX, n.Position.X);
+                        minZ = Math.Min(minZ, n.Position.Z);
+                        maxZ = Math.Max(maxZ, n.Position.Z);
+                    }
+
+                    float cx = (minX + maxX) * 0.5f;
+                    float cz = (minZ + maxZ) * 0.5f;
+                    float h = FocusSizeM * 0.5f;
+                    sim.SetRenderView(cx - h, cz - h, cx + h, cz + h);
+                    break;
+                }
+
+            case Kind.Rect:
+                sim.SetRenderView(_x0, _z0, _x1, _z1);
+                break;
+            default:
+                sim.SetRenderViewAll();
+                break;
+        }
+    }
+
+    public override string ToString() => _kind switch
+    {
+        Kind.Focus => "focus",
+        Kind.Rect => string.Create(CultureInfo.InvariantCulture, $"{_x0:0.###},{_z0:0.###},{_x1:0.###},{_z1:0.###}"),
+        _ => "all",
+    };
 }

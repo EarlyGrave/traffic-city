@@ -47,13 +47,6 @@ internal static class LodTransitions
     }
 }
 
-/// <summary>Вид для снапшота (<c>SetRenderView</c>): презентация, в хэш не входит. Дефолт - весь город.</summary>
-internal struct LodRenderView
-{
-    public float X0, Z0, X1, Z1;
-    public bool All;
-}
-
 /// <summary>
 /// LOD-ячейки (ADR-0013, sim-lod.md §1): квадратная сетка по bounding box узлов сети в <c>Create</c> (то же отображение с зажимом к краю,
 /// что у ячеек уровня 1 оверлея маршрутизации), привязка узлов и полос к ячейкам и состояние уровней. Создаётся только при
@@ -100,8 +93,6 @@ internal sealed class LodCells
     public readonly int[] CellWaiting;
     public readonly int[] CellStuck;
     public readonly ulong[] CellKey;
-
-    public LodRenderView RenderView = new() { All = true };
 
     private readonly NetworkStore _net;
     private int _nodesMapped;

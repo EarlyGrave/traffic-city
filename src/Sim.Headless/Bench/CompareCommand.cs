@@ -79,6 +79,14 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        string rView = ReadView(resultPath);
+        string bView = ReadView(basePath);
+        if (rView != bView)
+        {
+            error.WriteLine($"compare: refusing to compare runs with different snapshot views (baseline '{bView}', result '{rView}')");
+            return ExitUsage;
+        }
+
         RampInfo rRamp = ReadRamp(resultPath);
         RampInfo bRamp = ReadRamp(basePath);
         bool rampMismatch = false;
@@ -112,6 +120,20 @@ public static class CompareCommand
         bool fail = slow || alloc || rampMismatch;
         output.WriteLine(fail ? "FAIL" : "OK");
         return fail ? ExitRegression : ExitOk;
+    }
+
+    /// <summary>Вид снапшота из JSON (поле <c>view</c>; старые файлы и нечитаемый JSON - <c>all</c>).</summary>
+    internal static string ReadView(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("view", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? "all" : "all";
+        }
+        catch (JsonException)
+        {
+            return "all";
+        }
     }
 
     /// <summary>Число потоков ядра из JSON (поле <c>threads</c>; старые файлы и нечитаемый JSON - 1).</summary>

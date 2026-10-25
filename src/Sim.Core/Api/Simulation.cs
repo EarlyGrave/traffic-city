@@ -126,6 +126,28 @@ public sealed class Simulation : IDisposable
 
     private ReadOnlySpan<VehicleRenderData> SnapshotSpan(int buffer) => new(_w.Render[buffer], 0, _w.SnapshotSlots[buffer]);
 
+    /// <summary>
+    /// Вид снапшота (ADR-0019, core-api 5): со следующего <c>Step</c> фаза 10 пишет только машины полос, чей ограничивающий прямоугольник пересекает
+    /// прямоугольник (мировые координаты, м; границы упорядочиваются), остальные слоты - нули (<c>Flags = 0</c>). Длина <see cref="Vehicles"/> не меняется.
+    /// Не команда и не в хэше. Нечисловые координаты = вид «всё». Вызывать между <c>Step</c>.
+    /// </summary>
+    public void SetRenderView(float x0, float z0, float x1, float z1)
+    {
+        if (!_disposed)
+        {
+            _w.RenderView.Set(x0, z0, x1, z1);
+        }
+    }
+
+    /// <summary>Вид «всё» (по умолчанию): фаза 10 пишет все живые слоты.</summary>
+    public void SetRenderViewAll()
+    {
+        if (!_disposed)
+        {
+            _w.RenderView.SetAll();
+        }
+    }
+
     public int ActiveVehicleCount => _disposed ? 0 : _w.Vehicles.AliveCount;
 
     public ReadOnlySpan<SegmentLoad> SegmentLoads => _disposed ? default : _w.SegmentLoads;

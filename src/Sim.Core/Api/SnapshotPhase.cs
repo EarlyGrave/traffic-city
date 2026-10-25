@@ -17,20 +17,33 @@ internal static class SnapshotPhase
     public static void Run(World w)
     {
         long snapTick = w.Tick + 1;
-        SnapshotJob job = w.SnapshotJob;
-        job.Prepare(w, w.Render[(int)(snapTick & 1)]);
+        int b = (int)(snapTick & 1);
+        VehicleRenderData[] buf = w.Render[b];
         int high = w.Vehicles.HighWater;
-        if (w.Pool != null)
+        RenderViewState rv = w.RenderView;
+        if (rv.All)
         {
-            w.Pool.Run(job, high);
+            SnapshotJob job = w.SnapshotJob;
+            job.Prepare(w, buf, null);
+            if (w.Pool != null)
+            {
+                w.Pool.Run(job, high);
+            }
+            else
+            {
+                job.RunRange(0, 0, high);
+            }
+
+            rv.MarkWrittenAll(b);
+            w.Work.SnapshotSlots += high;
         }
         else
         {
-            job.RunRange(0, 0, high);
+            // Вид (ADR-0019): пишутся только слоты полос вида, слоты прошлой записи вне вида обнуляются; длина спана прежняя (HighWater).
+            rv.Run(w, buf, b, high);
         }
 
         // Общие записи - только здесь, на главном потоке, после параллельной части.
-        w.Work.SnapshotSlots += high;
         w.SnapshotSlots[(int)(snapTick & 1)] = high;
         w.SnapshotTick = snapTick;
     }
@@ -89,18 +102,32 @@ internal sealed class SnapshotJob : IRangeJob
 {
     private World _w = null!;
     private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
+    private int[]? _list;
 
-    public void Prepare(World w, VehicleRenderData[] buf)
+    /// <summary><paramref name="list"/> = null: индексы диапазона - слоты; иначе слот = <c>list[k]</c> (вид, <see cref="RenderViewState"/>).</summary>
+    public void Prepare(World w, VehicleRenderData[] buf, int[]? list = null)
     {
         _w = w;
         _buf = buf;
+        _list = list;
     }
 
     public void RunRange(int worker, int begin, int end)
     {
-        for (int i = begin; i < end; i++)
+        int[]? list = _list;
+        if (list == null)
         {
-            Slot(i);
+            for (int i = begin; i < end; i++)
+            {
+                Slot(i);
+            }
+        }
+        else
+        {
+            for (int k = begin; k < end; k++)
+            {
+                Slot(list[k]);
+            }
         }
     }
 
@@ -148,5 +175,35 @@ internal sealed class SnapshotJob : IRangeJob
         r.Type = v.Type[i];
         r.Flags = (byte)SnapshotPhase.RenderFlags(_w, i);
         r.LateralOffset = lateral;
+    }
+}
+
+/// <summary>
+/// Обнуление ранее записанных слотов буфера снапшота (вид, <see cref="RenderViewState"/>): диапазон индексов (<c>list == null</c>) или список слотов.
+/// Пишет только <c>buf[slot]</c> своих элементов; обнуляет, только если <c>Flags != 0</c> (у слота с <c>Flags == 0</c> все поля уже нули).
+/// </summary>
+internal sealed class SnapshotClearJob : IRangeJob
+{
+    private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
+    private int[]? _list;
+
+    public void Prepare(VehicleRenderData[] buf, int[]? list)
+    {
+        _buf = buf;
+        _list = list;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        VehicleRenderData[] buf = _buf;
+        int[]? list = _list;
+        for (int k = begin; k < end; k++)
+        {
+            int i = list == null ? k : list[k];
+            if (buf[i].Flags != 0)
+            {
+                buf[i] = default;
+            }
+        }
     }
 }

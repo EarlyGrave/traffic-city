@@ -42,6 +42,28 @@ public sealed class BenchCommandTests : IDisposable
         return code;
     }
 
+    [Theory]
+    [InlineData("all", true)]
+    [InlineData("focus", true)]
+    [InlineData("0,0,100,100", true)]
+    [InlineData("1,2,3", false)]
+    [InlineData("a,b,c,d", false)]
+    [InlineData("whole", false)]
+    public void ViewSpec_Parses(string text, bool ok) => Assert.Equal(ok, ViewSpec.TryParse(text, out _));
+
+    [Fact]
+    public void Compare_RefusesDifferentViews_AndTreatsMissingViewAsAll()
+    {
+        string all = Write("all.json", 1.0, 0);
+        string focus = Path.Combine(_dir, "focus.json");
+        File.WriteAllText(focus, File.ReadAllText(all).Replace("{\"scenario\"", "{\"view\":\"focus\",\"scenario\""));
+        string allExplicit = Path.Combine(_dir, "all2.json");
+        File.WriteAllText(allExplicit, File.ReadAllText(all).Replace("{\"scenario\"", "{\"view\":\"all\",\"scenario\""));
+        Assert.Equal(CompareCommand.ExitUsage, Compare(focus, all, out string text));
+        Assert.Contains("snapshot views", text);
+        Assert.Equal(CompareCommand.ExitOk, Compare(allExplicit, all, out _));
+    }
+
     [Fact]
     public void ArgsParse_RejectsUnknownAndMissingValue()
     {
