@@ -94,6 +94,7 @@
 | 85 | bus-holding (worktree) | sonnet | 2.5: удержание автобусов на остановке | done, merged (headway dev 36.5 → 21.5 с) |
 | 86 | save-fuzz-fix (worktree) | sonnet | дыра валидатора сейва (фазз после мержа) | done, merged (3 дыры закрыты) |
 | 90 | ci-baseline-ci (worktree) | sonnet | 3.0: `perf/baseline-ci.json` из лога CI PR #5 (ADR-0007) | done, merged (run 40233032729, CI p95 0.215 мс, 0 B) |
-| 91 | lane-miss (worktree) | sonnet | 3.0: причина `lane_miss_share` s10k ≈ 0.45, фикс по Парето | wip |
+| 91 | lane-miss (worktree) | sonnet | 3.0: причина `lane_miss_share` s10k ≈ 0.45, фикс по Парето | done, merged: только диагноз (routing.md §6.4.1); фикс §6.4 растит ожидания ≥ 60 с на 30k тиков — отклонён |
 | 92 | pedestrians-spec (worktree) | opus | 3.1: ADR-0020 + `docs/design/pedestrians.md` | done, merged (P1→P2→P3∥P4∥P5; world_version 2 с миграцией) |
 | 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | done, merged (SourceForge-зеркало + Xvfb/llvmpipe; s1k 32.5 FPS; машин на кадре нет — разобрать в 3.3) |
+| 94 | peds-p1 (worktree) | sonnet | 3.1 P1: сеть пешеходов, `PedDesc`, загрузчик `peds`, геометрия для клиента | wip |
