@@ -142,6 +142,11 @@
   github releases/tuxfamily закрыты, но зеркало `sourceforge.net/projects/godot-engine.mirror/files/4.7.2-stable/` открыто
   (Godot_v4.7.2-stable_mono_linux_x86_64.zip + SHA512-SUMS.txt). Рендер: Xvfb + `--rendering-driver opengl3` (llvmpipe), скрипт
   `scripts/godot-shot.sh` (install/shot/fps). Не вышло/не нужно: github clone (403), conda/PyPI/npm бинарей Godot не дают, docker 401.
+- **Rust в облаке уже стоит** (`/root/.cargo`, rustc/cargo 1.97.0 + clippy/rustfmt; stable в канале — 1.99.1). crates.io и `static.rust-lang.org` открыты,
+  `sh.rustup.rs` → 403 (ставить из `static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init`); apt даёт только rustc ≤ 1.83 (нет edition 2024).
+  Хук worktree-агента режет `cargo`/`apt-cache` в составной команде с heredoc/регэкспом → исходник пробы писать Write-ом, команды — по одной.
+- **Float C# ↔ Rust (замер, Linux x64):** `MathF.Atan2/Sin` (net8 и net10) = Rust `f32::atan2/sin` побитово (оба glibc), крейт `libm` — нет;
+  `(int)` от float вне диапазона: net8 → `int.MinValue`, net10 → насыщение. Детали — `docs/design/rust-pilot.md` §1, §6.
 - **Релизы Godot на github.com → 403.** Версии Godot смотреть через NuGet: `api.nuget.org/v3-flatcontainer/godot.net.sdk/index.json`.
 
 ## Субагенты и worktree
