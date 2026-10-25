@@ -261,6 +261,10 @@ internal struct SignalPlanSeed
   вдоль каждой горизонтальной артерии при движении с `ArterialSpeed` (600 м / 16.7 м/с = 36 с).
 - Т-узел / крест улица→артерия при `AllArterial`: фаза 0 — рукава артерии (`MajorGreenTicks`),
   фаза 1 — рукава улицы (`MinorGreenTicks`); `OffsetTicks` — по тому же правилу.
+- **2.5 (ADR-0018):** `SignalPlanSeed` дополняется `Mode` (`city.signal_mode`: `adaptive` — дефолт, `fixed`) и `CycleTicks`.
+  Офсеты по `city.signal_coordination`: `alternate` (дефолт) — `intersections.md` §6.7 (`C = 2T`, `Offset = ((x−x₀)+(z−z₀))/v_p mod C`,
+  `Fixed`: `Green = C/2 − Yellow − AllRed`); `legacy` — правило выше (golden-хэши этапа 1/2.4); `none` — `Offset = 0`, без цикла.
+  PRNG не трогается (§3.9 не меняется).
 - Состав фаз (какие connector'ы зелёные, разрешённые левые) — спека перекрёстков (`SignalStore`,
   core-api §6.7); `WorldBuilder` передаёт `SignalPlans` туда. До появления шага 3 `SignalPlans`
   просто хранится в результате, а `NodeData.Signal = -1`.
