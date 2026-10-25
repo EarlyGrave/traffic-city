@@ -14,19 +14,22 @@ namespace Sim.Core.Tests.Save;
 
 /// <summary>
 /// Golden-корпус сейвов <c>tests/SaveCorpus/</c> (save-format.md §7, T6): каждый файл грузится строго, продолжение на <c>continue_ticks</c> даёт записанный хэш,
-/// повторный сейв побайтно совпадает. До этапа 3 корпус перегенерируется, а не мигрируется (решение владельца 2026-10-25):
-/// <c>TC_REGEN_CORPUS=1 dotnet test tests/Sim.Core.Tests --filter FullyQualifiedName~SaveCorpusTests</c> пересоздаёт файлы текущей версии (старые удаляются).
+/// повторный сейв побайтно совпадает. С этапа 3.1 файлы старых версий (<c>w1-*</c>) остаются навсегда: они проходят миграцию и продолжаются тем же хэшем
+/// (миграция 1 -> 2 не меняет поведение без пешеходов). <c>TC_REGEN_CORPUS=1 dotnet test tests/Sim.Core.Tests --filter FullyQualifiedName~SaveCorpusTests</c>
+/// пересоздаёт только файлы текущей версии (<c>w2-*</c>): после волны 3.1 это делает последняя слитая задача (pedestrians.md §11, §16).
 /// </summary>
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
     private const long BudgetBytes = 5L * 1024 * 1024;
+    private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
     private static readonly CorpusCase[] _cases =
     {
         new("small", 600, Small),
         new("s1k", 2400, S1k),
+        new("s1k-peds", 2400, S1kPeds),
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -52,6 +55,10 @@ public sealed class SaveCorpusTests
         FileInfo[] files = new DirectoryInfo(CorpusDir).GetFiles("*.tcsave");
         Assert.NotEmpty(files);
         Assert.True(files.Sum(f => f.Length) <= BudgetBytes, $"корпус {files.Sum(f => f.Length)} Б больше бюджета {BudgetBytes} Б (save-format.md §7)");
+        foreach (FileInfo f in files.Where(f => f.Name.Contains("-peds-", StringComparison.Ordinal)))
+        {
+            Assert.True(f.Length <= PedsFileBudgetBytes, $"{f.Name}: {f.Length} Б больше бюджета {PedsFileBudgetBytes} Б (pedestrians.md §11)");
+        }
         if (!Regenerating)
         {
             // Читаем из вывода тестов (csproj копирует tests/SaveCorpus/*): без копии тест в CI искал бы файлы не там.
@@ -108,10 +115,9 @@ public sealed class SaveCorpusTests
 
             sim.Step(cont);
             ulong after = sim.ComputeStateHash();
-            if (current)
-            {
-                Assert.True(after == Hex(j, "hash_after_continue"), Regen($"{name}: хэш через {cont} тиков {after:x16} не равен записанному {Hex(j, "hash_after_continue"):x16} (поведение симуляции изменилось)"));
-            }
+
+            // И текущая версия, и мигрированная (w1 -> w2: пешеходов нет, поведение прежнее) продолжаются записанным хэшем.
+            Assert.True(after == Hex(j, "hash_after_continue"), Regen($"{name}: хэш через {cont} тиков {after:x16} не равен записанному {Hex(j, "hash_after_continue"):x16} (поведение симуляции изменилось)"));
         }
     }
 
@@ -132,7 +138,8 @@ public sealed class SaveCorpusTests
 
         string dir = Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus");
         Directory.CreateDirectory(dir);
-        foreach (string old in Directory.GetFiles(dir, "w*-*").Where(f => f.EndsWith(".tcsave", StringComparison.Ordinal) || f.EndsWith(".json", StringComparison.Ordinal)))
+        string prefix = $"w{Simulation.CurrentWorldVersion}-";
+        foreach (string old in Directory.GetFiles(dir, prefix + "*").Where(f => f.EndsWith(".tcsave", StringComparison.Ordinal) || f.EndsWith(".json", StringComparison.Ordinal)))
         {
             File.Delete(old);
         }
@@ -185,6 +192,33 @@ public sealed class SaveCorpusTests
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k.json"));
         return (sc.Desc, sc.TypeNames);
+    }
+
+    private static (ScenarioDesc, string[]) S1kPeds()
+    {
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-peds.json"));
+        return (sc.Desc, sc.TypeNames);
+    }
+
+    [Fact]
+    public void Corpus_OldVersionFiles_AreKeptAndMigrate()
+    {
+        // Файлы w1 не удаляются и после миграции 1 -> 2 продолжаются тем же хэшем, что записан в .json (хэш продолжения проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w1-*.tcsave");
+        Assert.True(old.Length >= 2, "корпус w1 (w1-small-t600, w1-s1k-t2400) должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(1, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(1, rep.MigrationsApplied);
+                Assert.False(sim!.HasPeds);
+            }
+        }
     }
 
     private sealed record CorpusCase(string Name, int Ticks, Func<(ScenarioDesc, string[])> Build)

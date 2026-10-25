@@ -275,6 +275,12 @@ internal static class StateHash
             h.Add(lc.LastLodEvalTick);
         }
 
+        // 11. Пешеходы, жители, переходы (pedestrians.md §11): только при peds - хэш прежних сценариев не меняется.
+        if (w.Peds != null)
+        {
+            Peds.PedHash.Add(ref h, w);
+        }
+
         return h.Value;
     }
 

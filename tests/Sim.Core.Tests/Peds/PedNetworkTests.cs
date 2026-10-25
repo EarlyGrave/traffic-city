@@ -54,8 +54,9 @@ public sealed class PedNetworkTests
     }
 
     [Fact]
-    public void PedsEnabled_DoesNotChangeStateHash()
+    public void PedsEnabled_DoesNotChangeVehiclesOrNetwork()
     {
+        // С P2 хэш при peds включает секции пешеходов (hash_version 2), поэтому «не меняет» = состояние машин и сети прежнее (в P2 переходы прозрачны).
         ScenarioDesc plain = Step2.S1k(buses: true);
         ScenarioDesc withPeds = WithPeds(plain);
         using Simulation a = Make(in plain);
@@ -65,7 +66,9 @@ public sealed class PedNetworkTests
         {
             a.Step(50);
             b.Step(50);
-            Assert.Equal(a.ComputeStateHash(), b.ComputeStateHash());
+            Assert.True(a.Vehicles.SequenceEqual(b.Vehicles));
+            Assert.Equal(a.Counters.TripsCompleted, b.Counters.TripsCompleted);
+            Assert.Equal(a.Counters.DistanceTotalMm, b.Counters.DistanceTotalMm);
         }
 
         Assert.Equal(a.World.Net.Hash(), b.World.Net.Hash());

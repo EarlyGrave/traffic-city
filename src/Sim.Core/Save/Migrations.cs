@@ -5,9 +5,8 @@ namespace Sim.Core.Save;
 
 /// <summary>
 /// Реестр миграций сейва (save-format.md §4). Шаг <c>Steps[v - 1]</c> переводит таблицы <c>world_version = v</c> в <c>v + 1</c>: чистая функция над
-/// <see cref="SaveTables"/> (без <c>World</c>, PRNG и времени), переносится на Rust 1:1. Сейчас <c>world_version = 1</c> - единственная и текущая, шагов нет.
-/// До этапа 3 схема меняется без миграций: корпус <c>tests/SaveCorpus</c> перегенерируется (решение владельца 2026-10-25); строгая совместимость
-/// включается с этапа 3 - тогда каждый шаг добавляется сюда вместе с golden-файлом исходной версии.
+/// <see cref="SaveTables"/> (без <c>World</c>, PRNG и времени), переносится на Rust 1:1. Текущая <c>world_version = 2</c>; шаг <c>1 -&gt; 2</c> - <see cref="MigrationV2"/> (пешеходы, ADR-0020). С этапа 3 схема меняется только миграциями:
+/// каждый шаг добавляется сюда вместе с golden-файлом исходной версии в <c>tests/SaveCorpus</c> (файлы старых версий не удаляются).
 /// </summary>
 internal static class Migrations
 {
@@ -15,7 +14,7 @@ internal static class Migrations
     internal delegate LoadStatus Step(SaveTables tables);
 
     /// <summary>Шаги боевой цепочки: <c>Steps[0]</c> = <c>1 -&gt; 2</c> и т.д. Длина = <c>SaveSchema.WorldVersion - 1</c> (проверяет тест).</summary>
-    internal static readonly Step[] Steps = Array.Empty<Step>();
+    internal static readonly Step[] Steps = { MigrationV2.Run };
 
     /// <summary>
     /// Применяет шаги <c>from .. to - 1</c> из <paramref name="steps"/>. Сейв новее целевой версии - <see cref="LoadStatus.TooNew"/> (вниз не мигрируем);

@@ -14,10 +14,10 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 1;
+    public const int WorldVersion = 2;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
-    public const int HashVersion = 1;
+    public const int HashVersion = 2;
 
     /// <summary>Версия ядра-писателя: <c>major &lt;&lt; 20 | minor &lt;&lt; 10 | patch</c> (справочно).</summary>
     public const int WriterVersion = (0 << 20) | (1 << 10) | 0;
@@ -31,11 +31,11 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => new[]
     {
-        Params(),
+        Extend(Params(), PedParams()),
         Demand(),
         VehicleTypes(),
-        WorldState(),
-        Counters(),
+        Extend(WorldState(), PedWorldState()),
+        Extend(Counters(), PedCounters()),
         NetworkCounts(),
         Nodes(),
         Segments(),
@@ -46,7 +46,7 @@ internal static partial class SaveSchema
         Zones(),
         BusStatic(),
         Connectors(),
-        Signals(),
+        Extend(Signals(), PedSignalColumns()),
         NodeDynamic(),
         LaneDynamic(),
         SegmentDynamic(),
@@ -60,6 +60,11 @@ internal static partial class SaveSchema
         LodBlock(),
         QueueMesoBlock(),
         SignalMetricsBlock(),
+        PedsBlock(),
+        PedPaths(),
+        ResidentsBlock(),
+        CrossingsBlock(),
+        PedPathQueue(),
         Manifest(),
     };
 

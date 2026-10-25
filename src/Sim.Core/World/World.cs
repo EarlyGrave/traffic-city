@@ -48,6 +48,7 @@ internal sealed class World : IDisposable
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
@@ -75,6 +76,7 @@ internal sealed class World : IDisposable
     public Pcg32 RngBehaviour;
     public Pcg32 RngTransit;
     public Pcg32 RngRouting;
+    public Pcg32 RngPeds;                 // подпоток Peds (pedestrians.md §13): жители в Create, скорость при запуске поездки, время занятий
 
     // ---- время, команды, события, метрики ----
     public long Tick;
@@ -94,6 +96,7 @@ internal sealed class World : IDisposable
 
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
+    public int TargetPeds;                // цель активных пешеходов (SetPedTarget); при peds = PedCfg.Count
     public VehicleHandle Selected;
     public int[] LaneScratch = System.Array.Empty<int>();   // QualityMetrics: машин по полосам (scratch, всегда обнулён между выборками)
     public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
@@ -166,7 +169,7 @@ internal sealed class World : IDisposable
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);
-        PedCfg = desc.Peds.Enabled ? Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
+        PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled
@@ -197,6 +200,7 @@ internal sealed class World : IDisposable
         RngBehaviour = Pcg32.ForStream(Seed, RngStream.Behaviour);
         RngTransit = Pcg32.ForStream(Seed, RngStream.Transit);
         RngRouting = Pcg32.ForStream(Seed, RngStream.Routing);
+        RngPeds = Pcg32.ForStream(Seed, RngStream.Peds);
 
         Commands = new RingBuffer<Command>(c.CommandQueueCapacity);
         Events = new SimEvent[c.EventCapacity];

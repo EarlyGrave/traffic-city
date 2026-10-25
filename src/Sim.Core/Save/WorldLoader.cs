@@ -160,6 +160,13 @@ internal static class WorldLoader
             case "QMSO":
                 expected = c.Lod.Mode != LodMode.Off && c.Lod.MesoModel == MesoModel.Queue;
                 break;
+            case "PEDS":
+            case "PPTH":
+            case "RESI":
+            case "XING":
+            case "PQUE":
+                expected = c.Desc.Peds.Enabled;
+                break;
         }
     }
 
@@ -279,7 +286,7 @@ internal static class WorldLoader
         c.Desc.City.LaneWidth = c.NetLaneWidth;
         c.Desc.City.ConnectorSamples = c.NetConnectorSamples;
         c.W = new World(in c.Desc, c.Rules, c.Routing, c.Types);
-        return LoadStatus.Ok;
+        return WorldBuilder.BuildPeds(c.W, create: false) == CreateStatus.Ok ? LoadStatus.Ok : LoadStatus.CapacityExceeded;   // пешеходы: структуры без жителей, состояние - из блоков
     }
 
     private static void ApplyOverride(ref SimCapacities caps, in SimCapacities ov)
@@ -328,7 +335,24 @@ internal static class WorldLoader
 
         // Производные оставшихся хранилищ.
         w.Occupancy.RebuildMasks(w.Net.LaneCount);
-        w.Net.PedNet?.Rebuild(w);   // сеть пешеходов - производное (pedestrians.md §2); до P2 в сейве секции peds нет, поэтому null
+        if (w.Net.PedNet != null)
+        {
+            // Сеть пешеходов - производное (pedestrians.md §2), тем же кодом, что в Create; затем проверки состояния агентов (им нужны индексы рёбер) и их производные.
+            if (!w.Net.PedNet.Rebuild(w))
+            {
+                return LoadStatus.CapacityExceeded;
+            }
+
+            st = SaveValidator.ValidatePeds(c);
+            if (st != LoadStatus.Ok)
+            {
+                c.FailBlock = SaveFormat.FourCc("PEDS"u8);
+                return st;
+            }
+
+            w.Peds!.RestoreDerived(w);
+        }
+
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         for (int lane = 0; lane < w.Net.LaneCount; lane++)
         {
@@ -346,6 +370,7 @@ internal static class WorldLoader
         Array.Copy(w.Render[b], w.Render[b ^ 1], high);
         w.SnapshotSlots[b ^ 1] = high;
         w.RenderView.MarkWrittenAll(b ^ 1);
+        w.Peds?.Snapshot.CopyToPrevious(snap, w.Peds.P.HighWater);
 
         r.HashChecked = 0;
         r.HashMatched = 0;

@@ -71,6 +71,8 @@ internal sealed partial class PedNetwork
         BuildCrossingMasks(net);
         BuildAdjacency();
         BuildComponents();
+        BuildCumulative();
+        BuildStamp++;
         return true;
     }
 

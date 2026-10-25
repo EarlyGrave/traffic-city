@@ -92,6 +92,12 @@ internal sealed class SignalStore
     public readonly byte[] SigLaneAxis;
     public readonly bool[] SigLaneLeft;      // среди connector'ов полосы есть Left/UTurn
 
+    // ---- пешеходная фаза (ADR-0020, pedestrians.md §6; объявлено в P2, логика - P3): состояние, в хэше (P3) и сейве SIGS ----
+    public const int XSlots = 8;             // переходов оси узла на слот SigX
+    public readonly ushort[] XWalkLeft;      // [c * XSlots] осталось тиков Walk
+    public readonly ushort[] XClearLeft;     // [c * XSlots] осталось тиков Clear
+    public readonly byte[] XServed;          // [c] маска переходов, обслуженных в этом зелёном
+
     private readonly int _defaultArrowGap;
 
     public SignalStore(int capacity, int arrowGapTicks = DefaultArrowGapTicks)
@@ -143,6 +149,9 @@ internal sealed class SignalStore
         SigLaneArm = new byte[c * MaxSigLanes];
         SigLaneAxis = new byte[c * MaxSigLanes];
         SigLaneLeft = new bool[c * MaxSigLanes];
+        XWalkLeft = new ushort[c * XSlots];
+        XClearLeft = new ushort[c * XSlots];
+        XServed = new byte[c];
     }
 
     public static ushort GreenOf(in SetSignalPlanCmd p, int k) => k switch

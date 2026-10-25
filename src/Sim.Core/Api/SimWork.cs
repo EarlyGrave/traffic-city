@@ -50,6 +50,9 @@ public struct SimWork
     /// <summary>Слотов, просмотренных фазой 10 (HighWater).</summary>
     public long SnapshotSlots;
 
+    /// <summary>Событий колеса таймеров пешеходов и жителей, обработанных фазой 4p (ped_events_per_tick = разность / тики).</summary>
+    public long PedEvents;
+
     // Сырой счётчик вызовов ConflictGap: фазы 5 и 6 берут разность до/после цикла и пишут в именованные поля выше.
     internal long ConflictGapCallsRaw;
 
@@ -70,6 +73,7 @@ public struct SimWork
         RouteRefillChecks += o.RouteRefillChecks;
         NextConnRecomputes += o.NextConnRecomputes;
         SnapshotSlots += o.SnapshotSlots;
+        PedEvents += o.PedEvents;
         ConflictGapCallsRaw += o.ConflictGapCallsRaw;
     }
 }
