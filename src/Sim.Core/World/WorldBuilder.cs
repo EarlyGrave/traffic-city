@@ -63,6 +63,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidatePeds(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
@@ -91,6 +97,12 @@ internal static class WorldBuilder
         }
 
         st = BuildLod(w);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = BuildPeds(w);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -245,6 +257,39 @@ internal static class WorldBuilder
 
         w.Router = new Routing.Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         return st;
+    }
+
+    /// <summary>
+    /// Сеть пешеходов (ADR-0020, pedestrians.md §2): при выключенной секции <c>peds</c> ничего не выделяется и не меняется.
+    /// Строится после сети, connector'ов, зон и автобусных остановок; не трогает ГСЧ и состояние.
+    /// </summary>
+    private static CreateStatus BuildPeds(World w)
+    {
+        if (!w.PedCfg.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        var net = new Peds.PedNetwork(in w.Caps, w.Net, w.Connectors, in w.PedCfg);
+        w.Net.PedNet = net;
+        return net.Rebuild(w) ? CreateStatus.Ok : CreateStatus.NetworkTooLarge;
+    }
+
+    /// <summary>Секция <c>peds</c> (pedestrians.md §12): пределы ёмкостей и параметров; <c>passenger_model = agents</c> без <c>peds</c> - отказ.</summary>
+    internal static CreateStatus ValidatePeds(in ScenarioDesc desc)
+    {
+        if (desc.Transit.PassengerModel < PassengerModel.Counter || desc.Transit.PassengerModel > PassengerModel.Agents)
+        {
+            return CreateStatus.InvalidTransit;
+        }
+
+        if (!desc.Peds.Enabled)
+        {
+            return desc.Transit.PassengerModel == PassengerModel.Agents ? CreateStatus.InvalidPeds : CreateStatus.Ok;
+        }
+
+        PedDesc p = Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks);
+        return Peds.PedNetwork.IsValid(in p, in desc.Capacities) ? CreateStatus.Ok : CreateStatus.InvalidPeds;
     }
 
     /// <summary>LOD-ячейки (ADR-0013): при <c>Mode = Off</c> ничего не выделяется и не меняется (побитово прежнее ядро).</summary>

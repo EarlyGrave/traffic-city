@@ -12,6 +12,7 @@ public enum CreateStatus : int
     InvalidTransit = 5,
     InvalidDemand = 6,
     NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (например, генератор города)
+    InvalidPeds = 8,            // секция peds: ёмкости max_peds/max_residents меньше требуемых, ширины или скорости вне пределов
 }
 
 /// <summary>Монотонные счётчики ядра (core-api §11), кроме полей, помеченных «текущее».</summary>

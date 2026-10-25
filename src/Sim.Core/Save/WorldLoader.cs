@@ -328,6 +328,7 @@ internal static class WorldLoader
 
         // Производные оставшихся хранилищ.
         w.Occupancy.RebuildMasks(w.Net.LaneCount);
+        w.Net.PedNet?.Rebuild(w);   // сеть пешеходов - производное (pedestrians.md §2); до P2 в сейве секции peds нет, поэтому null
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         for (int lane = 0; lane < w.Net.LaneCount; lane++)
         {

@@ -181,6 +181,9 @@ internal sealed class NetworkStore
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
     public int Version { get; internal set; }
 
+    /// <summary>Сеть пешеходов (ADR-0020); null - секции peds нет. Производное: строится в <c>WorldBuilder</c>, пересобирается после <c>BuildRoad</c> и загрузки.</summary>
+    internal Sim.Core.Peds.PedNetwork? PedNet { get; set; }
+
     public NetworkView GetView() => new(
         Version,
         new ReadOnlySpan<NodeData>(Nodes, 0, NodeCount),
@@ -191,7 +194,13 @@ internal sealed class NetworkStore
         new ReadOnlySpan<ZoneData>(Zones, 0, ZoneCount),
         new ReadOnlySpan<BusStopData>(BusStops, 0, BusStopCount),
         new ReadOnlySpan<BusRouteData>(BusRoutes, 0, BusRouteCount),
-        new ReadOnlySpan<int>(BusRouteStops, 0, BusRouteStopCount));
+        new ReadOnlySpan<int>(BusRouteStops, 0, BusRouteStopCount),
+        PedNet != null ? PedNet.SidewalkSpan : default,
+        PedNet != null ? PedNet.CrossingSpan : default,
+        PedNet != null ? PedNet.PointSpan : default,
+        PedNet != null ? PedNet.CornerSpan : default,
+        PedNet?.SidewalkWidthM ?? 0f,
+        PedNet?.CrosswalkWidthM ?? 0f);
 
     /// <summary>FNV-1a 64 по занятой части всех массивов сети (детерминизм построения).</summary>
     public ulong Hash()

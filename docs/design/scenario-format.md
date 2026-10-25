@@ -361,9 +361,9 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 `transit.passenger_model`: `"counter"` (ADR-0008, счётчик и `passenger_rate_per_min`) | `"agents"` (пассажиры — пешеходы). Дефолт:
 `"agents"`, если секция `peds` включена, иначе `"counter"`. `"agents"` без `peds` — ошибка загрузчика.
 `transit.bidirectional` (bool, дефолт false): к каждому маршруту генератор добавляет обратный по тем же рёбрам. Это открытый вопрос владельцу
-(`pedestrians.md` §17 п. 3); ключ вводится вместе с решением.
+(`pedestrians.md` §17 п. 3, владелец принял 2026-10-25: включать только в `*-peds`). P1: загрузчик читает ключ в `TransitDesc.Bidirectional`, генератор его ещё не использует.
 
-Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64).
+Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64). Без включённой секции эти ключи — ошибка загрузчика.
 Загрузчик переводит скорости в мм/тик (`round(kmh / 3.6 · 50)`), секунды — в тики, метры — в мм для `PedDesc`, где ядро ждёт целые.
 Сценарии: `s1k-peds.json` (s1k + `count` 2 000), `s10k-peds.json` (s10k + `count` 20 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`).
 

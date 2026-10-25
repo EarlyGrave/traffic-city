@@ -97,7 +97,8 @@
 | 91 | lane-miss (worktree) | sonnet | 3.0: причина `lane_miss_share` s10k ≈ 0.45, фикс по Парето | done, merged: только диагноз (routing.md §6.4.1); фикс §6.4 растит ожидания ≥ 60 с на 30k тиков — отклонён |
 | 92 | pedestrians-spec (worktree) | opus | 3.1: ADR-0020 + `docs/design/pedestrians.md` | done, merged (P1→P2→P3∥P4∥P5; world_version 2 с миграцией) |
 | 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | done, merged (SourceForge-зеркало + Xvfb/llvmpipe; s1k 32.5 FPS; машин на кадре нет — разобрать в 3.3) |
-| 94 | peds-p1 (worktree) | sonnet | 3.1 P1: сеть пешеходов, `PedDesc`, загрузчик `peds`, геометрия для клиента | wip |
+| 94 | peds-p1 (worktree) | sonnet | 3.1 P1: сеть пешеходов, `PedDesc`, загрузчик `peds`, геометрия для клиента | done, merged (27 новых тестов; golden s1k/s10k без изменений) |
 | 95 | rust-pilot-spec (worktree) | opus | 4.6: ADR-0022 Rust-пилот ядра, граница FFI, кросс-хэш | wip |
 | 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | wip |
 | 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | wip |
+| 98 | peds-p2 (worktree) | sonnet | 3.1 P2: агенты, жители, пути, события, снапшот, сейв w2, метрики, сценарии | wip |
