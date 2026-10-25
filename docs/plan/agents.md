@@ -96,4 +96,4 @@
 | 90 | ci-baseline-ci (worktree) | sonnet | 3.0: `perf/baseline-ci.json` из лога CI PR #5 (ADR-0007) | done, merged (run 40233032729, CI p95 0.215 мс, 0 B) |
 | 91 | lane-miss (worktree) | sonnet | 3.0: причина `lane_miss_share` s10k ≈ 0.45, фикс по Парето | wip |
 | 92 | pedestrians-spec (worktree) | opus | 3.1: ADR-0020 + `docs/design/pedestrians.md` | wip |
-| 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | wip |
+| 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | done, merged (SourceForge-зеркало + Xvfb/llvmpipe; s1k 32.5 FPS; машин на кадре нет — разобрать в 3.3) |
