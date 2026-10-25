@@ -71,6 +71,13 @@ public struct SimCounters
     public int MicroVehicles, MesoVehicles;                // текущее
     public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;
     public long LodEvals, LodCellFlips, LodBudgetSkips, MesoClamps, MesoLaneChanges;
+    // --- метрики качества трафика (2.6c, Metrics/QualityMetrics.cs); вне хэша, выборка раз в 20 тиков ---
+    public int StillMaxTicks;             // max непрерывного StillTicks; окно - Simulation.ResetSignalWindow
+    public int StillConcurrent60Max;      // max одновременно стоящих >= 60 с; окно - Simulation.ResetSignalWindow
+    public long StillEpisodes60, StillEpisodes120;   // эпизоды непрерывного стояния >= 60 с / >= 120 с
+    public long LaneShareSamples;         // выборок (направление многополосного сегмента, >= 4 машин)
+    public long LaneShareMaxPermilleSum;  // Σ доли самой загруженной полосы направления, ‰
+    public long LaneShareH0, LaneShareH1, LaneShareH2, LaneShareH3, LaneShareH4, LaneShareH5, LaneShareH6, LaneShareH7, LaneShareH8, LaneShareH9; // гистограмма той же доли, корзины по 10%
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

@@ -200,7 +200,12 @@ public sealed partial class Simulation : IDisposable
     public void CopySignalMetrics(SignalMetrics dst) => _w.SignalWait.CopyTo(dst);
 
     /// <summary>Начало окна замера: обнуляет немонотонный максимум <c>SignalLeftWaitMax</c> (остальные счётчики берутся разностью).</summary>
-    public void ResetSignalWindow() => _w.Counters.SignalLeftWaitMax = 0;
+    public void ResetSignalWindow()
+    {
+        _w.Counters.SignalLeftWaitMax = 0;
+        _w.Counters.StillMaxTicks = 0;
+        _w.Counters.StillConcurrent60Max = 0;
+    }
 
     public void GetStats(out SimStats stats)
     {

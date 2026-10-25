@@ -91,6 +91,7 @@ internal sealed class World : IDisposable
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
     public VehicleHandle Selected;
+    public int[] LaneScratch = System.Array.Empty<int>();   // QualityMetrics: машин по полосам (scratch, всегда обнулён между выборками)
     public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
     public bool DebugDisableExitCheck;    // тестовый флаг (intersections.md §11, T6): отключить правило «выезд свободен» у ворот
 

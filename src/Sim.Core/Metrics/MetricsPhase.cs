@@ -99,6 +99,7 @@ internal static class MetricsPhase
         }
 
         UpdateGridlock(w, active, stuck);
+        QualityMetrics.Sample(w);
     }
 
     /// <summary>

@@ -474,6 +474,15 @@ public static class BenchCommand
             w.WriteNumber("stuck_vehicles", r.StuckVehicles);
             w.WriteBoolean("gridlock_flag", r.Gridlock);
             WriteNullable(w, "bus_headway_deviation_s", r.BusHeadwayDeviationS);
+            WriteNullable(w, "max_still_s", r.Signal.MaxStillS);
+            w.WriteNumber("still_episodes_60s", r.Signal.StillEpisodes60);
+            w.WriteNumber("still_episodes_120s", r.Signal.StillEpisodes120);
+            w.WriteNumber("still_concurrent_60s_max", r.Signal.StillConcurrent60Max);
+            WriteNullable(w, "still_share_60s", r.Signal.StillShare60);
+            WriteNullable(w, "lane_share_max_mean", r.Signal.LaneShareMaxMean);
+            WriteNullable(w, "lane_share_max_p95", r.Signal.LaneShareMaxP95);
+            w.WriteNumber("lane_share_samples", r.Signal.LaneShareSamples);
+            WriteNullable(w, "lane_miss_share", r.Signal.LaneMissShare);
             w.WriteStartArray("top10_intersections");
             foreach ((int node, uint count, double perMin) in r.Top10)
             {
@@ -663,6 +672,12 @@ internal sealed class SignalWindow
     public double? ArterialStopShare;
     public long StuckEpisodes, StarveDenials, GrantsRevoked, ArrowPhases, SpillOuts, ExitClaims, ExitClaimDenials, GateDeniedExit, TripsCompleted;
     public double? AvgSpeedKmh;
+    public double MaxStillS;
+    public long StillEpisodes60, StillEpisodes120;
+    public int StillConcurrent60Max;
+    public double? StillShare60;
+    public double? LaneShareMaxMean, LaneShareMaxP95, LaneMissShare;
+    public long LaneShareSamples;
 
     public static SignalWindow Compute(Simulation sim, in SimCounters before, SignalMetrics sigBefore)
     {
@@ -716,6 +731,39 @@ internal sealed class SignalWindow
         s.ExitClaimDenials = c.ExitClaimDenials - before.ExitClaimDenials;
         s.GateDeniedExit = c.GateDeniedExit - before.GateDeniedExit;
         s.TripsCompleted = c.TripsCompleted - before.TripsCompleted;
+        s.MaxStillS = c.StillMaxTicks * tickS;
+        s.StillEpisodes60 = c.StillEpisodes60 - before.StillEpisodes60;
+        s.StillEpisodes120 = c.StillEpisodes120 - before.StillEpisodes120;
+        s.StillConcurrent60Max = c.StillConcurrent60Max;
+        long denom = s.TripsCompleted + c.ActiveVehicles;
+        if (denom > 0)
+        {
+            s.StillShare60 = s.StillEpisodes60 / (double)denom;
+        }
+
+        if (s.TripsCompleted > 0)
+        {
+            s.LaneMissShare = (c.Reroutes - before.Reroutes) / (double)s.TripsCompleted;
+        }
+
+        s.LaneShareSamples = c.LaneShareSamples - before.LaneShareSamples;
+        if (s.LaneShareSamples > 0)
+        {
+            s.LaneShareMaxMean = (c.LaneShareMaxPermilleSum - before.LaneShareMaxPermilleSum) / 1000.0 / s.LaneShareSamples;
+            long[] h = { c.LaneShareH0 - before.LaneShareH0, c.LaneShareH1 - before.LaneShareH1, c.LaneShareH2 - before.LaneShareH2, c.LaneShareH3 - before.LaneShareH3, c.LaneShareH4 - before.LaneShareH4, c.LaneShareH5 - before.LaneShareH5, c.LaneShareH6 - before.LaneShareH6, c.LaneShareH7 - before.LaneShareH7, c.LaneShareH8 - before.LaneShareH8, c.LaneShareH9 - before.LaneShareH9 };
+            long need = ((s.LaneShareSamples * 95) + 99) / 100;
+            long acc = 0;
+            for (int b = 0; b < h.Length; b++)
+            {
+                acc += h[b];
+                if (acc >= need)
+                {
+                    s.LaneShareMaxP95 = (b + 1) / (double)h.Length;   // верхняя граница корзины (шаг 10%)
+                    break;
+                }
+            }
+        }
+
         long vt = c.VehicleTicksTotal - before.VehicleTicksTotal;
         if (vt > 0)
         {
