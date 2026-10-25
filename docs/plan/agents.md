@@ -72,4 +72,5 @@
 | 56 | sim-lod-spec (worktree) | opus | 2.6: ADR-0013 уровни детализации + новая лестница | done, merged (micro+meso, L1–L5) |
 | 67 | signals-spec (worktree) | opus | 2.5: ADR адаптивных светофоров + координация («зелёная волна») | wip |
 | 68 | saves-spec (worktree) | opus | 2.6b: ADR-0012 сохранения и версия мира | wip |
-| 69 | lod-l1 (worktree) | sonnet | 2.6 L1: каркас LOD (секция lod, ячейки, режим off) | wip |
+| 69 | lod-l1 (worktree) | sonnet | 2.6 L1: каркас LOD (секция lod, ячейки, режим off) | done, merged (off = прежний хэш) |
+| 70 | lod-l2 (worktree) | sonnet | 2.6 L2: meso-динамика, all_meso, эквивалентность коридора | wip |
