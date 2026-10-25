@@ -86,6 +86,6 @@
 | 80 | saves-sv2 (worktree) | sonnet | 2.6b SV2: состояние мира в сейве + канонический порядок сети | done, merged (29 блоков, round-trip/продолжение/потоки/fuzz) |
 | 81 | merge-s2-saves (worktree) | sonnet | слияние S2 + схема сейва для Adaptive | done, merged (merge-коммит с --no-verify — нарушение) |
 | 82 | verify-wave (worktree) | sonnet | общий верификатор волны 2.5 S2 + 2.6 (A1–A4, R1, Q0) + 2.6b SV1–SV2 | done (всё зелёное) |
-| 83 | metrics-wait-lanes (worktree) | sonnet | метрики длинных ожиданий + распределение по полосам | wip |
+| 83 | metrics-wait-lanes (worktree) | sonnet | метрики длинных ожиданий + распределение по полосам | done, merged (s10k: max стояния 72 с; lane_miss_share 0.45 — в бэклог) |
 | 84 | signals-s3 (worktree) | sonnet | 2.5 S3: зелёная волна + анти-спилловер | wip |
 | 85 | bus-holding (worktree) | sonnet | 2.5: удержание автобусов на остановке | wip |
