@@ -89,6 +89,7 @@
 | 83 | metrics-wait-lanes (worktree) | sonnet | метрики длинных ожиданий + распределение по полосам | done, merged (s10k: max стояния 72 с; lane_miss_share 0.45 — в бэклог) |
 | 84 | signals-s3 (worktree) | sonnet | 2.5 S3: зелёная волна + анти-спилловер | done (alternate — опция; stuck ×2–3), мерж через агента 87 |
 | 87 | merge-s3-s4 (worktree) | sonnet | слияние S3 + S4 бронь выезда | done: S3 влит; S4 отклонён по диагностике (места нет, выигрыш ≤ 5–10%) |
-| 88 | saves-sv3 (worktree) | sonnet | 2.6b SV3: корпус сейвов в CI, манифест, конверт | wip |
+| 88 | saves-sv3 (worktree) | sonnet | 2.6b SV3: корпус сейвов в CI, манифест, конверт | done, merged (корпус 0.41 МБ) |
+| 89 | final-check (worktree) | sonnet | финальный чек этапа 2 | wip |
 | 85 | bus-holding (worktree) | sonnet | 2.5: удержание автобусов на остановке | done, merged (headway dev 36.5 → 21.5 с) |
 | 86 | save-fuzz-fix (worktree) | sonnet | дыра валидатора сейва (фазз после мержа) | done, merged (3 дыры закрыты) |
