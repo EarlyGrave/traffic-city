@@ -27,16 +27,20 @@ public sealed class HotPathGoldenHashTests : IDisposable
 
     private static string Hex(ulong h) => h.ToString("x16", CultureInfo.InvariantCulture);
 
-    private static Simulation Create(string name)
+    private static Simulation Create(string name, int threads)
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
-        return Simulation.Create(sc.Desc);
+        return Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
     }
 
-    [Fact]
-    public void S1k_StateHash_MatchesGolden()
+    // ADR-0017: хэш не зависит от числа потоков - те же константы при 1, 2 и 3.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void S1k_StateHash_MatchesGolden(int threads)
     {
-        using Simulation sim = Create("s1k");
+        using Simulation sim = Create("s1k", threads);
         string[] expected = { "b938c1c516383c49", "47392c93d47b0a68", "ebb7ba91cca224be" };
         for (int k = 0; k < expected.Length; k++)
         {
@@ -47,10 +51,13 @@ public sealed class HotPathGoldenHashTests : IDisposable
         Assert.Equal(3000, sim.Tick);
     }
 
-    [Fact]
-    public void S10k_StateHash_MatchesGolden()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void S10k_StateHash_MatchesGolden(int threads)
     {
-        using Simulation sim = Create("s10k");
+        using Simulation sim = Create("s10k", threads);
         string[] expected = { "8a9f75d816942e0d", "eeabc3cb88296832", "5bf20a479ea7dcdf" };
         for (int k = 0; k < expected.Length; k++)
         {
@@ -72,6 +79,49 @@ public sealed class HotPathGoldenHashTests : IDisposable
         Assert.Equal(2, lines.Length);
         Assert.StartsWith("tick=1000 hash=b938c1c516383c49 ", lines[0], StringComparison.Ordinal);
         Assert.StartsWith("tick=2000 hash=47392c93d47b0a68 ", lines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HashCommand_ThreadsOption_GivesSameHashes()
+    {
+        string[] lines = new string[3];
+        for (int t = 1; t <= 3; t++)
+        {
+            var o = new StringWriter();
+            Assert.Equal(0, HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "1000", "--threads", t.ToString(CultureInfo.InvariantCulture) }, o, new StringWriter()));
+            lines[t - 1] = o.ToString();
+        }
+
+        Assert.StartsWith("tick=1000 hash=b938c1c516383c49 ", lines[0], StringComparison.Ordinal);
+        Assert.Equal(lines[0], lines[1]);
+        Assert.Equal(lines[0], lines[2]);
+    }
+
+    [Fact]
+    public void Compare_RefusesRunsWithDifferentThreads()
+    {
+        string a = Path.Combine(_dir, "t1.json");
+        string b = Path.Combine(_dir, "t2.json");
+        const string body = "\"scenario\":\"s1k\",\"perf\":{\"tick_ms\":{\"p95\":1.0},\"alloc_bytes_per_tick\":0}";
+        File.WriteAllText(a, "{\"threads\":1," + body + "}");
+        File.WriteAllText(b, "{\"threads\":2," + body + "}");
+        var e = new StringWriter();
+        Assert.Equal(CompareCommand.ExitUsage, CompareCommand.Run(new[] { "compare", "--result", b, "--baseline", a }, new StringWriter(), e));
+        Assert.Contains("threads", e.ToString(), StringComparison.Ordinal);
+        File.WriteAllText(a, "{" + body + "}"); // старый файл без поля = 1 поток
+        File.WriteAllText(b, "{\"threads\":1," + body + "}");
+        Assert.Equal(CompareCommand.ExitOk, CompareCommand.Run(new[] { "compare", "--result", b, "--baseline", a }, new StringWriter(), new StringWriter()));
+    }
+
+    [Fact]
+    public void Bench_WithThreads_WritesThreadsToJson()
+    {
+        string path = Path.Combine(_dir, "thr.json");
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "s1k", "--ticks", "20", "--warmup-ticks", "50", "--threads", "2", "--out", path }, new StringWriter(), new StringWriter());
+        Assert.Equal(0, code);
+        using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(2, d.RootElement.GetProperty("threads").GetInt32());
     }
 
     [Fact]

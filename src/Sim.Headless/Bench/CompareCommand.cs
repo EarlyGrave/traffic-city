@@ -71,6 +71,14 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        int rThreads = ReadThreads(resultPath);
+        int bThreads = ReadThreads(basePath);
+        if (rThreads != bThreads)
+        {
+            error.WriteLine($"compare: refusing to compare runs with different threads (baseline {bThreads}, result {rThreads})");
+            return ExitUsage;
+        }
+
         RampInfo rRamp = ReadRamp(resultPath);
         RampInfo bRamp = ReadRamp(basePath);
         bool rampMismatch = false;
@@ -104,6 +112,20 @@ public static class CompareCommand
         bool fail = slow || alloc || rampMismatch;
         output.WriteLine(fail ? "FAIL" : "OK");
         return fail ? ExitRegression : ExitOk;
+    }
+
+    /// <summary>Число потоков ядра из JSON (поле <c>threads</c>; старые файлы и нечитаемый JSON - 1).</summary>
+    internal static int ReadThreads(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("threads", out JsonElement t) && t.TryGetInt32(out int n) ? n : 1;
+        }
+        catch (JsonException)
+        {
+            return 1;
+        }
     }
 
     /// <summary>Сведения о рампе из JSON (поля необязательны: старые файлы их не содержат).</summary>

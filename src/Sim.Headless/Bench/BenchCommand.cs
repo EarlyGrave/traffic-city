@@ -23,9 +23,10 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--scenarios-dir <dir>]\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
+        "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
         "  --warmup-until-full  after --warmup-ticks keep warming up (in chunks of 20 ticks) until active vehicles >= 98% of the scenario target,\n" +
         "                       but not beyond --warmup-max-ticks in total (default 30000); JSON gets ramp_complete/active_*/target_vehicles.\n";
 
@@ -34,7 +35,7 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -43,7 +44,8 @@ public static class BenchCommand
             || !a.TryGetInt("--ticks", 1, out int ticks, 2000)
             || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200)
             || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, DefaultWarmupMaxTicks)
-            || !a.TryGetInt("--repeat", 1, out int repeat, 1))
+            || !a.TryGetInt("--repeat", 1, out int repeat, 1)
+            || !a.TryGetInt("--threads", 1, out int threads, 1))
         {
             error.WriteLine($"bench: {a.Error}");
             error.Write(Usage);
@@ -64,7 +66,7 @@ public static class BenchCommand
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"));
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads);
         }
         catch (ScenarioException e)
         {
@@ -89,12 +91,12 @@ public static class BenchCommand
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -119,14 +121,14 @@ public static class BenchCommand
     /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
     public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false)
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1)
     {
-        var r = new BenchResult { Scenario = sc.Name, Ticks = ticks, WarmupTicks = warmup };
+        var r = new BenchResult { Scenario = sc.Name, Ticks = ticks, WarmupTicks = warmup, Threads = threads };
         double[] samples = new double[ticks];
         PhaseTimer? timer = phases ? new PhaseTimer(ticks) : null;
 
         long memBefore = GC.GetTotalMemory(true);
-        using Simulation sim = Simulation.Create(sc.Desc);
+        using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         if (warmup > 0)
         {
             sim.Step(warmup);
@@ -147,7 +149,8 @@ public static class BenchCommand
         }
 
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
-        long allocBefore = GC.GetAllocatedBytesForCurrentThread();
+        // воркеры аллоцируют в своих потоках: при threads > 1 меряем весь процесс (в окне больше никто не работает)
+        long allocBefore = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
         long windowStart = Stopwatch.GetTimestamp();
         for (int i = 0; i < ticks; i++)
         {
@@ -158,7 +161,7 @@ public static class BenchCommand
         }
 
         long windowEnd = Stopwatch.GetTimestamp();
-        long allocAfter = GC.GetAllocatedBytesForCurrentThread();
+        long allocAfter = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
         sim.OnPhaseEnd = null;
         r.Work = Delta(sim.Work, workBefore);
         r.PhaseMs = timer?.Summarize();
@@ -324,6 +327,7 @@ public static class BenchCommand
             w.WriteString("scenario", r.Scenario);
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
+            w.WriteNumber("threads", r.Threads);
             WriteNullable(w, "commit", r.Commit);
             w.WriteStartObject("environment");
             w.WriteString("runtime", r.Runtime);
@@ -489,6 +493,7 @@ internal sealed class BenchResult
     public string Scenario = "";
     public int Ticks;
     public int WarmupTicks;
+    public int Threads = 1;
     public string? Commit;
     public string? Cpu;
     public string Runtime = "";

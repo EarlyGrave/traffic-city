@@ -18,10 +18,10 @@ public static class HashCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless hash --scenario <name|path> --ticks N [--every K] [--warmup-until-full] [--warmup-max-ticks M] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless hash --scenario <name|path> --ticks N [--every K] [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>]\n" +
         "  prints 'tick=<T> hash=<16 hex digits> active=<N>' every K ticks (default: only after the last one); --ticks counts after the optional warmup\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--warmup-max-ticks", "--scenarios-dir" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--warmup-max-ticks", "--scenarios-dir", "--threads" };
     private static readonly string[] _flags = { "--warmup-until-full" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -29,7 +29,8 @@ public static class HashCommand
         if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
             || !a.TryGetInt("--ticks", 1, out int ticks, 1000)
             || !a.TryGetInt("--every", 1, out int every, 0)
-            || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, BenchCommand.DefaultWarmupMaxTicks))
+            || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, BenchCommand.DefaultWarmupMaxTicks)
+            || !a.TryGetInt("--threads", 1, out int threads, 1))
         {
             error.WriteLine($"hash: {a.Error}");
             error.Write(Usage);
@@ -55,7 +56,7 @@ public static class HashCommand
             return ExitUsage;
         }
 
-        using Simulation sim = Simulation.Create(sc.Desc);
+        using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         if (a.Has("--warmup-until-full"))
         {
             BenchCommand.WarmUpUntilFull(sim, sc.Desc.Demand.TargetVehicles, 0, warmupMax);
