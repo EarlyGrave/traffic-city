@@ -34,7 +34,9 @@ public static class ScenarioLoader
     public const int SupportedFormatVersion = 2;
     public const int VehicleTypesFormatVersion = 1;
     private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
-    private const int MaxRoutingFanout = 16;      // = Overlay.MaxFanout
+    private const int MaxRoutingFanout = 16;
+    private const int MaxLodSlots = 4;           // слотов фокуса (0..3) и закреплений (4..7)
+    private const int MaxLodFocusMargin = 64;      // = Overlay.MaxFanout
     private const int MaxArenaSteps = 1 << 28;    // предел арены планов (WorldBuilder.MaxPlanStepsCapacity)
     public const int TicksPerSecond = 20;
     private const string DefaultVehicleTypesFile = "vehicle-types.json";
@@ -122,6 +124,7 @@ public static class ScenarioLoader
         TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames);
         RulesDesc rules = ParseRules(root.OptObject("rules"));
         RoutingDesc routing = ParseRouting(root.OptObject("routing"));
+        LodDesc lod = ParseLod(root.OptObject("lod"));
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing);
         root.Finish();
 
@@ -131,6 +134,7 @@ public static class ScenarioLoader
             DurationTicks = Ticks(durationS),
             Capacities = caps,
             Routing = routing,
+            Lod = lod,
             City = city,
             Network = network,
             Demand = demand,
@@ -686,6 +690,112 @@ public static class ScenarioLoader
         d.TimedDriftAbsTicks = Ticks(r.Num("timed_drift_abs_s", 20, min: 0));
         r.Finish();
         return d;
+    }
+
+    // sim-lod.md, scenario-format.md 2.1 "lod": секция необязательна, без неё (и при mode = off) LOD нет.
+    private static LodDesc ParseLod(JsonObjectReader? r)
+    {
+        var d = new LodDesc
+        {
+            Mode = LodMode.Off,
+            CellM = 1000f,
+            MicroBudget = 15000,
+            EvalTicks = Ticks(5),
+            HoldTicks = Ticks(30),
+            FocusMarginCells = 1,
+            FollowSelected = true,
+            FocusCommands = true,
+            CongestionShare = 0.1f,
+            CongestionMin = 10,
+            MesoHeadwayScale = 1f,
+            MesoAccelScale = 1f,
+        };
+        if (r == null)
+        {
+            return d;
+        }
+
+        string mode = r.Str("mode", "off");
+        d.Mode = mode switch
+        {
+            "off" => LodMode.Off,
+            "auto" => LodMode.Auto,
+            "all_meso" => LodMode.AllMeso,
+            _ => throw new ScenarioException($"{r.ChildPath("mode")}: expected \"off\", \"auto\" or \"all_meso\""),
+        };
+        d.CellM = (float)r.Num("cell_m", 1000, min: 1);
+        d.MicroBudget = r.Int("micro_budget", 15000, min: 0);
+        d.EvalTicks = Math.Max(1, Ticks(r.Num("eval_s", 5, min: 0.05)));
+        d.HoldTicks = Ticks(r.Num("hold_s", 30, min: 0));
+        d.FocusMarginCells = r.Int("focus_margin_cells", 1, min: 0, max: MaxLodFocusMargin);
+        d.FollowSelected = r.Bool("follow_selected", true);
+        d.FocusCommands = r.Bool("focus_commands", true);
+        d.CongestionShare = (float)r.Num("congestion_share", 0.1, min: 0, max: 1);
+        d.CongestionMin = r.Int("congestion_min", 10, min: 0);
+        d.MesoHeadwayScale = (float)r.Num("meso_headway_scale", 1.0, min: 0.1, max: 10);
+        d.MesoAccelScale = (float)r.Num("meso_accel_scale", 1.0, min: 0.1, max: 10);
+        d.Focus = ParseLodPlaces(r, "focus");
+        d.Pinned = ParseLodPlaces(r, "pinned");
+
+        JsonObjectReader? tour = r.OptObject("tour");
+        if (tour != null)
+        {
+            d.Tour.PeriodTicks = Math.Max(1, Ticks(tour.Num("period_s", min: 0.05)));
+            d.Tour.RadiusM = (float)tour.Num("radius_m", min: 1);
+            string tp = tour.ChildPath("path");
+            JsonElement[] path = tour.ReqArray("path");
+            if (path.Length == 0)
+            {
+                throw new ScenarioException($"{tp}: expected at least one point");
+            }
+
+            d.Tour.PathX = new float[path.Length];
+            d.Tour.PathZ = new float[path.Length];
+            for (int i = 0; i < path.Length; i++)
+            {
+                string ip = JsonObjectReader.Index(tp, i);
+                JsonElement[] pt = JsonObjectReader.ToArray(path[i], ip);
+                if (pt.Length != 2)
+                {
+                    throw new ScenarioException($"{ip}: expected [x, z]");
+                }
+
+                d.Tour.PathX[i] = (float)JsonObjectReader.NumValue(pt[0], JsonObjectReader.Index(ip, 0));
+                d.Tour.PathZ[i] = (float)JsonObjectReader.NumValue(pt[1], JsonObjectReader.Index(ip, 1));
+            }
+
+            tour.Finish();
+        }
+
+        r.Finish();
+        return d;
+    }
+
+    private static LodPlaceDesc[]? ParseLodPlaces(JsonObjectReader r, string key)
+    {
+        JsonElement[]? arr = r.OptArray(key);
+        if (arr == null)
+        {
+            return null;
+        }
+
+        string path = r.ChildPath(key);
+        if (arr.Length > MaxLodSlots)
+        {
+            throw new ScenarioException($"{path}: at most {MaxLodSlots} entries");
+        }
+
+        var res = new LodPlaceDesc[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var o = new JsonObjectReader(arr[i], JsonObjectReader.Index(path, i));
+            res[i].X = (float)o.Num("x");
+            res[i].Z = (float)o.Num("z");
+            res[i].RadiusM = (float)o.Num("radius_m", min: 0);
+            o.Finish();
+        }
+
+        return res;
     }
 
     private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);

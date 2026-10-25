@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Api;
 using Sim.Core.Gen;
+using Sim.Core.Lod;
 using Sim.Core.Network;
 using Sim.Core.Util;
 
@@ -33,6 +34,12 @@ internal static class WorldBuilder
         }
 
         st = ValidateRouting(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidateLod(in desc.Lod);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -78,6 +85,12 @@ internal static class WorldBuilder
         }
 
         st = BuildOverlay(w);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = BuildLod(w);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -232,6 +245,91 @@ internal static class WorldBuilder
 
         w.Router = new Routing.Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         return st;
+    }
+
+    /// <summary>LOD-ячейки (ADR-0013): при <c>Mode = Off</c> ничего не выделяется и не меняется (побитово прежнее ядро).</summary>
+    private static CreateStatus BuildLod(World w)
+    {
+        if (w.LodCfg.Mode == LodMode.Off)
+        {
+            return CreateStatus.Ok;
+        }
+
+        CreateStatus st = LodCells.TryCreate(w.Net, in w.LodCfg, out LodCells? cells);
+        w.Lod = cells;
+        return st;
+    }
+
+    private static CreateStatus ValidateLod(in LodDesc l)
+    {
+        if (l.Mode < LodMode.Off || l.Mode > LodMode.AllMeso || !NonNegative(l.CellM) || l.MicroBudget < 0 || l.EvalTicks < 0 ||
+            l.HoldTicks < 0 || l.FocusMarginCells < 0 || !NonNegative(l.CongestionShare) || l.CongestionMin < 0 ||
+            !NonNegative(l.MesoHeadwayScale) || !NonNegative(l.MesoAccelScale) ||
+            (l.Focus?.Length ?? 0) > LodCells.FocusSlots || (l.Pinned?.Length ?? 0) > LodCells.PinSlots)
+        {
+            return CreateStatus.InvalidCapacity;
+        }
+
+        for (int k = 0; k < 2; k++)
+        {
+            LodPlaceDesc[]? places = k == 0 ? l.Focus : l.Pinned;
+            for (int i = 0; i < (places?.Length ?? 0); i++)
+            {
+                LodPlaceDesc p = places![i];
+                if (!IsFinite(p.X) || !IsFinite(p.Z) || !NonNegative(p.RadiusM))
+                {
+                    return CreateStatus.InvalidCapacity;
+                }
+            }
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    /// <summary>Нулевые поля (desc, собранный вручную) заменяются дефолтами спеки; булевы без дефолта остаются как заданы (загрузчик ставит true).</summary>
+    internal static LodDesc WithDefaults(LodDesc l)
+    {
+        if (!(l.CellM > 0f))
+        {
+            l.CellM = 1000f;
+        }
+
+        if (l.MicroBudget <= 0)
+        {
+            l.MicroBudget = 15000;
+        }
+
+        if (l.EvalTicks <= 0)
+        {
+            l.EvalTicks = 100;
+        }
+
+        if (l.HoldTicks <= 0)
+        {
+            l.HoldTicks = 600;
+        }
+
+        if (!(l.CongestionShare > 0f))
+        {
+            l.CongestionShare = 0.1f;
+        }
+
+        if (l.CongestionMin <= 0)
+        {
+            l.CongestionMin = 10;
+        }
+
+        if (!(l.MesoHeadwayScale > 0f))
+        {
+            l.MesoHeadwayScale = 1f;
+        }
+
+        if (!(l.MesoAccelScale > 0f))
+        {
+            l.MesoAccelScale = 1f;
+        }
+
+        return l;
     }
 
     private static CreateStatus ValidateRouting(in ScenarioDesc desc)

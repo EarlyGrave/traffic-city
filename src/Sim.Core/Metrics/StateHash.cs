@@ -25,6 +25,7 @@ internal static class StateHash
 
         // 3. Машины по слотам.
         VehicleStore v = w.Vehicles;
+        bool lodOn = w.Lod != null; // п.3/п.10 (ADR-0013): при Lod.Mode = Off ничего не добавляется - хэш прежний
         int high = v.HighWater;
         h.Add(high);
         for (int i = 0; i < high; i++)
@@ -56,6 +57,15 @@ internal static class StateHash
             h.Add(v.GrantConnector[i]);
             h.Add(v.Ticket[i]);
             h.Add((int)v.WaitTicks[i]);
+            if (lodOn)
+            {
+                byte lod = v.Lod[i];
+                h.Add(lod);
+                if ((lod & Lod.LodBits.Meso) != 0)
+                {
+                    h.Add(v.MesoAllow[i]);
+                }
+            }
         }
 
         // 4. Полосы.
@@ -179,6 +189,34 @@ internal static class StateHash
         h.Add(w.TargetVehicles);
         h.Add(w.Selected.Packed);
         h.Add(w.GridlockStreak);
+
+        // 10. Уровни детализации (core-api 9 п.10, только при Lod.Mode != Off). RenderView не входит.
+        if (w.Lod != null)
+        {
+            Lod.LodCells lc = w.Lod;
+            h.Add(lc.Cells);
+            for (int c = 0; c < lc.Cells; c++)
+            {
+                h.Add(lc.CellLevel[c]);
+                h.Add(lc.CellHoldUntil[c]);
+                h.Add(lc.CellCongStreak[c]);
+            }
+
+            for (int s = 0; s < Lod.LodCells.SlotCount; s++)
+            {
+                Lod.LodFocusSlot f = lc.Focus[s];
+                h.Add(f.Kind);
+                h.Add(f.Cx0);
+                h.Add(f.Cz0);
+                h.Add(f.Cx1);
+                h.Add(f.Cz1);
+                h.Add(f.CenterCx);
+                h.Add(f.CenterCz);
+            }
+
+            h.Add(lc.LodEvalRequested ? 1 : 0);
+            h.Add(lc.LastLodEvalTick);
+        }
 
         return h.Value;
     }

@@ -57,6 +57,10 @@ public struct SimCounters
     public long PriorityInversions;       // допусков по инверсии приоритета (долгое ожидание)
     public long BoxWaitTicks;             // Σ тиков, когда допущенная машина стоит на connector'е (v < StuckSpeedThreshold)
     public long GateWaitTicksTotal;       // Σ WaitTicks на момент допуска (среднее ожидание у ворот)
+    // --- уровни детализации (ADR-0013, sim-lod.md §4, §8); вне хэша, заполняются с L2/L3 ---
+    public int MicroVehicles, MesoVehicles;                // текущее
+    public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;
+    public long LodEvals, LodCellFlips, LodBudgetSkips, MesoClamps, MesoLaneChanges;
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

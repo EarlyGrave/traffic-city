@@ -150,6 +150,7 @@ internal static class CommandDispatcher
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
     private static void GrowOverlay(World w)
     {
+        w.Lod?.OnNetworkGrown(); // LOD-ячейки: новые узлы и полосы получают ячейку (sim-lod.md §1); при Lod.Mode = Off - null
         w.Vehicles.MarkAllRouteDirty();
         // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
         // проверка оверлея пометит почти все ячейки и волна будет огромной.

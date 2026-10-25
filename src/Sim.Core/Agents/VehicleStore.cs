@@ -68,7 +68,11 @@ internal sealed class VehicleStore
     public readonly ushort[] DwellTicks;
     public readonly ushort[] Passengers;
 
-    public VehicleStore(int maxVehicles)
+    // --- уровни детализации (ADR-0013, sim-lod.md §1): выделены только при Lod.Mode != Off, иначе пустые (длина 0) ---
+    public readonly byte[] Lod;            // бит0 meso, бит1 MesoFresh (LodBits)
+    public readonly float[] MesoAllow;     // путь, который meso-машина может проехать до следующего пересчёта, м
+
+    public VehicleStore(int maxVehicles, bool lod = false)
     {
         Debug.Assert(maxVehicles >= 0);
         Pool = new HandlePool(maxVehicles);
@@ -113,6 +117,8 @@ internal sealed class VehicleStore
         BusNextStop = new int[maxVehicles];
         DwellTicks = new ushort[maxVehicles];
         Passengers = new ushort[maxVehicles];
+        Lod = lod ? new byte[maxVehicles] : Array.Empty<byte>();
+        MesoAllow = lod ? new float[maxVehicles] : Array.Empty<float>();
         for (int i = 0; i < maxVehicles; i++)
         {
             ResetSlot(i);
@@ -210,5 +216,10 @@ internal sealed class VehicleStore
         BusNextStop[i] = 0;
         DwellTicks[i] = 0;
         Passengers[i] = 0;
+        if (Lod.Length != 0)
+        {
+            Lod[i] = 0;
+            MesoAllow[i] = 0f;
+        }
     }
 }

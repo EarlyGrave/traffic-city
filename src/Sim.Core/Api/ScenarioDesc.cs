@@ -17,6 +17,7 @@ public struct ScenarioDesc
     public DemandDesc Demand;
     public TransitDesc Transit;
     public RulesDesc Rules;
+    public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }
 

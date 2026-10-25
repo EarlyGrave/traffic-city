@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Gen;
+using Sim.Core.Lod;
 using Sim.Core.Network;
 using Sim.Core.Routing;
 using Sim.Core.Rules;
@@ -26,6 +27,7 @@ internal sealed class World : IDisposable
     public readonly VehicleTypeDesc[] Types;
     public readonly DemandDesc Demand;
     public readonly TransitDesc TransitCfg;
+    public readonly LodDesc LodCfg;            // с применёнными дефолтами (WorldBuilder.WithDefaults); Mode = Off - LOD нет
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -43,6 +45,7 @@ internal sealed class World : IDisposable
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
@@ -89,6 +92,9 @@ internal sealed class World : IDisposable
     public long SnapshotTick;
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
 
+    /// <summary>true = <c>Lod.Mode != Off</c>: ячейки построены, массивы уровней машин выделены.</summary>
+    public bool LodEnabled => Lod != null;
+
     /// <summary>Запускает <paramref name="threads"/> - 1 воркеров (≤ 1: ничего не создаёт). Вызывает <c>Simulation</c> сразу после построения мира.</summary>
     public void StartWorkers(int threads)
     {
@@ -124,12 +130,13 @@ internal sealed class World : IDisposable
         Types = types;
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
+        LodCfg = WorldBuilder.WithDefaults(desc.Lod);
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled
             ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples)
             : new NetworkBuilder(Net);
-        Vehicles = new VehicleStore(c.MaxVehicles);
+        Vehicles = new VehicleStore(c.MaxVehicles, LodCfg.Mode != LodMode.Off);
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
         Routes = new RouteStore(c.MaxRoutes, c.MaxPlanSteps, routing.WindowSteps, routing.Levels);
