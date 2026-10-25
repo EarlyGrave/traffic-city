@@ -322,11 +322,12 @@ public class ScenarioLoaderTests
     public void City_SignalModeAndCoordination_DefaultsAndErrors()
     {
         CityGenDesc c = Load(Minimal("\"city\": { \"scale\": 1.0 }")).City;
-        Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
+        Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);   // 2.5 S2: дефолт спеки
         Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);
         c = Load(Minimal("\"city\": { \"signal_mode\": \"fixed\", \"signal_coordination\": \"legacy\" }")).City;
         Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
-        Assert.Contains("$.city.signal_mode", Fails(Minimal("\"city\": { \"signal_mode\": \"adaptive\" }")).Message, StringComparison.Ordinal);
+        c = Load(Minimal("\"city\": { \"signal_mode\": \"adaptive\" }")).City;
+        Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);
         Assert.Contains("$.city.signal_coordination", Fails(Minimal("\"city\": { \"signal_coordination\": \"alternate\" }")).Message, StringComparison.Ordinal);
         Assert.Contains("expected", Fails(Minimal("\"city\": { \"signal_mode\": \"x\" }")).Message, StringComparison.Ordinal);
     }

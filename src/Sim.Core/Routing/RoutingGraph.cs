@@ -51,6 +51,8 @@ internal sealed class RouteGraph
     private readonly int[] _scratchTo = new int[ScratchArcs];
     private readonly float[] _scratchCost = new float[ScratchArcs];
     private readonly byte[] _scratchMan = new byte[ScratchArcs];
+    private Rules.Intersections.SignalStore? _signals;
+    private float[]? _connDelay;
 
     public readonly int[] ArcFirst;      // [DirSegCapacity + 1]
     public readonly int[] ArcTo;         // [ArcCapacity] целевой DirSeg
@@ -97,6 +99,54 @@ internal sealed class RouteGraph
     public bool Truncated { get; private set; }
 
     public static int DirSegOfLane(NetworkStore net, int lane) => (net.Lanes[lane].Segment * 2) + net.Lanes[lane].Direction;
+
+    /// <summary>
+    /// Подключает светофоры (2.5, ADR-0018, intersections.md 6.9): штраф узла <c>Signal</c> берётся из плана слота (Webster), а для режима
+    /// <c>Adaptive</c> заменяется измеренной задержкой connector'а <paramref name="connDelay"/> (индекс = <c>LaneData.ConflictGroup</c>).
+    /// </summary>
+    public void AttachSignals(Rules.Intersections.SignalStore signals, float[] connDelay)
+    {
+        _signals = signals;
+        _connDelay = connDelay;
+    }
+
+    /// <summary>
+    /// Пересчитывает штрафы дуг, входящих в светофорные узлы (план мог измениться, у Adaptive появилась измеренная задержка); топология дуг
+    /// не меняется. Вызывается раз в пересчёт весов перед <see cref="RecalcCosts"/>. Без аллокаций.
+    /// </summary>
+    public void RefreshSignalCosts()
+    {
+        if (_signals == null)
+        {
+            return;
+        }
+
+        NetworkStore n = _net;
+        for (int u = 0; u < DirSegCount; u++)
+        {
+            int node = EndNode[u];
+            if (n.Nodes[node].Control != NodeControl.Signal || n.Nodes[node].Signal < 0)
+            {
+                continue;
+            }
+
+            int first = ArcFirst[u];
+            int cnt = CollectArcs(u);
+            if (cnt != ArcFirst[u + 1] - first)
+            {
+                continue;
+            }
+
+            for (int k = 0; k < cnt; k++)
+            {
+                if (_scratchTo[k] == ArcTo[first + k])
+                {
+                    ArcCost[first + k] = _scratchCost[k];
+                    ArcManeuver[first + k] = _scratchMan[k];
+                }
+            }
+        }
+    }
 
     /// <summary>Индекс дуги <c>u -> w</c> или -1 (двоичный поиск по упорядоченным дугам).</summary>
     public int FindArc(int u, int w)
@@ -208,7 +258,8 @@ internal sealed class RouteGraph
         int laneCount = dir == 0 ? sd.LanesAB : sd.LanesBA;
         int count = 0;
         int node = EndNode[u];
-        float nodePenalty = NodePenalty(n, node, in sd);
+        float nodePenalty = NodePenalty(n, node, u >> 1, in sd);
+        int adaptiveSlot = AdaptiveSlot(n, node);
         for (int li = 0; li < laneCount; li++)
         {
             int lane = firstLane + li;
@@ -226,7 +277,13 @@ internal sealed class RouteGraph
                 int w = (outLane.Segment * 2) + outLane.Direction;
                 Maneuver man = Classify(n, in ld, in outLane, (u >> 1) == outLane.Segment);
                 float outLimit = n.Segments[outLane.Segment].SpeedLimit;
-                float cost = (cd.Length / MathF.Min(cd.SpeedLimit, outLimit)) + RoutingCosts.OfManeuver(man) + nodePenalty;
+                float pen = nodePenalty;
+                if (adaptiveSlot >= 0 && _connDelay != null && (uint)cd.ConflictGroup < (uint)_connDelay.Length && _connDelay[cd.ConflictGroup] > 0f)
+                {
+                    pen = MathF.Min(_connDelay[cd.ConflictGroup], MaxSignalPenalty);   // измеренная задержка заменяет статику (6.9)
+                }
+
+                float cost = (cd.Length / MathF.Min(cd.SpeedLimit, outLimit)) + RoutingCosts.OfManeuver(man) + pen;
                 count = Insert(count, w, cost, (byte)man);
             }
         }
@@ -305,13 +362,13 @@ internal sealed class RouteGraph
 
     // Штраф узла для въезда по сегменту: светофор - средняя задержка; Yield/Stop - только с минорного рукава
     // (въезд по Street в узел, где есть Arterial); RightHandRule - при >= 3 рукавах.
-    private static float NodePenalty(NetworkStore n, int node, in SegmentData inSeg)
+    private float NodePenalty(NetworkStore n, int node, int inSegIndex, in SegmentData inSeg)
     {
         ref readonly NodeData nd = ref n.Nodes[node];
         switch (nd.Control)
         {
             case NodeControl.Signal:
-                return RoutingCosts.SignalDelay(RoutingCosts.DefaultCycle, RoutingCosts.DefaultGreen);
+                return SignalPenalty(n, in nd, inSegIndex);
             case NodeControl.Yield:
             case NodeControl.Stop:
                 if (inSeg.Kind == RoadKind.Street && HasArterialArm(n, in nd))
@@ -325,6 +382,51 @@ internal sealed class RouteGraph
             default:
                 return 0f;
         }
+    }
+
+    /// <summary>Верхняя граница штрафа светофора, с (routing.md 1.1: клэмп 0…60 с).</summary>
+    public const float MaxSignalPenalty = 60f;
+
+    /// <summary>Слот светофора узла в режиме <c>Adaptive</c> или -1 (только такие узлы берут измеренную задержку).</summary>
+    private int AdaptiveSlot(NetworkStore n, int node)
+    {
+        if (_signals == null || n.Nodes[node].Control != NodeControl.Signal)
+        {
+            return -1;
+        }
+
+        int slot = n.Nodes[node].Signal;
+        return (uint)slot < (uint)_signals.Count && _signals.Mode[slot] == SignalMode.Adaptive ? slot : -1;
+    }
+
+    // Статическая оценка задержки на светофоре: Webster (C - g)^2 / 2C по плану слота (Fixed: цикл и зелёный оси входного рукава; Adaptive:
+    // g = (MinGreen + MaxGreen)/2, C = Σ осей); слота нет (явная сеть без плана) - план по умолчанию 56/24 с, как на этапе 1.
+    private float SignalPenalty(NetworkStore n, in NodeData nd, int inSegIndex)
+    {
+        if (_signals != null && (uint)nd.Signal < (uint)_signals.Count)
+        {
+            int slot = nd.Signal;
+            int axis = -1;
+            for (int a = 0; a < nd.ArmCount && a < Rules.Intersections.SignalStore.ArmCap; a++)
+            {
+                if (n.NodeArms[nd.FirstArm + a] == inSegIndex)
+                {
+                    axis = _signals.ArmAxis[(slot * Rules.Intersections.SignalStore.ArmCap) + a];
+                    break;
+                }
+            }
+
+            if (axis >= 0)
+            {
+                float d = _signals.StaticDelaySeconds(slot, axis);
+                if (d >= 0f)
+                {
+                    return MathF.Min(d, MaxSignalPenalty);
+                }
+            }
+        }
+
+        return RoutingCosts.SignalDelay(RoutingCosts.DefaultCycle, RoutingCosts.DefaultGreen);
     }
 
     private static bool HasArterialArm(NetworkStore n, in NodeData nd)

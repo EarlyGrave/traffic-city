@@ -118,7 +118,7 @@ internal static class GatePhase
     }
 
     /// <summary>
-    /// Снятие допуска на красном (intersections.md §5.4 п. 6). На входных Normal-полосах узлов <c>Signal</c> в режиме <c>Fixed</c> допущенные машины
+    /// Снятие допуска на красном (intersections.md §5.4 п. 6). На входных Normal-полосах узлов <c>Signal</c> в цветном режиме (<c>Fixed</c>/<c>Adaptive</c>) допущенные машины
     /// обходятся от головы (допущенные - префикс списка полосы): первая, у которой сигнал её connector'а <c>Red</c> и которая ещё комфортно
     /// останавливается (<c>Length - S - StopLineOffset &gt; v^2/(2*ComfortDecel) + 1 м</c>), теряет допуск вместе со всеми допущенными за ней.
     /// Машины на connector'ах и не успевающие остановиться не трогаются. Обход - по маске занятых полос со светофором (по возрастанию индекса).
@@ -146,7 +146,7 @@ internal static class GatePhase
                 active &= active - 1UL;
                 int lane = (wi << 6) + bit;
                 int slot = net.Nodes[net.LaneGateNode[lane]].Signal;
-                if (slot < 0 || slot >= w.Signals.Count || w.Signals.Mode[slot] != SignalMode.Fixed)
+                if (slot < 0 || slot >= w.Signals.Count || !IsColored(w.Signals.Mode[slot]))
                 {
                     continue;
                 }
@@ -182,6 +182,9 @@ internal static class GatePhase
             }
         }
     }
+
+    /// <summary>«Цветной» режим светофора (<c>Fixed</c> или <c>Adaptive</c>, 2.5): есть красный/зелёный, действуют п. 1, 4b-bis и снятие допуска на красном; у <c>FlashYellow</c>/<c>Off</c> красного нет.</summary>
+    private static bool IsColored(SignalMode m) => m == SignalMode.Fixed || m == SignalMode.Adaptive;
 
     /// <summary>
     /// Статические маски полос (какие полосы - connector'ы, с воротами, со светофором) пересобираются, когда изменилась сеть
@@ -869,7 +872,7 @@ internal static class GatePhase
 
         // 1. Сигнал.
         int slot = nd.Signal;
-        bool fixedSignal = nd.Control == NodeControl.Signal && slot >= 0 && slot < w.Signals.Count && w.Signals.Mode[slot] == SignalMode.Fixed;
+        bool fixedSignal = nd.Control == NodeControl.Signal && slot >= 0 && slot < w.Signals.Count && IsColored(w.Signals.Mode[slot]);
         if (fixedSignal)
         {
             byte sig = w.LaneSignals[conn];
@@ -1125,7 +1128,8 @@ internal static class GatePhase
                 w.Counters.SignalLeftWaitMax = wait;
             }
 
-            if ((uint)group < (uint)w.Gate.ConnGrantCount.Length)
+            int slot = w.Net.Nodes[w.Connectors.Node[group]].Signal;
+            if ((uint)group < (uint)w.Gate.ConnGrantCount.Length && slot >= 0 && slot < w.Signals.Count && w.Signals.Mode[slot] == SignalMode.Adaptive)
             {
                 w.Gate.ConnWaitSum[group] += wait;
                 w.Gate.ConnGrantCount[group]++;

@@ -172,10 +172,11 @@ internal sealed class World : IDisposable
         int maxConnectors = c.MaxConnectors > 0 ? c.MaxConnectors : checked(c.MaxNodes * 16);
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
         Connectors = new ConnectorStore(maxConnectors, maxConflicts);
-        Signals = new SignalStore(c.MaxSignalizedNodes);
+        Signals = new SignalStore(c.MaxSignalizedNodes, rules.SignalArrowGapTicks);
         Masks = new TickMasks(c.MaxVehicles);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
         SignalWait = new SignalMetrics();
+        Graph.AttachSignals(Signals, Gate.ConnDelay);
 
         RngCityGen = Pcg32.ForStream(Seed, RngStream.CityGen);
         RngZones = Pcg32.ForStream(Seed, RngStream.Zones);

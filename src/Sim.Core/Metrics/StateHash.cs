@@ -103,6 +103,47 @@ internal static class StateHash
             h.Add((int)w.SignalStates[s].TicksToChange);
         }
 
+        // 5a. Состояние автомата с подфазами (2.5): только Adaptive и Fixed со стрелкой - у прежнего Fixed хэш не меняется.
+        SignalStore sg = w.Signals;
+        for (int s = 0; s < w.SignalCount; s++)
+        {
+            if (sg.Machine[s] == 0)
+            {
+                continue;
+            }
+
+            h.Add(s);
+            h.Add((int)sg.Sub[s]);
+            h.Add(sg.GreenMask[s]);
+            h.Add(sg.NextMask[s]);
+            h.Add((int)sg.NextAxis[s]);
+            h.Add((int)sg.NextSub[s]);
+            h.Add((int)sg.NextArrowArms[s]);
+            h.Add((int)sg.ArrowArms[s]);
+            h.Add((int)sg.TicksLeft[s]);
+            h.Add((int)sg.GreenElapsed[s]);
+            h.Add((int)sg.GapLeft[s]);
+            for (int a = 0; a < sg.ArmCountOf[s]; a++)
+            {
+                h.Add((int)sg.ArmLeftYield[(s * SignalStore.ArmCap) + a]);
+                h.Add(sg.ArmLeftHead[(s * SignalStore.ArmCap) + a]);
+            }
+        }
+
+        // 5b. Измеренная задержка connector'ов Adaptive-светофоров (intersections.md 6.9); у Fixed-сценариев все нули - хэш не меняется.
+        GateScratch gs = w.Gate;
+        int connCount = System.Math.Min(w.Connectors.Count, gs.ConnDelay.Length);
+        for (int c = 0; c < connCount; c++)
+        {
+            if (gs.ConnDelay[c] != 0f || gs.ConnGrantCount[c] != 0)
+            {
+                h.Add(c);
+                h.Add(gs.ConnDelay[c]);
+                h.Add(gs.ConnWaitSum[c]);
+                h.Add(gs.ConnGrantCount[c]);
+            }
+        }
+
         // 6. Transit.
         for (int s = 0; s < w.Net.BusStopCount; s++)
         {

@@ -17,8 +17,9 @@ internal sealed class GateScratch
     public readonly byte[] DenyReason;    // [MaxVehicles] GateDeny
     public readonly ulong[] NodeBusy;     // [MaxNodes] биты LocalBit занятых connector'ов узла (ADR-0016 D3); строит фаза 4, читает фаза 5
     public readonly int[] BusyTouched;    // [MaxNodes] узлы с ненулевой NodeBusy (для обнуления в следующем тике)
-    public readonly long[] ConnWaitSum;   // [MaxConnectors] Σ WaitTicks при допуске на светофорном узле (2.5 S1: только копится; §6.9). Вне хэша до S2
-    public readonly int[] ConnGrantCount; // [MaxConnectors] число таких допусков
+    public readonly long[] ConnWaitSum;   // [MaxConnectors] Σ WaitTicks при допуске на узле Signal в режиме Adaptive за окно пересчёта весов (§6.9); в хэше
+    public readonly int[] ConnGrantCount; // [MaxConnectors] число таких допусков за окно; в хэше
+    public readonly float[] ConnDelay;    // [MaxConnectors] измеренная задержка connector'а, с (EWMA окон, §6.9; 0 - нет данных); в хэше
     public int TouchedCount;
     public int OutTouchedCount;
     public int BusyTouchedCount;
@@ -54,6 +55,7 @@ internal sealed class GateScratch
         OutTouched = new int[Math.Max(0, maxLanes)];
         ConnWaitSum = new long[Math.Max(0, maxConnectors)];
         ConnGrantCount = new int[Math.Max(0, maxConnectors)];
+        ConnDelay = new float[Math.Max(0, maxConnectors)];
         Array.Fill(NodeCandHead, -1);
         int words = (Math.Max(0, maxLanes) + 63) >> 6;
         GatedMask = new ulong[words];

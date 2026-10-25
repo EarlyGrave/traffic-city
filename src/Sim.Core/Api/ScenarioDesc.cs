@@ -94,6 +94,14 @@ public struct RulesDesc
     public int DefaultYellowTicks, DefaultAllRedTicks; // [шаг 3]
     public float YieldGapTime;             // с [шаг 3]
     public int MaxYieldWaitTicks;          // инверсия приоритета у ворот после такого ожидания, 20 с -> 400
+    // 2.5 (ADR-0018, intersections.md §6.5): дефолты Adaptive, тики; 0 -> значение по умолчанию (WorldBuilder.WithDefaults)
+    public int SignalMinGreenTicks;        // 7 с -> 140
+    public int SignalMaxGreenTicks;        // 24 с -> 480
+    public int SignalGapTicks;             // 2.5 с -> 50
+    public int SignalArrowTriggerTicks;    // 4 с -> 80
+    public int SignalArrowMinTicks;        // 3 с -> 60
+    public int SignalArrowMaxTicks;        // 6 с -> 120
+    public int SignalArrowGapTicks;        // 2 с -> 40
 }
 
 // ---- city (scenario-format.md §2.1 "city") ----
@@ -112,7 +120,7 @@ public enum MinorControl : int
     RightHand = 2,
 }
 
-/// <summary>Режим светофоров, который генератор ставит узлам (2.5, ADR-0018). До S2 ядро умеет только <see cref="Fixed"/>.</summary>
+/// <summary>Режим светофоров, который генератор ставит узлам (2.5, ADR-0018); дефолт сценария - <see cref="Adaptive"/>.</summary>
 public enum CitySignalMode : int
 {
     Fixed = 0,
@@ -143,7 +151,7 @@ public struct CityGenDesc
     public int ConnectorSamples;
     public CitySignals Signals;
     public MinorControl MinorControl;
-    public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed (пока единственное поддержанное)
+    public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
     public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (пока единственное поддержанное)
 }
 

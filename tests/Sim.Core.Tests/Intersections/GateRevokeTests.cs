@@ -18,6 +18,7 @@ public class GateRevokeTests
         ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(1), Arm.S(1), Arm.W(1), Arm.N(1));
         Simulation sim = Simulation.Create(in d);
         Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));
+        SignalFixture.EnqueueFixedDefault(sim, 0, 2);   // 2.5: план по умолчанию - Adaptive; эти тесты проверяют ворота на прежнем Fixed 24/24/3/1
         sim.Step(1);
         Assert.Equal(NodeControl.Signal, sim.World.Net.Nodes[0].Control);
         return sim;

@@ -168,8 +168,8 @@ internal static class CommandDispatcher
     }
 
     /// <summary>
-    /// intersections.md 6.3: узел должен быть <c>Signal</c>; для <c>Fixed</c> PhaseCount = числу осей узла, Green_k >= 1,
-    /// цикл <= 65535; иначе <c>InvalidArgument</c> (отдельных причин NotSignalized/InvalidPhaseCount в RejectReason нет).
+    /// intersections.md 6.3, 6.5: узел должен быть <c>Signal</c>; для <c>Fixed</c>/<c>Adaptive</c> PhaseCount = числу осей узла, Green_k >= 1,
+    /// цикл <= 65535 (Adaptive: ещё MinGreen/Gap/стрелка и инвариант красного); иначе <c>InvalidArgument</c> (отдельных причин NotSignalized/InvalidPhaseCount в RejectReason нет).
     /// Применяется в фазе команд тика, начальное состояние пересчитывается по OffsetTicks.
     /// </summary>
     private static void SetSignalPlan(World w, in Command cmd)
@@ -182,14 +182,22 @@ internal static class CommandDispatcher
         }
 
         ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
-        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count ||
-            !SignalStore.IsValid(in p, w.Signals.PhaseCount[nd.Signal]))
+        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count)
         {
             Rejected(w, in cmd, RejectReason.InvalidArgument);
             return;
         }
 
-        w.Signals.ApplyPlan(nd.Signal, in p);
+        // 2.5: нулевые параметры Adaptive/стрелки -> дефолты RulesDesc; затем проверка (для Adaptive - с инвариантом красного, intersections.md 5.6).
+        int axes = w.Signals.PhaseCount[nd.Signal];
+        SetSignalPlanCmd resolved = SignalStore.Resolve(in p, axes, in w.Rules);
+        if (!SignalStore.IsValid(in resolved, axes, enforceRed: true))
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        w.Signals.ApplyPlan(nd.Signal, in resolved);
         w.Vehicles.MarkAllRouteDirty();
         Applied(w, in cmd);
     }

@@ -19,6 +19,8 @@ namespace Sim.Headless.Tests;
 /// 2.6r R1 (снятие допуска на красном, intersections.md 5.4 п. 6): первые отзывы допусков случаются на s1k между тиками 3000 и 4000,
 /// поэтому хэши до тика 3000 и s10k до тика 600 не изменились, а тик 4000 s1k - новый (был 546ef7677165a0b6), полная загрузка s10k:
 /// tick=6100 930f16b7951f5fd7, tick=6300 abdc420cf70ba05b (при 1, 2 и 3 потоках).
+/// 2.5 S2 (ADR-0018): дефолт <c>city.signal_mode</c> стал <c>adaptive</c>, поэтому эти эталоны закреплены на <c>fixed</c> + <c>legacy</c>
+/// (<c>--signal-mode fixed</c> у команды <c>hash</c>) и не изменились; хэши дефолта (adaptive) - в <c>AdaptiveGoldenHashTests</c>.
 /// </summary>
 public sealed class HotPathGoldenHashTests : IDisposable
 {
@@ -33,7 +35,10 @@ public sealed class HotPathGoldenHashTests : IDisposable
     private static Simulation Create(string name, int threads)
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
-        return Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        ScenarioDesc d = sc.Desc;
+        d.City.SignalMode = CitySignalMode.Fixed;                    // 2.5 S2: дефолт сценариев - adaptive; эталон снят на fixed + legacy (4b-bis)
+        d.City.SignalCoordination = CitySignalCoordination.Legacy;
+        return Simulation.Create(d, new SimRuntimeOptions { WorkerThreads = threads });
     }
 
     // ADR-0017: хэш не зависит от числа потоков - те же константы при 1, 2 и 3.
@@ -76,7 +81,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     {
         var o = new StringWriter();
         var e = new StringWriter();
-        int code = HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "2000", "--every", "1000" }, o, e);
+        int code = HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "2000", "--every", "1000", "--signal-mode", "fixed" }, o, e);
         Assert.Equal(0, code);
         string[] lines = o.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(2, lines.Length);
@@ -91,7 +96,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
         for (int t = 1; t <= 3; t++)
         {
             var o = new StringWriter();
-            Assert.Equal(0, HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "1000", "--threads", t.ToString(CultureInfo.InvariantCulture) }, o, new StringWriter()));
+            Assert.Equal(0, HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "1000", "--signal-mode", "fixed", "--threads", t.ToString(CultureInfo.InvariantCulture) }, o, new StringWriter()));
             lines[t - 1] = o.ToString();
         }
 

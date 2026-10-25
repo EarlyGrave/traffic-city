@@ -18,6 +18,7 @@ public class GateSignalTests
         ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(lanes), Arm.S(lanes), Arm.W(lanes), Arm.N(lanes));
         Simulation sim = Simulation.Create(in d);
         Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));
+        SignalFixture.EnqueueFixedDefault(sim, 0, 2);   // 2.5: план по умолчанию - Adaptive; эти тесты проверяют ворота на прежнем Fixed 24/24/3/1
         sim.Step(1);
         Assert.Equal(NodeControl.Signal, sim.World.Net.Nodes[0].Control);
         Assert.Equal(1, sim.SignalStates.Length);

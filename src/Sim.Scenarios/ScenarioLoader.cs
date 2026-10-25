@@ -292,7 +292,7 @@ public static class ScenarioLoader
             ConnectorSamples = 8,
             Signals = CitySignals.ArterialXArterial,
             MinorControl = MinorControl.Yield,
-            SignalMode = CitySignalMode.Fixed,                    // 2.5 S1: дефолт спеки ("adaptive") включится в S2
+            SignalMode = CitySignalMode.Adaptive,                 // 2.5 S2: дефолт спеки (ADR-0018); "fixed" - явно в сценарии
             SignalCoordination = CitySignalCoordination.Legacy,   // 2.5 S1: дефолт спеки ("alternate") включится в S3
         };
         if (r == null)
@@ -351,7 +351,7 @@ public static class ScenarioLoader
                 $"{r.ChildPath("minor_control")}: expected \"yield\", \"stop\" or \"right_hand\""),
         };
 
-        c.SignalMode = ParseSignalMode(r.Str("signal_mode", "fixed"), r.ChildPath("signal_mode"));
+        c.SignalMode = ParseSignalMode(r.Str("signal_mode", "adaptive"), r.ChildPath("signal_mode"));
         c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
 
         r.Finish();
@@ -359,13 +359,13 @@ public static class ScenarioLoader
     }
 
     /// <summary>
-    /// <c>city.signal_mode</c> (scenario-format.md §2.1, 2.5): известные значения разбираются, но ядро пока умеет только "fixed"
-    /// (<c>adaptive</c> - шаг S2, ADR-0018); остальное - понятная ошибка. Используется и опцией bench <c>--signal-mode</c>.
+    /// <c>city.signal_mode</c> (scenario-format.md §2.1, 2.5, ADR-0018): "adaptive" (дефолт) или "fixed"; остальное - понятная ошибка.
+    /// Используется и опцией bench/hash <c>--signal-mode</c>.
     /// </summary>
     public static CitySignalMode ParseSignalMode(string value, string where) => value switch
     {
         "fixed" => CitySignalMode.Fixed,
-        "adaptive" => throw new ScenarioException($"{where}: \"adaptive\" is not implemented yet (ADR-0018, step 2.5 S2); only \"fixed\" is supported"),
+        "adaptive" => CitySignalMode.Adaptive,
         _ => throw new ScenarioException($"{where}: expected \"adaptive\" or \"fixed\""),
     };
 
@@ -659,6 +659,13 @@ public static class ScenarioLoader
             DefaultAllRedTicks = Ticks(1),
             YieldGapTime = 3.0f,
             MaxYieldWaitTicks = Ticks(20),
+            SignalMinGreenTicks = Ticks(7),
+            SignalMaxGreenTicks = Ticks(24),
+            SignalGapTicks = Ticks(2.5),
+            SignalArrowTriggerTicks = Ticks(4),
+            SignalArrowMinTicks = Ticks(3),
+            SignalArrowMaxTicks = Ticks(6),
+            SignalArrowGapTicks = Ticks(2),
         };
         if (r == null)
         {
@@ -676,6 +683,13 @@ public static class ScenarioLoader
         d.DefaultAllRedTicks = Ticks(r.Num("signal_all_red_s", 1, min: 0));
         d.YieldGapTime = (float)r.Num("yield_gap_s", 3.0, min: 0);
         d.MaxYieldWaitTicks = Ticks(r.Num("max_yield_wait_s", 20, min: 0));
+        d.SignalMinGreenTicks = Ticks(r.Num("signal_min_green_s", 7, min: 0.05));
+        d.SignalMaxGreenTicks = Ticks(r.Num("signal_max_green_s", 24, min: 0.05));
+        d.SignalGapTicks = Ticks(r.Num("signal_gap_s", 2.5, min: 0.05));
+        d.SignalArrowTriggerTicks = Ticks(r.Num("signal_arrow_trigger_s", 4, min: 0.05));
+        d.SignalArrowMinTicks = Ticks(r.Num("signal_arrow_min_s", 3, min: 0.05));
+        d.SignalArrowMaxTicks = Ticks(r.Num("signal_arrow_max_s", 6, min: 0.05));
+        d.SignalArrowGapTicks = Ticks(r.Num("signal_arrow_gap_s", 2, min: 0.05));
         r.Finish();
         return d;
     }

@@ -18,10 +18,10 @@ public static class HashCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless hash --scenario <name|path> --ticks N [--every K] [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless hash --scenario <name|path> --ticks N [--every K] [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--signal-mode adaptive|fixed] [--signal-coordination legacy] [--seed S] [--scenarios-dir <dir>]\n" +
         "  prints 'tick=<T> hash=<16 hex digits> active=<N>' every K ticks (default: only after the last one); --ticks counts after the optional warmup\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--warmup-max-ticks", "--scenarios-dir", "--threads" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--warmup-max-ticks", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed" };
     private static readonly string[] _flags = { "--warmup-until-full" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -48,7 +48,7 @@ public static class HashCommand
         LoadedScenario sc;
         try
         {
-            sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir")));
+            sc = BenchCommand.ApplyOverrides(ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"))), a);
         }
         catch (ScenarioException e)
         {

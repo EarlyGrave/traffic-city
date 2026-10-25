@@ -23,6 +23,14 @@ public enum SignalMode : int
     Off = 0,
     Fixed = 1,
     FlashYellow = 2,
+    Adaptive = 3,   // 2.5, ADR-0018: актуированный режим со стрелкой по спросу (intersections.md §6.5)
+}
+
+/// <summary>Биты <see cref="SetSignalPlanCmd.Flags"/> (2.5).</summary>
+public static class SignalPlanFlags
+{
+    /// <summary>Adaptive: стрелка по спросу; Fixed: стрелка каждый цикл (длительность <c>ArrowMaxTicks</c>).</summary>
+    public const byte Arrows = 1;
 }
 
 public enum BusStopKind : int
@@ -191,6 +199,11 @@ public struct SetSignalPlanCmd
     public byte Reserved;
     public ushort Green0, Green1, Green2, Green3, Green4, Green5, Green6, Green7; // зелёный по фазам, тики
     public ushort YellowTicks, AllRedTicks;
+    // 2.5 (ADR-0018, intersections.md §6.5): 0 -> дефолт RulesDesc. Размер 32 -> 46 Б (payload <= 56 Б).
+    public ushort MinGreenTicks, GapTicks, ArrowTriggerTicks, ArrowMinTicks, ArrowMaxTicks;
+    public ushort CycleTicks;         // Adaptive: > 0 - координация (S3; пока команда с CycleTicks > 0 отклоняется)
+    public byte Flags;                // SignalPlanFlags: бит0 Arrows
+    public byte Reserved2;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

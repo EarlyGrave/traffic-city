@@ -14,6 +14,7 @@ internal struct SignalPlanSeed
     public ushort Green0, Green1; // тики
     public ushort YellowTicks, AllRedTicks;
     public ushort OffsetTicks;    // сдвиг цикла (зелёная волна)
+    public bool Adaptive;         // 2.5 (ADR-0018): city.signal_mode = adaptive; Green0/Green1 тогда - MaxGreen осей
 }
 
 internal struct CityGenResult
@@ -492,6 +493,7 @@ internal static class CityGenerator
                     YellowTicks = (ushort)yellow,
                     AllRedTicks = (ushort)allRed,
                     OffsetTicks = (ushort)offset,
+                    Adaptive = city.SignalMode == CitySignalMode.Adaptive,
                 };
             }
 

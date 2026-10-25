@@ -16,7 +16,7 @@ public class LayoutTests
         { typeof(Command), 64 },
         { typeof(BuildRoadCmd), 24 },
         { typeof(SpawnTripCmd), 24 },
-        { typeof(SetSignalPlanCmd), 32 },
+        { typeof(SetSignalPlanCmd), 46 },   // 2.5: 32 -> 46 (поля Adaptive, ADR-0018)
         { typeof(CreateBusRouteCmd), 12 },
         { typeof(AppendBusStopCmd), 16 },
         { typeof(SpawnBusCmd), 4 },

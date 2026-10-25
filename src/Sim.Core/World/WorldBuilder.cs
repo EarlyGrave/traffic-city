@@ -39,8 +39,8 @@ internal static class WorldBuilder
             return st;
         }
 
-        // 2.5 S1: режимы адаптивных светофоров и координации появятся в S2/S3 (ADR-0018); сейчас - только Fixed + Legacy.
-        if (desc.City.Enabled && (desc.City.SignalMode != CitySignalMode.Fixed || desc.City.SignalCoordination != CitySignalCoordination.Legacy))
+        // 2.5 S2: Fixed и Adaptive; координация (Alternate/None) появится в S3 (ADR-0018) - пока только Legacy.
+        if (desc.City.Enabled && desc.City.SignalCoordination != CitySignalCoordination.Legacy)
         {
             return CreateStatus.NotSupported;
         }
@@ -600,6 +600,41 @@ internal static class WorldBuilder
         if (r.MaxYieldWaitTicks <= 0)
         {
             r.MaxYieldWaitTicks = Rules.Intersections.GateRules.DefaultMaxYieldWaitTicks;
+        }
+
+        if (r.SignalMinGreenTicks <= 0)
+        {
+            r.SignalMinGreenTicks = Rules.Intersections.SignalStore.DefaultMinGreenTicks;
+        }
+
+        if (r.SignalMaxGreenTicks <= 0)
+        {
+            r.SignalMaxGreenTicks = Rules.Intersections.SignalStore.DefaultMaxGreenTicks;
+        }
+
+        if (r.SignalGapTicks <= 0)
+        {
+            r.SignalGapTicks = Rules.Intersections.SignalStore.DefaultGapTicks;
+        }
+
+        if (r.SignalArrowTriggerTicks <= 0)
+        {
+            r.SignalArrowTriggerTicks = Rules.Intersections.SignalStore.DefaultArrowTriggerTicks;
+        }
+
+        if (r.SignalArrowMinTicks <= 0)
+        {
+            r.SignalArrowMinTicks = Rules.Intersections.SignalStore.DefaultArrowMinTicks;
+        }
+
+        if (r.SignalArrowMaxTicks <= 0)
+        {
+            r.SignalArrowMaxTicks = Rules.Intersections.SignalStore.DefaultArrowMaxTicks;
+        }
+
+        if (r.SignalArrowGapTicks <= 0)
+        {
+            r.SignalArrowGapTicks = Rules.Intersections.SignalStore.DefaultArrowGapTicks;
         }
 
         return r;
