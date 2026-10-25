@@ -173,6 +173,7 @@ internal static class GatePhase
                             v.GrantConnector[x] = -1;
                             w.Counters.GrantsRevoked++;
                             occ.MarkLinked(x);   // метка StoppedBeforeSignal для остановившихся в хвосте (активный проход их не обходит)
+                            w.Queue?.OnRevoked(x);   // голова очереди: полоса больше не обходится каждый тик - метки у линии ставит синтез
                         }
                     }
 

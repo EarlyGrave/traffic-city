@@ -177,11 +177,7 @@ internal sealed class QueueMeso
             {
                 int lane = (wi << 6) + BitOperations.TrailingZeroCount(m);
                 m &= m - 1UL;
-                int h = FindHead(lane);
-                if (h != -1)
-                {
-                    Refresh(h, lane);
-                }
+                RefreshLane(lane);
             }
         }
 
@@ -244,7 +240,7 @@ internal sealed class QueueMeso
         VehicleStore v = _v;
         int a = AheadPrimary(i, lane);
         bool gated = _net.LaneGateNode[lane] >= 0;
-        if (a != -1 && (IsQ(a) || (gated && !GateRules.IsGranted(v, a))))
+        if (a != -1 && (IsQueued(a) || (gated && !GateRules.IsGranted(v, a))))
         {
             Park(i);
             return;
@@ -285,7 +281,37 @@ internal sealed class QueueMeso
         }
     }
 
-    /// <summary>Голова в такт своего цвета: синтез позиции от прошлого синтеза (свободно к стоп-линии, за допущенным лидером), монотонно.</summary>
+    /// <summary>Головы полосы (такт её цвета) от головы списка к хвосту: кинематические пропускаются, обход до первой машины очереди.</summary>
+    private void RefreshLane(int lane)
+    {
+        VehicleStore v = _v;
+        for (int x = _occ.LaneHead[lane]; x != -1;)
+        {
+            if (v.Lane[x] != lane)
+            {
+                x = v.GhostBehind[x];
+                continue;
+            }
+
+            int next = v.Behind[x];
+            if (IsQ(x))
+            {
+                if (!IsHead(x))
+                {
+                    return;
+                }
+
+                Refresh(x, lane);
+            }
+
+            x = next;
+        }
+    }
+
+    /// <summary>
+    /// Голова в такт своего цвета (ленивая кинематика M2, sim-lod.md §2.2): путь за прошедшие тики со скоростью прошлого решения, затем новое решение.
+    /// Недопущенная останавливается у стоп-линии; допущенная едет к концу полосы и за такт до него становится кинематической (въезд на connector - фазы 5-7).
+    /// </summary>
     private void Refresh(int i, int lane)
     {
         VehicleStore v = _v;
@@ -300,10 +326,12 @@ internal sealed class QueueMeso
         float vff = Vff(i);
         float s = v.S[i];
         float minPhys = _w.Rules.MinPhysicalGap;
+        bool granted = GateRules.IsGranted(v, i);
+        float len = _net.LaneLength[lane];
 
-        // Ленивая кинематика M2 (sim-lod.md §2.2) раз в такт: сначала путь за прошедшие тики со скоростью прошлого решения (не дальше стоп-линии и
-        // зазора до лидера), затем новое решение v' = min(v_ff, (g - s0)/T', v + a·τ) по зазору до лидера / стоп-линии - те же правила, что у M2.
-        float line = _net.LaneLength[lane] - GateRules.StopLineOffset;
+        // Сначала путь за прошедшие тики (не дальше стоп-линии без допуска и зазора до лидера), затем решение v' = min(v_ff, (g - s0)/T', v + a·τ) -
+        // те же правила, что у M2. Допущенной стоп-линия не препятствие.
+        float line = granted ? float.MaxValue : len - GateRules.StopLineOffset;
         int a = AheadPrimary(i, lane);
         float leadRear = a != -1 ? v.S[a] - v.Length[a] : float.MaxValue;
         float move = v.Speed[i] * dtTicks * _dt;
@@ -311,6 +339,11 @@ internal sealed class QueueMeso
         if (leadRear - minPhys - s < lim)
         {
             lim = leadRear - minPhys - s;
+        }
+
+        if (granted && s + v.Speed[i] * dtTicks * _dt >= len)
+        {
+            lim = Math.Min(lim, len - 0.01f - s);   // к концу полосы - не дальше, дальше кинематика
         }
 
         if (move > lim)
@@ -349,6 +382,17 @@ internal sealed class QueueMeso
 
         v.S[i] = ns;
         v.Speed[i] = sp;
+        if (granted)
+        {
+            // Допущенная: за такт до конца полосы (или если лидер уже ушёл с полосы и до конца меньше пути за такт) - кинематика (connector, ворота билетов).
+            if (len - ns <= (Math.Max(sp, 1f) * BehaviourJob.MesoPeriodTicks * _dt) + 0.5f)
+            {
+                ToKinematic(i, lane);
+            }
+
+            return;
+        }
+
         MarkLineFlags(i, lane);
     }
 
@@ -411,10 +455,31 @@ internal sealed class QueueMeso
 
         if (IsQ(i))
         {
-            ToKinematic(i, lane);
+            KinInc(lane);   // допущенная голова очереди: полоса обходится фазой 4 каждый тик (OutReserved, NodeBusy, снятие на красном)
         }
 
         Release(i, lane, useHeadway: true);
+    }
+
+    /// <summary>Автобус поставлен на полосу (флаг <c>IsBus</c> ставится после вставки): в Q0 автобусы кинематические - из очереди выходит сразу.</summary>
+    public void OnBusPlaced(int i)
+    {
+        int lane = _v.Lane[i];
+        if (lane >= 0 && IsQ(i))
+        {
+            ToKinematic(i, lane);
+        }
+    }
+
+    /// <summary>Снятие допуска на красном (фаза 4, §5.4 п. 6) у головы очереди: полоса больше не держит допущенную голову.</summary>
+    public void OnRevoked(int i)
+    {
+        int lane = _v.Lane[i];
+        if (lane >= 0 && IsQ(i))
+        {
+            KinDec(lane);
+            MarkLineFlags(i, lane);   // вызывается после сброса допуска: те же метки, что поставил бы полный проход фазы 4
+        }
     }
 
     // ------------------------------------------------------------------ переходы состояний
@@ -474,6 +539,10 @@ internal sealed class QueueMeso
         if (IsHead(i))
         {
             HeadDec(lane);
+            if (GateRules.IsGranted(v, i))
+            {
+                KinDec(lane);   // допущенная голова уже учтена в обходе полосы (OnGranted); ниже - как кинематическая
+            }
         }
 
         if ((v.Flags[i] & (byte)VehicleFlags.Stuck) != 0)
@@ -500,6 +569,10 @@ internal sealed class QueueMeso
         if (IsHead(i))
         {
             HeadDec(lane);
+            if (GateRules.IsGranted(v, i))
+            {
+                KinDec(lane);
+            }
         }
 
         if ((v.Flags[i] & (byte)VehicleFlags.Stuck) != 0)
@@ -636,13 +709,19 @@ internal sealed class QueueMeso
         float len = _net.LaneLength[lane];
         float cap = _net.LaneGateNode[lane] >= 0 ? len - GateRules.StopLineOffset - t.MinGap : len;
         float capSpeed = 0f;
+
+        // Ждала в очереди (свободный ход довёл бы её до дистанции решения раньше чем на такт назад): стоит на месте в плотной очереди за лидером
+        // (зазор s0, скорость 0) и трогается сама (ленивая M2) - волна старта очереди. Иначе догоняет лидера на ходу (равновесный зазор M2).
+        float dd = len - v.S[i] - GateRules.DecisionDistance(vff, t.ComfortDecel);
+        bool waited = Now - (QEnter[i] + CeilTicks(dd / vff)) > BehaviourJob.MesoPeriodTicks;
         if (a != -1)
         {
-            float lc = v.S[a] - v.Length[a] - FollowGap(in t, Math.Min(vff, v.Speed[a]));
+            float va = waited ? 0f : Math.Min(vff, v.Speed[a]);
+            float lc = v.S[a] - v.Length[a] - FollowGap(in t, va);
             if (lc < cap)
             {
                 cap = lc;
-                capSpeed = Math.Min(vff, v.Speed[a]);
+                capSpeed = va;
             }
         }
 
@@ -930,28 +1009,6 @@ internal sealed class QueueMeso
     }
 
     // ------------------------------------------------------------------ вспомогательное
-
-    private int FindHead(int lane)
-    {
-        VehicleStore v = _v;
-        for (int x = _occ.LaneHead[lane]; x != -1;)
-        {
-            if (v.Lane[x] != lane)
-            {
-                x = v.GhostBehind[x];
-                continue;
-            }
-
-            if (IsHead(x))
-            {
-                return x;
-            }
-
-            x = v.Behind[x];
-        }
-
-        return -1;
-    }
 
     private int AheadPrimary(int i, int lane)
     {

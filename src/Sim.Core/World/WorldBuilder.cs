@@ -311,7 +311,7 @@ internal static class WorldBuilder
     internal const float DefaultMesoHeadwayScale = 0.8f;
 
     /// <summary>Калибровка насыщенного интервала очереди Q-meso по <c>SaturationProbe</c> (sim-lod.md §13.9): множитель T в <c>h</c>.</summary>
-    internal const float DefaultQueueHeadwayScale = 0.6f;
+    internal const float DefaultQueueHeadwayScale = 0.5f;
 
     internal static LodDesc WithDefaults(LodDesc l)
     {

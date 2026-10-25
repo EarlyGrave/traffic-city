@@ -76,6 +76,7 @@ internal static class BusDispatch
         }
 
         v.Flags[i] |= (byte)VehicleFlags.IsBus;
+        w.Queue?.OnBusPlaced(i);   // Q-meso: автобус - кинематический (флаг ставится после постановки на полосу)
         v.BusRoute[i] = r;
         v.BusNextStop[i] = 0;
         br.ActiveBuses++;
