@@ -102,4 +102,6 @@
 | 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | done, merged (M1–M10; скриптов нет) |
 | 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | done, merged (T1–T14; дренаж вместо удаления машин) |
 | 98 | peds-p2 (worktree) | sonnet | 3.1 P2: агенты, жители, пути, события, снапшот, сейв w2, метрики, сценарии | wip |
-| 99 | rust-r1 (worktree) | sonnet | 4.6 R1 + R-CI: workspace `rust/`, Util, clippy-правила, rust-check, job CI, хук `.rs` | wip |
+| 99 | rust-r1 (worktree) | sonnet | 4.6 R1 + R-CI: workspace `rust/`, Util, clippy-правила, rust-check, job CI, хук `.rs` | done, merged (13 тестов util, векторы C# сошлись; хук `.rs` — в индексе агента, докоммитить) |
+| 100 | mod-m1 (worktree) | sonnet | 4.5 M1: загрузчик пакетов (Sim.Scenarios), враждебные фикстуры | done, merged (106 тестов Mods) |
+| 101 | alloc-flake (worktree) | sonnet | флейк allocation-тестов под нагрузкой (RenderViewTests threads:2, S1k_StationaryTick) | wip |

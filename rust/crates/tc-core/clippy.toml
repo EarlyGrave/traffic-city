@@ -1,0 +1,53 @@
+# Аналог src/Sim.Core/BannedSymbols.txt (docs/design/rust-pilot.md §7). Единственное исключение -
+# detmath::atan2_system с #[allow(clippy::disallowed_methods)] и комментарием.
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "случайный порядок итерации; используй FixedHashMap (rust-pilot.md §6.2)" },
+    { path = "std::collections::HashSet", reason = "случайный порядок итерации; используй FixedHashMap (rust-pilot.md §6.2)" },
+    { path = "std::time::Instant", reason = "ядро не знает про время (CLAUDE.md, правило 1)" },
+    { path = "std::time::SystemTime", reason = "ядро не знает про время (CLAUDE.md, правило 1)" },
+    { path = "std::fs::File", reason = "ядро не знает про файлы (CLAUDE.md, правило 1)" },
+]
+
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "ядро не знает про время" },
+    { path = "std::time::SystemTime::now", reason = "ядро не знает про время" },
+    { path = "std::thread::spawn", reason = "потоки - только через воркеры ядра (ADR-0017)" },
+    { path = "std::fs::read", reason = "ядро не знает про файлы" },
+    { path = "std::fs::write", reason = "ядро не знает про файлы" },
+    { path = "std::fs::read_to_string", reason = "ядро не знает про файлы" },
+    { path = "std::env::var", reason = "ядро не читает окружение" },
+
+    { path = "f32::mul_add", reason = "FMA запрещён (rust-pilot.md §6.2)" },
+    { path = "f32::max", reason = "знак нуля/NaN не как в .NET; используй detmath::max_net" },
+    { path = "f32::min", reason = "знак нуля/NaN не как в .NET; используй detmath::min_net" },
+    { path = "f32::sin", reason = "трансцендентные - системный libm, не детерминированы между ОС (§6.3)" },
+    { path = "f32::cos", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::tan", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::atan2", reason = "только detmath::atan2_system (§6.3)" },
+    { path = "f32::atan", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::asin", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::acos", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::powf", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::powi", reason = "результат зависит от порядка умножений (§6.3)" },
+    { path = "f32::exp", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::ln", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::log2", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f32::log10", reason = "трансцендентные - системный libm (§6.3)" },
+
+    { path = "f64::mul_add", reason = "FMA запрещён (rust-pilot.md §6.2)" },
+    { path = "f64::max", reason = "знак нуля/NaN не как в .NET; используй detmath" },
+    { path = "f64::min", reason = "знак нуля/NaN не как в .NET; используй detmath" },
+    { path = "f64::sin", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::cos", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::tan", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::atan2", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::atan", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::asin", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::acos", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::powf", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::powi", reason = "результат зависит от порядка умножений (§6.3)" },
+    { path = "f64::exp", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::ln", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::log2", reason = "трансцендентные - системный libm (§6.3)" },
+    { path = "f64::log10", reason = "трансцендентные - системный libm (§6.3)" },
+]
