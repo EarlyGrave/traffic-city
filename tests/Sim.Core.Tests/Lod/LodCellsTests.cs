@@ -264,7 +264,7 @@ public class LodCellsTests
         Assert.Equal(100, c.EvalTicks);
         Assert.Equal(600, c.HoldTicks);
         Assert.Equal(10, c.CongestionMin);
-        Assert.Equal(1f, c.MesoHeadwayScale);
+        Assert.Equal(0.8f, c.MesoHeadwayScale);
     }
 
     [Fact]

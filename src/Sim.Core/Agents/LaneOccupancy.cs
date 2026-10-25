@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using Sim.Core.Lod;
 
 namespace Sim.Core.Agents;
 
@@ -40,6 +41,12 @@ internal sealed class LaneOccupancy
 
     public int MaxLanes => LaneHead.Length;
 
+    /// <summary>
+    /// LOD-ячейки (ADR-0013); не null только при <c>Lod.Mode != Off</c>. При въезде на полосу (<see cref="PushTail"/>, <see cref="PushHead"/>,
+    /// <see cref="InsertBetween"/>) уровень машины берётся из ячейки полосы (sim-lod.md §2.5).
+    /// </summary>
+    public LodCells? LodCells { get; set; }
+
     /// <summary>Добавляет машину в хвост полосы (въезд с начала; S должен быть не больше S хвоста). Lane[i] = lane.</summary>
     public void PushTail(int lane, int i)
     {
@@ -48,6 +55,7 @@ internal sealed class LaneOccupancy
         _v.Lane[i] = lane;
         _v.RouteDirty[i] = 1;
         Insert(lane, i, ahead: LaneTail[lane], behind: -1);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Добавляет машину в голову полосы (S не меньше S головы). Lane[i] = lane.</summary>
@@ -57,7 +65,9 @@ internal sealed class LaneOccupancy
         Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]], "PushHead: нарушен порядок S");
         _v.Lane[i] = lane;
         _v.RouteDirty[i] = 1;
+        MarkFollower(LaneHead[lane]);
         Insert(lane, i, ahead: -1, behind: LaneHead[lane]);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Вставка между известными соседями (из <see cref="FindNeighbours"/>); -1 = край. Lane[i] = lane.</summary>
@@ -66,7 +76,9 @@ internal sealed class LaneOccupancy
         Debug.Assert(_v.Lane[i] == -1, "InsertBetween: машина уже на полосе");
         _v.Lane[i] = lane;
         _v.RouteDirty[i] = 1;
+        MarkFollower(behind);
         Insert(lane, i, ahead, behind);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Вставка по текущему S[i] (поиск от хвоста). При равных S новая встаёт позади существующих.</summary>
@@ -122,6 +134,7 @@ internal sealed class LaneOccupancy
         _v.GhostBehind[i] = _v.Behind[i];
         _v.Lane[i] = target;
         _v.RouteDirty[i] = 1;
+        MarkFollower(behind);
         Insert(target, i, ahead, behind);
     }
 
@@ -158,6 +171,31 @@ internal sealed class LaneOccupancy
     {
         GhostUnlink(i);
         Unlink(i);
+    }
+
+    /// <summary>Вставка перед машиной <paramref name="behind"/> даёт ей нового, более близкого лидера: meso-ведомый пересчитывает поведение в ближайшей фазе 5.</summary>
+    private void MarkFollower(int behind)
+    {
+        if (behind != -1 && LodCells != null && (_v.Lod[behind] & LodBits.Meso) != 0)
+        {
+            _v.Lod[behind] |= LodBits.Fresh;
+        }
+    }
+
+    private void EnterLevel(int lane, int i)
+    {
+        LodCells? lc = LodCells;
+        if (lc != null)
+        {
+            byte level = lc.CellLevel[lc.LaneCell[lane]];
+            LodTransitions.SetLevel(_v, i, level);
+            if (level == LodCells.LevelMeso)
+            {
+                // Новая полоса - другой лидер и, возможно, другой цвет ячейки (другой такт): без пересчёта бюджет пути прежнего решения мог
+                // кончиться до такта новой ячейки (до 7 тиков) и обнулить скорость. Пересчёт в ближайшей фазе 5 гарантирует решение не позже чем за 4 тика до такта.
+                _v.Lod[i] |= LodBits.Fresh;
+            }
+        }
     }
 
     // Роль машины в списке lane: основная (Lane) или ghost. Возврат по ref - без копий и аллокаций.

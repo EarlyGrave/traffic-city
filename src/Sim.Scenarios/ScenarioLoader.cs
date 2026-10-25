@@ -707,7 +707,7 @@ public static class ScenarioLoader
             FocusCommands = true,
             CongestionShare = 0.1f,
             CongestionMin = 10,
-            MesoHeadwayScale = 1f,
+            MesoHeadwayScale = 0.8f,
             MesoAccelScale = 1f,
         };
         if (r == null)
@@ -732,7 +732,7 @@ public static class ScenarioLoader
         d.FocusCommands = r.Bool("focus_commands", true);
         d.CongestionShare = (float)r.Num("congestion_share", 0.1, min: 0, max: 1);
         d.CongestionMin = r.Int("congestion_min", 10, min: 0);
-        d.MesoHeadwayScale = (float)r.Num("meso_headway_scale", 1.0, min: 0.1, max: 10);
+        d.MesoHeadwayScale = (float)r.Num("meso_headway_scale", 0.8, min: 0.1, max: 10);
         d.MesoAccelScale = (float)r.Num("meso_accel_scale", 1.0, min: 0.1, max: 10);
         d.Focus = ParseLodPlaces(r, "focus");
         d.Pinned = ParseLodPlaces(r, "pinned");

@@ -434,7 +434,7 @@ public class ScenarioLoaderTests
         Assert.True(l.FocusCommands);
         Assert.Equal(0.1f, l.CongestionShare);
         Assert.Equal(10, l.CongestionMin);
-        Assert.Equal(1f, l.MesoHeadwayScale);
+        Assert.Equal(0.8f, l.MesoHeadwayScale);
         Assert.Equal(1f, l.MesoAccelScale);
         Assert.Null(l.Focus);
         Assert.Null(l.Pinned);

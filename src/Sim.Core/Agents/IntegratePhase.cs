@@ -72,7 +72,7 @@ internal static class IntegratePhase
 /// и пишет только <c>S/Speed/StillTicks[i]</c>; <c>HardClamps</c> копится целым по воркеру (шаг <see cref="Stride"/> - без false sharing)
 /// и сводится в <see cref="Collect"/> после фазы.
 /// </summary>
-internal sealed class IntegrateJob : IRangeJob
+internal sealed partial class IntegrateJob : IRangeJob
 {
     private const int Stride = 16;
 
@@ -81,6 +81,7 @@ internal sealed class IntegrateJob : IRangeJob
     private VehicleStore _v = null!;
     private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
     private PhysicsParams _p;
+    private byte[] _lod = Array.Empty<byte>();   // VehicleStore.Lod; длина 0 - LOD выключен
 
     public IntegrateJob(int workers)
     {
@@ -93,31 +94,36 @@ internal sealed class IntegrateJob : IRangeJob
         _v = v;
         _types = types;
         _p = p;
+        _lod = v.Lod;
     }
 
     public void RunRange(int worker, int begin, int end)
     {
         long clamps = 0;
+        long mesoClamps = 0;
         for (int i = begin; i < end; i++)
         {
-            clamps += Vehicle(i);
+            clamps += Vehicle(i, ref mesoClamps);
         }
 
         _clamps[worker * Stride] += clamps;
+        _clamps[(worker * Stride) + 1] += mesoClamps;
     }
 
-    /// <summary>Складывает <c>HardClamps</c> воркеров в <paramref name="c"/> и обнуляет их.</summary>
+    /// <summary>Складывает <c>HardClamps</c> и <c>MesoClamps</c> воркеров в <paramref name="c"/> и обнуляет их.</summary>
     public void Collect(ref SimCounters c)
     {
         for (int k = 0; k < _clamps.Length; k += Stride)
         {
             c.HardClamps += _clamps[k];
+            c.MesoClamps += _clamps[k + 1];
             _clamps[k] = 0;
+            _clamps[k + 1] = 0;
         }
     }
 
     /// <summary>Интегрирует машину <paramref name="i"/>; возвращает число сработавших клэмпов I6 (0..2).</summary>
-    private int Vehicle(int i)
+    private int Vehicle(int i, ref long mesoClamps)
     {
         VehicleStore v = _v;
         PhysicsParams p = _p;
@@ -125,6 +131,12 @@ internal sealed class IntegrateJob : IRangeJob
         float dt = p.Dt;
         if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
         {
+            return 0;
+        }
+
+        if (_lod.Length != 0 && (_lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            MesoVehicle(i, ref mesoClamps);
             return 0;
         }
 
@@ -180,5 +192,52 @@ internal sealed class IntegrateJob : IRangeJob
         }
 
         return clamps;
+    }
+
+    /// <summary>
+    /// Движение meso-машины (sim-lod.md §2.3): скорость, назначенная фазой 5 в такт машины (<c>MesoNext</c>), затем путь за тик
+    /// <c>d = min(Speed·dt, MesoAllow)</c>; остаток пути списывается. Клэмп I6 - через <c>MesoAllow</c> (зазоры начала тика посчитала фаза 5),
+    /// поэтому фаза читает только слоты машины <c>i</c>. Сократили путь - <c>Speed = d / dt</c>, <c>MesoClamps++</c>.
+    /// </summary>
+    private void MesoVehicle(int i, ref long mesoClamps)
+    {
+        VehicleStore v = _v;
+        float dt = _p.Dt;
+        float next = v.MesoNext[i];
+        if (next >= 0f)
+        {
+            v.Speed[i] = next;
+            v.MesoNext[i] = -1f;
+        }
+
+        float speed = v.Speed[i];
+        float want = speed * dt;
+        float allow = v.MesoAllow[i];
+        float d = want;
+        if (d > allow)
+        {
+            d = allow;
+            if (want - d > 1e-3f)
+            {
+                mesoClamps++; // округление пути за такт (4 · v·dt против v·τ) клэмпом не считается
+            }
+
+            speed = d / dt;
+            v.Speed[i] = speed;
+        }
+
+        v.S[i] += d;
+        v.MesoAllow[i] = allow - d;
+        if (speed < _p.StuckSpeedThreshold && !BusStopRules.IsServing(_net, v, i))
+        {
+            if (v.StillTicks[i] < ushort.MaxValue)
+            {
+                v.StillTicks[i]++;
+            }
+        }
+        else
+        {
+            v.StillTicks[i] = 0;
+        }
     }
 }

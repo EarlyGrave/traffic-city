@@ -31,7 +31,7 @@ public struct LodTourDesc
 /// <summary>
 /// Уровни детализации симуляции (ADR-0013, <c>sim-lod.md</c> §4, <c>scenario-format.md</c> §2.1 "lod"). Нулевая структура = <see cref="LodMode.Off"/>.
 /// При Mode != Off нулевые числовые поля заменяются дефолтами в <c>Create</c> (CellM 1000, MicroBudget 15000, EvalTicks 100, HoldTicks 600,
-/// FocusMarginCells 1, CongestionShare 0.1, CongestionMin 10, MesoHeadwayScale = MesoAccelScale = 1); булевы без дефолта (загрузчик ставит true).
+/// FocusMarginCells 1, CongestionShare 0.1, CongestionMin 10, MesoHeadwayScale 0.8, MesoAccelScale 1); булевы без дефолта (загрузчик ставит true).
 /// </summary>
 public struct LodDesc
 {

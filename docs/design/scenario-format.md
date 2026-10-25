@@ -131,7 +131,7 @@
     "focus_commands": bool,             // false — SetLodFocus(Focus) отклоняется, уровень только по состоянию. Дефолт true
     "congestion_share": number,         // доля стоящих ≥ 30 с в ячейке для «пробки». Дефолт 0.1
     "congestion_min": int,              // и не меньше стольких машин. Дефолт 10
-    "meso_headway_scale": number,       // множитель T в meso (калибровка эквивалентности). Дефолт 1.0
+    "meso_headway_scale": number,       // множитель T в meso (калибровка эквивалентности коридору, sim-lod.md §9). Дефолт 0.8
     "meso_accel_scale": number,         // множитель a в meso. Дефолт 1.0
     "focus":  [ { "x": number, "z": number, "radius_m": number } ],   // начальные слоты фокуса 0..3 (эмуляция камеры)
     "pinned": [ { "x": number, "z": number, "radius_m": number } ],   // начальные закрепления 4..7

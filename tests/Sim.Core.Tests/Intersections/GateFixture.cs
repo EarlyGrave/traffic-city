@@ -190,6 +190,9 @@ internal sealed class FlowDriver
     public string? TicketOrderViolation;
     public Action<FlowDriver>? OnTick { get; set; }
 
+    /// <summary>Вызывается при выходе машины в сток: (полоса стока, полоса источника или -1, время поездки в тиках). Не аллоцирует, если делегат не аллоцирует.</summary>
+    public Action<int, int, long>? OnExit { get; set; }
+
     public FlowDriver(Simulation sim)
     {
         Sim = sim;
@@ -362,6 +365,7 @@ internal sealed class FlowDriver
             Exits++;
             ExitsPerSink[lane]++;
             TravelTicksTotal += W.Tick - v.SpawnTick[i];
+            OnExit?.Invoke(lane, SpawnLane[i], W.Tick - v.SpawnTick[i]);
             if (SpawnLane[i] >= 0)
             {
                 ExitsByLane[SpawnLane[i]]++;

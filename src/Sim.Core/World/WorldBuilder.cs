@@ -257,6 +257,7 @@ internal static class WorldBuilder
 
         CreateStatus st = LodCells.TryCreate(w.Net, in w.LodCfg, out LodCells? cells);
         w.Lod = cells;
+        w.Occupancy.LodCells = cells;
         return st;
     }
 
@@ -287,6 +288,9 @@ internal static class WorldBuilder
     }
 
     /// <summary>Нулевые поля (desc, собранный вручную) заменяются дефолтами спеки; булевы без дефолта остаются как заданы (загрузчик ставит true).</summary>
+    /// <summary>Калибровка эквивалентности коридору (sim-lod.md §9, итог L2): множитель времени интервала T в meso.</summary>
+    internal const float DefaultMesoHeadwayScale = 0.8f;
+
     internal static LodDesc WithDefaults(LodDesc l)
     {
         if (!(l.CellM > 0f))
@@ -321,7 +325,7 @@ internal static class WorldBuilder
 
         if (!(l.MesoHeadwayScale > 0f))
         {
-            l.MesoHeadwayScale = 1f;
+            l.MesoHeadwayScale = DefaultMesoHeadwayScale;
         }
 
         if (!(l.MesoAccelScale > 0f))

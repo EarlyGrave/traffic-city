@@ -72,6 +72,11 @@ internal static class SnapshotPhase
             f |= VehicleRenderFlags.OnConnector;
         }
 
+        if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            f |= VehicleRenderFlags.Meso;
+        }
+
         return f;
     }
 }
