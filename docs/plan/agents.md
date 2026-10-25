@@ -76,6 +76,7 @@
 | 70 | lod-l2 (worktree) | sonnet | 2.6 L2: meso-динамика, all_meso, эквивалентность коридора | done, merged (perf-критерий не выполнен, stuck meso) |
 | 73 | lod-rethink (worktree) | opus | 2.6r: пересмотр стоимости LOD + stuck meso | done, merged (ADR-0019: активные множества, Q-meso, снятие допуска на красном) |
 | 74 | active-a1 (worktree) | sonnet | 2.6 A1: снапшот по виду | done, merged (s100k фаза 10: 4.8 → 0.46 мс) |
-| 75 | active-a2 (worktree) | sonnet | 2.6 A2: ворота по маскам | wip |
+| 75 | active-a2 (worktree) | sonnet | 2.6 A2: ворота по маскам | done, merged (фаза 4 −17…−21%, цель не взята; инкрементальные OutReserved/NodeBusy — отложено) |
+| 76 | active-a34 (worktree) | sonnet | 2.6 A3+A4: переходы/прибытие/AssignConnectors по маскам, метрики в фазе 6 | wip |
 | 71 | signals-s1 (worktree) | sonnet | 2.5 S1: метрики светофоров и замер «до» | done, merged (левые ждут 21–22 с, max 70 с) |
 | 72 | saves-sv1 (worktree) | sonnet | 2.6b SV1: контейнер сейва (XXH64, блоки, столбцы) | done, merged (27 тестов, fuzz) |
