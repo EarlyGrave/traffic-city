@@ -138,6 +138,10 @@
 - **polyformproject.org → 403.** → Официальный текст лицензии:
   `https://raw.githubusercontent.com/polyformproject/polyform-licenses/1.0.0/PolyForm-Noncommercial-1.0.0.md`
   (ветки `master` там нет — 404, нужен тег-путь `1.0.0`).
+- **Godot 4.7.2 mono в облаке работает** (проверено: `4.7.2.stable.mono.official.ed1daf0bf`, клиент собирается и рисует s1k).
+  github releases/tuxfamily закрыты, но зеркало `sourceforge.net/projects/godot-engine.mirror/files/4.7.2-stable/` открыто
+  (Godot_v4.7.2-stable_mono_linux_x86_64.zip + SHA512-SUMS.txt). Рендер: Xvfb + `--rendering-driver opengl3` (llvmpipe), скрипт
+  `scripts/godot-shot.sh` (install/shot/fps). Не вышло/не нужно: github clone (403), conda/PyPI/npm бинарей Godot не дают, docker 401.
 - **Релизы Godot на github.com → 403.** Версии Godot смотреть через NuGet: `api.nuget.org/v3-flatcontainer/godot.net.sdk/index.json`.
 
 ## Субагенты и worktree
