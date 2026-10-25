@@ -40,6 +40,9 @@ internal static class MetricsPhase
         int moving = 0;
         int stuck = 0;
         long distMm = 0;
+        byte[] lodBits = v.Lod;                      // длина 0 - LOD выключен
+        int mesoNow = 0;
+        long mesoDistMm = 0;
         int hw = v.HighWater;
         for (int i = 0; i < hw; i++)
         {
@@ -50,7 +53,14 @@ internal static class MetricsPhase
 
             active++;
             float speed = v.Speed[i];
-            distMm += (long)((speed * MmPerSecondTick) + 0.5f);
+            long stepMm = (long)((speed * MmPerSecondTick) + 0.5f);
+            distMm += stepMm;
+            if (lodBits.Length != 0 && (lodBits[i] & Lod.LodBits.Meso) != 0)
+            {
+                mesoNow++;
+                mesoDistMm += stepMm;
+            }
+
             if (speed > stuckSpeed)
             {
                 moving++;
@@ -97,6 +107,15 @@ internal static class MetricsPhase
         c.MovingVehicleTicksTotal += moving;
         c.DistanceTotalMm += distMm;
         c.StuckTicksTotal += stuck;
+        if (lodBits.Length != 0)
+        {
+            c.MesoVehicles = mesoNow;
+            c.MicroVehicles = active - mesoNow;
+            c.MesoVehicleTicks += mesoNow;
+            c.MicroVehicleTicks += active - mesoNow;
+            c.MesoDistanceMm += mesoDistMm;
+            c.MicroDistanceMm += distMm - mesoDistMm;
+        }
 
         for (int s = 0; s < segCount; s++)
         {

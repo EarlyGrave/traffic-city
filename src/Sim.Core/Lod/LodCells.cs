@@ -20,6 +20,33 @@ internal static class LodBits
     public const byte Fresh = 2;
 }
 
+/// <summary>Смена уровня машины (sim-lod.md §2.5): общая для въезда на полосу и для смены уровня ячейки (L3).</summary>
+internal static class LodTransitions
+{
+    /// <summary>
+    /// Ставит уровень машины <paramref name="i"/>: micro -> meso: <c>MesoFresh = 1</c> (поведение считается в ближайшей фазе 5), <c>MesoAllow = 0</c>;
+    /// meso -> micro: <c>Accel = 0</c>, <c>MesoAllow = 0</c>. Тот же уровень - без изменений. Только при выделенных массивах уровней.
+    /// </summary>
+    public static void SetLevel(Agents.VehicleStore v, int i, byte level)
+    {
+        bool meso = (v.Lod[i] & LodBits.Meso) != 0;
+        if (level == LodCells.LevelMeso)
+        {
+            if (!meso)
+            {
+                v.Lod[i] = LodBits.Meso | LodBits.Fresh;
+                v.MesoAllow[i] = 0f;
+            }
+        }
+        else if (meso)
+        {
+            v.Lod[i] = 0;
+            v.Accel[i] = 0f;
+            v.MesoAllow[i] = 0f;
+        }
+    }
+}
+
 /// <summary>Вид для снапшота (<c>SetRenderView</c>): презентация, в хэш не входит. Дефолт - весь город.</summary>
 internal struct LodRenderView
 {
@@ -56,6 +83,7 @@ internal sealed class LodCells
     // ---- производные сети (вне хэша; пересчёт в Create и после BuildRoad) ----
     public readonly int[] NodeCell;                // [MaxNodes]
     public readonly int[] LaneCell;                // [MaxLanes]
+    public readonly byte[] LaneColor;              // [MaxLanes] цвет ячейки полосы (0..3) = такт meso: решения машин и ворот узла в тик (Tick & 3) == цвет
     public readonly int[] CellLaneStart;           // [Cells + 1] CSR: полосы ячейки c - CellLaneList[Start[c] .. Start[c+1])
     public readonly int[] CellLaneList;            // [MaxLanes], внутри ячейки по возрастанию индекса полосы
 
@@ -90,6 +118,7 @@ internal sealed class LodCells
         Cells = cellsX * cellsZ;
         NodeCell = new int[net.Nodes.Length];
         LaneCell = new int[net.Lanes.Length];
+        LaneColor = new byte[net.Lanes.Length];
         CellLaneStart = new int[Cells + 1];
         CellLaneList = new int[net.Lanes.Length];
         CellLevel = new byte[Cells];
@@ -186,6 +215,7 @@ internal sealed class LodCells
                 ? ld.Node
                 : (ld.Direction == 0 ? net.Segments[ld.Segment].NodeB : net.Segments[ld.Segment].NodeA);
             LaneCell[l] = NodeCell[node];
+            LaneColor[l] = (byte)ColorOf(LaneCell[l]);
         }
 
         _lanesMapped = net.LaneCount;

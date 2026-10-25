@@ -28,6 +28,9 @@ internal static class GatePhase
         GateScratch g = w.Gate;
         var e = new RuleEnv(net, v, occ, RouteAccess.From(w));
         float stuckSpeed = w.Rules.StuckSpeedThreshold;
+        byte[] lodBits = v.Lod;                       // длина 0 - LOD выключен (ветка meso не исполняется)
+        byte[] laneColor = w.Lod?.LaneColor ?? System.Array.Empty<byte>();
+        int mesoBeat = (int)(w.Tick & 3);
 
         // 0. OutReserved: обнулить затронутые в прошлом тике полосы; заново соберём по допущенным и находящимся в узле.
         for (int k = 0; k < g.OutTouchedCount; k++)
@@ -126,6 +129,12 @@ internal static class GatePhase
                 ahead = v.GhostAhead[ahead];
             }
 
+            bool meso = lodBits.Length != 0 && (lodBits[i] & Lod.LodBits.Meso) != 0;
+            if (meso && laneColor[lane] != mesoBeat)
+            {
+                continue; // meso: кандидатом бывает только в такт цвета своей ячейки (sim-lod.md §2.4); WaitTicks и DenyReason в чужой такт не трогаем
+            }
+
             if ((ahead != -1 && !GateRules.IsGranted(v, ahead)) || d > GateRules.DecisionDistance(v.Speed[i], t.ComfortDecel))
             {
                 v.WaitTicks[i] = 0;
@@ -141,10 +150,9 @@ internal static class GatePhase
                 continue;
             }
 
-            if (v.WaitTicks[i] < ushort.MaxValue)
-            {
-                v.WaitTicks[i]++;
-            }
+            // Единицы WaitTicks - тики: meso-кандидат видится раз в 4 тика (sim-lod.md §2.4).
+            int waitStep = meso ? 4 : 1;
+            v.WaitTicks[i] = (ushort)Math.Min(ushort.MaxValue, v.WaitTicks[i] + waitStep);
 
             g.CandConn[i] = conn;
             candidates++;

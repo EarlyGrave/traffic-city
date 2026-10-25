@@ -29,6 +29,11 @@ internal static class BehaviourPhase
     {
         BehaviourJob job = w.Behaviour;
         job.Prepare(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, w.Connectors, w.Gate.NodeBusy);
+        if (w.Lod != null)
+        {
+            job.PrepareLod(w.Lod.LaneColor, w.LodCfg.MesoHeadwayScale, w.LodCfg.MesoAccelScale);
+        }
+
         return job;
     }
 
@@ -86,7 +91,7 @@ internal static class BehaviourPhase
 /// Функция машины <see cref="Vehicle"/> читает состояние, которое в фазе никто не пишет, и пишет только свои слоты; счётчики работы
 /// копятся в экземпляре <see cref="SimWork"/> воркера (целые, сумма от порядка не зависит) и сводятся в <see cref="Collect"/>.
 /// </summary>
-internal sealed class BehaviourJob : IRangeJob
+internal sealed partial class BehaviourJob : IRangeJob
 {
     private readonly SimWork[] _acc;
     private RuleEnv _e;
@@ -95,6 +100,10 @@ internal sealed class BehaviourJob : IRangeJob
     private long _tick;
     private ConnectorStore? _connectors;
     private ulong[]? _nodeBusy;
+    private byte[] _lod = Array.Empty<byte>();           // VehicleStore.Lod; длина 0 - LOD выключен (ветка meso не исполняется)
+    private byte[] _laneColor = Array.Empty<byte>();     // LodCells.LaneColor (meso, MesoBehaviour.cs)
+    private float _mesoHeadwayScale = 1f;
+    private float _mesoAccelScale = 1f;
 
     public BehaviourJob(int workers)
     {
@@ -118,6 +127,8 @@ internal sealed class BehaviourJob : IRangeJob
         _tick = tick;
         _connectors = connectors;
         _nodeBusy = nodeBusy;
+        _lod = v.Lod;
+        _laneColor = Array.Empty<byte>();
     }
 
     public void RunRange(int worker, int begin, int end)
@@ -162,6 +173,12 @@ internal sealed class BehaviourJob : IRangeJob
         {
             v.Accel[i] = 0f;
             v.LaneChangeDir[i] = 0;
+            return;
+        }
+
+        if (_lod.Length != 0 && (_lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            MesoVehicle(i, ref work, ref vehicles, ref hops, ref obstacleCalls);
             return;
         }
 

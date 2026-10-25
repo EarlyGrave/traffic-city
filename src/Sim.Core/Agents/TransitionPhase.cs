@@ -65,6 +65,11 @@ internal static class TransitionPhase
                     if (TryBeginLaneChange(e, t, p, i, dir))
                     {
                         c.LaneChanges++;
+                        if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+                        {
+                            v.Lod[i] |= Lod.LodBits.Fresh; // новый лидер/ведомый: поведение пересчитывается в ближайшей фазе 5 (sim-lod.md §2.5)
+                            c.MesoLaneChanges++;
+                        }
                     }
                     else
                     {

@@ -71,6 +71,7 @@ internal sealed class VehicleStore
     // --- уровни детализации (ADR-0013, sim-lod.md §1): выделены только при Lod.Mode != Off, иначе пустые (длина 0) ---
     public readonly byte[] Lod;            // бит0 meso, бит1 MesoFresh (LodBits)
     public readonly float[] MesoAllow;     // путь, который meso-машина может проехать до следующего пересчёта, м
+    public readonly float[] MesoNext;      // скорость, назначенная фазой 5 meso-машине на этот тик (применяет фаза 6; < 0 - нет); в границах тика, вне хэша
 
     public VehicleStore(int maxVehicles, bool lod = false)
     {
@@ -119,6 +120,7 @@ internal sealed class VehicleStore
         Passengers = new ushort[maxVehicles];
         Lod = lod ? new byte[maxVehicles] : Array.Empty<byte>();
         MesoAllow = lod ? new float[maxVehicles] : Array.Empty<float>();
+        MesoNext = lod ? new float[maxVehicles] : Array.Empty<float>();
         for (int i = 0; i < maxVehicles; i++)
         {
             ResetSlot(i);
@@ -220,6 +222,7 @@ internal sealed class VehicleStore
         {
             Lod[i] = 0;
             MesoAllow[i] = 0f;
+            MesoNext[i] = -1f;
         }
     }
 }
