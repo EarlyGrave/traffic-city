@@ -262,6 +262,12 @@
   Прогрев не помогает - момент недетерминирован. → В `Sim.Core.Tests.csproj` `<ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>` + `Fixtures/AllocationProbe` (повтор окна, если за замер сработал GC)
   Для новых проектов с `GetAllocatedBytesForCurrentThread` - то же.
   Диагностика: временно разнести тик на фазы и мерить аллокации по каждой, гонять набор в 3 параллельных циклах.
+- **Тесты 0 B с воркерами падали на 168 Б под нагрузкой (`RenderViewTests.View_...(threads: 2)`: 9 из 20 прогонов при 6 busy-loop + load 20-30), проходили при повторе.**
+  Корень не в ядре: `GC.GetTotalAllocatedBytes` считает все потоки процесса, а фоновый поток рантайма (tiered-JIT/таймер) аллоцирует
+  ~170 Б раз в ~100 мс; при медленной машине окно `Step(100)` длиннее, и это попадает в каждое из 50 окон «минимума» (поток теста и воркеры - по 0 Б,
+  проверено счётчиками по фазам). → `AllocationProbe.MeasureSimThreads(sim, window)`: счётчик `GetAllocatedBytesForCurrentThread` потока теста + каждого
+  воркера `WorkerPool` (читается заданием пула в `RunRange`, до и после окна), с тем же повтором при GC. Не возвращайся к `GetTotalAllocatedBytes`.
+  `Step3GateRun` замерял 1000 тиков без прогрева и без повтора при GC - переведён на `AllocationProbe.Measure`.
 ## Godot-клиент
 - **`dotnet build game/TrafficCity.csproj -warnaserror` работает без Godot-бинаря** (Godot.NET.Sdk 4.7.2 в nuget-кэше). Правила анализатора в game те же: CA1001 на классах с Godot-ресурсами в полях (подавлено pragma), IDE1006 требует `_camelCase` для private static readonly. Проверка стиля: `dotnet format game/TrafficCity.csproj --verify-no-changes` (game не в sln).
 - **Семантический конфликт без текстового**: одна ветка перенесла тип в другой namespace, другая добавила файл со старым using → git сливает чисто, падает сборка в pre-commit. → После мержа параллельных веток всегда build до коммита.

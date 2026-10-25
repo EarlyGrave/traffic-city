@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Sim.Core.Api;
 using Sim.Core.Rules;
+using Sim.Core.Tests.Fixtures;
 using Sim.Core.Util;
 
 namespace Sim.Core.Tests.Worlds;
@@ -266,17 +267,8 @@ public class WorkerThreadsTests
         sim.Step(1500);
         Assert.True(sim.World.Vehicles.HighWater > WorkerPool.ChunkSize, "должно быть больше одного чанка");
 
-        // GetTotalAllocatedBytes видит и воркеров, но и чужие потоки: берём минимум по окнам (реальная аллокация ядра есть в каждом).
-        long best = long.MaxValue;
-        for (int attempt = 0; attempt < 50 && best != 0; attempt++)
-        {
-            long a = GC.GetTotalAllocatedBytes(true);
-            sim.Step(100);
-            long b = GC.GetTotalAllocatedBytes(true);
-            best = Math.Min(best, b - a);
-        }
-
-        Assert.Equal(0, best);
+        // Поток теста + потоки пула; фоновые потоки рантайма не считаются (AllocationProbe.MeasureSimThreads).
+        Assert.Equal(0, AllocationProbe.MeasureSimThreads(sim, () => sim.Step(100)));
     }
 
     private static byte[][] Outputs(World w, int hw)

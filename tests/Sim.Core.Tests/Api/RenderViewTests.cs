@@ -156,17 +156,8 @@ public class RenderViewTests
         }
         else
         {
-            // GetTotalAllocatedBytes видит и воркеров, но и чужие потоки: минимум по окнам.
-            long best = long.MaxValue;
-            for (int attempt = 0; attempt < 50 && best != 0; attempt++)
-            {
-                long a = GC.GetTotalAllocatedBytes(true);
-                many.Step(100);
-                long b = GC.GetTotalAllocatedBytes(true);
-                best = Math.Min(best, b - a);
-            }
-
-            Assert.Equal(0, best);
+            // Поток теста + потоки пула; фоновые потоки рантайма (tiered JIT, таймеры) не считаются.
+            Assert.Equal(0, AllocationProbe.MeasureSimThreads(many, () => many.Step(100)));
         }
     }
 
