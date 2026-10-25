@@ -74,6 +74,8 @@ internal sealed class SignalStore
     public readonly ushort[] GapLeft;
     public readonly ushort[] ArmLeftYield;   // [Capacity * ArmCap]
     public readonly int[] ArmLeftHead;       // [Capacity * ArmCap]
+    public readonly ushort[] SpillTicks;     // 2.5 S3 (6.8): тиков подряд, когда весь спрос зелёной оси упёрся в стоящий выезд
+    public long SpillOutEntries;             // монотонный счётчик досрочных концов зелёного из-за забитого выезда (SignalPhase переносит в SimCounters.SpillOuts)
     public long ArrowEntries;                // монотонный счётчик включений стрелки (SignalPhase переносит его в SimCounters)
 
     // --- 2.5: статика слота (производное от сети, вне хэша) ---
@@ -126,6 +128,7 @@ internal sealed class SignalStore
         ArrowArms = new ushort[c];
         GreenElapsed = new ushort[c];
         GapLeft = new ushort[c];
+        SpillTicks = new ushort[c];
         ArmLeftYield = new ushort[c * ArmCap];
         ArmLeftHead = new int[c * ArmCap];
         ArmMask = new ulong[c * ArmCap];
@@ -334,9 +337,16 @@ internal sealed class SignalStore
             return cycle <= MaxCycleTicks;
         }
 
-        if (p.CycleTicks != 0 || p.MinGreenTicks < 1 || p.GapTicks < 1 || p.ArrowMinTicks > p.ArrowMaxTicks)
+        if (p.MinGreenTicks < 1 || p.GapTicks < 1 || p.ArrowMinTicks > p.ArrowMaxTicks)
         {
             return false;
+        }
+
+        if (p.CycleTicks != 0)
+        {
+            // Координация (6.7): 2 оси, C чётное, окно C/2 вмещает MinGreen, стрелку и два перехода. Инвариант красного даёт каркас окон, отдельно не проверяется.
+            int arrowMax = arrows ? p.ArrowMaxTicks : 0;
+            return axes == 2 && (p.CycleTicks & 1) == 0 && (p.CycleTicks / 2) >= p.MinGreenTicks + arrowMax + (2 * yar) && MinGreenFits(in p, axes);
         }
 
         for (int k = 0; k < axes; k++)
@@ -371,8 +381,21 @@ internal sealed class SignalStore
         return true;
     }
 
+    private static bool MinGreenFits(in SetSignalPlanCmd p, int axes)
+    {
+        for (int k = 0; k < axes; k++)
+        {
+            if (p.MinGreenTicks > GreenOf(in p, k))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Записывает (разрешённый и проверенный) план в слот и пересчитывает начальное состояние по <c>OffsetTicks</c>.</summary>
-    public void ApplyPlan(int slot, in SetSignalPlanCmd p)
+    public void ApplyPlan(int slot, in SetSignalPlanCmd p, long tick = 0)
     {
         Mode[slot] = p.Mode;
         YellowTicks[slot] = p.YellowTicks;
@@ -397,7 +420,7 @@ internal sealed class SignalStore
             if (p.Mode == SignalMode.Adaptive)
             {
                 Machine[slot] = 1;
-                ResetAdaptive(slot);
+                ResetAdaptive(slot, tick);
             }
             else if ((p.Flags & SignalPlanFlags.Arrows) != 0 && p.ArrowMaxTicks > 0 && HasArrow[slot] != 0)
             {
@@ -460,6 +483,7 @@ internal sealed class SignalStore
         ArrowArms[slot] = 0;
         GreenElapsed[slot] = 0;
         GapLeft[slot] = GapTicks[slot];
+        SpillTicks[slot] = 0;
         for (int a = 0; a < ArmCap; a++)
         {
             ArmLeftYield[(slot * ArmCap) + a] = 0;
@@ -467,7 +491,36 @@ internal sealed class SignalStore
         }
     }
 
-    private void ResetAdaptive(int slot) => ResetMachineCommon(slot);
+    /// <summary>Начальное состояние Adaptive; в координации (6.7) - ось и позиция в окне по часам <c>(tick + Offset) mod C</c>.</summary>
+    private void ResetAdaptive(int slot, long tick)
+    {
+        ResetMachineCommon(slot);
+        if (CycleTicks[slot] > 0 && PhaseCount[slot] == 2)
+        {
+            WindowClock(slot, tick, out int owner, out int sinceStart, out _);
+            Phase[slot] = (byte)owner;
+            NextAxis[slot] = (byte)owner;
+            GreenMask[slot] = PhaseMask[(slot * MaxPhases) + owner];
+            NextMask[slot] = GreenMask[slot];
+            GreenElapsed[slot] = (ushort)sinceStart;
+        }
+    }
+
+    /// <summary>
+    /// Часы координации слота (6.7): <c>phi = (tick + Offset) mod C</c>; окно оси <c>k</c> - <c>[k*C/2, (k+1)*C/2)</c>. Принудительный конец зелёного предыдущей оси
+    /// начинается за <c>Yellow + AllRed</c> до старта окна, поэтому «владелец» считается по <c>phi + yar</c>: <paramref name="owner"/> - ось, чей зелёный должен идти,
+    /// <paramref name="sinceStart"/> - тиков от начала её окна (в сдвинутой шкале), <paramref name="remaining"/> - до следующей границы.
+    /// </summary>
+    public void WindowClock(int slot, long tick, out int owner, out int sinceStart, out int remaining)
+    {
+        int c = CycleTicks[slot];
+        int half = c / 2;
+        int yar = YellowTicks[slot] + AllRedTicks[slot];
+        int ph = (int)((tick + OffsetTicks[slot] + yar) % c);
+        owner = ph < half ? 0 : 1;
+        sinceStart = ph - (owner * half);
+        remaining = half - sinceStart;
+    }
 
     /// <summary>
     /// <c>Fixed</c> со стрелкой: начало цикла, затем <c>Offset</c> «тихих» тиков того же автомата (позиция в цикле = <c>Offset mod Cycle</c> без
@@ -552,6 +605,12 @@ internal sealed class SignalStore
 
         if (Mode[slot] == SignalMode.Adaptive)
         {
+            if (CycleTicks[slot] > 0 && pc == 2)
+            {
+                // Координация (6.9): C и окно C/2 - Yellow - AllRed.
+                return Routing.RoutingCosts.SignalDelay(CycleTicks[slot] / 20f, ((CycleTicks[slot] / 2) - yar) / 20f);
+            }
+
             int cycle = 0;
             for (int k = 0; k < pc; k++)
             {
@@ -599,7 +658,7 @@ internal sealed class SignalStore
         }
 
         BuildStatics(w, slot, node);
-        ApplyPlan(slot, in resolved);
+        ApplyPlan(slot, in resolved, w.Tick);
         w.Net.Nodes[node].Signal = slot;
         w.SignalCount = Count;
         return true;
@@ -829,6 +888,7 @@ internal sealed class SignalStore
         ArrowArms[dst] = ArrowArms[src];
         GreenElapsed[dst] = GreenElapsed[src];
         GapLeft[dst] = GapLeft[src];
+        SpillTicks[dst] = SpillTicks[src];
         HasArrow[dst] = HasArrow[src];
         ArmCountOf[dst] = ArmCountOf[src];
         SigLaneCount[dst] = SigLaneCount[src];
@@ -894,6 +954,7 @@ internal sealed class SignalStore
                 YellowTicks = s.YellowTicks,
                 AllRedTicks = s.AllRedTicks,
                 Flags = s.Adaptive ? SignalPlanFlags.Arrows : (byte)0,
+                CycleTicks = s.CycleTicks,
             };
             if (!TryAdd(w, s.Node, in plan, out _))
             {
@@ -905,6 +966,7 @@ internal sealed class SignalStore
 
                 SetSignalPlanCmd def = DefaultPlan(axes, in w.Rules, s.Adaptive);
                 def.OffsetTicks = s.OffsetTicks;
+                def.CycleTicks = axes == 2 ? s.CycleTicks : (ushort)0;
                 TryAdd(w, s.Node, in def, out _);
             }
         }

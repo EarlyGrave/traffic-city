@@ -407,9 +407,11 @@ public class AdaptiveSignalTests
         Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, Green0 = 800, Green1 = 800, YellowTicks = 60, AllRedTicks = 20 }, 12));
         Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, Green0 = 100, Green1 = 100, MinGreenTicks = 200, YellowTicks = 60, AllRedTicks = 20 }, 13));
         Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, YellowTicks = 60, AllRedTicks = 20, ArrowMinTicks = 100, ArrowMaxTicks = 50, Flags = SignalPlanFlags.Arrows }, 14));
-        Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, YellowTicks = 60, AllRedTicks = 20, CycleTicks = 1440 }, 15));
+        Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, YellowTicks = 60, AllRedTicks = 20, CycleTicks = 200 }, 17));   // S3: C/2 не вмещает MinGreen и переходы
         Assert.False(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 3, YellowTicks = 60, AllRedTicks = 20 }, 16));
         Assert.Equal(300, s.GreenTicks[0]);   // отказы план не меняют
+        Assert.True(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, YellowTicks = 60, AllRedTicks = 20, CycleTicks = 1440 }, 15));   // S3: координация допустима (2 оси, C/2 вмещает MinGreen и переходы)
+        Assert.Equal(1440, s.CycleTicks[0]);
 
         // Fixed со стрелкой, затем без неё; Flash/Off.
         Assert.True(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Fixed, PhaseCount = 2, Green0 = 200, Green1 = 200, YellowTicks = 60, AllRedTicks = 20, Flags = SignalPlanFlags.Arrows, ArrowMaxTicks = 100 }, 20));
@@ -476,6 +478,38 @@ public class AdaptiveSignalTests
         Assert.False(a.Counters.GridlockFlag != 0);
         Assert.True(a.Counters.ArrowPhases > 0, "за 5 минут на 1 000 машинах стрелка ни разу не включилась");
         Assert.Equal(a.ComputeStateHash(), b.ComputeStateHash());
+    }
+
+    /// <summary>
+    /// Координация (2.5 S3, 6.7): без спроса оси сменяются строго по часам <c>(tick + Offset) mod C</c> (старт окна «даже без вызова»), окно <c>C/2 = 720</c>.
+    /// </summary>
+    [Fact]
+    public void T12_Coordination_NoDemand_AxesSwitchByClock()
+    {
+        using Simulation sim = Cross(1, adaptive: true);
+        Assert.True(Send(sim, new SetSignalPlanCmd { Mode = SignalMode.Adaptive, PhaseCount = 2, YellowTicks = 60, AllRedTicks = 20, CycleTicks = 1440, Green0 = 480, Green1 = 480 }, 40));
+        var starts = new System.Collections.Generic.List<(long Tick, int Axis)>();
+        int lastAxis = -1;
+        for (int t = 0; t < 3300; t++)
+        {
+            sim.Step(1);
+            SignalState st = sim.World.SignalStates[0];
+            int axis = st.Phase & 0x7F;
+            if (st.Interval == SignalInterval.Green && axis != lastAxis)
+            {
+                starts.Add((sim.Tick, axis));
+                lastAxis = axis;
+            }
+        }
+
+        _out.WriteLine(string.Join(", ", starts));
+        // Окно оси 1 начинается на 720-м тике часов, оси 0 - на 1440-м и т.д.; допуск 2 тика на момент применения команды.
+        Assert.True(starts.Count >= 4, "слишком мало смен осей");
+        for (int i = 1; i < starts.Count; i++)
+        {
+            Assert.Equal(1 - starts[i - 1].Axis, starts[i].Axis);
+            Assert.InRange(starts[i].Tick - starts[i - 1].Tick, i == 1 ? 600 : 718, 722);
+        }
     }
 
     /// <summary>0 B/тик в установившемся режиме Adaptive со стрелкой (детекторы, автомат, ворота).</summary>

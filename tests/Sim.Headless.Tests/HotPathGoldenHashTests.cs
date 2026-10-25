@@ -20,7 +20,7 @@ namespace Sim.Headless.Tests;
 /// поэтому хэши до тика 3000 и s10k до тика 600 не изменились, а тик 4000 s1k - новый (был 546ef7677165a0b6), полная загрузка s10k:
 /// tick=6100 930f16b7951f5fd7, tick=6300 abdc420cf70ba05b (при 1, 2 и 3 потоках).
 /// 2.5 S2 (ADR-0018): дефолт <c>city.signal_mode</c> стал <c>adaptive</c>, поэтому эти эталоны закреплены на <c>fixed</c> + <c>legacy</c>
-/// (<c>--signal-mode fixed</c> у команды <c>hash</c>) и не изменились; хэши дефолта (adaptive) - в <c>AdaptiveGoldenHashTests</c>.
+/// (<c>--signal-mode fixed --signal-coordination legacy</c> у команды <c>hash</c>) и не изменились; хэши дефолта (adaptive) - в <c>AdaptiveGoldenHashTests</c>.
 /// 2.5 (удержание автобусов, ADR-0008): <c>hold_alpha</c> по умолчанию 0.9, хэш остановок включает <c>LastDepartTick</c> при удержании - все эталоны (и в
 /// <c>AdaptiveGoldenHashTests</c>) сняты заново; при <c>hold_alpha = 0</c> прежние константы совпадали побитово (проверено до смены дефолта).
 /// </summary>
@@ -83,7 +83,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     {
         var o = new StringWriter();
         var e = new StringWriter();
-        int code = HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "2000", "--every", "1000", "--signal-mode", "fixed" }, o, e);
+        int code = HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "2000", "--every", "1000", "--signal-mode", "fixed", "--signal-coordination", "legacy" }, o, e);
         Assert.Equal(0, code);
         string[] lines = o.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(2, lines.Length);
@@ -98,7 +98,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
         for (int t = 1; t <= 3; t++)
         {
             var o = new StringWriter();
-            Assert.Equal(0, HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "1000", "--signal-mode", "fixed", "--threads", t.ToString(CultureInfo.InvariantCulture) }, o, new StringWriter()));
+            Assert.Equal(0, HashCommand.Run(new[] { "hash", "--scenario", "s1k", "--ticks", "1000", "--signal-mode", "fixed", "--signal-coordination", "legacy", "--threads", t.ToString(CultureInfo.InvariantCulture) }, o, new StringWriter()));
             lines[t - 1] = o.ToString();
         }
 

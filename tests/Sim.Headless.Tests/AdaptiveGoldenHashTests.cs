@@ -6,7 +6,7 @@ namespace Sim.Headless.Tests;
 
 /// <summary>
 /// Эталон хэша состояния для дефолта сценариев после 2.5 S2 (ADR-0018): <c>city.signal_mode = adaptive</c>, координация <c>legacy</c>
-/// (офсеты не используются). Меняется осознанно, отдельным коммитом с объяснением. Хэш не зависит от числа потоков (ADR-0017).
+/// (офсеты не используются; 2.5 S3 хэш не изменила). Меняется осознанно, отдельным коммитом с объяснением. Хэш не зависит от числа потоков (ADR-0017).
 /// Полная загрузка s10k (<c>hash --scenario s10k --warmup-until-full --ticks 400 --every 200</c>, 1/2/3 потока одинаково):
 /// tick=6100 6faccbd453296b01, tick=6300 8c951ad4eb5e2099. Прежний эталон (fixed + legacy) - в <c>HotPathGoldenHashTests</c>.
 /// </summary>
@@ -44,6 +44,45 @@ public sealed class AdaptiveGoldenHashTests
     {
         using Simulation sim = Create("s10k", threads);
         string[] expected = { "41e484b2dfde848b", "342c2f1b4f50889a", "a46b6ed830102e37" };
+        for (int k = 0; k < expected.Length; k++)
+        {
+            sim.Step(200);
+            Assert.Equal(expected[k], Hex(sim.ComputeStateHash()));
+        }
+    }
+
+    private static Simulation CreateAlternate(string name, int threads)
+    {
+        LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
+        ScenarioDesc d = sc.Desc;
+        d.City.SignalCoordination = CitySignalCoordination.Alternate;
+        return Simulation.Create(d, new SimRuntimeOptions { WorkerThreads = threads });
+    }
+
+    // 2.5 S3 + удержание автобусов (hold_alpha 0.9): adaptive + alternate (опция, не дефолт); хэши сняты после слияния S3 с удержанием. Хэши снимает команда hash --signal-mode adaptive --signal-coordination alternate; при 1/2/3 потоках одинаковы.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void S1k_AlternateStateHash_MatchesGolden(int threads)
+    {
+        using Simulation sim = CreateAlternate("s1k", threads);
+        string[] expected = { "051a65bf8d19afc4", "6eafe4fbb862fd2c", "58fe8dbcd642bdc9", "d3d1e1f44f0f3c1e" };
+        for (int k = 0; k < expected.Length; k++)
+        {
+            sim.Step(1000);
+            Assert.Equal(expected[k], Hex(sim.ComputeStateHash()));
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void S10k_AlternateStateHash_MatchesGolden(int threads)
+    {
+        using Simulation sim = CreateAlternate("s10k", threads);
+        string[] expected = { "4e30a5ae8b1b2267", "30385626eaee0e4b", "91fe982b3e452846" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);

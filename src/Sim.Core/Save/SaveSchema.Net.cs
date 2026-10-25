@@ -237,6 +237,7 @@ internal static partial class SaveSchema
         Col.Array<ushort>(35, "GapLeft", w => w.Signals.GapLeft, _signalN, "Count"),
         Col.Array<ushort>(36, "ArmLeftYield", w => w.Signals.ArmLeftYield, w => w.Signals.Count * SignalStore.ArmCap, "Count * 16"),
         Col.Array<int>(37, "ArmLeftHead", w => w.Signals.ArmLeftHead, w => w.Signals.Count * SignalStore.ArmCap, "Count * 16", "-1"),
+        Col.Array<ushort>(38, "SpillTicks", w => w.Signals.SpillTicks, _signalN, "Count"),
     });
 
     private static BlockDef NodeDynamic() => new("NDYN", "узлы: билеты ворот и пропускная способность", new[]

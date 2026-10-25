@@ -50,7 +50,7 @@
     "signals": "arterial_x_arterial" | "all_arterial" | "none",   // где ставить светофоры. Дефолт "arterial_x_arterial"
     "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
     "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
-    "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт "alternate"; "legacy" — формула этапа 1
+    "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт пока "legacy" (S3: "alternate" реализован, но по замеру s10k ухудшает stuck_episodes - ADR-0018); "legacy" — формула этапа 1
     "progression_speed_factor": number                             // скорость волны = arterial_speed · k. Дефолт 1.0
   },
 

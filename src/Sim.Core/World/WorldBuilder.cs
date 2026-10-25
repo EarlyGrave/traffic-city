@@ -39,12 +39,6 @@ internal static class WorldBuilder
             return st;
         }
 
-        // 2.5 S2: Fixed и Adaptive; координация (Alternate/None) появится в S3 (ADR-0018) - пока только Legacy.
-        if (desc.City.Enabled && desc.City.SignalCoordination != CitySignalCoordination.Legacy)
-        {
-            return CreateStatus.NotSupported;
-        }
-
         st = ValidateLod(in desc.Lod);
         if (st != CreateStatus.Ok)
         {

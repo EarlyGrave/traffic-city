@@ -22,11 +22,15 @@ internal static class SignalPhase
 
     private const int MaxFirstSteps = 4;
 
+    /// <summary>Анти-спилловер (6.8): столько тиков подряд весь спрос зелёной оси упёрт в стоящий выезд -> досрочный конец (3 с).</summary>
+    private const int SpillOutTicks = 60;
+
     public static void Run(World w)
     {
         SignalStore s = w.Signals;
         NetworkStore net = w.Net;
         long arrows0 = s.ArrowEntries;
+        long spills0 = s.SpillOutEntries;
         RuleEnv env = default;
         bool envReady = false;
         for (int slot = 0; slot < s.Count; slot++)
@@ -85,6 +89,7 @@ internal static class SignalPhase
         }
 
         w.Counters.ArrowPhases += s.ArrowEntries - arrows0;
+        w.Counters.SpillOuts += s.SpillOutEntries - spills0;
     }
 
     private static void Advance(SignalStore s, int slot)
@@ -160,6 +165,7 @@ internal static class SignalPhase
         s.Sub[slot] = s.NextSub[slot];
         s.GreenMask[slot] = s.NextMask[slot];
         s.GreenElapsed[slot] = 0;
+        s.SpillTicks[slot] = 0;
         s.TicksLeft[slot] = 0;
         bool adaptive = s.Mode[slot] == SignalMode.Adaptive;
         if (s.NextSub[slot] != 0)
@@ -268,7 +274,7 @@ internal static class SignalPhase
 
     private static void StepAdaptive(World w, SignalStore s, int slot, in RuleEnv e)
     {
-        Detect(w, s, slot, in e, out int call, out bool ext, out int leftWait, out int leftDemand);
+        Detect(w, s, slot, in e, out int call, out bool ext, out int leftWait, out int leftDemand, out int spillAxes);
         if (s.Interval[slot] != SignalInterval.Green && s.TicksLeft[slot] == 0)
         {
             AdvanceTransition(s, slot);
@@ -287,13 +293,39 @@ internal static class SignalPhase
         int k = s.Phase[slot];
         int n = s.PhaseCount[slot];
         int elapsed = s.GreenElapsed[slot];
+
+        // Координация (6.7): ось-владелец окна и принудительный конец зелёного, начатого до границы окон (даже без вызова).
+        // Зелёный, начатый после границы (ранний возврат), идёт по обычным правилам внутри окна чужой оси.
+        int owner = k;
+        int sinceStart = 0;
+        int remaining = 0;
+        bool coord = s.CycleTicks[slot] > 0 && n == 2;
+        if (coord)
+        {
+            s.WindowClock(slot, w.Tick, out owner, out sinceStart, out remaining);
+        }
+
+        bool forceOff = coord && owner != k && elapsed > sinceStart && elapsed >= s.MinGreenTicks[slot];
         if (s.Sub[slot] == 0)
         {
             s.GapLeft[slot] = ext ? s.GapTicks[slot] : (ushort)(s.GapLeft[slot] > 0 ? s.GapLeft[slot] - 1 : 0);
+            bool spill = (spillAxes & (1 << k)) != 0 && (call & (1 << k)) == 0;
+            s.SpillTicks[slot] = spill ? (ushort)(s.SpillTicks[slot] < ushort.MaxValue ? s.SpillTicks[slot] + 1 : ushort.MaxValue) : (ushort)0;
             int otherCall = call & ~(1 << k);
             int myLeft = leftDemand & s.ArmsOfAxis(slot, k);
             bool others = otherCall != 0 || myLeft != 0;
-            if (others && elapsed >= s.MinGreenTicks[slot] && (s.GapLeft[slot] == 0 || elapsed >= s.GreenTicks[(slot * SignalStore.MaxPhases) + k]))
+            if (forceOff)
+            {
+                Begin(s, slot, owner, 0, 0);
+                return;
+            }
+
+            // Конец окна своей оси с левым спросом: стрелка успевает до границы (Main -> Arrow: Yellow + AllRed, затем ArrowMax).
+            bool arrowBeforeEnd = coord && owner == k && myLeft != 0 && elapsed >= s.MinGreenTicks[slot]
+                && remaining <= s.YellowTicks[slot] + s.AllRedTicks[slot] + s.ArrowMaxTicks[slot];
+            bool spillEnd = s.SpillTicks[slot] >= SpillOutTicks;
+            bool normalEnd = s.GapLeft[slot] == 0 || elapsed >= s.GreenTicks[(slot * SignalStore.MaxPhases) + k];
+            if (arrowBeforeEnd || (others && elapsed >= s.MinGreenTicks[slot] && (normalEnd || spillEnd)))
             {
                 if (myLeft != 0)
                 {
@@ -301,6 +333,11 @@ internal static class SignalPhase
                 }
                 else
                 {
+                    if (spillEnd && !normalEnd)
+                    {
+                        s.SpillOutEntries++;
+                    }
+
                     Begin(s, slot, NextCalled(k, n, otherCall), 0, 0);
                 }
             }
@@ -309,6 +346,12 @@ internal static class SignalPhase
         {
             bool waiting = (leftWait & s.ArrowArms[slot]) != 0;
             s.GapLeft[slot] = waiting ? s.ArrowGapTicks[slot] : (ushort)(s.GapLeft[slot] > 0 ? s.GapLeft[slot] - 1 : 0);
+            if (forceOff)
+            {
+                Begin(s, slot, owner, 0, 0);
+                return;
+            }
+
             if (elapsed >= s.ArrowMinTicks[slot] && (s.GapLeft[slot] == 0 || elapsed >= s.ArrowMaxTicks[slot]))
             {
                 int otherCall = call & ~(1 << k);
@@ -341,9 +384,10 @@ internal static class SignalPhase
     /// Детекторы (intersections.md 6.6) по входным полосам слота: читают головы полос, <c>WaitTicks</c>, <c>DenyReason</c> и следующий connector.
     /// <paramref name="call"/> - биты осей с вызовом, <paramref name="ext"/> - есть продлевающий спрос на зелёных полосах,
     /// <paramref name="leftWait"/> - биты рукавов, где первая недопущенная в дальности хочет налево/разворот, <paramref name="leftDemand"/> - биты рукавов
-    /// со спросом на стрелку (уступание левого на зелёном не короче <c>ArrowTrigger</c>). Обновляет <c>ArmLeftYield/ArmLeftHead</c>.
+    /// со спросом на стрелку (уступание левого на зелёном не короче <c>ArrowTrigger</c>), <paramref name="spillAxes"/> - биты осей, у которых есть голова,
+    /// упёршаяся в стоящий выезд (6.8; спил оси = бит есть и вызова оси нет). Обновляет <c>ArmLeftYield/ArmLeftHead</c>.
     /// </summary>
-    private static void Detect(World w, SignalStore s, int slot, in RuleEnv e, out int call, out bool ext, out int leftWait, out int leftDemand)
+    private static void Detect(World w, SignalStore s, int slot, in RuleEnv e, out int call, out bool ext, out int leftWait, out int leftDemand, out int spillAxes)
     {
         VehicleStore v = w.Vehicles;
         LaneOccupancy occ = e.Occ;
@@ -353,6 +397,7 @@ internal static class SignalPhase
         ext = false;
         leftWait = 0;
         leftDemand = 0;
+        spillAxes = 0;
         bool arrowsOn = (s.Flags[slot] & SignalPlanFlags.Arrows) != 0 && s.HasArrow[slot] != 0;
         System.Span<int> qual = stackalloc int[SignalStore.ArmCap];
         qual.Fill(-1);
@@ -420,7 +465,8 @@ internal static class SignalPhase
             byte dr = candidate ? deny[f] : (byte)GateDeny.None;
             if (dr == (byte)GateDeny.Exit && StandingExit(w, occ, net.Lanes[conn].ToLane))
             {
-                continue;   // 6.6/6.8: голова упёрлась в стоящий выезд - не вызывает и не продлевает зелёный
+                spillAxes |= axisBit;   // 6.6/6.8: голова упёрлась в стоящий выезд - не вызывает и не продлевает зелёный
+                continue;
             }
 
             call |= axisBit;

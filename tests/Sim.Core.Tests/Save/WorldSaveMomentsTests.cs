@@ -20,7 +20,7 @@ public class WorldSaveMomentsTests
     /// <summary>Что встретилось в моментах сейва (тест не проверяет «хоть раз»: он проверяет, что проверяемый мир действительно бывает в этих состояниях).</summary>
     private sealed class Coverage
     {
-        public int ArrowSub, SubPhaseTransition, GapRunning, LeftYield, AdaptiveSlots;
+        public int ArrowSub, SubPhaseTransition, GapRunning, LeftYield, AdaptiveSlots, CoordSlots;
         public int Wave, RecalcPending, Ghost, LaneChange, Rerouting, Refill, Trips, Commands, AtStop, Selected, Granted, Stuck, WaitTicks, Meso, Queue, Head, Parked, Buses;
 
         public void Observe(Simulation sim)
@@ -42,6 +42,7 @@ public class WorldSaveMomentsTests
                 }
 
                 AdaptiveSlots++;
+                CoordSlots += sg.CycleTicks[k] > 0 ? 1 : 0;
                 ArrowSub += sg.Sub[k] != 0 ? 1 : 0;
                 SubPhaseTransition += sg.Interval[k] != SignalInterval.Green ? 1 : 0;
                 GapRunning += sg.GapLeft[k] != 0 && sg.GapLeft[k] != sg.GapTicks[k] ? 1 : 0;
@@ -91,7 +92,7 @@ public class WorldSaveMomentsTests
 
         public override string ToString() =>
             $"wave {Wave}, recalcPending {RecalcPending}, ghost {Ghost}, laneChange {LaneChange}, rerouting {Rerouting}, refill {Refill}, trips {Trips}, commands {Commands}, " +
-            $"adaptiveSlots {AdaptiveSlots}, arrowSub {ArrowSub}, transitions {SubPhaseTransition}, gapRunning {GapRunning}, leftYield {LeftYield}, atStop {AtStop}, buses {Buses}, selected {Selected}, granted {Granted}, waiting {WaitTicks}, stuck {Stuck}, meso {Meso}, queue {Queue}, head {Head}, parked {Parked}";
+            $"adaptiveSlots {AdaptiveSlots}, coordSlots {CoordSlots}, arrowSub {ArrowSub}, transitions {SubPhaseTransition}, gapRunning {GapRunning}, leftYield {LeftYield}, atStop {AtStop}, buses {Buses}, selected {Selected}, granted {Granted}, waiting {WaitTicks}, stuck {Stuck}, meso {Meso}, queue {Queue}, head {Head}, parked {Parked}";
     }
 
     /// <summary>Сценарий команд: детерминированная функция номера тика и состояния мира (одинакова у эталона, сохраняемого прогона и загруженного).</summary>
@@ -275,6 +276,20 @@ public class WorldSaveMomentsTests
         SaveEveryTick(in d, from, firstArrow + 80, 1, 25, cov);
         _out.WriteLine($"first arrow at tick {firstArrow}; " + cov);
         Assert.True(cov.AdaptiveSlots > 0 && cov.ArrowSub > 0 && cov.SubPhaseTransition > 0 && cov.GapRunning > 0 && cov.LeftYield > 0, cov.ToString());
+    }
+
+    [Fact]
+    public void Small_CoordinatedAdaptive_SaveEveryThirdTickAroundWindowBoundary()
+    {
+        // 2.5 S3: координация (alternate) - окна осей по часам (tick + Offset) mod C, принудительный конец зелёного на границе окон, SpillTicks.
+        // Сейв каждые 3 тика вокруг первых границ окон (C/2 = 720 тиков; конец зелёного - за Yellow + AllRed = 80 тиков до границы).
+        ScenarioDesc d = WorldSaveFixtures.Small();
+        d.City.SignalMode = CitySignalMode.Adaptive;
+        d.City.SignalCoordination = CitySignalCoordination.Alternate;
+        var cov = new Coverage();
+        SaveEveryTick(in d, 560, 1560, 3, 25, cov);
+        _out.WriteLine(cov.ToString());
+        Assert.True(cov.CoordSlots > 0 && cov.SubPhaseTransition > 0, cov.ToString());
     }
 
     [Fact]
