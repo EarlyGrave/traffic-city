@@ -267,19 +267,24 @@ internal static class WorldBuilder
         }
 
         CreateStatus st = LodCells.TryCreate(w.Net, in w.LodCfg, out LodCells? cells);
+        AttachLod(w, cells, st == CreateStatus.Ok);
+        return st;
+    }
+
+    /// <summary>Подключает LOD-ячейки к миру (и модель очереди Q-meso, если она задана); общий код <c>Create</c> и загрузки сейва.</summary>
+    internal static void AttachLod(World w, LodCells? cells, bool ok = true)
+    {
         w.Lod = cells;
         w.Occupancy.LodCells = cells;
-        if (st == CreateStatus.Ok && cells != null && w.LodCfg.MesoModel == MesoModel.Queue)
+        if (ok && cells != null && w.LodCfg.MesoModel == MesoModel.Queue)
         {
             w.Queue = new QueueMeso(w, cells);
             w.Occupancy.Queue = w.Queue;
             w.Vehicles.QueueBits = w.Queue.QBits;
         }
-
-        return st;
     }
 
-    private static CreateStatus ValidateLod(in LodDesc l)
+    internal static CreateStatus ValidateLod(in LodDesc l)
     {
         if (l.Mode < LodMode.Off || l.Mode > LodMode.AllMeso || !NonNegative(l.CellM) || l.MicroBudget < 0 || l.EvalTicks < 0 ||
             l.HoldTicks < 0 || l.FocusMarginCells < 0 || !NonNegative(l.CongestionShare) || l.CongestionMin < 0 ||
@@ -363,7 +368,7 @@ internal static class WorldBuilder
         return l;
     }
 
-    private static CreateStatus ValidateRouting(in ScenarioDesc desc)
+    internal static CreateStatus ValidateRouting(in ScenarioDesc desc)
     {
         RoutingDesc r = desc.Routing;
         if (r.Levels < 0 || r.Levels > Routing.Overlay.MaxLevels || r.Fanout < 0 || r.Fanout == 1 || r.Fanout > Routing.Overlay.MaxFanout ||
@@ -379,7 +384,7 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    private static RoutingDesc WithDefaults(RoutingDesc r)
+    internal static RoutingDesc WithDefaults(RoutingDesc r)
     {
         if (r.Fanout <= 0)
         {
@@ -439,7 +444,7 @@ internal static class WorldBuilder
         w.Counters.ActiveVehicles = w.Vehicles.AliveCount;
     }
 
-    private static CreateStatus ValidateCapacities(in SimCapacities c)
+    internal static CreateStatus ValidateCapacities(in SimCapacities c)
     {
         // Обязательные (> 0).
         if (!InRange(c.MaxVehicles, 1) || !InRange(c.MaxNodes, 1) || !InRange(c.MaxSegments, 1) || !InRange(c.MaxLanes, 1) ||
@@ -467,7 +472,7 @@ internal static class WorldBuilder
 
     private static bool InRange(int v, int min) => v >= min && v <= MaxCapacity;
 
-    private static CreateStatus ValidateVehicleTypes(VehicleTypeDesc[]? types)
+    internal static CreateStatus ValidateVehicleTypes(VehicleTypeDesc[]? types)
     {
         if (types == null || types.Length == 0 || types.Length > MaxVehicleTypes)
         {
@@ -489,7 +494,7 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    private static CreateStatus ValidateDemand(in ScenarioDesc desc)
+    internal static CreateStatus ValidateDemand(in ScenarioDesc desc)
     {
         DemandDesc d = desc.Demand;
         if (d.TargetVehicles < 0 || d.SpawnRampTicks < 0)
@@ -536,7 +541,7 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    private static CreateStatus ValidateTransit(in ScenarioDesc desc)
+    internal static CreateStatus ValidateTransit(in ScenarioDesc desc)
     {
         TransitDesc t = desc.Transit;
         int explicitRoutes = t.RoutesExplicit?.Length ?? 0;
@@ -555,7 +560,7 @@ internal static class WorldBuilder
     }
 
     /// <summary>Нулевые поля правил (desc, собранный вручную в тестах) заменяются значениями по умолчанию из спеки.</summary>
-    private static RulesDesc WithDefaults(RulesDesc r)
+    internal static RulesDesc WithDefaults(RulesDesc r)
     {
         if (!(r.MinPhysicalGap > 0f))
         {

@@ -39,6 +39,27 @@ internal sealed class PendingTrips
 
     public int Capacity => _ring.Capacity;
 
+    // ---- сейв (Save/) ----
+
+    internal RingBuffer<PendingTrip> Ring => _ring;
+
+    /// <summary>Загрузка: очередь из <paramref name="count"/> поездок (голова = 0); <see cref="Unrouted"/> считается <see cref="RecountUnrouted"/> после заполнения.</summary>
+    internal void RestoreCount(int count) => _ring.RestoreCount(count);
+
+    internal void RecountUnrouted()
+    {
+        int n = 0;
+        for (int i = 0; i < _ring.Count; i++)
+        {
+            if (!_ring.At(i).HasRoute)
+            {
+                n++;
+            }
+        }
+
+        _unrouted = n;
+    }
+
     public int Count => _ring.Count;
 
     public bool IsEmpty => _ring.IsEmpty;

@@ -21,6 +21,9 @@ public struct Pcg32
     /// <summary>Подпоток подсистемы от общего seed сценария.</summary>
     public static Pcg32 ForStream(ulong seed, RngStream stream) => Create(seed, (ulong)stream);
 
+    /// <summary>Восстановление из сейва: состояние и инкремент как были (инкремент обязан быть нечётным).</summary>
+    public static Pcg32 FromState(ulong state, ulong inc) => new() { _state = state, _inc = inc };
+
     public ulong State => _state;
 
     public ulong Inc => _inc;

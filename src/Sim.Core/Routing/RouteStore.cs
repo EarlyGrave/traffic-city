@@ -46,10 +46,10 @@ internal sealed class RouteStore
     }
 
     /// <summary>Занято в арене плана (включая мёртвые блоки до компактификации), элементов.</summary>
-    public int PlanUsed { get; private set; }
+    public int PlanUsed { get; internal set; }
 
     /// <summary>Сколько раз выполнялась компактификация арены плана (<c>PlanCompactions</c>).</summary>
-    public int Compactions { get; private set; }
+    public int Compactions { get; internal set; }
 
     public int AliveCount => Pool.AliveCount;
 

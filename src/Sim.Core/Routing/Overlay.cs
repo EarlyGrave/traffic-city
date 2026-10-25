@@ -69,7 +69,7 @@ internal sealed partial class Overlay
     private int _builtNodes;
     private int _builtDirSegs;
 
-    private Overlay(NetworkStore net, RouteGraph g, in RoutingDesc cfg, Vec2 origin, int nx1, int nz1, int cells)
+    private Overlay(NetworkStore net, RouteGraph g, in RoutingDesc cfg, Vec2 origin, int nx1, int nz1, int cells, in OverlayRestore? restore = null)
     {
         _net = net;
         _g = g;
@@ -117,6 +117,17 @@ internal sealed partial class Overlay
         _stamp = new uint[dirCap];
         _gv = new float[dirCap];
         _heap = new IndexedHeap4(dirCap);
+
+        if (restore is { } rs)
+        {
+            // Загрузка сейва: размеры общих массивов - как у живого мира (запас растёт вместе с историей), раскладку и матрицы заполняют столбцы блока.
+            Entries = new int[rs.EntriesLen];
+            Exits = new int[rs.ExitsLen];
+            Matrix = new float[rs.MatrixLen];
+            _builtNodes = rs.BuiltNodes;
+            _builtDirSegs = rs.BuiltDirSegs;
+            return;
+        }
 
         AssignNodes(0, net.NodeCount);
         ComputeCuts(0, g.DirSegCount);
@@ -214,6 +225,169 @@ internal sealed partial class Overlay
         return CreateStatus.Ok;
     }
 
+    // ---- сейв (Save/): оверлей загружается с сохранённой раскладкой и матрицами, без кастомизации (на s1m она занимает секунды) ----
+
+    /// <summary>Параметры, без которых нельзя выделить массивы оверлея при загрузке.</summary>
+    internal readonly record struct OverlayRestore(float OriginX, float OriginZ, int Nx1, int Nz1, int EntriesLen, int ExitsLen, int MatrixLen, int BuiltNodes, int BuiltDirSegs);
+
+    /// <summary>Заготовка оверлея для загрузки: массивы выделены, раскладка и матрицы пусты; дальше столбцы блока и <see cref="FinishRestore"/>.</summary>
+    internal static LoadStatus TryRestore(NetworkStore net, RouteGraph g, in RoutingDesc cfg, in OverlayRestore r, out Overlay? overlay)
+    {
+        overlay = null;
+        if (cfg.Levels < 1 || cfg.Levels > MaxLevels || cfg.Fanout < 2 || cfg.Fanout > MaxFanout || !float.IsFinite(cfg.CellSize) || cfg.CellSize <= 0f ||
+            !float.IsFinite(cfg.CustomizeEps) || cfg.CustomizeEps < 0f || g.DirSegCapacity >= (1 << OverlaySearcher.LevelShift) ||
+            !float.IsFinite(r.OriginX) || !float.IsFinite(r.OriginZ) || r.Nx1 < 1 || r.Nz1 < 1 || (long)r.Nx1 * r.Nz1 > MaxCells ||
+            r.EntriesLen < 0 || r.ExitsLen < 0 || r.MatrixLen < 0 || r.EntriesLen > int.MaxValue / 2 || r.ExitsLen > int.MaxValue / 2 ||
+            r.MatrixLen > int.MaxValue / 2 || r.BuiltNodes < 0 || r.BuiltNodes > net.NodeCount || r.BuiltDirSegs < 0 || r.BuiltDirSegs > g.DirSegCount)
+        {
+            return LoadStatus.InvalidValue;
+        }
+
+        long cells = 0;
+        long div = 1;
+        for (int l = 1; l <= cfg.Levels; l++)
+        {
+            cells += ((r.Nx1 + div - 1) / div) * ((r.Nz1 + div - 1) / div);
+            div *= cfg.Fanout;
+        }
+
+        if (cells > MaxCells)
+        {
+            return LoadStatus.InvalidValue;
+        }
+
+        overlay = new Overlay(net, g, in cfg, new Vec2(r.OriginX, r.OriginZ), r.Nx1, r.Nz1, (int)cells, r);
+        return LoadStatus.Ok;
+    }
+
+    /// <summary>
+    /// Завершение загрузки после заполнения столбцов: смещения входов/выходов/матриц - префиксные суммы запасов (раскладка плотная), производные
+    /// узел->ячейка, уровень разреза, индексы входов/выходов. Проверяет согласованность (счётчики не больше запасов, суммы помещаются в массивы,
+    /// входы - допустимые DirSeg по возрастанию). Выключенный оверлей (<see cref="Disabled"/>) массивы раскладки не использует: проверка пропускается.
+    /// </summary>
+    internal LoadStatus FinishRestore()
+    {
+        AssignNodes(0, _builtNodes);
+        ComputeCuts(0, _builtDirSegs, syncCost: false);
+        if (Disabled)
+        {
+            return LoadStatus.Ok;
+        }
+
+        long eo = 0, xo = 0, mo = 0;
+        for (int c = 0; c < CellCap; c++)
+        {
+            if (EntryCount[c] < 0 || ExitCount[c] < 0 || EntryCap[c] < EntryCount[c] || ExitCap[c] < ExitCount[c] || EntryCap[c] > Entries.Length ||
+                ExitCap[c] > Exits.Length)
+            {
+                return LoadStatus.InvalidValue;
+            }
+
+            EntryFirst[c] = (int)eo;
+            ExitFirst[c] = (int)xo;
+            MatrixFirst[c] = (int)Math.Min(mo, int.MaxValue);
+            eo += EntryCap[c];
+            xo += ExitCap[c];
+            mo += (long)EntryCap[c] * ExitCap[c];
+            if (eo > Entries.Length || xo > Exits.Length || mo > Matrix.Length)
+            {
+                return LoadStatus.InvalidValue;
+            }
+        }
+
+        Array.Fill(EntryIdx, -1);
+        Array.Fill(ExitIdx, -1);
+        int dirCap = _g.DirSegCapacity;
+        int dirs = _g.DirSegCount;
+        for (int c = 0; c < CellCap; c++)
+        {
+            int l = LevelOf(c);
+            for (int k = 0; k < EntryCount[c]; k++)
+            {
+                int u = Entries[EntryFirst[c] + k];
+                if ((uint)u >= (uint)dirs)
+                {
+                    return LoadStatus.InvalidValue;
+                }
+
+                EntryIdx[((l - 1) * dirCap) + u] = k;
+            }
+
+            for (int k = 0; k < ExitCount[c]; k++)
+            {
+                int u = Exits[ExitFirst[c] + k];
+                if ((uint)u >= (uint)dirs)
+                {
+                    return LoadStatus.InvalidValue;
+                }
+
+                ExitIdx[((l - 1) * dirCap) + u] = k;
+            }
+        }
+
+        return LoadStatus.Ok;
+    }
+
+    /// <summary>Размеры общих массивов раскладки (для сейва).</summary>
+    internal int EntriesLength => Entries.Length;
+
+    internal int ExitsLength => Exits.Length;
+
+    internal int MatrixLength => Matrix.Length;
+
+    internal int BuiltNodes => _builtNodes;
+
+    internal int BuiltDirSegs => _builtDirSegs;
+
+    /// <summary>Σ запасов входов (длина записанной части <see cref="Entries"/>); у выключенного оверлея раскладки нет.</summary>
+    internal long EntrySlots()
+    {
+        if (Disabled)
+        {
+            return 0;
+        }
+
+        long n = 0;
+        for (int c = 0; c < CellCap; c++)
+        {
+            n += EntryCap[c];
+        }
+
+        return n;
+    }
+
+    internal long ExitSlots()
+    {
+        if (Disabled)
+        {
+            return 0;
+        }
+
+        long n = 0;
+        for (int c = 0; c < CellCap; c++)
+        {
+            n += ExitCap[c];
+        }
+
+        return n;
+    }
+
+    internal long MatrixSlots()
+    {
+        if (Disabled)
+        {
+            return 0;
+        }
+
+        long n = 0;
+        for (int c = 0; c < CellCap; c++)
+        {
+            n += (long)EntryCap[c] * ExitCap[c];
+        }
+
+        return n;
+    }
+
     // ---- геометрия ----
 
     /// <summary>Глобальный id ячейки уровня <paramref name="level"/> (1..Levels), содержащей узел.</summary>
@@ -267,7 +441,7 @@ internal sealed partial class Overlay
 
     private static int ClampCell(float f, int n) => !(f > 0f) ? 0 : (f >= n ? n - 1 : (int)f);
 
-    private void ComputeCuts(int from, int to)
+    private void ComputeCuts(int from, int to, bool syncCost = true)
     {
         for (int u = from; u < to; u++)
         {
@@ -289,7 +463,10 @@ internal sealed partial class Overlay
             }
 
             CutLevel[u] = cut;
-            CustomizedSegCost[u] = _g.SegCost[u];
+            if (syncCost)
+            {
+                CustomizedSegCost[u] = _g.SegCost[u];
+            }
         }
     }
 

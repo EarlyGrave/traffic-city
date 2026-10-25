@@ -14,9 +14,11 @@ namespace Sim.Core.Api;
 /// </summary>
 internal static class SnapshotPhase
 {
-    public static void Run(World w)
+    public static void Run(World w) => RunFor(w, w.Tick + 1);
+
+    /// <summary>Заполняет <c>Render[snapTick &amp; 1]</c> и ставит <c>SnapshotTick</c>; загрузка сейва зовёт её с <c>snapTick = Tick</c> (снапшот состояния «сейчас»).</summary>
+    public static void RunFor(World w, long snapTick)
     {
-        long snapTick = w.Tick + 1;
         int b = (int)(snapTick & 1);
         VehicleRenderData[] buf = w.Render[b];
         int high = w.Vehicles.HighWater;

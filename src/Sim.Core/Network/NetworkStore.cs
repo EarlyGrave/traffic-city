@@ -156,6 +156,28 @@ internal sealed class NetworkStore
         return -1;
     }
 
+    /// <summary>
+    /// Загрузка сейва: производные массивы полос (<c>LaneLength</c>, <c>LanePieceHeading</c>, <c>LaneGateNode</c>) по сохранённым полосам, точкам и узлам.
+    /// Полосы с диапазоном точек вне <c>LanePointCount</c> пропускаются (их отклоняет проверка загрузчика раньше).
+    /// </summary>
+    internal void RebuildLaneDerived()
+    {
+        Array.Fill(LaneGateNode, -1);
+        for (int l = 0; l < LaneCount; l++)
+        {
+            LaneLength[l] = Lanes[l].Length;
+            FillPieceHeadings(Lanes[l].FirstPoint, Lanes[l].PointCount);
+        }
+
+        for (int n = 0; n < NodeCount; n++)
+        {
+            if (Nodes[n].FirstArm >= 0)
+            {
+                RefreshLaneGateNode(n);
+            }
+        }
+    }
+
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
     public int Version { get; internal set; }
 

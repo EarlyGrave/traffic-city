@@ -137,6 +137,40 @@ internal sealed partial class NetworkBuilder
 
     public NetworkOptions Options => _o;
 
+    /// <summary>
+    /// Загрузка сейва: служебные индексы построения (сетка прилипания узлов, список инцидентности) заново по узлам и сегментам в порядке индекса -
+    /// тем же порядком вставки, что у <see cref="AddNode(Vec2, NodeControl, out int)"/> и <see cref="AddSegment(int, int, ReadOnlySpan{Vec2}, int, int, float, RoadKind, out int)"/>.
+    /// Узлы вне сетки по ёмкости (<c>Cells</c> полна) - <see cref="NetworkStatus.NodesFull"/>.
+    /// </summary>
+    internal NetworkStatus RebuildIndexes()
+    {
+        for (int n = 0; n < _s.NodeCount; n++)
+        {
+            Vec2 p = _s.Nodes[n].Position;
+            long key = CellKey(Cell(p.X), Cell(p.Z));
+            int head = _s.Cells.TryGet(key, out int h) ? h : -1;
+            if (!_s.Cells.TrySet(key, n))
+            {
+                return NetworkStatus.NodesFull;
+            }
+
+            _s.CellNext[n] = head;
+            _s.IncHead[n] = -1;
+        }
+
+        for (int seg = 0; seg < _s.SegmentCount; seg++)
+        {
+            int a = _s.Segments[seg].NodeA;
+            int b = _s.Segments[seg].NodeB;
+            _s.IncNext[2 * seg] = _s.IncHead[a];
+            _s.IncHead[a] = 2 * seg;
+            _s.IncNext[(2 * seg) + 1] = _s.IncHead[b];
+            _s.IncHead[b] = (2 * seg) + 1;
+        }
+
+        return NetworkStatus.Ok;
+    }
+
     // ---- узлы ----
 
     /// <summary>Индекс существующего узла в радиусе SnapRadius (ближайший, при равенстве — меньший индекс) или -1.</summary>

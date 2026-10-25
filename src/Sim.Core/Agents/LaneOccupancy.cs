@@ -61,6 +61,19 @@ internal sealed class LaneOccupancy
     /// <summary>Число машин в <see cref="Linked"/>.</summary>
     public int LinkedCount { get; private set; }
 
+    /// <summary>Загрузка сейва: <see cref="OccMask"/> по <see cref="LaneCount"/> (производное); <see cref="Linked"/> пуст (первая фаза 4 после загрузки - полный проход).</summary>
+    internal void RebuildMasks(int laneCount)
+    {
+        Array.Clear(OccMask);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (LaneCount[lane] > 0)
+            {
+                OccMask[lane >> 6] |= 1UL << (lane & 63);
+            }
+        }
+    }
+
     /// <summary>Очищает <see cref="Linked"/> (после того как фаза 4 его обработала).</summary>
     public void ClearLinked()
     {

@@ -107,6 +107,122 @@ internal sealed class QueueMeso
         }
     }
 
+    // ------------------------------------------------------------------ сейв (Save/)
+
+    /// <summary>Тик корзины колеса таймеров по машине или -1 (не в колесе): состояние, колесо строится заново по нему.</summary>
+    internal int[] WheelTickArray => _wTick;
+
+    /// <summary>
+    /// Загрузка сейва: всё производное очереди по списку полос, битам <c>VehicleStore.Lod</c>, флагам и сохранённым <c>QReady</c>/колесу
+    /// (<see cref="QBits"/>, счётчики полос и их маски, <see cref="Total"/>/<see cref="Parked"/>/<see cref="StuckCount"/>, колесо таймеров). Порядок внутри
+    /// корзины колеса не важен: события тика обходятся по маске в порядке индекса. Хранимое состояние (<c>QEnter</c>, <c>QReady</c>, тики колеса,
+    /// <c>LaneLastExit</c>, агрегаты метрик) уже загружено.
+    /// </summary>
+    internal void RestoreDerived()
+    {
+        VehicleStore v = _v;
+        Array.Clear(QBits);
+        Array.Clear(LaneQCount);
+        Array.Clear(LaneSpanCm);
+        Array.Clear(_kinCount);
+        Array.Clear(_headCount);
+        Array.Clear(KinMask);
+        for (int c = 0; c < 4; c++)
+        {
+            Array.Clear(HeadMask[c]);
+        }
+
+        Array.Fill(_wheel, -1);
+        Total = 0;
+        Parked = 0;
+        StuckCount = 0;
+
+        int lanes = _net.LaneCount;
+        for (int lane = 0; lane < lanes; lane++)
+        {
+            int kin = 0;
+            int head = 0;
+            int qn = 0;
+            int span = 0;
+            for (int x = _occ.LaneHead[lane]; x != -1;)
+            {
+                bool primary = v.Lane[x] == lane;
+                span += SpanCm(x);
+                if (!IsQ(x))
+                {
+                    kin++;
+                }
+                else
+                {
+                    qn++;
+                    if (IsHead(x))
+                    {
+                        head++;
+                        if (GateRules.IsGranted(v, x))
+                        {
+                            kin++;
+                        }
+                    }
+                }
+
+                x = primary ? v.Behind[x] : v.GhostBehind[x];
+            }
+
+            LaneQCount[lane] = qn;
+            LaneSpanCm[lane] = span;
+            _kinCount[lane] = kin;
+            _headCount[lane] = head;
+            if (kin > 0)
+            {
+                KinMask[lane >> 6] |= 1UL << (lane & 63);
+            }
+
+            if (head > 0)
+            {
+                HeadMask[_laneColor[lane]][lane >> 6] |= 1UL << (lane & 63);
+            }
+        }
+
+        int high = v.HighWater;
+        for (int i = 0; i < high; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            if (IsQ(i))
+            {
+                QBits[i >> 6] |= 1UL << (i & 63);
+                Total++;
+                if ((v.Lod[i] & LodBits.Parked) != 0)
+                {
+                    Parked++;
+                }
+
+                if ((v.Flags[i] & (byte)VehicleFlags.Stuck) != 0)
+                {
+                    StuckCount++;
+                }
+            }
+
+            int t = _wTick[i];
+            if (t != -1)
+            {
+                int b = t & WheelMask;
+                int h = _wheel[b];
+                _wNext[i] = h;
+                _wPrev[i] = -1;
+                if (h != -1)
+                {
+                    _wPrev[h] = i;
+                }
+
+                _wheel[b] = i;
+            }
+        }
+    }
+
     private int Now => (int)_w.Tick;
 
     /// <summary>Текущий тик (для синтеза из фаз; тик внутри фаз не меняется).</summary>

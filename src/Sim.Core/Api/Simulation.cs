@@ -11,7 +11,7 @@ public delegate void PhaseProbe(int phase);
 /// Фасад ядра (core-api 3): единственная публичная точка входа. Однопоточный; снапшоты (спаны) валидны до следующего
 /// <see cref="Step"/>. После <see cref="Dispose"/> любой вызов - no-op (спаны пусты, запросы возвращают false).
 /// </summary>
-public sealed class Simulation : IDisposable
+public sealed partial class Simulation : IDisposable
 {
     public const float Dt = 0.05f;
     public const int TicksPerSecond = 20;

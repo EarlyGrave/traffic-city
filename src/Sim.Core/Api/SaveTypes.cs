@@ -65,6 +65,21 @@ public enum LoadStatus : int
     NotSupported = 15,
 }
 
+/// <summary>Параметры загрузки (save-format.md §6).</summary>
+public struct LoadOptions
+{
+    /// <summary>Ёмкости: 0 в поле = как в сейве, иначе не меньше занятого (продолжение уже не обязано совпасть с прогоном без сейва).</summary>
+    public SimCapacities CapacityOverride;
+
+    /// <summary>1 = расхождение хэша состояния с заголовком (при равных <c>hash_version</c>) - ошибка <see cref="LoadStatus.HashMismatch"/> (тесты, CI); 0 = только флаги в отчёте.</summary>
+    public byte StrictHash;
+
+    /// <summary>0 = параметры ассетов из сейва, 1 = новые параметры типов для новых спавнов (S3: манифест ассетов).</summary>
+    public byte AssetParams;
+
+    public VehicleTypeDesc[]? CurrentTypes;
+}
+
 /// <summary>Результат загрузки без строк: хост переводит в текст. Контейнер заполняет статус, версию и место поломки.</summary>
 public struct LoadReport
 {

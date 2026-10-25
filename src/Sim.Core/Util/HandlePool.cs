@@ -27,6 +27,38 @@ internal sealed class HandlePool
 
     public int Capacity { get; }
 
+    // ---- сейв (Save/): массивы и счётчики пула как есть; free-list в LIFO-порядке ----
+
+    /// <summary>Поколения слотов (длина = ёмкость; значимы <c>[0, HighWater)</c>).</summary>
+    internal int[] GenerationArray => _generation;
+
+    /// <summary>Free-list снизу вверх (длина = ёмкость; значимы <c>[0, FreeCount)</c>).</summary>
+    internal int[] FreeListArray => _freeList;
+
+    internal int FreeCount => _freeCount;
+
+    /// <summary>Загрузка: задаёт <c>HighWater</c> и длину free-list (значения проверяет загрузчик); <see cref="AliveCount"/> считается <see cref="RecountAlive"/>.</summary>
+    internal void RestoreCounts(int highWater, int freeCount)
+    {
+        _highWater = highWater;
+        _freeCount = freeCount;
+    }
+
+    /// <summary>Загрузка: <c>AliveCount</c> = число слотов с нечётным поколением.</summary>
+    internal void RecountAlive()
+    {
+        int n = 0;
+        for (int i = 0; i < _highWater; i++)
+        {
+            if ((_generation[i] & 1) == 1)
+            {
+                n++;
+            }
+        }
+
+        _aliveCount = n;
+    }
+
     public int AliveCount => _aliveCount;
 
     /// <summary>Верхняя граница для обходов «по всем слотам».</summary>

@@ -200,6 +200,18 @@ public sealed class Simulation : IDisposable
     /// НЕ входят в хэш (меняются при оптимизациях). Мера прогресса горячего пути без шума таймера.
     public ref readonly SimWork Work { get; }
 
+    // ---- сохранения (save-format.md §6, ADR-0012); только между Step ----
+    /// Точная длина контейнера (-1 - освобождена/неверные блоки хоста). Save в Span не аллоцирует (после первого вызова); состояние не меняет.
+    public long MeasureSave(ReadOnlySpan<HostBlock> host = default);
+    public SaveStatus Save(Span<byte> dest, out long written, ReadOnlySpan<HostBlock> host = default, ReadOnlySpan<byte> hostData = default);
+    public SaveStatus Save(SaveSink sink, ReadOnlySpan<HostBlock> host = default, ReadOnlySpan<byte> hostData = default);   // куски <= 1 МБ
+    /// Create без генератора. Ошибки - LoadStatus + LoadReport (блок/столбец/строка), мир при ошибке не создаётся; число потоков - из rt, не из сейва.
+    public static LoadStatus Load(ReadOnlySpan<byte> src, in LoadOptions o, in SimRuntimeOptions rt, out Simulation? sim, out LoadReport report);
+    public static LoadStatus Load(SaveSource src, in LoadOptions o, in SimRuntimeOptions rt, out Simulation? sim, out LoadReport report);
+    public static LoadStatus InspectSave(ReadOnlySpan<byte> head, out SaveHeaderInfo info);   // первые 64 Б
+    public ReadOnlySpan<HostBlock> LoadedHostBlocks { get; }   // блоки хоста загруженного сейва (срезы LoadedHostData)
+    public ReadOnlySpan<byte> LoadedHostData { get; }
+
     // ---- детерминизм ----
     public ulong ComputeStateHash();                                 // §9, O(N), не вызывать каждый тик в проде
 
@@ -1260,6 +1272,11 @@ void     tc_sim_counters(const tc_sim*, tc_sim_counters* out);
 void     tc_sim_stats(const tc_sim*, tc_sim_stats* out);
 uint64_t tc_sim_state_hash(const tc_sim*);
 void     tc_sim_set_phase_probe(tc_sim*, void (*cb)(void* user, int32_t phase), void* user);  // NULL = выключить
+int64_t  tc_sim_measure_save(const tc_sim*, const tc_host_block* host, int32_t host_len);            // -1 = ошибка
+int32_t  tc_sim_save(tc_sim*, uint8_t* dst, int64_t cap, int64_t* written, const tc_host_block* host, int32_t host_len, const uint8_t* host_data, int64_t host_data_len);  // SaveStatus
+int32_t  tc_sim_save_stream(tc_sim*, int32_t (*write)(void* user, const uint8_t* data, int64_t len), void* user);
+int32_t  tc_sim_load(const uint8_t* src, int64_t len, const tc_load_options*, const tc_runtime_options*, tc_sim** out, tc_load_report*);  // LoadStatus
+int32_t  tc_sim_inspect_save(const uint8_t* head64, tc_save_header_info* out);
 ```
 
 `tc_scenario_desc` — та же структура, где `T[]` заменены на `(const T*, int32_t)`; строк нет.
