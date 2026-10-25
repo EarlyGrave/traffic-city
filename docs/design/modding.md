@@ -299,12 +299,18 @@ M9 — после ADR-0023 и M2. M4 и M5 трогают API ядра и сей
 
 ### M1 (sonnet) Загрузчик пакетов
 - Файлы: `src/Sim.Scenarios/Mods/{PackageManifest,PackageLoader,PackageSet,AssetId,SemVer,ModError,ModIssue,ModLimits,SafePath}.cs`;
-  `tests/Sim.Headless.Tests/Mods/PackageLoaderTests.cs`; `tests/ModFixtures/{ok-*,bad-*}/` (маленькие, текстовые).
+  `tests/Sim.Headless.Tests/Mods/PackageLoaderTests.cs`; `tests/ModFixtures/{ok_*,bad_*}/` (маленькие, текстовые; каталог = id пакета, а в id нет `-`, поэтому `_`).
 - Делает: §1, §2 (без алиаса), §5.1, §7, §9. Только `package.json` и обход файлов (белый список, пределы),
   содержимое контента пока не разбирает.
 - Приёмка: MD1, MD4, MD7. Каждое правило §7 и каждый код §9 этой задачи покрыт фикстурой. Без исключений наружу
   (ошибки — `ModIssue`).
 - Проверки: `dotnet build src/Sim.Scenarios -warnaserror`, `dotnet test tests/Sim.Headless.Tests --filter FullyQualifiedName~Mods`, `dotnet format`.
+- Реализация (решения M1): `PackageLoader.Load(IReadOnlyList<PackageSearchDir>, roots)` не бросает; при любой ошибке
+  `PackageSet.Packages` пуст (набор целиком или никак). `PackageSearchDir.IsGame` — только из такого каталога допустимы
+  `base` и `tc_*` (иначе `BadValue`). Файлы без расширения допустимы лишь `LICENSE`; `.md`/`.txt` игнорируются. Проверки
+  JSON (размер/глубина/строка/массив) идут для **каждого** `.json` пакета. Сокращение ссылки: `PackageSet.TryExpandRef`.
+  Вне M1: `DuplicateId`, `UnknownAssetRef`, `CapacityExceeded` (нужен разбор контента, M2), размер текстуры в пикселях
+  и glTF-пределы (M6), таймлайн (M9).
 - Зависимости: нет.
 
 ### M2 (sonnet) Пакет `base` и сценарии v3

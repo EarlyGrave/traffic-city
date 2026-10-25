@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "id": "bad_backslash",
+  "version": "1.0.0",
+  "content_format": 1,
+  "content": {
+    "vehicles": [
+      "sub\\v.json"
+    ]
+  }
+}

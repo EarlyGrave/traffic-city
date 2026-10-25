@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "id": "bad_syntax",
+  "version": "1.0.0",
+  "content_format": 1,
+  "content": {
+    "vehicles": [
+      "vehicles.json"
+    ]
+  }
+}

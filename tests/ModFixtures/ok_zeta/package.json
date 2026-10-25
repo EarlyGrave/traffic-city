@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "id": "ok_zeta",
+  "version": "0.3.1",
+  "content_format": 1,
+  "requires": [
+    {
+      "id": "ok_alpha",
+      "version": "^1.0.0"
+    },
+    {
+      "id": "ok_beta",
+      "version": "1.0.0"
+    }
+  ],
+  "content": {
+    "scenarios": [
+      "scenarios/s.json"
+    ]
+  }
+}
