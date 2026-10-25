@@ -64,7 +64,8 @@
 | 61 | hotpath-p5 (worktree) | sonnet | 2.4 P5 (hotpath H5): AssignConnectors по флагу | done, merged (s10k p95 4.33–4.74 мс) |
 | 62 | hotpath-reserve (worktree) | opus | 2.4c: выбор резерва до ≤ 4 мс | done, merged (ADR-0017 потоки) |
 | 63 | workers-p6 (worktree) | sonnet | 2.4 P6: WorkerPool + фаза 5 на потоках | done, merged (s10k p95 2 потока 3.67–3.93 мс, хэши 1/2/3) |
-| 64 | workers-p7 (worktree) | sonnet | 2.4 P7: фазы 6 и 10 на воркерах | wip |
+| 64 | workers-p7 (worktree) | sonnet | 2.4 P7: фазы 6 и 10 на воркерах | done, merged (s10k p95 2 потока 3.39–3.81 мс) |
+| 65 | verify-2.4 (worktree) | haiku | верификация шага 2.4 + пересъём baseline | wip |
 | 54 | hotpath-plan (worktree) | opus | 2.4b: план горячего пути s10k | done, merged (ADR-0016, P1–P5) |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
 | 56 | sim-lod-spec (worktree) | opus | 2.6: ADR-0013 уровни детализации + новая лестница | done, merged (micro+meso, L1–L5) |
