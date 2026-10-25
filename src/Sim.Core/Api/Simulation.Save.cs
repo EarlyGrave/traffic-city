@@ -61,4 +61,37 @@ public sealed partial class Simulation
     public ReadOnlySpan<HostBlock> LoadedHostBlocks => _disposed ? default : _w.LoadedHostBlocks;
 
     public ReadOnlySpan<byte> LoadedHostData => _disposed ? default : _w.LoadedHostData;
+
+    /// <summary>Версия мира, которую пишет это ядро (<c>world_version</c> заголовка сейва, save-format.md §4).</summary>
+    public static int CurrentWorldVersion => SaveSchema.WorldVersion;
+
+    /// <summary>
+    /// Задать манифест ассетов (хост после <c>Create</c>): записи и UTF-8 буфер id копируются, пишутся в сейв блоком <c>MANI</c>. false - записи противоречивы
+    /// (вид вне 1..4, срез id вне буфера, индекс типа ТС вне таблицы, ненулевые резервные поля), манифест не меняется. В хэш состояния не входит.
+    /// </summary>
+    public bool SetAssetManifest(ReadOnlySpan<AssetRef> refs, ReadOnlySpan<byte> ids)
+    {
+        if (_disposed || !AssetManifestRules.Validate(refs, ids, _w.Types.Length, out _))
+        {
+            return false;
+        }
+
+        _w.AssetManifest = refs.ToArray();
+        _w.AssetIds = ids.ToArray();
+        _w.AssetStates = new byte[refs.Length];   // каталога нет - всё Ok
+        return true;
+    }
+
+    public ReadOnlySpan<AssetRef> AssetManifest => _disposed ? default : _w.AssetManifest;
+
+    public ReadOnlySpan<byte> AssetIds => _disposed ? default : _w.AssetIds;
+
+    /// <summary>
+    /// <see cref="AssetState"/> каждой записи манифеста по результату <c>Load</c> (по <see cref="LoadOptions.AvailableAssets"/>). Для <see cref="AssetState.Missing"/> клиент рисует
+    /// заглушку по габаритам типа из <see cref="VehicleTypes"/>: симуляция идёт по параметрам из сейва, запись манифеста при пересохранении сохраняется.
+    /// </summary>
+    public ReadOnlySpan<byte> AssetStates => _disposed ? default : _w.AssetStates;
+
+    /// <summary>Таблица типов ТС мира (параметры из сейва или сценария): габариты для заглушки отсутствующего ассета.</summary>
+    public ReadOnlySpan<VehicleTypeDesc> VehicleTypes => _disposed ? default : _w.Types;
 }

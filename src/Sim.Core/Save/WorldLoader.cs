@@ -44,14 +44,16 @@ internal static class WorldLoader
         sim = null;
         SaveHeaderInfo h = t.Header;
         r.FileWorldVersion = h.WorldVersion;
-        if (h.WorldVersion > SaveSchema.WorldVersion)
+        if (h.WorldVersion != SaveSchema.WorldVersion)
         {
-            return Fail(ref r, LoadStatus.TooNew);
-        }
+            LoadStatus ms = Migrations.Apply(t, h.WorldVersion, SaveSchema.WorldVersion, Migrations.Steps, out int applied);
+            r.MigrationsApplied = applied;
+            if (ms != LoadStatus.Ok)
+            {
+                return Fail(ref r, ms);
+            }
 
-        if (h.WorldVersion < SaveSchema.WorldVersion)
-        {
-            return Fail(ref r, LoadStatus.MigrationFailed);   // цепочка миграций - S3 (Save/Migrations.cs); версий до текущей пока нет
+            h = t.Header;
         }
 
         var c = new LoadContext(in o, in rt);
@@ -346,7 +348,7 @@ internal static class WorldLoader
 
         r.HashChecked = 0;
         r.HashMatched = 0;
-        if (h.HashVersion == SaveSchema.HashVersion)
+        if (h.HashVersion == SaveSchema.HashVersion && r.MigrationsApplied == 0)
         {
             r.HashChecked = 1;
             bool match = StateHash.Compute(w) == h.StateHash;
@@ -358,6 +360,9 @@ internal static class WorldLoader
         }
 
         r.KeptBlocks = t.KeptBlocks;
+        r.AssetsInManifest = w.AssetManifest.Length;
+        r.AssetsMissing = c.AssetsMissing;
+        r.AssetsChanged = c.AssetsChanged;
         return LoadStatus.Ok;
     }
 }

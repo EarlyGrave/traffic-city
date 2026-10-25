@@ -60,6 +60,7 @@ internal static partial class SaveSchema
         LodBlock(),
         QueueMesoBlock(),
         SignalMetricsBlock(),
+        Manifest(),
     };
 
     /// <summary>FourCC всех блоков мира (читателю контейнера: остальные необязательные блоки уходят в <c>kept</c>).</summary>

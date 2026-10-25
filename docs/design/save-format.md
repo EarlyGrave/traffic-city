@@ -203,6 +203,12 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 - **Состояние мода** — блок хоста: мод-данные (`critical = 0`) теряют функцию, но сохраняются; мод-механика с состоянием, без
   которого мир неверен (`critical = 1`), — сейв не грузится без мода с понятной ошибкой. Выбор — ADR-0015.
 
+**Реализация S3 (минимум).** `MANI` - всегда присутствующий блок (пустой, если хост манифест не задал); `Simulation.SetAssetManifest(refs, ids)` проверяет записи (вид 1..4, срез id в буфере,
+индекс типа ТС в `VTYP`, нулевые резервные поля) и возвращает false без изменений при противоречии. Каталог «что есть сейчас» хост передаёт в `LoadOptions.AvailableAssets/AvailableIds` (тот же формат,
+`Sim.Scenarios/AssetManifestBuilder`: `vehicle:<имя>`, `ContentHash` = xxh64 параметров типа); ядро сверяет вид + id побайтно и отдаёт `LoadReport.AssetsInManifest/AssetsMissing/AssetsChanged` и
+`Simulation.AssetStates` (`AssetState` на запись, в сейв не пишется) вместе с `Simulation.VehicleTypes` (габариты заглушки). Каталога нет - ничего не сверяется. Параметры отсутствующего и обновлённого ассета
+всегда из сейва (продолжение побитовое). Опция `AssetParams = UseCurrentForNewSpawns` (новые параметры только новым спавнам - решение владельца) **не реализована**: нужны версионные параметры типа в состоянии; поле `LoadOptions.AssetParams` зарезервировано.
+
 ## 6. API ядра
 
 ```csharp
@@ -302,6 +308,12 @@ public sealed partial class Simulation
 тиками → сжатие и запись в фоне → запись во временный файл + атомарное переименование; кольцо из N файлов; битый файл
 не затирает последний хороший. Пауза кадра = только копия в буфер.
 
+**Реализация S3:** конверт - `Sim.Headless/SaveFile.cs` (`Pack/TryUnpack/ReadContainer`; `Sim.Headless save` пишет конверт, `--raw` - голый контейнер, `load` определяет формат по магии).
+Корпус проверяет `Sim.Core.Tests/Save/SaveCorpusTests` (входит в обычный `dotnet test`; файлы копируются в вывод тестов как `SaveCorpus/*`). Файлы: `w1-small-t600`, `w1-s1k-t2400`
+(`.tcsave` + `.json` с `world_version`, `tick`, `state_hash`, `hash_after_load`, `continue_ticks` = 200, `hash_after_continue`, хэши - hex). Перегенерация (до этапа 3 корпус **перегенерируется**, старые файлы удаляются):
+`TC_REGEN_CORPUS=1 dotnet test tests/Sim.Core.Tests --filter FullyQualifiedName~SaveCorpusTests`, результат коммитится отдельным коммитом. Изменение схемы или поведения без перегенерации -
+тест падает сообщением «перегенерируй корпус: …». Миграции с этапа 3: файлы прошлых версий остаются, шаг добавляется в `Save/Migrations.cs`.
+
 **Golden-корпус** `tests/SaveCorpus/` (бинарные, `.gitattributes: binary`, бюджет ≤ 5 МБ):
 - `w{world_version}-{имя}-t{tick}.tcsave` + `.json`: `world_version`, `tick`, `state_hash` (заголовок), `hash_after_load`,
   `continue_ticks` (200), `hash_after_continue`.
@@ -380,7 +392,7 @@ s100k ≈ 36 + 100 000 × 0.36 КБ ≈ **72 МБ сырых, ≈ 19–21 МБ d
 |---|---|---|---|
 | S1 | Контейнер: `Util/XxHash64` (потоковый), `Save/SaveContainer` (писатель в `Span`/`SaveSink`, читатель из `Span`/`SaveSource` в `SaveTables`), каталог столбцов, канон, проверки §2, `SaveStatus`/`LoadStatus`, `InspectSave`. Без `World` | `src/Sim.Core/Save/*`, `Util/XxHash64.cs`, тесты | T5; T7 на уровне контейнера; 0 Б при записи в `Span` |
 | S2 | Состояние мира: `Save/SaveSchema.cs` (реестр блоков и столбцов = приложение A), `WorldSaver`, `WorldLoader` (= `Create` без генератора), `SaveValidator` (§6.1), построение производных (`World.RebuildDerived`, конструкторы `Overlay`/`RouteGraph` «из сохранённого»), канон мёртвых слотов, `Simulation.Save/Load/MeasureSave`, хост-блоки и `kept`; `Sim.Headless save`/`load`/`hash --load`; правки `core-api.md` §3/§12, приложение A здесь | `src/Sim.Core/Save/*`, `World/*`, `Routing/Overlay*.cs`, `RoutingGraph.cs`, `Api/Simulation.cs`, `src/Sim.Headless/*`, тесты | T1–T4, T8, T9, T12, T7 на уровне мира; замер `save_ms/load_ms` s1k/s10k в отчёте |
-| S3 | Версии и хост: реестр миграций (`Save/Migrations.cs`, пока пустой, + T10 на фиктивной цепочке), манифест (`SetAssetManifest`, `Sim.Scenarios` пишет `vehicle:<имя>` и `ContentHash`), конверт `.tcsave` (`Sim.Scenarios/SaveFile.cs`, deflate), `AssetReport` в `load`, корпус `tests/SaveCorpus/` (w1-small, w1-s1k-t2400) + T6 + `.gitattributes` | `src/Sim.Core/Save/Migrations.cs`, `Api/*`, `src/Sim.Scenarios/*`, `src/Sim.Headless/*`, `tests/SaveCorpus/`, тесты | T6, T10, T11 |
+| S3 (сделано, см. §5 и §7) | Версии и хост: реестр миграций (`Save/Migrations.cs`, пока пустой, + T10 на фиктивной цепочке), манифест (`SetAssetManifest`, `Sim.Scenarios` пишет `vehicle:<имя>` и `ContentHash`), конверт `.tcsave` (`Sim.Scenarios/SaveFile.cs`, deflate), `AssetReport` в `load`, корпус `tests/SaveCorpus/` (w1-small, w1-s1k-t2400) + T6 + `.gitattributes` | `src/Sim.Core/Save/Migrations.cs`, `Api/*`, `src/Sim.Scenarios/*`, `src/Sim.Headless/*`, `tests/SaveCorpus/`, тесты | T6, T10, T11 |
 
 После S3 — верификатор (haiku): полный `dotnet test`, bench-smoke s1k + `compare` (сейв не должен тронуть тик), `save/load`
 s10k с цифрами размера и времени. Клиентские кнопки «Сохранить/Загрузить», автосейв и заглушка ассета — отдельная задача
@@ -931,4 +943,11 @@ s10k с цифрами размера и времени. Клиентские к
 | `SMET` | 4 | ConnWaitSum | i64 | Count | 0 |
 | `SMET` | 5 | ConnGrantCount | i32 | Count | 0 |
 | `SMET` | 6 | ConnDelay | f32 | Count | 0 |
+| `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
+| `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
+| `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |
+| `MANI` | 4 | IdLength | u32 | ManifestCount | 0 |
+| `MANI` | 5 | Version | u32 | ManifestCount | 0 |
+| `MANI` | 6 | ContentHash | u64 | ManifestCount | 0 |
+| `MANI` | 7 | IdBlob | u8 | IdBlobLength | 0 |
 <!-- schema:end -->

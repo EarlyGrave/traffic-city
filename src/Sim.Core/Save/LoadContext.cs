@@ -78,6 +78,12 @@ internal sealed class LoadContext
     public long QEvents;
     public long QWakes;
 
+    // манифест ассетов (MANI)
+    public AssetRef[]? ManiRefs;
+    public byte[]? ManiIds;
+    public int AssetsMissing;
+    public int AssetsChanged;
+
     public int GraphDirSegCount;
     public int GraphArcCount;
     public int GraphBuiltVersion;

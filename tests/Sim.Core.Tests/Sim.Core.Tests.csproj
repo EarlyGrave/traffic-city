@@ -22,6 +22,13 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/Sim.Core/Sim.Core.csproj" />
+    <ProjectReference Include="../../src/Sim.Scenarios/Sim.Scenarios.csproj" />
+    <ProjectReference Include="../../src/Sim.Headless/Sim.Headless.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Golden-корпус сейвов (docs/design/save-format.md §7): попадает в вывод тестов как SaveCorpus/*, тест читает его оттуда. -->
+    <None Include="../SaveCorpus/*" Link="SaveCorpus/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

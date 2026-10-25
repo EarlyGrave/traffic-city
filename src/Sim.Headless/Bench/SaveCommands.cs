@@ -9,7 +9,7 @@ using Sim.Scenarios;
 namespace Sim.Headless.Bench;
 
 /// <summary>
-/// <c>save</c> и <c>load</c> (save-format.md §7, §11): сырой контейнер ядра в файл и обратно. Конверт со сжатием (<c>.tcsave</c>) - задача S3.
+/// <c>save</c> и <c>load</c> (save-format.md §7, §11): контейнер ядра в файл <c>.tcsave</c> (конверт + deflate, <see cref="SaveFile"/>; <c>--raw</c> - без конверта) и обратно (формат определяется по магии).
 /// <c>save --scenario s --ticks N [--warmup-until-full] --out f</c> считает N тиков, пишет сейв, печатает хэш и размер;
 /// <c>load --in f [--ticks N] [--every K]</c> грузит строго (хэш заголовка обязан сойтись) и печатает хэши в формате <c>hash</c>, чтобы сравнить с прогоном без сейва.
 /// </summary>
@@ -20,15 +20,15 @@ public static class SaveCommands
     public const int ExitFailed = 1;
 
     public const string SaveUsage =
-        "Usage: Sim.Headless save --scenario <name|path> --ticks N --out <file> [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>]\n" +
-        "  runs N ticks (after the optional warmup), writes the raw save container, prints 'tick=<T> hash=<hex> active=<N>' and 'saved bytes=<B> save_ms=<ms>'\n";
+        "Usage: Sim.Headless save --scenario <name|path> --ticks N --out <file> [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>] [--raw]\n" +
+        "  runs N ticks (after the optional warmup), writes the .tcsave envelope (--raw: the bare container), prints 'tick=<T> hash=<hex> active=<N>' and 'saved bytes=<B> save_ms=<ms>'\n";
 
     public const string LoadUsage =
         "Usage: Sim.Headless load --in <file> [--ticks N] [--every K] [--threads N]\n" +
         "  loads a save (strict hash check), prints 'loaded tick=<T> hash=<hex> active=<N> load_ms=<ms>' then, with --ticks, a 'hash'-style line every K ticks\n";
 
     private static readonly string[] _saveAllowed = { "--scenario", "--ticks", "--out", "--warmup-max-ticks", "--scenarios-dir", "--threads" };
-    private static readonly string[] _saveFlags = { "--warmup-until-full" };
+    private static readonly string[] _saveFlags = { "--warmup-until-full", "--raw" };
     private static readonly string[] _loadAllowed = { "--in", "--ticks", "--every", "--threads" };
 
     public static int RunSave(string[] args, TextWriter output, TextWriter error)
@@ -64,6 +64,8 @@ public static class SaveCommands
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        AssetManifestBuilder.ForVehicleTypes(sc.TypeNames, sc.Desc.VehicleTypes, out AssetRef[] assets, out byte[] assetIds);
+        sim.SetAssetManifest(assets, assetIds);
         if (a.Has("--warmup-until-full"))
         {
             BenchCommand.WarmUpUntilFull(sim, sc.Desc.Demand.TargetVehicles, 0, warmupMax);
@@ -83,8 +85,9 @@ public static class SaveCommands
             return ExitFailed;
         }
 
-        File.WriteAllBytes(outPath, buf);
-        output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"saved bytes={written} save_ms={ms:F2} file={outPath}"));
+        byte[] file = a.Has("--raw") ? buf : SaveFile.Pack(buf);
+        File.WriteAllBytes(outPath, file);
+        output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"saved bytes={written} file_bytes={file.Length} save_ms={ms:F2} file={outPath}"));
         return ExitOk;
     }
 
@@ -111,9 +114,9 @@ public static class SaveCommands
         byte[] bytes;
         try
         {
-            bytes = File.ReadAllBytes(path);
+            bytes = SaveFile.ReadContainer(path);
         }
-        catch (IOException e)
+        catch (Exception e) when (e is IOException or InvalidDataException)
         {
             error.WriteLine($"error: {e.Message}");
             return ExitUsage;
@@ -133,7 +136,7 @@ public static class SaveCommands
         {
             output.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"loaded tick={sim.Tick} hash={sim.ComputeStateHash():x16} active={sim.ActiveVehicleCount} load_ms={ms:F2} world_version={rep.FileWorldVersion} kept_blocks={rep.KeptBlocks}"));
+                $"loaded tick={sim.Tick} hash={sim.ComputeStateHash():x16} active={sim.ActiveVehicleCount} load_ms={ms:F2} world_version={rep.FileWorldVersion} kept_blocks={rep.KeptBlocks} assets={rep.AssetsInManifest}"));
             int step = every > 0 ? every : Math.Max(1, ticks);
             int done = 0;
             while (done < ticks)

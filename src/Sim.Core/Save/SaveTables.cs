@@ -178,6 +178,83 @@ internal sealed class SaveTables : ISaveSource
         _blocks[^1] = b;
     }
 
+    /// <summary>
+    /// Шаг миграции: добавить столбец в уже существующий блок (на место по возрастанию id) либо заменить столбец с тем же id.
+    /// Нужно только миграциям (<see cref="Migrations"/>); читатель и писатель контейнера им не пользуются.
+    /// </summary>
+    public bool SetColumn<T>(int block, uint columnId, T[] values)
+        where T : unmanaged
+    {
+        if ((uint)block >= (uint)_blocks.Count)
+        {
+            return false;
+        }
+
+        byte[] bytes = MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+        var entry = new ColumnEntry { Id = columnId, Type = TypeOf<T>(), ElemSize = (byte)System.Runtime.CompilerServices.Unsafe.SizeOf<T>(), Count = values.Length, Data = bytes };
+        BlockEntry b = _blocks[block];
+        int pos = 0;
+        while (pos < b.ColumnCount && _columns[b.ColumnStart + pos].Id < columnId)
+        {
+            pos++;
+        }
+
+        if (pos < b.ColumnCount && _columns[b.ColumnStart + pos].Id == columnId)
+        {
+            _columns[b.ColumnStart + pos] = entry;
+            return true;
+        }
+
+        _columns.Insert(b.ColumnStart + pos, entry);
+        b.ColumnCount++;
+        _blocks[block] = b;
+        ShiftColumnStarts(block + 1, 1);
+        return true;
+    }
+
+    /// <summary>Шаг миграции: убрать столбец (выбывший id); false - столбца нет.</summary>
+    public bool RemoveColumn(int block, uint columnId)
+    {
+        int c = (uint)block < (uint)_blocks.Count ? FindColumn(block, columnId) : -1;
+        if (c < 0)
+        {
+            return false;
+        }
+
+        BlockEntry b = _blocks[block];
+        _columns.RemoveAt(b.ColumnStart + c);
+        b.ColumnCount--;
+        _blocks[block] = b;
+        ShiftColumnStarts(block + 1, -1);
+        return true;
+    }
+
+    /// <summary>Шаг миграции: убрать блок целиком; false - блока нет.</summary>
+    public bool RemoveBlock(uint blockId)
+    {
+        int i = FindBlock(blockId);
+        if (i < 0)
+        {
+            return false;
+        }
+
+        BlockEntry b = _blocks[i];
+        _columns.RemoveRange(b.ColumnStart, b.ColumnCount);
+        _blocks.RemoveAt(i);
+        ShiftColumnStarts(i, -b.ColumnCount);
+        return true;
+    }
+
+    private void ShiftColumnStarts(int fromBlock, int delta)
+    {
+        for (int i = fromBlock; i < _blocks.Count; i++)
+        {
+            BlockEntry e = _blocks[i];
+            e.ColumnStart += delta;
+            _blocks[i] = e;
+        }
+    }
+
     internal static ColumnType TypeOf<T>()
         where T : unmanaged
     {

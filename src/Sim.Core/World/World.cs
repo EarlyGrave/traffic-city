@@ -63,6 +63,9 @@ internal sealed class World : IDisposable
     public KeptBlock[] KeptBlocks = System.Array.Empty<KeptBlock>();       // неизвестные необязательные блоки загруженного сейва: переписываются в следующий
     public HostBlock[] LoadedHostBlocks = System.Array.Empty<HostBlock>(); // блоки хоста загруженного сейва (камера, meta); хост читает и сам решает, что писать дальше
     public byte[] LoadedHostData = System.Array.Empty<byte>();
+    public AssetRef[] AssetManifest = System.Array.Empty<AssetRef>();      // манифест ассетов (хост задаёт после Create; пишется в MANI)
+    public byte[] AssetIds = System.Array.Empty<byte>();
+    public byte[] AssetStates = System.Array.Empty<byte>();                // AssetState по записям манифеста после Load; в сейв не пишется
 
     // ---- PRNG: по подпотоку на подсистему (core-api 8) ----
     public Pcg32 RngCityGen;
