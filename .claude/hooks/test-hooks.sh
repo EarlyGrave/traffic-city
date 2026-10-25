@@ -91,6 +91,22 @@ echo "== post-build / session-start (не-.cs и не-облако) =="
 t "post-build: не .cs -> allow" 0 post-build.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
 t "session-start вне облака -> exit 0" 0 session-start.sh '{"hook_event_name":"SessionStart"}'
 
+echo "== post-rust =="
+t "post-rust: не .rs -> allow" 0 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
+t "post-rust: .rs вне workspace rust/ -> allow" 0 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"/tmp/post-rust-nonexistent/x.rs\",\"content\":\"a\"}}" /tmp
+if command -v cargo >/dev/null 2>&1 || [ -x /root/.cargo/bin/cargo ]; then
+  t "post-rust: чистый workspace rust/ -> allow" 0 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"$P/rust/crates/tc-core/src/lib.rs\",\"content\":\"a\"}}"
+  # копия workspace с запрещённым методом (f32::max из clippy.toml) -> clippy красный
+  RT=$(mktemp -d 2>/dev/null || echo "/tmp/th-rs.$$")
+  mkdir -p "$RT/rust"
+  ( cd "$P/rust" && tar --exclude=target -cf - . ) | ( cd "$RT/rust" && tar -xf - )
+  printf '\npub fn banned(a: f32, b: f32) -> f32 {\n    a.max(b)\n}\n' >> "$RT/rust/crates/tc-core/src/lib.rs"
+  t "post-rust: запрещённый f32::max в tc-core -> block" 2 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"$RT/rust/crates/tc-core/src/lib.rs\",\"content\":\"a\"}}"
+  rm -rf "$RT"
+else
+  echo "SKIP  post-rust: cargo не найден"
+fi
+
 echo
 echo "Итого: $((TOTAL - FAILS))/$TOTAL PASS"
 [ "$FAILS" -eq 0 ] || { echo "FAILED: $FAILS"; exit 1; }
