@@ -112,6 +112,21 @@ public enum MinorControl : int
     RightHand = 2,
 }
 
+/// <summary>Режим светофоров, который генератор ставит узлам (2.5, ADR-0018). До S2 ядро умеет только <see cref="Fixed"/>.</summary>
+public enum CitySignalMode : int
+{
+    Fixed = 0,
+    Adaptive = 1,
+}
+
+/// <summary>Офсеты светофоров генератора (2.5, ADR-0018). До S3 ядро умеет только <see cref="Legacy"/> (формула этапа 1).</summary>
+public enum CitySignalCoordination : int
+{
+    Legacy = 0,
+    Alternate = 1,
+    None = 2,
+}
+
 public struct CityGenDesc
 {
     public bool Enabled;
@@ -128,6 +143,8 @@ public struct CityGenDesc
     public int ConnectorSamples;
     public CitySignals Signals;
     public MinorControl MinorControl;
+    public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed (пока единственное поддержанное)
+    public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (пока единственное поддержанное)
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----

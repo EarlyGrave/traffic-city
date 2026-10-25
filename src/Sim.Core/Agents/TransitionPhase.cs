@@ -236,7 +236,7 @@ internal static class TransitionPhase
         }
         else
         {
-            v.GateState[i] &= unchecked((byte)~GateRules.StoppedAtLine); // въезд на connector: Granted и Ticket сохраняются
+            v.GateState[i] &= unchecked((byte)~(GateRules.StoppedAtLine | GateRules.StoppedBeforeSignal)); // въезд на connector: Granted и Ticket сохраняются
         }
 
         e.Occ.Unlink(i);

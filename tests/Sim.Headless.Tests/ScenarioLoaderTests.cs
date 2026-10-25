@@ -319,6 +319,19 @@ public class ScenarioLoaderTests
     }
 
     [Fact]
+    public void City_SignalModeAndCoordination_DefaultsAndErrors()
+    {
+        CityGenDesc c = Load(Minimal("\"city\": { \"scale\": 1.0 }")).City;
+        Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
+        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);
+        c = Load(Minimal("\"city\": { \"signal_mode\": \"fixed\", \"signal_coordination\": \"legacy\" }")).City;
+        Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
+        Assert.Contains("$.city.signal_mode", Fails(Minimal("\"city\": { \"signal_mode\": \"adaptive\" }")).Message, StringComparison.Ordinal);
+        Assert.Contains("$.city.signal_coordination", Fails(Minimal("\"city\": { \"signal_coordination\": \"alternate\" }")).Message, StringComparison.Ordinal);
+        Assert.Contains("expected", Fails(Minimal("\"city\": { \"signal_mode\": \"x\" }")).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TypeMixMapsNamesToIndices()
     {
         string j = Minimal().Replace("\"count\": 5", "\"count\": 5, \"type_mix\": { \"bus\": 1, \"car\": 3 }", StringComparison.Ordinal);

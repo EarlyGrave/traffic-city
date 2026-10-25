@@ -26,6 +26,7 @@ internal static class GateRules
 {
     public const byte Granted = 1;
     public const byte StoppedAtLine = 2;
+    public const byte StoppedBeforeSignal = 4;      // 2.5 S1: машина на подходе к светофору ехала < 1 м/с (метрика остановок, вне хэша)
 
     public const float StopLineOffset = 0.5f;      // м: виртуальное препятствие перед концом полосы (§7.1)
     public const float ClearMargin = 1.0f;         // м: точка освобождена, когда задний бампер ушёл за неё на столько (§5.3)

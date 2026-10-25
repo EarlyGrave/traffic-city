@@ -105,6 +105,11 @@ internal static class GatePhase
                 continue;
             }
 
+            if (v.Speed[i] < 1f && net.Nodes[node].Control == NodeControl.Signal)
+            {
+                v.GateState[i] |= GateRules.StoppedBeforeSignal;   // метрика остановок на светофоре (2.5 S1); сбрасывается допуском
+            }
+
             ref readonly VehicleTypeDesc t = ref w.Types[v.Type[i]];
             float d = net.LaneLength[lane] - v.S[i];
             if (v.Speed[i] < 0.1f && d <= t.MinGap + GateRules.StopLineTolerance)
@@ -444,6 +449,7 @@ internal static class GatePhase
 
                     if (!excused)
                     {
+                        w.Counters.StarveDenials++;
                         return GateDeny.Yield;
                     }
                 }
@@ -497,6 +503,11 @@ internal static class GatePhase
         }
 
         // 5. Допуск.
+        if (nd.Control == NodeControl.Signal)
+        {
+            RecordSignalGrant(w, i, g, lane);
+        }
+
         v.GateState[i] = GateRules.Granted;
         v.GrantConnector[i] = conn;
         v.Ticket[i] = net.NodeTicket[node]++;
@@ -511,6 +522,41 @@ internal static class GatePhase
         }
 
         return GateDeny.None;
+    }
+
+    /// <summary>
+    /// Метрики допуска на светофорном узле (2.5 S1, вне хэша): ожидание по манёвру (сумма, гистограмма, максимум левых),
+    /// доля остановок на артерии, накопление <c>ConnWaitSum/ConnGrantCount</c> (§6.9). Вызывается до сброса <c>GateState</c>/<c>WaitTicks</c>.
+    /// </summary>
+    private static void RecordSignalGrant(World w, int i, int group, int lane)
+    {
+        VehicleStore v = w.Vehicles;
+        int wait = v.WaitTicks[i];
+        if (group >= 0)
+        {
+            int m = w.Connectors.Maneuver[group];
+            w.SignalWait.Add(m, wait);
+            if (m >= (int)Maneuver.Left && wait > w.Counters.SignalLeftWaitMax)
+            {
+                w.Counters.SignalLeftWaitMax = wait;
+            }
+
+            if ((uint)group < (uint)w.Gate.ConnGrantCount.Length)
+            {
+                w.Gate.ConnWaitSum[group] += wait;
+                w.Gate.ConnGrantCount[group]++;
+            }
+        }
+
+        int seg = w.Net.Lanes[lane].Segment;
+        if (seg >= 0 && w.Net.Segments[seg].Kind == RoadKind.Arterial)
+        {
+            w.Counters.ArterialSignalGrants++;
+            if ((v.GateState[i] & GateRules.StoppedBeforeSignal) != 0)
+            {
+                w.Counters.ArterialSignalStops++;
+            }
+        }
     }
 
     /// <summary>

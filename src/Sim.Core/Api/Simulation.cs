@@ -174,6 +174,12 @@ public sealed class Simulation : IDisposable
         }
     }
 
+    /// <summary>Копирует ожидание у светофоров по манёврам (монотонное, с начала симуляции) в <paramref name="dst"/>.</summary>
+    public void CopySignalMetrics(SignalMetrics dst) => _w.SignalWait.CopyTo(dst);
+
+    /// <summary>Начало окна замера: обнуляет немонотонный максимум <c>SignalLeftWaitMax</c> (остальные счётчики берутся разностью).</summary>
+    public void ResetSignalWindow() => _w.Counters.SignalLeftWaitMax = 0;
+
     public void GetStats(out SimStats stats)
     {
         ref readonly SimCounters c = ref _w.Counters;

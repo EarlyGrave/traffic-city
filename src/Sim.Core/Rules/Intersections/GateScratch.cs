@@ -17,11 +17,13 @@ internal sealed class GateScratch
     public readonly byte[] DenyReason;    // [MaxVehicles] GateDeny
     public readonly ulong[] NodeBusy;     // [MaxNodes] биты LocalBit занятых connector'ов узла (ADR-0016 D3); строит фаза 4, читает фаза 5
     public readonly int[] BusyTouched;    // [MaxNodes] узлы с ненулевой NodeBusy (для обнуления в следующем тике)
+    public readonly long[] ConnWaitSum;   // [MaxConnectors] Σ WaitTicks при допуске на светофорном узле (2.5 S1: только копится; §6.9). Вне хэша до S2
+    public readonly int[] ConnGrantCount; // [MaxConnectors] число таких допусков
     public int TouchedCount;
     public int OutTouchedCount;
     public int BusyTouchedCount;
 
-    public GateScratch(int maxNodes, int maxVehicles, int maxLanes)
+    public GateScratch(int maxNodes, int maxVehicles, int maxLanes, int maxConnectors)
     {
         NodeCandHead = new int[Math.Max(0, maxNodes)];
         TouchedNodes = new int[Math.Max(0, maxNodes)];
@@ -31,6 +33,8 @@ internal sealed class GateScratch
         NodeBusy = new ulong[Math.Max(0, maxNodes)];
         BusyTouched = new int[Math.Max(0, maxNodes)];
         OutTouched = new int[Math.Max(0, maxLanes)];
+        ConnWaitSum = new long[Math.Max(0, maxConnectors)];
+        ConnGrantCount = new int[Math.Max(0, maxConnectors)];
         Array.Fill(NodeCandHead, -1);
     }
 }

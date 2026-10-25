@@ -127,6 +127,54 @@ public sealed class BenchCommandTests : IDisposable
         Assert.Equal(p95s[1], perf.GetProperty("tick_ms").GetProperty("p95").GetDouble());
     }
 
+    [Fact]
+    public void Bench_WritesSignalMetrics_AndSeedOverride()
+    {
+        string scenarios = FindScenariosDir();
+        string outPath = Path.Combine(_dir, "sig.json");
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "400", "--warmup-ticks", "200", "--seed", "7", "--signal-mode", "fixed", "--signal-coordination", "legacy", "--out", outPath, "--scenarios-dir", scenarios }, o, e);
+        Assert.True(code == 0, e.ToString());
+        using JsonDocument d = JsonDocument.Parse(File.ReadAllText(outPath));
+        Assert.Equal(7UL, d.RootElement.GetProperty("seed").GetUInt64());
+        Assert.Equal("fixed", d.RootElement.GetProperty("signal_mode").GetString());
+        Assert.Equal("legacy", d.RootElement.GetProperty("signal_coordination").GetString());
+        JsonElement t = d.RootElement.GetProperty("traffic");
+        foreach (string k in new[] { "signal_wait_s", "signal_wait_p95_s", "signal_grants" })
+        {
+            foreach (string m in new[] { "straight", "right", "left", "uturn" })
+            {
+                Assert.True(t.GetProperty(k).TryGetProperty(m, out _), k + "." + m);
+            }
+        }
+
+        foreach (string k in new[] { "left_wait_max_s", "arterial_stop_share", "stuck_episodes", "starve_denials", "arrow_phases", "spill_outs", "exit_claims", "gate_denied_exit" })
+        {
+            Assert.True(t.TryGetProperty(k, out _), k);
+        }
+
+        Assert.Equal(0, t.GetProperty("arrow_phases").GetInt64());
+        Assert.Equal(0, t.GetProperty("exit_claims").GetInt64());
+    }
+
+    [Theory]
+    [InlineData("--signal-mode", "adaptive", "not implemented")]
+    [InlineData("--signal-mode", "bogus", "expected")]
+    [InlineData("--signal-coordination", "alternate", "not implemented")]
+    [InlineData("--seed", "-1", "unsigned")]
+    public void Bench_UnsupportedSignalOptions_AreClearErrors(string opt, string value, string text)
+    {
+        string scenarios = FindScenariosDir();
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "5", "--warmup-ticks", "0", opt, value, "--out", Path.Combine(_dir, "x.json"), "--scenarios-dir", scenarios }, o, e);
+        Assert.Equal(BenchCommand.ExitUsage, code);
+        Assert.Contains(text, e.ToString());
+    }
+
     private string WriteRamp(string name, double p95, bool? complete, int active = 1000, int target = 1000)
     {
         string path = Path.Combine(_dir, name);

@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
 namespace Sim.Core.Metrics;
@@ -53,7 +54,7 @@ internal static class StateHash
             h.Add(v.DestZone[i]);
             h.Add(v.NextConn[i]);
             h.Add(v.SpawnTick[i]);
-            h.Add(v.GateState[i]);
+            h.Add((byte)(v.GateState[i] & ~GateRules.StoppedBeforeSignal));   // StoppedBeforeSignal - диагностика (2.5 S1), не состояние
             h.Add(v.GrantConnector[i]);
             h.Add(v.Ticket[i]);
             h.Add((int)v.WaitTicks[i]);

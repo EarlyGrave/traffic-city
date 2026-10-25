@@ -46,6 +46,7 @@ internal sealed class World : IDisposable
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
+    public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
@@ -150,7 +151,8 @@ internal sealed class World : IDisposable
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
         Connectors = new ConnectorStore(maxConnectors, maxConflicts);
         Signals = new SignalStore(c.MaxSignalizedNodes);
-        Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes);
+        Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
+        SignalWait = new SignalMetrics();
 
         RngCityGen = Pcg32.ForStream(Seed, RngStream.CityGen);
         RngZones = Pcg32.ForStream(Seed, RngStream.Zones);

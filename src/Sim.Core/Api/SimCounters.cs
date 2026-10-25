@@ -57,6 +57,15 @@ public struct SimCounters
     public long PriorityInversions;       // допусков по инверсии приоритета (долгое ожидание)
     public long BoxWaitTicks;             // Σ тиков, когда допущенная машина стоит на connector'е (v < StuckSpeedThreshold)
     public long GateWaitTicksTotal;       // Σ WaitTicks на момент допуска (среднее ожидание у ворот)
+    // --- светофоры 2.5 (intersections.md §10, ADR-0018); вне хэша, считаются в однопоточной фазе 4. По манёврам - SignalMetrics ---
+    public long SignalLeftWaitMax;        // max WaitTicks при допуске левого/разворота на светофоре (тики); окно - Simulation.ResetSignalWindow
+    public long ArterialSignalGrants;     // допусков на светофоре с Arterial-полосы
+    public long ArterialSignalStops;      // из них машин, останавливавшихся на подходе (GateState.StoppedBeforeSignal)
+    public long StarveDenials;            // отказов 4b-bis (GateDeny.Yield по голоданию)
+    public long ArrowPhases;              // заготовка S2: включений подфазы «стрелка»
+    public long SpillOuts;                // заготовка S3: досрочных концов зелёного из-за забитого выезда
+    public long ExitClaims;               // заготовка S4: поставленных заявок на выезд
+    public long ExitClaimDenials;         // заготовка S4: отказов младшим по заявке
     // --- уровни детализации (ADR-0013, sim-lod.md §4, §8); вне хэша, заполняются с L2/L3 ---
     public int MicroVehicles, MesoVehicles;                // текущее
     public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;

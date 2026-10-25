@@ -292,6 +292,8 @@ public static class ScenarioLoader
             ConnectorSamples = 8,
             Signals = CitySignals.ArterialXArterial,
             MinorControl = MinorControl.Yield,
+            SignalMode = CitySignalMode.Fixed,                    // 2.5 S1: дефолт спеки ("adaptive") включится в S2
+            SignalCoordination = CitySignalCoordination.Legacy,   // 2.5 S1: дефолт спеки ("alternate") включится в S3
         };
         if (r == null)
         {
@@ -349,9 +351,33 @@ public static class ScenarioLoader
                 $"{r.ChildPath("minor_control")}: expected \"yield\", \"stop\" or \"right_hand\""),
         };
 
+        c.SignalMode = ParseSignalMode(r.Str("signal_mode", "fixed"), r.ChildPath("signal_mode"));
+        c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
+
         r.Finish();
         return c;
     }
+
+    /// <summary>
+    /// <c>city.signal_mode</c> (scenario-format.md §2.1, 2.5): известные значения разбираются, но ядро пока умеет только "fixed"
+    /// (<c>adaptive</c> - шаг S2, ADR-0018); остальное - понятная ошибка. Используется и опцией bench <c>--signal-mode</c>.
+    /// </summary>
+    public static CitySignalMode ParseSignalMode(string value, string where) => value switch
+    {
+        "fixed" => CitySignalMode.Fixed,
+        "adaptive" => throw new ScenarioException($"{where}: \"adaptive\" is not implemented yet (ADR-0018, step 2.5 S2); only \"fixed\" is supported"),
+        _ => throw new ScenarioException($"{where}: expected \"adaptive\" or \"fixed\""),
+    };
+
+    /// <summary>
+    /// <c>city.signal_coordination</c>: ядро пока умеет только "legacy" (формула офсетов этапа 1); "alternate"/"none" - шаг S3.
+    /// </summary>
+    public static CitySignalCoordination ParseSignalCoordination(string value, string where) => value switch
+    {
+        "legacy" => CitySignalCoordination.Legacy,
+        "alternate" or "none" => throw new ScenarioException($"{where}: \"{value}\" is not implemented yet (ADR-0018, step 2.5 S3); only \"legacy\" is supported"),
+        _ => throw new ScenarioException($"{where}: expected \"alternate\", \"legacy\" or \"none\""),
+    };
 
     private static int ScaledIrregularDefault(float scale) =>
         (int)Math.Round(12.0 * scale * scale, MidpointRounding.AwayFromZero);

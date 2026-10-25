@@ -23,10 +23,13 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--seed S] [--signal-mode fixed] [--signal-coordination legacy] [--scenarios-dir <dir>]\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
+        "  --seed S             override the scenario seed (unsigned 64-bit); JSON gets seed\n" +
+        "  --signal-mode M      override city.signal_mode (adaptive|fixed; the core supports only fixed until step 2.5 S2); JSON gets signal_mode\n" +
+        "  --signal-coordination K  override city.signal_coordination (alternate|legacy|none; only legacy until S3); JSON gets signal_coordination\n" +
         "  --warmup-until-full  after --warmup-ticks keep warming up (in chunks of 20 ticks) until active vehicles >= 98% of the scenario target,\n" +
         "                       but not beyond --warmup-max-ticks in total (default 30000); JSON gets ramp_complete/active_*/target_vehicles.\n";
 
@@ -35,7 +38,7 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--seed", "--signal-mode", "--signal-coordination" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -66,6 +69,7 @@ public static class BenchCommand
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
             LoadedScenario sc = ScenarioLoader.LoadInfo(path);
+            sc = ApplyOverrides(sc, a);
             r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads);
         }
         catch (ScenarioException e)
@@ -85,6 +89,41 @@ public static class BenchCommand
             CultureInfo.InvariantCulture,
             $"bench {r.Scenario}: {r.Ticks} ticks, tick p50/p95/p99/max = {r.P50:0.####}/{r.P95:0.####}/{r.P99:0.####}/{r.Max:0.####} ms, alloc {r.AllocBytesPerTick:0.###} B/tick, stuck {r.StuckVehicles} -> {outPath}"));
         return ExitOk;
+    }
+
+    /// <summary>Опции <c>--seed</c>, <c>--signal-mode</c>, <c>--signal-coordination</c> поверх сценария; неверное значение - <see cref="ScenarioException"/>.</summary>
+    internal static LoadedScenario ApplyOverrides(LoadedScenario sc, CliArgs a)
+    {
+        string? seedText = a.Get("--seed");
+        string? mode = a.Get("--signal-mode");
+        string? coord = a.Get("--signal-coordination");
+        if (seedText == null && mode == null && coord == null)
+        {
+            return sc;
+        }
+
+        ScenarioDesc d = sc.Desc;
+        if (seedText != null)
+        {
+            if (!ulong.TryParse(seedText, NumberStyles.None, CultureInfo.InvariantCulture, out ulong seed))
+            {
+                throw new ScenarioException($"--seed: expected an unsigned 64-bit integer, got '{seedText}'");
+            }
+
+            d.Seed = seed;
+        }
+
+        if (mode != null)
+        {
+            d.City.SignalMode = ScenarioLoader.ParseSignalMode(mode, "--signal-mode");
+        }
+
+        if (coord != null)
+        {
+            d.City.SignalCoordination = ScenarioLoader.ParseSignalCoordination(coord, "--signal-coordination");
+        }
+
+        return new LoadedScenario(sc.Name, sc.TypeNames, d);
     }
 
     /// <summary>
@@ -123,7 +162,21 @@ public static class BenchCommand
 
     internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1)
     {
-        var r = new BenchResult { Scenario = sc.Name, Ticks = ticks, WarmupTicks = warmup, Threads = threads };
+        var r = new BenchResult
+        {
+            Scenario = sc.Name,
+            Ticks = ticks,
+            WarmupTicks = warmup,
+            Threads = threads,
+            Seed = sc.Desc.Seed,
+            SignalMode = sc.Desc.City.SignalMode == CitySignalMode.Adaptive ? "adaptive" : "fixed",
+            SignalCoordination = sc.Desc.City.SignalCoordination switch
+            {
+                CitySignalCoordination.Alternate => "alternate",
+                CitySignalCoordination.None => "none",
+                _ => "legacy",
+            },
+        };
         double[] samples = new double[ticks];
         PhaseTimer? timer = phases ? new PhaseTimer(ticks) : null;
 
@@ -142,6 +195,10 @@ public static class BenchCommand
         r.ActiveAtStart = sim.ActiveVehicleCount;
 
         long vtBefore = sim.Counters.VehicleTicksTotal;
+        SimCounters cBefore = sim.Counters;
+        var sigBefore = new SignalMetrics();
+        sim.CopySignalMetrics(sigBefore);
+        sim.ResetSignalWindow();
         SimWork workBefore = sim.Work;
         if (timer != null)
         {
@@ -185,6 +242,7 @@ public static class BenchCommand
             r.PeakMemoryMb = self.PeakWorkingSet64 / (1024.0 * 1024.0);
         }
 
+        r.Signal = SignalWindow.Compute(sim, in cBefore, sigBefore);
         r.ActiveVehicles = sim.ActiveVehicleCount;
         r.RampComplete = IsFull(r.ActiveAtStart, target) && IsFull(r.ActiveVehicles, target);
         long memAfter = GC.GetTotalMemory(true);
@@ -328,6 +386,9 @@ public static class BenchCommand
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
             w.WriteNumber("threads", r.Threads);
+            w.WriteNumber("seed", r.Seed);
+            w.WriteString("signal_mode", r.SignalMode);
+            w.WriteString("signal_coordination", r.SignalCoordination);
             WriteNullable(w, "commit", r.Commit);
             w.WriteStartObject("environment");
             w.WriteString("runtime", r.Runtime);
@@ -410,7 +471,8 @@ public static class BenchCommand
             }
 
             w.WriteEndArray();
-            w.WriteString("note", "traffic counters are cumulative since simulation start (include warmup)");
+            w.WriteString("note", "traffic counters above are cumulative since simulation start (include warmup); the signal_* / *_window fields below are deltas over the measured window");
+            WriteSignal(w, r.Signal);
             w.WriteEndObject();
 
             // Счётчики маршрутизации и оверлея (routing.md 9.10), накопительные с начала симуляции, кроме overlay_disabled (текущее).
@@ -441,6 +503,46 @@ public static class BenchCommand
         }
 
         return Encoding.UTF8.GetString(ms.ToArray()) + "\n";
+    }
+
+    private static readonly string[] _maneuverNames = { "straight", "right", "left", "uturn" };
+
+    /// <summary>Метрики светофоров за окно замера (intersections.md §10, 2.5); поля только добавляются, <c>compare</c> их не гейтит.</summary>
+    private static void WriteSignal(Utf8JsonWriter w, SignalWindow s)
+    {
+        w.WriteStartObject("signal_wait_s");
+        for (int m = 0; m < SignalMetrics.Maneuvers; m++)
+        {
+            WriteNullable(w, _maneuverNames[m], s.MeanWaitS[m]);
+        }
+
+        w.WriteEndObject();
+        w.WriteStartObject("signal_wait_p95_s");
+        for (int m = 0; m < SignalMetrics.Maneuvers; m++)
+        {
+            WriteNullable(w, _maneuverNames[m], s.P95WaitS[m]);
+        }
+
+        w.WriteEndObject();
+        w.WriteStartObject("signal_grants");
+        for (int m = 0; m < SignalMetrics.Maneuvers; m++)
+        {
+            w.WriteNumber(_maneuverNames[m], s.Grants[m]);
+        }
+
+        w.WriteEndObject();
+        w.WriteNumber("left_wait_max_s", s.LeftWaitMaxS);
+        w.WriteNumber("arterial_signal_grants", s.ArterialGrants);
+        WriteNullable(w, "arterial_stop_share", s.ArterialStopShare);
+        w.WriteNumber("stuck_episodes", s.StuckEpisodes);
+        w.WriteNumber("starve_denials", s.StarveDenials);
+        w.WriteNumber("arrow_phases", s.ArrowPhases);
+        w.WriteNumber("spill_outs", s.SpillOuts);
+        w.WriteNumber("exit_claims", s.ExitClaims);
+        w.WriteNumber("exit_claim_denials", s.ExitClaimDenials);
+        w.WriteNumber("gate_denied_exit", s.GateDeniedExit);
+        w.WriteNumber("trips_completed_window", s.TripsCompleted);
+        WriteNullable(w, "avg_speed_kmh_window", s.AvgSpeedKmh);
     }
 
     /// <summary>Средние за тик окна замера (<paramref name="work"/> - разность счётчиков за <paramref name="ticks"/> тиков).</summary>
@@ -494,6 +596,10 @@ internal sealed class BenchResult
     public int Ticks;
     public int WarmupTicks;
     public int Threads = 1;
+    public ulong Seed;
+    public string SignalMode = "fixed";
+    public string SignalCoordination = "legacy";
+    public SignalWindow Signal = new();
     public string? Commit;
     public string? Cpu;
     public string Runtime = "";
@@ -528,4 +634,77 @@ internal sealed class BenchResult
     public bool Gridlock;
     public List<(int Node, uint Total, double PerMin)> Top10 { get; } = new();
     public List<(double P50, double P95)> Runs { get; } = new();
+}
+
+/// <summary>Разность счётчиков светофоров за окно замера (после - до) и производные: средние, p95 по гистограмме, доля остановок.</summary>
+internal sealed class SignalWindow
+{
+    public double?[] MeanWaitS = new double?[SignalMetrics.Maneuvers];
+    public double?[] P95WaitS = new double?[SignalMetrics.Maneuvers];
+    public long[] Grants = new long[SignalMetrics.Maneuvers];
+    public double LeftWaitMaxS;
+    public long ArterialGrants;
+    public double? ArterialStopShare;
+    public long StuckEpisodes, StarveDenials, ArrowPhases, SpillOuts, ExitClaims, ExitClaimDenials, GateDeniedExit, TripsCompleted;
+    public double? AvgSpeedKmh;
+
+    public static SignalWindow Compute(Simulation sim, in SimCounters before, SignalMetrics sigBefore)
+    {
+        var after = new SignalMetrics();
+        sim.CopySignalMetrics(after);
+        SimCounters c = sim.Counters;
+        const double tickS = 1.0 / 20.0;
+        var s = new SignalWindow();
+        for (int m = 0; m < SignalMetrics.Maneuvers; m++)
+        {
+            long n = after.Grants[m] - sigBefore.Grants[m];
+            s.Grants[m] = n;
+            if (n <= 0)
+            {
+                continue;
+            }
+
+            s.MeanWaitS[m] = (after.WaitTicks[m] - sigBefore.WaitTicks[m]) * tickS / n;
+
+            // p95: наименьшая корзина (1 с), в которой накопленная доля допусков >= 95%; последняя корзина - «>= 120 с».
+            long need = ((n * 95) + 99) / 100;
+            long acc = 0;
+            int bucket = SignalMetrics.HistBuckets - 1;
+            for (int b = 0; b < SignalMetrics.HistBuckets; b++)
+            {
+                int idx = (m * SignalMetrics.HistBuckets) + b;
+                acc += after.Hist[idx] - sigBefore.Hist[idx];
+                if (acc >= need)
+                {
+                    bucket = b;
+                    break;
+                }
+            }
+
+            s.P95WaitS[m] = bucket;
+        }
+
+        s.LeftWaitMaxS = c.SignalLeftWaitMax * tickS;
+        s.ArterialGrants = c.ArterialSignalGrants - before.ArterialSignalGrants;
+        if (s.ArterialGrants > 0)
+        {
+            s.ArterialStopShare = (c.ArterialSignalStops - before.ArterialSignalStops) / (double)s.ArterialGrants;
+        }
+
+        s.StuckEpisodes = c.StuckEventsTotal - before.StuckEventsTotal;
+        s.StarveDenials = c.StarveDenials - before.StarveDenials;
+        s.ArrowPhases = c.ArrowPhases - before.ArrowPhases;
+        s.SpillOuts = c.SpillOuts - before.SpillOuts;
+        s.ExitClaims = c.ExitClaims - before.ExitClaims;
+        s.ExitClaimDenials = c.ExitClaimDenials - before.ExitClaimDenials;
+        s.GateDeniedExit = c.GateDeniedExit - before.GateDeniedExit;
+        s.TripsCompleted = c.TripsCompleted - before.TripsCompleted;
+        long vt = c.VehicleTicksTotal - before.VehicleTicksTotal;
+        if (vt > 0)
+        {
+            s.AvgSpeedKmh = (c.DistanceTotalMm - before.DistanceTotalMm) / 1000.0 / (vt * tickS) * 3.6;
+        }
+
+        return s;
+    }
 }

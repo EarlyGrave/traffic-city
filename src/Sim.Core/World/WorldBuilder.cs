@@ -39,6 +39,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        // 2.5 S1: режимы адаптивных светофоров и координации появятся в S2/S3 (ADR-0018); сейчас - только Fixed + Legacy.
+        if (desc.City.Enabled && (desc.City.SignalMode != CitySignalMode.Fixed || desc.City.SignalCoordination != CitySignalCoordination.Legacy))
+        {
+            return CreateStatus.NotSupported;
+        }
+
         st = ValidateLod(in desc.Lod);
         if (st != CreateStatus.Ok)
         {
