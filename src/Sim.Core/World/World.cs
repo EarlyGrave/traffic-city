@@ -64,6 +64,8 @@ internal sealed class World : IDisposable
     public SimWork Work;                  // счётчики работы горячего пути (ADR-0016), вне хэша
     public PhaseProbe? PhaseProbe;        // зонд конца фазы (core-api §3); задаёт хост, ядро время не читает
     public BehaviourJob Behaviour = new(1);  // задание фазы 5 (ADR-0017); счётчики по воркерам
+    public IntegrateJob Integrate = new(1);  // задание фазы 6 (ADR-0017); HardClamps по воркерам
+    public SnapshotJob SnapshotJob = new(); // задание фазы 10 (ADR-0017)
     public WorkerPool? Pool;              // воркеры параллельных фаз; null = один поток (SimRuntimeOptions.WorkerThreads <= 1)
     public readonly RingBuffer<Command> Commands;
     public readonly SimEvent[] Events;
@@ -98,6 +100,7 @@ internal sealed class World : IDisposable
         threads = Math.Min(threads, SimRuntimeOptions.MaxWorkerThreads);
         Pool = new WorkerPool(threads);
         Behaviour = new BehaviourJob(threads);
+        Integrate = new IntegrateJob(threads);
     }
 
     public void Dispose()

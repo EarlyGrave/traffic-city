@@ -4,6 +4,7 @@ using Sim.Core.Network;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
 using Sim.Core.Transit;
+using Sim.Core.Util;
 
 namespace Sim.Core.Agents;
 
@@ -24,75 +25,160 @@ internal static class IntegratePhase
     public const byte ClampLeaderPresent = 1;
     public const byte ClampLeaderVirtual = 2;
 
-    public static void Run(World w) =>
-        Run(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), ref w.Counters);
+    // Задание для перегрузки без World (тесты, микробенчмарки): один экземпляр на поток, без аллокаций после первого вызова.
+    [ThreadStatic]
+    private static IntegrateJob? _single;
+
+    /// <summary>Готовит предвыделенное задание фазы 6 к текущему тику (для <see cref="Run(World)"/> и тестов порядка обхода).</summary>
+    public static IntegrateJob Prepare(World w)
+    {
+        IntegrateJob job = w.Integrate;
+        job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w));
+        return job;
+    }
+
+    public static void Run(World w)
+    {
+        IntegrateJob job = Prepare(w);
+        int hw = w.Vehicles.HighWater;
+        if (w.Pool != null)
+        {
+            w.Pool.Run(job, hw);
+        }
+        else
+        {
+            job.RunRange(0, 0, hw);
+        }
+
+        job.Collect(ref w.Counters);
+    }
 
     public static void Run(
         NetworkStore net,
         VehicleStore v,
-        ReadOnlySpan<VehicleTypeDesc> types,
+        VehicleTypeDesc[] types,
         in PhysicsParams p,
         ref SimCounters c)
     {
-        int hw = v.HighWater;
-        float dt = p.Dt;
-        for (int i = 0; i < hw; i++)
+        IntegrateJob job = _single ??= new IntegrateJob(1);
+        job.Prepare(net, v, types, p);
+        job.RunRange(0, 0, v.HighWater);
+        job.Collect(ref c);
+    }
+}
+
+/// <summary>
+/// Задание фазы 6 для <see cref="WorkerPool"/> (ADR-0017): функция машины <see cref="Vehicle"/> читает позиции начала тика и зазоры фазы 5
+/// и пишет только <c>S/Speed/StillTicks[i]</c>; <c>HardClamps</c> копится целым по воркеру (шаг <see cref="Stride"/> - без false sharing)
+/// и сводится в <see cref="Collect"/> после фазы.
+/// </summary>
+internal sealed class IntegrateJob : IRangeJob
+{
+    private const int Stride = 16;
+
+    private readonly long[] _clamps;
+    private NetworkStore _net = null!;
+    private VehicleStore _v = null!;
+    private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
+    private PhysicsParams _p;
+
+    public IntegrateJob(int workers)
+    {
+        _clamps = new long[Stride * Math.Max(1, workers)];
+    }
+
+    public void Prepare(NetworkStore net, VehicleStore v, VehicleTypeDesc[] types, in PhysicsParams p)
+    {
+        _net = net;
+        _v = v;
+        _types = types;
+        _p = p;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        long clamps = 0;
+        for (int i = begin; i < end; i++)
         {
-            if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
-            {
-                continue;
-            }
+            clamps += Vehicle(i);
+        }
 
-            ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
-            float s = v.S[i];
-            float vNew = v.Speed[i] + (v.Accel[i] * dt);
-            if (vNew < 0f)
-            {
-                vNew = 0f;
-            }
-            else if (vNew > t.MaxSpeed)
-            {
-                vNew = t.MaxSpeed;
-            }
+        _clamps[worker * Stride] += clamps;
+    }
 
-            float sNew = s + (vNew * dt);
-            byte flags = v.ClampFlags[i];
-            if ((flags & ClampLeaderPresent) != 0)
-            {
-                float sMax = s + v.ClampLeadGap[i] - ((flags & ClampLeaderVirtual) != 0 ? 0f : p.MinPhysicalGap);
-                if (sNew > sMax)
-                {
-                    sNew = sMax > s ? sMax : s;
-                    vNew = (sNew - s) / dt;
-                    c.HardClamps++;
-                }
-            }
+    /// <summary>Складывает <c>HardClamps</c> воркеров в <paramref name="c"/> и обнуляет их.</summary>
+    public void Collect(ref SimCounters c)
+    {
+        for (int k = 0; k < _clamps.Length; k += Stride)
+        {
+            c.HardClamps += _clamps[k];
+            _clamps[k] = 0;
+        }
+    }
 
-            float gateGap = v.ClampGateGap[i];
-            if (gateGap < Idm.FreeGap)
-            {
-                float sMax = s + gateGap;
-                if (sNew > sMax)
-                {
-                    sNew = sMax > s ? sMax : s;
-                    vNew = (sNew - s) / dt;
-                    c.HardClamps++;
-                }
-            }
+    /// <summary>Интегрирует машину <paramref name="i"/>; возвращает число сработавших клэмпов I6 (0..2).</summary>
+    private int Vehicle(int i)
+    {
+        VehicleStore v = _v;
+        PhysicsParams p = _p;
+        int clamps = 0;
+        float dt = p.Dt;
+        if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+        {
+            return 0;
+        }
 
-            v.S[i] = sNew;
-            v.Speed[i] = vNew;
-            if (vNew < p.StuckSpeedThreshold && !BusStopRules.IsServing(net, v, i))
+        ref readonly VehicleTypeDesc t = ref _types[v.Type[i]];
+        float s = v.S[i];
+        float vNew = v.Speed[i] + (v.Accel[i] * dt);
+        if (vNew < 0f)
+        {
+            vNew = 0f;
+        }
+        else if (vNew > t.MaxSpeed)
+        {
+            vNew = t.MaxSpeed;
+        }
+
+        float sNew = s + (vNew * dt);
+        byte flags = v.ClampFlags[i];
+        if ((flags & IntegratePhase.ClampLeaderPresent) != 0)
+        {
+            float sMax = s + v.ClampLeadGap[i] - ((flags & IntegratePhase.ClampLeaderVirtual) != 0 ? 0f : p.MinPhysicalGap);
+            if (sNew > sMax)
             {
-                if (v.StillTicks[i] < ushort.MaxValue)
-                {
-                    v.StillTicks[i]++;
-                }
-            }
-            else
-            {
-                v.StillTicks[i] = 0;
+                sNew = sMax > s ? sMax : s;
+                vNew = (sNew - s) / dt;
+                clamps++;
             }
         }
+
+        float gateGap = v.ClampGateGap[i];
+        if (gateGap < Idm.FreeGap)
+        {
+            float sMax = s + gateGap;
+            if (sNew > sMax)
+            {
+                sNew = sMax > s ? sMax : s;
+                vNew = (sNew - s) / dt;
+                clamps++;
+            }
+        }
+
+        v.S[i] = sNew;
+        v.Speed[i] = vNew;
+        if (vNew < p.StuckSpeedThreshold && !BusStopRules.IsServing(_net, v, i))
+        {
+            if (v.StillTicks[i] < ushort.MaxValue)
+            {
+                v.StillTicks[i]++;
+            }
+        }
+        else
+        {
+            v.StillTicks[i] = 0;
+        }
+
+        return clamps;
     }
 }

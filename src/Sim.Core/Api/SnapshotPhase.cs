@@ -17,52 +17,19 @@ internal static class SnapshotPhase
     public static void Run(World w)
     {
         long snapTick = w.Tick + 1;
-        VehicleRenderData[] buf = w.Render[(int)(snapTick & 1)];
-        VehicleStore v = w.Vehicles;
-        NetworkStore net = w.Net;
-        int high = v.HighWater;
-        for (int i = 0; i < high; i++)
+        SnapshotJob job = w.SnapshotJob;
+        job.Prepare(w, w.Render[(int)(snapTick & 1)]);
+        int high = w.Vehicles.HighWater;
+        if (w.Pool != null)
         {
-            int lane = v.Lane[i];
-            if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
-            {
-                if (buf[i].Flags != 0)
-                {
-                    buf[i] = default;
-                }
-
-                continue;
-            }
-
-            float centerS = v.S[i] - (v.Length[i] * 0.5f);
-            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out int piece);
-            float lateral = v.Lateral[i];
-            float heading = net.LanePieceHeading[piece];
-            float x = pos.X;
-            float z = pos.Z;
-            if (lateral != 0f)
-            {
-                // Смещение по нормали к курсу: нужен нормированный dir (как в LaneGeometry.Evaluate).
-                Vec2 d = net.LanePoints[piece + 1] - net.LanePoints[piece];
-                float len = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
-                Vec2 dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
-                x = pos.X + (dir.Z * lateral);
-                z = pos.Z - (dir.X * lateral);
-            }
-
-            ref VehicleRenderData r = ref buf[i];
-            r.X = x;
-            r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
-            r.Z = z;
-            r.Heading = heading;
-            r.Speed = v.Speed[i];
-            r.Index = i;
-            r.Generation = (ushort)v.Pool.GenerationOf(i);
-            r.Type = v.Type[i];
-            r.Flags = (byte)RenderFlags(w, i);
-            r.LateralOffset = lateral;
+            w.Pool.Run(job, high);
+        }
+        else
+        {
+            job.RunRange(0, 0, high);
         }
 
+        // Общие записи - только здесь, на главном потоке, после параллельной части.
         w.Work.SnapshotSlots += high;
         w.SnapshotSlots[(int)(snapTick & 1)] = high;
         w.SnapshotTick = snapTick;
@@ -106,5 +73,75 @@ internal static class SnapshotPhase
         }
 
         return f;
+    }
+}
+
+/// <summary>
+/// Задание фазы 10 для <see cref="WorkerPool"/> (ADR-0017): функция слота <see cref="Slot"/> читает состояние машины <c>i</c> и сети и пишет
+/// только <c>buf[i]</c> и <c>PointHint[i]</c> (кэш подсказки куска полилинии своей машины); общих кэшей и счётчиков нет.
+/// </summary>
+internal sealed class SnapshotJob : IRangeJob
+{
+    private World _w = null!;
+    private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
+
+    public void Prepare(World w, VehicleRenderData[] buf)
+    {
+        _w = w;
+        _buf = buf;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        for (int i = begin; i < end; i++)
+        {
+            Slot(i);
+        }
+    }
+
+    private void Slot(int i)
+    {
+        World w = _w;
+        VehicleRenderData[] buf = _buf;
+        VehicleStore v = w.Vehicles;
+        NetworkStore net = w.Net;
+        int lane = v.Lane[i];
+        if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
+        {
+            if (buf[i].Flags != 0)
+            {
+                buf[i] = default;
+            }
+
+            return;
+        }
+
+        float centerS = v.S[i] - (v.Length[i] * 0.5f);
+        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out int piece);
+        float lateral = v.Lateral[i];
+        float heading = net.LanePieceHeading[piece];
+        float x = pos.X;
+        float z = pos.Z;
+        if (lateral != 0f)
+        {
+            // Смещение по нормали к курсу: нужен нормированный dir (как в LaneGeometry.Evaluate).
+            Vec2 d = net.LanePoints[piece + 1] - net.LanePoints[piece];
+            float len = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
+            Vec2 dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
+            x = pos.X + (dir.Z * lateral);
+            z = pos.Z - (dir.X * lateral);
+        }
+
+        ref VehicleRenderData r = ref buf[i];
+        r.X = x;
+        r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
+        r.Z = z;
+        r.Heading = heading;
+        r.Speed = v.Speed[i];
+        r.Index = i;
+        r.Generation = (ushort)v.Pool.GenerationOf(i);
+        r.Type = v.Type[i];
+        r.Flags = (byte)SnapshotPhase.RenderFlags(_w, i);
+        r.LateralOffset = lateral;
     }
 }

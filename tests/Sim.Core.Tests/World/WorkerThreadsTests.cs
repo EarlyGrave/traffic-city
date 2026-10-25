@@ -179,6 +179,85 @@ public class WorkerThreadsTests
         Assert.Equal(forward, reverseSum);
     }
 
+    // P7: HardClamps и снапшот (текущий и предыдущий спаны) побитово равны при 1 и 2 потоках.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Phases6And10_HardClampsAndSnapshot_EqualForOneAndManyThreads(int threads)
+    {
+        ScenarioDesc d = Step3.S1k();
+        using Simulation one = Simulation.Create(in d);
+        using Simulation many = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
+        for (int k = 0; k < 6; k++)
+        {
+            one.Step(500);
+            many.Step(500);
+            Assert.Equal(one.Counters.HardClamps, many.Counters.HardClamps);
+            Assert.True(MemoryMarshal.AsBytes(one.Vehicles).SequenceEqual(MemoryMarshal.AsBytes(many.Vehicles)), "cur-снапшот отличается");
+            Assert.True(MemoryMarshal.AsBytes(one.PreviousVehicles).SequenceEqual(MemoryMarshal.AsBytes(many.PreviousVehicles)), "prev-снапшот отличается");
+        }
+
+        Assert.True(one.Vehicles.Length > WorkerPool.ChunkSize / 2);
+        Assert.True(one.Counters.HardClamps > 0, "тест должен ловить клэмпы");
+        Assert.Equal(one.ComputeStateHash(), many.ComputeStateHash());
+    }
+
+    // P7: фазы 6 и 10 - функции машины: обратный обход даёт те же выходы и ту же сумму HardClamps.
+    [Fact]
+    public void Phases6And10_ReverseOrder_GivesBitwiseSameOutputs()
+    {
+        ScenarioDesc d = Step3.S1k();
+        using Simulation sim = Simulation.Create(in d);
+        sim.Step(3000);
+        World w = sim.World;
+        int hw = w.Vehicles.HighWater;
+        Sim.Core.Agents.VehicleStore v = w.Vehicles;
+        Assert.True(v.AliveCount > 500, "нужна загруженная сеть");
+
+        // Фаза 6: вход - зазоры фазы 5 на состоянии конца тика; сохраняем S/Speed/StillTicks, прогоняем вперёд, откатываем, прогоняем назад.
+        BehaviourPhase.Run(w);
+        float[] s0 = v.S.AsSpan(0, hw).ToArray();
+        float[] sp0 = v.Speed.AsSpan(0, hw).ToArray();
+        ushort[] st0 = v.StillTicks.AsSpan(0, hw).ToArray();
+        SimCounters fwdC = default;
+        Sim.Core.Agents.IntegrateJob job6 = Sim.Core.Agents.IntegratePhase.Prepare(w);
+        job6.RunRange(0, 0, hw);
+        job6.Collect(ref fwdC);
+        byte[][] fwd6 = { Bytes(v.S, hw), Bytes(v.Speed, hw), Bytes(v.StillTicks, hw) };
+        s0.CopyTo(v.S, 0);
+        sp0.CopyTo(v.Speed, 0);
+        st0.CopyTo(v.StillTicks, 0);
+        job6 = Sim.Core.Agents.IntegratePhase.Prepare(w);
+        for (int i = hw - 1; i >= 0; i--)
+        {
+            job6.RunRange(0, i, i + 1);
+        }
+
+        SimCounters revC = default;
+        job6.Collect(ref revC);
+        byte[][] rev6 = { Bytes(v.S, hw), Bytes(v.Speed, hw), Bytes(v.StillTicks, hw) };
+        for (int k = 0; k < fwd6.Length; k++)
+        {
+            Assert.True(fwd6[k].AsSpan().SequenceEqual(rev6[k]), $"выход фазы 6 №{k} отличается при обратном обходе");
+        }
+
+        Assert.Equal(fwdC.HardClamps, revC.HardClamps);
+
+        // Фаза 10: тот же буфер, отравленный, заполняется в обратном порядке.
+        VehicleRenderData[] buf = w.Render[(int)((w.Tick + 1) & 1)];
+        var job10 = new SnapshotJob();
+        job10.Prepare(w, buf);
+        job10.RunRange(0, 0, hw);
+        byte[] fwd10 = Bytes(buf, hw);
+        MemoryMarshal.AsBytes(buf.AsSpan(0, hw)).Fill(0xFF);
+        for (int i = hw - 1; i >= 0; i--)
+        {
+            job10.RunRange(0, i, i + 1);
+        }
+
+        Assert.True(fwd10.AsSpan().SequenceEqual(Bytes(buf, hw)), "снапшот отличается при обратном обходе");
+    }
+
     [Fact]
     public void Step_ZeroAllocations_WithTwoThreads_TotalProcessBytes()
     {
