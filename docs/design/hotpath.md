@@ -483,3 +483,41 @@ MOBIL реже (≤ 1% тика, меняет поведение), размаз�
 
 p95 с 2 потоками ≤ 4 мс во всех 3 раундах (load 1.7–2.6); относительно 1 потока −0.90 / −1.08 / −0.69 мс (в среднем −0.89 мс, −19%), фаза 5 ×1.56 / ×1.83 / ×1.52,
 что совпадает с прототипом (§8.3). Это до P7 (фазы 6 и 10 ещё на одном потоке).
+
+### 8.7 P7 выполнена: фазы 6 и 10 на воркерах
+Реализовано по образцу `BehaviourJob` (код `9d3b596`): `IntegrateJob` (`Agents/IntegratePhase.cs`; `World.Integrate`) и `SnapshotJob` (`Api/SnapshotPhase.cs`; `World.SnapshotJob`),
+оба `IRangeJob` на `WorkerPool` с чанками 256. Перегрузка `IntegratePhase.Run(net, v, types, p, ref c)` для тестов/бенчей осталась (`[ThreadStatic]` задание; `types` теперь `VehicleTypeDesc[]`).
+
+**Общие записи в фазах 6 и 10 (проверено чтением дерева вызовов) и что с ними сделано:**
+1. `SimCounters.HardClamps` (фаза 6, `c.HardClamps++`, два места) - единственный общий аккумулятор: теперь целое по воркеру (`long[]`, шаг 16 элементов против false sharing),
+   сумма в `IntegrateJob.Collect` после фазы на главном потоке. Целое - не зависит от порядка.
+2. `SnapshotSlots` (`w.SnapshotSlots[..] = high`), `w.Work.SnapshotSlots += high`, `w.SnapshotTick` - остались в `SnapshotPhase.Run` после параллельной части на главном.
+3. `PointHint[i]` (кэш подсказки куска полилинии в `LaneGeometry.EvaluatePos`, `ref v.PointHint[i]`, фаза 10) - запись в слот своей машины, не общая; результат от подсказки не зависит.
+4. `StillTicks[i]`, `S[i]`, `Speed[i]` (фаза 6) и `buf[i]` (фаза 10) - слот своей машины; фаза 6 читает `ClampLeadGap/ClampFlags/ClampGateGap[i]` фазы 5, чужих `S` не читает.
+5. `BusStopRules.IsServing/TargetStop` (фаза 6) и `SnapshotPhase.RenderFlags` (фаза 10) - только чтения. Ленивых кэшей, общих scratch-буферов, PRNG, `HighWater`-записей в фазах нет.
+   `VehicleRenderData` 32 байта без padding: поэтому побайтовое сравнение снапшота корректно.
+
+**Тесты** (`WorkerThreadsTests`): `Phases6And10_HardClampsAndSnapshot_EqualForOneAndManyThreads` (s1k, каждые 500 тиков до 3000, при 2 и 3 потоках: `HardClamps` равен и > 0,
+`Vehicles` и `PreviousVehicles` побитово равны 1 потоку, хэш равен); `Phases6And10_ReverseOrder_GivesBitwiseSameOutputs` (s1k после 3000 тиков: `S/Speed/StillTicks` и сумма
+`HardClamps` фазы 6, буфер снапшота фазы 10 при обратном обходе по одной машине равны прямому; для фазы 10 буфер перед обратным обходом залит `0xFF`);
+существующие golden s1k/s10k при 1/2/3 потоках и `Step_ZeroAllocations_WithTwoThreads_TotalProcessBytes` теперь покрывают и фазы 6/10.
+
+**Приёмка:**
+- `hash --scenario s10k --warmup-until-full --ticks 400 --every 200 --threads {1,2,3}`: во всех трёх tick=6100 `861672e99fa95a39`, tick=6300 `c73832373fb67bd3`, active 9997.
+- `dotnet build traffic-city.sln -warnaserror` 0/0; `dotnet format --verify-no-changes` чисто; `dotnet build game/TrafficCity.csproj -warnaserror` 0/0;
+  `dotnet test traffic-city.sln`: Sim.Core.Tests 417, Sim.Headless.Tests 114 зелёные.
+- `scripts/bench-gate.sh --baseline perf/baseline.json` (1 поток): p95 0.2465 мс против baseline 0.63036 (-60.9%), 0 B/тик - OK.
+
+**Замер s10k, поочерёдно 1/2 потока** (`bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases`, `uptime` перед каждым прогоном, load average 1/5/15):
+
+| раунд | потоки | load перед | tick p50 | tick p95 | tick p99 | behaviour mean | integrate mean | snapshot mean | сумма фаз mean | B/тик |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | 4.52/5.06/4.15 | 3.044 | 4.480 | 5.560 | 1.280 | 0.174 | 0.407 | 3.205 | 0 |
+| 1 | 2 | 3.65/4.82/4.09 | 2.343 | **3.483** | 4.916 | 0.789 | 0.121 | 0.259 | 2.516 | 0 |
+| 2 | 1 | 3.35/4.70/4.06 | 2.745 | 4.174 | 4.687 | 1.137 | 0.161 | 0.368 | 2.899 | 0 |
+| 2 | 2 | 2.74/4.48/4.00 | 2.483 | **3.806** | 5.967 | 0.796 | 0.121 | 0.263 | 2.669 | 0 |
+| 3 | 1 | 2.63/4.39/3.98 | 2.954 | 4.350 | 4.930 | 1.234 | 0.169 | 0.403 | 3.123 | 0 |
+| 3 | 2 | 2.17/4.17/3.92 | 2.444 | **3.389** | 3.884 | 0.779 | 0.119 | 0.251 | 2.540 | 0 |
+
+(uptime после последнего прогона: 2.20/4.08/3.89.) p95 при 2 потоках ≤ 4 мс во всех 3 раундах (при load 2.2-3.7: выше критерия «load ≤ 2», замер шумный); относительно 1 потока
+-1.00 / -0.37 / -0.96 мс. Фазы: integrate ×1.44 / 1.33 / 1.42, snapshot ×1.57 / 1.40 / 1.60 (оценка ADR: ×1.5). Хэш s10k не изменился.
