@@ -1,0 +1,21 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+license = "UNLICENSED"
+publish = false
+
+# overflow-checks в dev/test ловят баги арифметики; PRNG/хэши используют wrapping_* явно (rust-pilot.md §6.2).
+[profile.dev]
+overflow-checks = true
+
+[profile.test]
+inherits = "dev"
+
+[profile.release]
+overflow-checks = false
+lto = "thin"
+codegen-units = 1

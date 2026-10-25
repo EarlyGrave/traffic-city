@@ -1,0 +1,10 @@
+[package]
+name = "tc-core"
+version = "0.1.0"
+description = "Ядро симуляции traffic-city (Rust-пилот, ADR-0022). 0 зависимостей."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
