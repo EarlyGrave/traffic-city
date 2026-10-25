@@ -99,6 +99,7 @@ internal static class Corridor
         for (int i = 1; i <= MainSegments - 1; i++)
         {
             Assert.True(sim.Enqueue(Command.MakeSetNodeControl(i, NodeControl.Signal, (uint)i)));
+            SignalFixture.EnqueueFixedDefault(sim, i, (uint)(100 + i));   // 2.5: коридор сравнивает micro и meso на прежнем Fixed 24/24/3/1
         }
 
         sim.Step(1);

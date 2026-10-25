@@ -182,7 +182,6 @@ public sealed class BenchCommandTests : IDisposable
     }
 
     [Theory]
-    [InlineData("--signal-mode", "adaptive", "not implemented")]
     [InlineData("--signal-mode", "bogus", "expected")]
     [InlineData("--signal-coordination", "alternate", "not implemented")]
     [InlineData("--seed", "-1", "unsigned")]

@@ -378,8 +378,9 @@ public class Step3GateReportTests
     public Step3GateReportTests(ITestOutputHelper output) => _out = output;
 
     [Theory]
-    [InlineData(36000)]
-    public void Report_S1k(int ticks)
+    [InlineData(36000, false)]
+    [InlineData(36000, true)]
+    public void Report_S1k(int ticks, bool adaptive)
     {
         if (Environment.GetEnvironmentVariable("TC_STEP3_REPORT") != "1")
         {
@@ -387,6 +388,7 @@ public class Step3GateReportTests
         }
 
         ScenarioDesc d = Step2.S1k(buses: true);
+        d.City.SignalMode = adaptive ? CitySignalMode.Adaptive : CitySignalMode.Fixed;   // 2.5 S2: дефолт сценария - adaptive; Fixed + legacy - эталон «до»
         using Simulation sim = Simulation.Create(in d);
         sim.Step(200);
         long sum = 0;
@@ -442,7 +444,7 @@ public class Step3GateReportTests
         double us = 1e6 / Stopwatch.Frequency;
         SimCounters c = sim.Counters;
         sim.GetStats(out SimStats st);
-        _out.WriteLine($"=== s1k + intersections, {(ticks + 200) / 1200.0:F1} min game time ===");
+        _out.WriteLine($"=== s1k + intersections ({(adaptive ? "adaptive" : "fixed")}), {(ticks + 200) / 1200.0:F1} min game time ===");
         _out.WriteLine($"active={c.ActiveVehicles} spawned={c.VehiclesSpawned} completed={c.TripsCompleted} pendingTrips={sim.World.Trips.Count}");
         _out.WriteLine($"avg_speed_kmh={st.AvgSpeedKmh:F2} avg_trip_time_s={st.AvgTripTimeS:F1} trips_per_min={st.TripsCompletedPerMin:F2}");
         _out.WriteLine($"reroutes={sim.Counters.Reroutes} timed_reroutes={sim.Counters.TimedReroutes} cost_recalcs={sim.Counters.CostRecalcs} queries={sim.Counters.PathfindQueries} deferred={sim.Counters.RouteDeferred}");

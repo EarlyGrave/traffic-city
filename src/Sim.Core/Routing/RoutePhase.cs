@@ -137,6 +137,8 @@ internal static class RoutePhase
         }
 
         System.Diagnostics.Debug.Assert(w.SegmentLoadsTick == w.Tick - 1, "SegmentLoads not computed at the end of the previous tick (MetricsPhase.NeedsLoadsNow)");
+        Rules.Intersections.SignalDelays.Update(w);   // 2.5, intersections.md 6.9: измеренная задержка светофоров -> штрафы дуг
+        w.Graph.RefreshSignalCosts();
         w.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
         w.Counters.CostRecalcs++;
         if (overlay)

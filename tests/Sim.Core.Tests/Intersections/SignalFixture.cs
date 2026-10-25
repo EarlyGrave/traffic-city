@@ -65,6 +65,18 @@ internal static class SignalFixture
         OffsetTicks = (ushort)offset,
     };
 
+    /// <summary>
+    /// Ставит в очередь прежний план по умолчанию этапа 1 (<c>Fixed</c> 24 с / 24 с, жёлтый 3 с, all-red 1 с) для узла, получившего светофор командой
+    /// <c>SetNodeControl</c>: с 2.5 (ADR-0018) план по умолчанию - <c>Adaptive</c>, а тесты ворот и коридора опираются на фиксированный цикл.
+    /// Команда идёт сразу за <c>SetNodeControl</c> (тот же тик), поэтому состояние автомата то же, что у прежнего плана по умолчанию.
+    /// </summary>
+    public static void EnqueueFixedDefault(Simulation sim, int node, uint tag)
+    {
+        SetSignalPlanCmd p = Plan(480, 480, 60, 20);
+        p.Node = node;
+        Xunit.Assert.True(sim.Enqueue(Command.MakeSetSignalPlan(in p, tag)));
+    }
+
     /// <summary>Ожидаемое (фаза, интервал, остаток) в позиции <paramref name="pos"/> цикла.</summary>
     public static (int Phase, SignalInterval Iv, int Left) Expected(int[] green, int yellow, int allRed, long pos)
     {

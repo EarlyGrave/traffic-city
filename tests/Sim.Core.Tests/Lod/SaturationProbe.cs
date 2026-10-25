@@ -17,6 +17,7 @@ internal static class SaturationProbe
         d.Lod = lod;
         using Simulation sim = Simulation.Create(in d);
         Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));
+        SignalFixture.EnqueueFixedDefault(sim, 0, 2);   // 2.5: замер на прежнем Fixed 24/24/3/1 (план по умолчанию теперь Adaptive)
         sim.Step(1);
         World w = sim.World;
         var drv = new FlowDriver(sim);
