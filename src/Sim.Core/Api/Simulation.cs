@@ -150,7 +150,7 @@ public sealed class Simulation : IDisposable
 
     public int ActiveVehicleCount => _disposed ? 0 : _w.Vehicles.AliveCount;
 
-    public ReadOnlySpan<SegmentLoad> SegmentLoads => _disposed ? default : _w.SegmentLoads;
+    public ReadOnlySpan<SegmentLoad> SegmentLoads => _disposed ? default : _w.EnsureSegmentLoads();
 
     public ReadOnlySpan<SignalState> SignalStates =>
         _disposed ? default : new ReadOnlySpan<SignalState>(_w.SignalStates, 0, _w.SignalCount);

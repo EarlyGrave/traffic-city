@@ -123,7 +123,9 @@ internal static class BusStopPhase
 
         stop.Waiting = (ushort)(stop.Waiting - board);
         v.Passengers[i] = (ushort)(pax - alight + board);
+        float oldSpeed = v.Speed[i];
         v.Speed[i] = 0f;
+        w.Masks.Retune(v, i, oldSpeed, v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0);   // накопители метрик фазы 9 (ADR-0019, A4)
         v.Flags[i] |= (byte)VehicleFlags.AtStop;
         TransitDesc cfg = w.TransitCfg;
         int dwell = cfg.DwellBaseTicks + (int)(cfg.DwellPerPassengerTicks * (alight + board));
@@ -215,6 +217,7 @@ internal static class BusStopPhase
             w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
         }
 
+        w.Masks.Remove(v, i);   // метрики фазы 9 считают только оставшихся (ADR-0019, A4)
         v.Despawn(v.HandleOf(i));
     }
 }

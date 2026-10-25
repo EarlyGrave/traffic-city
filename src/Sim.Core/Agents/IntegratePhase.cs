@@ -33,6 +33,7 @@ internal static class IntegratePhase
     public static IntegrateJob Prepare(World w)
     {
         IntegrateJob job = w.Integrate;
+        w.Masks.Begin(w.Vehicles.HighWater, w.Rules.StuckSpeedThreshold, w.Rules.StuckThresholdTicks);
         job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), w.Gate.SignalMask, w.Masks);
         return job;
     }
@@ -95,7 +96,6 @@ internal sealed partial class IntegrateJob : IRangeJob
     {
         _signalMask = signalMask ?? Array.Empty<ulong>();
         _masks = masks;
-        masks?.Begin(v.HighWater);
         _laneLength = net.LaneLength;
         _net = net;
         _v = v;
@@ -108,24 +108,56 @@ internal sealed partial class IntegrateJob : IRangeJob
     {
         long clamps = 0;
         long mesoClamps = 0;
+        var tally = default(Tally);
         for (int i = begin; i < end; i++)
         {
-            clamps += Vehicle(i, ref mesoClamps);
+            clamps += Vehicle(i, ref mesoClamps, ref tally);
         }
 
-        _clamps[worker * Stride] += clamps;
-        _clamps[(worker * Stride) + 1] += mesoClamps;
+        int o = worker * Stride;
+        _clamps[o] += clamps;
+        _clamps[o + 1] += mesoClamps;
+        _clamps[o + 2] += tally.Active;
+        _clamps[o + 3] += tally.Moving;
+        _clamps[o + 4] += tally.DistMm;
+        _clamps[o + 5] += tally.MesoNow;
+        _clamps[o + 6] += tally.MesoDistMm;
+        _clamps[o + 7] += tally.Stuck;
     }
 
-    /// <summary>Складывает <c>HardClamps</c> и <c>MesoClamps</c> воркеров в <paramref name="c"/> и обнуляет их.</summary>
+    /// <summary>Целые накопители метрик воркера (ADR-0019, A4): сумма не зависит от порядка и разбиения на чанки.</summary>
+    private struct Tally
+    {
+        public long Active;
+        public long Moving;
+        public long DistMm;
+        public long MesoNow;
+        public long MesoDistMm;
+        public long Stuck;
+    }
+
+    /// <summary>Складывает <c>HardClamps</c> и <c>MesoClamps</c> воркеров в <paramref name="c"/>, накопители метрик - в <see cref="TickMasks"/>; обнуляет их.</summary>
     public void Collect(ref SimCounters c)
     {
+        TickMasks? m = _masks;
         for (int k = 0; k < _clamps.Length; k += Stride)
         {
             c.HardClamps += _clamps[k];
             c.MesoClamps += _clamps[k + 1];
-            _clamps[k] = 0;
-            _clamps[k + 1] = 0;
+            if (m != null)
+            {
+                m.Active += _clamps[k + 2];
+                m.Moving += _clamps[k + 3];
+                m.DistMm += _clamps[k + 4];
+                m.MesoNow += _clamps[k + 5];
+                m.MesoDistMm += _clamps[k + 6];
+                m.Stuck += _clamps[k + 7];
+            }
+
+            for (int j = 0; j < 8; j++)
+            {
+                _clamps[k + j] = 0;
+            }
         }
     }
 
@@ -152,22 +184,66 @@ internal sealed partial class IntegrateJob : IRangeJob
     }
 
     /// <summary>Интегрирует машину <paramref name="i"/>; возвращает число сработавших клэмпов I6 (0..2).</summary>
-    private int Vehicle(int i, ref long mesoClamps)
+    private int Vehicle(int i, ref long mesoClamps, ref Tally t)
     {
         VehicleStore v = _v;
-        if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+        if (!v.Pool.IsAlive(i))
         {
             return 0;
         }
 
-        int clamps = Move(i, ref mesoClamps);
+        int clamps = 0;
         TickMasks? m = _masks;
+        if (v.Lane[i] >= 0)
+        {
+            clamps = Move(i, ref mesoClamps);
+            if (m != null)
+            {
+                MarkCandidates(m, i);
+            }
+        }
+
         if (m != null)
         {
-            MarkCandidates(m, i);
+            TallyMetrics(m, i, ref t);
         }
 
         return clamps;
+    }
+
+    /// <summary>
+    /// Метрики фазы 9 по состоянию конца фазы 6 (ADR-0019, A4): путь, движущиеся, мезо-доля, число «застрявших» и бит перехода
+    /// <c>Stuck</c> (признак расходится с флагом - событие в фазе 9, в порядке индексов). Скорость и <c>StillTicks</c> после фазы 6 меняют
+    /// только поправки <see cref="TickMasks.Retune"/>/<see cref="TickMasks.Remove"/>.
+    /// </summary>
+    private void TallyMetrics(TickMasks m, int i, ref Tally t)
+    {
+        VehicleStore v = _v;
+        float speed = v.Speed[i];
+        long step = TickMasks.StepMm(speed);
+        t.Active++;
+        t.DistMm += step;
+        if (_lod.Length != 0 && (_lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            t.MesoNow++;
+            t.MesoDistMm += step;
+        }
+
+        if (speed > m.StuckSpeed)
+        {
+            t.Moving++;
+        }
+
+        bool isStuck = v.StillTicks[i] >= m.StuckTicks;
+        if (isStuck)
+        {
+            t.Stuck++;
+        }
+
+        if (isStuck != ((v.Flags[i] & (byte)VehicleFlags.Stuck) != 0))
+        {
+            m.StuckEv[i >> 6] |= 1UL << (i & 63);
+        }
     }
 
     /// <summary>

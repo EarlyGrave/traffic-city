@@ -480,13 +480,13 @@ public sealed class Step2StuckTests
         w.Vehicles.DesiredSpeed[a.Index] = 0f;
         w.Vehicles.DesiredSpeed[b.Index] = 0f;
         sim.Step(1);
-        SegmentLoad l0 = w.SegmentLoads[0];
+        SegmentLoad l0 = w.EnsureSegmentLoads()[0];
         Assert.Equal(2, l0.Count);
         float laneKm = 2 * w.Net.Segments[0].Length * 0.001f;
         Assert.Equal(2f / laneKm, l0.Density, 3);
         Assert.InRange(l0.SpeedRatio, 0f, 0.1f);
-        Assert.Equal(0, w.SegmentLoads[1].Count);
-        Assert.Equal(1f, w.SegmentLoads[1].SpeedRatio);
+        Assert.Equal(0, w.EnsureSegmentLoads()[1].Count);
+        Assert.Equal(1f, w.EnsureSegmentLoads()[1].SpeedRatio);
     }
 }
 

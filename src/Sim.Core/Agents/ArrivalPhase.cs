@@ -51,6 +51,7 @@ internal static class ArrivalPhase
                     w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
                 }
 
+                w.Masks.Remove(v, i);   // метрики фазы 9 считают только оставшихся (A4)
                 v.Despawn(h);
             }
         }

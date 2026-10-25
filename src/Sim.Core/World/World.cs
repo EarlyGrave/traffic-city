@@ -3,6 +3,7 @@ using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Gen;
 using Sim.Core.Lod;
+using Sim.Core.Metrics;
 using Sim.Core.Network;
 using Sim.Core.Routing;
 using Sim.Core.Rules;
@@ -87,6 +88,7 @@ internal sealed class World : IDisposable
 
     // ---- выходные массивы фаз 4, 9, 10 ----
     public readonly SegmentLoad[] SegmentLoads;
+    public long SegmentLoadsTick = -1;    // номер тика, по состоянию конца которого посчитан SegmentLoads (ADR-0019, A4); производное, вне хэша
     public readonly uint[] NodeThroughput;
     public readonly BusRouteStats[] BusRouteStats;
     public readonly SignalState[] SignalStates;
@@ -98,6 +100,22 @@ internal sealed class World : IDisposable
 
     /// <summary>true = <c>Lod.Mode != Off</c>: ячейки построены, массивы уровней машин выделены.</summary>
     public bool LodEnabled => Lod != null;
+
+    /// <summary>
+    /// Нагрузка сегментов по состоянию конца последнего завершённого тика (ADR-0019, A4). Фаза 9 считает её только перед пересчётом весов
+    /// (<see cref="MetricsPhase.NeedsLoadsNow"/>); остальным читателям (API, команды) недостающее досчитывается здесь по неизменному с конца тика
+    /// состоянию машин - то же значение, которое прежде считалось каждый тик. Звать до любых изменений машин в текущем тике.
+    /// </summary>
+    public SegmentLoad[] EnsureSegmentLoads()
+    {
+        if (SegmentLoadsTick != Tick - 1)
+        {
+            MetricsPhase.ComputeSegmentLoads(this);
+            SegmentLoadsTick = Tick - 1;
+        }
+
+        return SegmentLoads;
+    }
 
     /// <summary>Запускает <paramref name="threads"/> - 1 воркеров (≤ 1: ничего не создаёт). Вызывает <c>Simulation</c> сразу после построения мира.</summary>
     public void StartWorkers(int threads)

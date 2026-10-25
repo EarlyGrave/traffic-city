@@ -97,6 +97,8 @@ internal static class TransitionPhase
             return;
         }
 
+        float speed0 = v.Speed[i];
+        bool meso0 = v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0;
         ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
         if (v.GhostLane[i] != -1)
         {
@@ -137,6 +139,8 @@ internal static class TransitionPhase
         {
             // Полоса могла смениться (переход, смена полосы): бит прибытия - по состоянию после фазы 7.
             TickMasks.Set(masks.Arrive, i, v.DestLane[i] == v.Lane[i] && v.S[i] >= v.DestS[i] && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0);
+            // Переходный клэмп меняет Speed, въезд в ячейку другого уровня - бит Meso: поправка накопителей метрик (A4).
+            masks.Retune(v, i, speed0, meso0);
         }
     }
 

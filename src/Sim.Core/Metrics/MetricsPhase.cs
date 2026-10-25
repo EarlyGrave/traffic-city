@@ -5,71 +5,55 @@ using Sim.Core.Network;
 namespace Sim.Core.Metrics;
 
 /// <summary>
-/// Фаза 9 (core-api 7, 11): метрики. По возрастанию индекса машины: путь (<c>DistanceTotalMm</c> += round(v*dt*1000)),
-/// <c>VehicleTicksTotal/MovingVehicleTicksTotal</c>, stuck (<c>StillTicks &gt;= StuckThresholdTicks</c> -> флаг
-/// <see cref="VehicleFlags.Stuck"/>, события <c>VehicleStuck/VehicleUnstuck</c>), нагрузка сегментов (<c>SegmentLoads</c>:
-/// число машин, плотность на полосо-км, средняя скорость / лимит). Затем gridlock: условие
+/// Фаза 9 (core-api 7, 11): метрики. Путь (<c>DistanceTotalMm</c> += round(v*dt*1000)), <c>VehicleTicksTotal/MovingVehicleTicksTotal</c>,
+/// число «застрявших» (<c>StillTicks &gt;= StuckThresholdTicks</c>) берутся из целых накопителей, которые собрала фаза 6 (<see cref="TickMasks"/>,
+/// ADR-0019, A4) и поправили фазы 7, 8, 8b (переходный клэмп скорости, смена уровня, деспаун) - сумма целых не зависит от порядка, поэтому
+/// результат побитово равен прежнему проходу по всем машинам. События <c>VehicleStuck/VehicleUnstuck</c> и флаг <see cref="VehicleFlags.Stuck"/> -
+/// по маске <see cref="TickMasks.StuckEv"/> (признак расходится с флагом) по возрастанию индекса, как прежде. Затем gridlock: условие
 /// <c>Stuck &gt;= max(GridlockMinStuck, GridlockStuckShare * Active)</c>; флаг включается, когда условие держится
 /// <c>GridlockHoldTicks</c> подряд, и выключается, когда оно ложно столько же подряд (<c>World.GridlockStreak</c>).
-/// Все накопители целочисленные; float - только при расчёте порога и отношения скорости (порядок суммирования фиксирован).
+/// Нагрузка сегментов (<c>SegmentLoads</c>: число машин, плотность на полосо-км, средняя скорость / лимит) считается проходом по машинам только
+/// в тик, после которого ей нужен читатель (пересчёт весов маршрутов следующим тиком, <see cref="NeedsLoadsNow"/>), и по требованию
+/// (<see cref="World.EnsureSegmentLoads"/>: команды, API) - по состоянию конца тика, то есть теми же значениями, что считал каждый тик.
 /// <c>NodeThroughput</c> ведёт фаза 7 (при выходе с connector'а). Машина с <c>Route == -1</c> (промах полосы, ждёт перемаршрутизации)
 /// едет по умолчанию, а не стоит, поэтому исключения из stuck для неё нет: стоящая машина считается stuck при любом маршруте.
 /// </summary>
 internal static class MetricsPhase
 {
     private const float Dt = 0.05f;
-    private const float MmPerSecondTick = 1000f * Dt; // мм за тик на 1 м/с
+    internal const float MmPerSecondTick = 1000f * Dt; // мм за тик на 1 м/с
 
     public static void Run(World w)
     {
         VehicleStore v = w.Vehicles;
-        NetworkStore net = w.Net;
+        TickMasks m = w.Masks;
         ref SimCounters c = ref w.Counters;
-        float stuckSpeed = w.Rules.StuckSpeedThreshold;
         int stuckTicks = w.Rules.StuckThresholdTicks;
-        SegmentLoad[] loads = w.SegmentLoads;
-        int segCount = net.SegmentCount;
-        for (int s = 0; s < segCount; s++)
-        {
-            loads[s].Count = 0;
-            loads[s].SpeedRatio = 0f; // накопитель суммы скоростей (м/с) до финализации
-            loads[s].Density = 0f;
-        }
-
-        int active = 0;
-        int moving = 0;
-        int stuck = 0;
-        long distMm = 0;
-        byte[] lodBits = v.Lod;                      // длина 0 - LOD выключен
-        int mesoNow = 0;
-        long mesoDistMm = 0;
         int hw = v.HighWater;
-        for (int i = 0; i < hw; i++)
+#if DEBUG
+        DebugVerify(w);
+#endif
+        ulong[] ev = m.StuckEv;
+        int words = TickMasks.WordsFor(hw);
+        for (int k = 0; k < words; k++)
         {
-            if (!v.Pool.IsAlive(i))
+            ulong bits = ev[k];
+            while (bits != 0UL)
             {
-                continue;
-            }
+                int i = (k << 6) + System.Numerics.BitOperations.TrailingZeroCount(bits);
+                bits &= bits - 1;
+                if (!v.Pool.IsAlive(i))
+                {
+                    continue;   // прибыла/исчезла после фазы 6: в прежнем проходе её уже не было
+                }
 
-            active++;
-            float speed = v.Speed[i];
-            long stepMm = (long)((speed * MmPerSecondTick) + 0.5f);
-            distMm += stepMm;
-            if (lodBits.Length != 0 && (lodBits[i] & Lod.LodBits.Meso) != 0)
-            {
-                mesoNow++;
-                mesoDistMm += stepMm;
-            }
+                bool isStuck = v.StillTicks[i] >= stuckTicks;
+                bool wasStuck = (v.Flags[i] & (byte)VehicleFlags.Stuck) != 0;
+                if (isStuck == wasStuck)
+                {
+                    continue;
+                }
 
-            if (speed > stuckSpeed)
-            {
-                moving++;
-            }
-
-            bool isStuck = v.StillTicks[i] >= stuckTicks;
-            bool wasStuck = (v.Flags[i] & (byte)VehicleFlags.Stuck) != 0;
-            if (isStuck != wasStuck)
-            {
                 VehicleHandle h = v.HandleOf(i);
                 if (isStuck)
                 {
@@ -83,10 +67,64 @@ internal static class MetricsPhase
                     w.Emit(SimEventKind.VehicleUnstuck, 0, h.Index, h.Generation);
                 }
             }
+        }
 
-            if (isStuck)
+        int active = (int)m.Active;
+        int stuck = (int)m.Stuck;
+        long distMm = m.DistMm;
+        int mesoNow = (int)m.MesoNow;
+        long mesoDistMm = m.MesoDistMm;
+        c.ActiveVehicles = active;
+        c.StuckVehicles = stuck;
+        c.VehicleTicksTotal += active;
+        c.MovingVehicleTicksTotal += m.Moving;
+        c.DistanceTotalMm += distMm;
+        c.StuckTicksTotal += stuck;
+        if (v.Lod.Length != 0)
+        {
+            c.MesoVehicles = mesoNow;
+            c.MicroVehicles = active - mesoNow;
+            c.MesoVehicleTicks += mesoNow;
+            c.MicroVehicleTicks += active - mesoNow;
+            c.MesoDistanceMm += mesoDistMm;
+            c.MicroDistanceMm += distMm - mesoDistMm;
+        }
+
+        if (NeedsLoadsNow(w))
+        {
+            ComputeSegmentLoads(w);
+            w.SegmentLoadsTick = w.Tick;
+        }
+
+        UpdateGridlock(w, active, stuck);
+    }
+
+    /// <summary>
+    /// Нужны ли нагрузки сегментов после этого тика: веса маршрутов пересчитает фаза 3 следующего тика (тик кратен <c>CostRecalcTicks</c>
+    /// либо пересчёт отложен до конца волны кастомизации, <c>RecalcPending</c>) - она читает значения конца этого тика.
+    /// </summary>
+    public static bool NeedsLoadsNow(World w) => w.RecalcPending || (w.Tick + 1) % w.Routing.CostRecalcTicks == 0;
+
+    /// <summary>Нагрузка сегментов по текущему состоянию машин (прежняя часть прохода фазы 9): число, средняя скорость к лимиту, плотность.</summary>
+    public static void ComputeSegmentLoads(World w)
+    {
+        VehicleStore v = w.Vehicles;
+        NetworkStore net = w.Net;
+        SegmentLoad[] loads = w.SegmentLoads;
+        int segCount = net.SegmentCount;
+        for (int s = 0; s < segCount; s++)
+        {
+            loads[s].Count = 0;
+            loads[s].SpeedRatio = 0f; // накопитель суммы скоростей (м/с) до финализации
+            loads[s].Density = 0f;
+        }
+
+        int hw = v.HighWater;
+        for (int i = 0; i < hw; i++)
+        {
+            if (!v.Pool.IsAlive(i))
             {
-                stuck++;
+                continue;
             }
 
             int lane = v.Lane[i];
@@ -96,25 +134,9 @@ internal static class MetricsPhase
                 if ((uint)seg < (uint)segCount)
                 {
                     loads[seg].Count++;
-                    loads[seg].SpeedRatio += speed;
+                    loads[seg].SpeedRatio += v.Speed[i];
                 }
             }
-        }
-
-        c.ActiveVehicles = active;
-        c.StuckVehicles = stuck;
-        c.VehicleTicksTotal += active;
-        c.MovingVehicleTicksTotal += moving;
-        c.DistanceTotalMm += distMm;
-        c.StuckTicksTotal += stuck;
-        if (lodBits.Length != 0)
-        {
-            c.MesoVehicles = mesoNow;
-            c.MicroVehicles = active - mesoNow;
-            c.MesoVehicleTicks += mesoNow;
-            c.MicroVehicleTicks += active - mesoNow;
-            c.MesoDistanceMm += mesoDistMm;
-            c.MicroDistanceMm += distMm - mesoDistMm;
         }
 
         for (int s = 0; s < segCount; s++)
@@ -132,9 +154,65 @@ internal static class MetricsPhase
             float laneKm = (sg.LanesAB + sg.LanesBA) * sg.Length * 0.001f;
             l.Density = laneKm > 0f ? l.Count / laneKm : 0f;
         }
-
-        UpdateGridlock(w, active, stuck);
     }
+
+#if DEBUG
+    // Эталон: прежний проход фазы 9 по всем машинам; накопители и состав событий stuck обязаны совпасть побитово.
+    private static void DebugVerify(World w)
+    {
+        VehicleStore v = w.Vehicles;
+        TickMasks m = w.Masks;
+        float stuckSpeed = w.Rules.StuckSpeedThreshold;
+        int stuckTicks = w.Rules.StuckThresholdTicks;
+        long active = 0;
+        long moving = 0;
+        long dist = 0;
+        long mesoNow = 0;
+        long mesoDist = 0;
+        long stuck = 0;
+        int hw = v.HighWater;
+        for (int i = 0; i < hw; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            active++;
+            float speed = v.Speed[i];
+            long step = (long)((speed * MmPerSecondTick) + 0.5f);
+            dist += step;
+            if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+            {
+                mesoNow++;
+                mesoDist += step;
+            }
+
+            if (speed > stuckSpeed)
+            {
+                moving++;
+            }
+
+            bool isStuck = v.StillTicks[i] >= stuckTicks;
+            if (isStuck)
+            {
+                stuck++;
+            }
+
+            if (isStuck != ((v.Flags[i] & (byte)VehicleFlags.Stuck) != 0))
+            {
+                System.Diagnostics.Debug.Assert(TickMasks.Test(m.StuckEv, i), "StuckEv mask misses a transition");
+            }
+        }
+
+        System.Diagnostics.Debug.Assert(active == m.Active, "metrics: Active differs from full scan");
+        System.Diagnostics.Debug.Assert(moving == m.Moving, "metrics: Moving differs from full scan");
+        System.Diagnostics.Debug.Assert(dist == m.DistMm, "metrics: DistMm differs from full scan");
+        System.Diagnostics.Debug.Assert(mesoNow == m.MesoNow, "metrics: MesoNow differs from full scan");
+        System.Diagnostics.Debug.Assert(mesoDist == m.MesoDistMm, "metrics: MesoDistMm differs from full scan");
+        System.Diagnostics.Debug.Assert(stuck == m.Stuck, "metrics: Stuck differs from full scan");
+    }
+#endif
 
     private static void UpdateGridlock(World w, int active, int stuck)
     {

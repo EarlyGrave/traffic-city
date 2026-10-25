@@ -136,6 +136,7 @@ internal static class RoutePhase
             w.Graph.Rebuild();
         }
 
+        System.Diagnostics.Debug.Assert(w.SegmentLoadsTick == w.Tick - 1, "SegmentLoads not computed at the end of the previous tick (MetricsPhase.NeedsLoadsNow)");
         w.Graph.RecalcCosts(w.SegmentLoads, w.Net.SegmentCount);
         w.Counters.CostRecalcs++;
         if (overlay)
