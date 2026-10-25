@@ -87,5 +87,7 @@
 | 81 | merge-s2-saves (worktree) | sonnet | слияние S2 + схема сейва для Adaptive | done, merged (merge-коммит с --no-verify — нарушение) |
 | 82 | verify-wave (worktree) | sonnet | общий верификатор волны 2.5 S2 + 2.6 (A1–A4, R1, Q0) + 2.6b SV1–SV2 | done (всё зелёное) |
 | 83 | metrics-wait-lanes (worktree) | sonnet | метрики длинных ожиданий + распределение по полосам | done, merged (s10k: max стояния 72 с; lane_miss_share 0.45 — в бэклог) |
-| 84 | signals-s3 (worktree) | sonnet | 2.5 S3: зелёная волна + анти-спилловер | wip |
-| 85 | bus-holding (worktree) | sonnet | 2.5: удержание автобусов на остановке | wip |
+| 84 | signals-s3 (worktree) | sonnet | 2.5 S3: зелёная волна + анти-спилловер | done (alternate — опция; stuck ×2–3), мерж через агента 87 |
+| 87 | merge-s3-s4 (worktree) | sonnet | слияние S3 + S4 бронь выезда | wip |
+| 85 | bus-holding (worktree) | sonnet | 2.5: удержание автобусов на остановке | done, merged (headway dev 36.5 → 21.5 с) |
+| 86 | save-fuzz-fix (worktree) | sonnet | дыра валидатора сейва (фазз после мержа) | done, merged (3 дыры закрыты) |
