@@ -105,7 +105,7 @@ public class SignalMaskTests
         Assert.Equal((1UL << w.Net.Nodes[0].ConnectorCount) - 1UL, union);
         for (int k = 0; k < 3; k++)
         {
-            Assert.Equal(320, s.GreenTicks[k]); // 16 с при 3 фазах
+            Assert.Equal(280, s.GreenTicks[k]); // Adaptive (2.5): MaxGreen 14 с при 3 осях - красный прямого <= 52 с (intersections.md 5.6)
         }
     }
 

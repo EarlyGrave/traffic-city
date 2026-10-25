@@ -18,6 +18,17 @@ internal sealed class RingBuffer<T>
 
     public int Capacity => _items.Length;
 
+    // ---- сейв (Save/): физический массив; в файле очередь лежит в логическом порядке, при загрузке голова = 0 ----
+
+    internal T[] Items => _items;
+
+    /// <summary>Загрузка: очередь из <paramref name="count"/> элементов с головой в 0 (элементы заполняют столбцы блока).</summary>
+    internal void RestoreCount(int count)
+    {
+        _head = 0;
+        _count = count;
+    }
+
     public int Count => _count;
 
     public bool IsEmpty => _count == 0;

@@ -8,44 +8,46 @@ namespace Sim.Core.Api;
 /// <summary>
 /// Фаза 10 (core-api 5.2, 7): заполняет <c>Render[(Tick + 1) &amp; 1]</c> из <see cref="VehicleStore"/> и ставит
 /// <c>SnapshotTick = Tick + 1</c> (<c>Tick++</c> делает <see cref="PhaseList.RunTick"/> сразу после).
-/// Массив имеет длину MaxVehicles; индекс = слот; неживые слоты (и живые без полосы) - нули.
+/// Пишет слоты [0, HighWater) (<c>SnapshotSlots</c>); индекс = слот; неживые слоты (и живые без полосы) - нули.
+/// Результат побитово равен прежней реализации (позиция/курс по полилинии), но дешевле: курс из кэша
+/// <c>LanePieceHeading</c>, нормировка - только при Lateral != 0, нулевой слот не перезаписывается (ADR-0010).
 /// </summary>
 internal static class SnapshotPhase
 {
-    public static void Run(World w)
+    public static void Run(World w) => RunFor(w, w.Tick + 1);
+
+    /// <summary>Заполняет <c>Render[snapTick &amp; 1]</c> и ставит <c>SnapshotTick</c>; загрузка сейва зовёт её с <c>snapTick = Tick</c> (снапшот состояния «сейчас»).</summary>
+    public static void RunFor(World w, long snapTick)
     {
-        long snapTick = w.Tick + 1;
-        VehicleRenderData[] buf = w.Render[(int)(snapTick & 1)];
-        VehicleStore v = w.Vehicles;
-        NetworkStore net = w.Net;
-        int high = v.HighWater;
-        for (int i = 0; i < high; i++)
+        int b = (int)(snapTick & 1);
+        VehicleRenderData[] buf = w.Render[b];
+        int high = w.Vehicles.HighWater;
+        RenderViewState rv = w.RenderView;
+        if (rv.All)
         {
-            int lane = v.Lane[i];
-            if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
+            w.Queue?.SynthesizeAll(snapTick);   // Q-meso: позиции очереди - синтез на начало следующего тика (главный поток)
+            SnapshotJob job = w.SnapshotJob;
+            job.Prepare(w, buf, null);
+            if (w.Pool != null)
             {
-                buf[i] = default;
-                continue;
+                w.Pool.Run(job, high);
+            }
+            else
+            {
+                job.RunRange(0, 0, high);
             }
 
-            float centerS = v.S[i] - (v.Length[i] * 0.5f);
-            LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out Vec2 dir);
-            float lateral = v.Lateral[i];
-            float x = pos.X + (dir.Z * lateral);
-            float z = pos.Z - (dir.X * lateral);
-            ref VehicleRenderData r = ref buf[i];
-            r.X = x;
-            r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
-            r.Z = z;
-            r.Heading = MathF.Atan2(dir.Z, dir.X);
-            r.Speed = v.Speed[i];
-            r.Index = i;
-            r.Generation = (ushort)v.Pool.GenerationOf(i);
-            r.Type = v.Type[i];
-            r.Flags = (byte)RenderFlags(w, i);
-            r.LateralOffset = lateral;
+            rv.MarkWrittenAll(b);
+            w.Work.SnapshotSlots += high;
+        }
+        else
+        {
+            // Вид (ADR-0019): пишутся только слоты полос вида, слоты прошлой записи вне вида обнуляются; длина спана прежняя (HighWater).
+            rv.Run(w, buf, b, high);
         }
 
+        // Общие записи - только здесь, на главном потоке, после параллельной части.
+        w.SnapshotSlots[(int)(snapTick & 1)] = high;
         w.SnapshotTick = snapTick;
     }
 
@@ -86,6 +88,134 @@ internal static class SnapshotPhase
             f |= VehicleRenderFlags.OnConnector;
         }
 
+        if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            f |= VehicleRenderFlags.Meso;
+        }
+
         return f;
+    }
+}
+
+/// <summary>
+/// Задание фазы 10 для <see cref="WorkerPool"/> (ADR-0017): функция слота <see cref="Slot"/> читает состояние машины <c>i</c> и сети и пишет
+/// только <c>buf[i]</c> и <c>PointHint[i]</c> (кэш подсказки куска полилинии своей машины); общих кэшей и счётчиков нет.
+/// </summary>
+internal sealed class SnapshotJob : IRangeJob
+{
+    private World _w = null!;
+    private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
+    private int[]? _list;
+
+    /// <summary><paramref name="list"/> = null: индексы диапазона - слоты; иначе слот = <c>list[k]</c> (вид, <see cref="RenderViewState"/>).</summary>
+    public void Prepare(World w, VehicleRenderData[] buf, int[]? list = null)
+    {
+        _w = w;
+        _buf = buf;
+        _list = list;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        int[]? list = _list;
+        if (list == null)
+        {
+            for (int i = begin; i < end; i++)
+            {
+                Slot(i);
+            }
+        }
+        else
+        {
+            for (int k = begin; k < end; k++)
+            {
+                Slot(list[k]);
+            }
+        }
+    }
+
+    private void Slot(int i)
+    {
+        World w = _w;
+        VehicleRenderData[] buf = _buf;
+        VehicleStore v = w.Vehicles;
+        NetworkStore net = w.Net;
+        int lane = v.Lane[i];
+        if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
+        {
+            if (buf[i].Flags != 0)
+            {
+                buf[i] = default;
+            }
+
+            return;
+        }
+
+        float s = v.S[i];
+        float speed = v.Speed[i];
+        Lod.QueueMeso? q = w.Queue;
+        if (q != null && q.IsQueued(i))
+        {
+            s = q.ViewS[i];         // синтез очереди (RenderViewState.Gather / SynthesizeAll на главном потоке перед записью)
+            speed = q.ViewSpeed[i];
+        }
+
+        float centerS = s - (v.Length[i] * 0.5f);
+        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out int piece);
+        float lateral = v.Lateral[i];
+        float heading = net.LanePieceHeading[piece];
+        float x = pos.X;
+        float z = pos.Z;
+        if (lateral != 0f)
+        {
+            // Смещение по нормали к курсу: нужен нормированный dir (как в LaneGeometry.Evaluate).
+            Vec2 d = net.LanePoints[piece + 1] - net.LanePoints[piece];
+            float len = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
+            Vec2 dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
+            x = pos.X + (dir.Z * lateral);
+            z = pos.Z - (dir.X * lateral);
+        }
+
+        ref VehicleRenderData r = ref buf[i];
+        r.X = x;
+        r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
+        r.Z = z;
+        r.Heading = heading;
+        r.Speed = speed;
+        r.Index = i;
+        r.Generation = (ushort)v.Pool.GenerationOf(i);
+        r.Type = v.Type[i];
+        r.Flags = (byte)SnapshotPhase.RenderFlags(_w, i);
+        r.LateralOffset = lateral;
+    }
+}
+
+/// <summary>
+/// Обнуление ранее записанных слотов буфера снапшота (вид, <see cref="RenderViewState"/>): диапазон индексов (<c>list == null</c>) или список слотов.
+/// Пишет только <c>buf[slot]</c> своих элементов; обнуляет, только если <c>Flags != 0</c> (у слота с <c>Flags == 0</c> все поля уже нули).
+/// </summary>
+internal sealed class SnapshotClearJob : IRangeJob
+{
+    private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
+    private int[]? _list;
+
+    public void Prepare(VehicleRenderData[] buf, int[]? list)
+    {
+        _buf = buf;
+        _list = list;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        VehicleRenderData[] buf = _buf;
+        int[]? list = _list;
+        for (int k = begin; k < end; k++)
+        {
+            int i = list == null ? k : list[k];
+            if (buf[i].Flags != 0)
+            {
+                buf[i] = default;
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
 namespace Sim.Core.Metrics;
@@ -25,6 +26,7 @@ internal static class StateHash
 
         // 3. Машины по слотам.
         VehicleStore v = w.Vehicles;
+        bool lodOn = w.Lod != null; // п.3/п.10 (ADR-0013): при Lod.Mode = Off ничего не добавляется - хэш прежний
         int high = v.HighWater;
         h.Add(high);
         for (int i = 0; i < high; i++)
@@ -52,10 +54,25 @@ internal static class StateHash
             h.Add(v.DestZone[i]);
             h.Add(v.NextConn[i]);
             h.Add(v.SpawnTick[i]);
-            h.Add(v.GateState[i]);
+            h.Add((byte)(v.GateState[i] & ~GateRules.StoppedBeforeSignal));   // StoppedBeforeSignal - диагностика (2.5 S1), не состояние
             h.Add(v.GrantConnector[i]);
             h.Add(v.Ticket[i]);
             h.Add((int)v.WaitTicks[i]);
+            if (lodOn)
+            {
+                byte lod = v.Lod[i];
+                h.Add(lod);
+                if ((lod & Lod.LodBits.Meso) != 0)
+                {
+                    h.Add(v.MesoAllow[i]);
+                }
+
+                if (w.Queue != null && (lod & Lod.LodBits.Queue) != 0)
+                {
+                    h.Add(w.Queue.QEnter[i]);   // Q-meso (sim-lod.md §13.5): время въезда и готовности - состояние очереди
+                    h.Add(w.Queue.QReady[i]);
+                }
+            }
         }
 
         // 4. Полосы.
@@ -86,11 +103,61 @@ internal static class StateHash
             h.Add((int)w.SignalStates[s].TicksToChange);
         }
 
+        // 5a. Состояние автомата с подфазами (2.5): только Adaptive и Fixed со стрелкой - у прежнего Fixed хэш не меняется.
+        SignalStore sg = w.Signals;
+        for (int s = 0; s < w.SignalCount; s++)
+        {
+            if (sg.Machine[s] == 0)
+            {
+                continue;
+            }
+
+            h.Add(s);
+            h.Add((int)sg.Sub[s]);
+            h.Add(sg.GreenMask[s]);
+            h.Add(sg.NextMask[s]);
+            h.Add((int)sg.NextAxis[s]);
+            h.Add((int)sg.NextSub[s]);
+            h.Add((int)sg.NextArrowArms[s]);
+            h.Add((int)sg.ArrowArms[s]);
+            h.Add((int)sg.TicksLeft[s]);
+            h.Add((int)sg.GreenElapsed[s]);
+            h.Add((int)sg.GapLeft[s]);
+            if (sg.CycleTicks[s] > 0)   // 2.5 S3: только координация - хэш прежних режимов не меняется
+            {
+                h.Add((int)sg.SpillTicks[s]);
+            }
+
+            for (int a = 0; a < sg.ArmCountOf[s]; a++)
+            {
+                h.Add((int)sg.ArmLeftYield[(s * SignalStore.ArmCap) + a]);
+                h.Add(sg.ArmLeftHead[(s * SignalStore.ArmCap) + a]);
+            }
+        }
+
+        // 5b. Измеренная задержка connector'ов Adaptive-светофоров (intersections.md 6.9); у Fixed-сценариев все нули - хэш не меняется.
+        GateScratch gs = w.Gate;
+        int connCount = System.Math.Min(w.Connectors.Count, gs.ConnDelay.Length);
+        for (int c = 0; c < connCount; c++)
+        {
+            if (gs.ConnDelay[c] != 0f || gs.ConnGrantCount[c] != 0)
+            {
+                h.Add(c);
+                h.Add(gs.ConnDelay[c]);
+                h.Add(gs.ConnWaitSum[c]);
+                h.Add(gs.ConnGrantCount[c]);
+            }
+        }
+
         // 6. Transit.
         for (int s = 0; s < w.Net.BusStopCount; s++)
         {
             h.Add((int)w.Net.BusStops[s].Waiting);
             h.Add(w.Net.BusStops[s].LastArrivalTick);
+            if (w.TransitCfg.HoldAlpha > 0f)
+            {
+                h.Add(w.Net.BusStops[s].LastDepartTick);   // только при включённом удержании: выключенное хэшируется как раньше
+            }
         }
 
         for (int r = 0; r < w.Net.BusRouteCount; r++)
@@ -101,7 +168,23 @@ internal static class StateHash
 
         // 7. Счётчики (по полям в порядке объявления).
         AddCounters(ref h, in w.Counters);
-        h.Add(w.Router.Graph.WeightsVersion);
+        h.Add(w.Graph.WeightsVersion);
+
+        // 7a. Оверлей маршрутизации (routing.md 9.8): курсор волны и версия весов; матрицы производные - не хэшируются.
+        Routing.Overlay? ov = w.Overlay;
+        if (ov != null)
+        {
+            h.Add(ov.WeightsVersion);
+            h.Add(ov.WaveActive ? 1 : 0);
+            h.Add(ov.WaveCell);
+            h.Add(ov.WaveRow);
+            h.Add(ov.Disabled ? 1 : 0);
+            h.Add(w.RecalcPending ? 1 : 0);
+            h.Add(w.Counters.CustomizeRows);
+            h.Add(w.Counters.CustomizeWork);
+            h.Add(w.Counters.CustomizeLagTicks);
+            h.Add(w.Counters.OverlayRebuilds);
+        }
 
         // 8. Очередь поездок в порядке очереди.
         int pending = w.Trips.Count;
@@ -132,10 +215,65 @@ internal static class StateHash
             h.Add(re.Kind);
         }
 
+        // 8b. Очередь дозаполнения окон в порядке очереди и живые слоты RouteStore (routing.md 9.8): окна и планы целиком не хэшируются -
+        // они производные от маршрута и весов; WinCount, PlanCount, PlanCost достаточны для обнаружения расхождения.
+        int refills = w.RefillQueue.Count;
+        h.Add(refills);
+        for (int p = 0; p < refills; p++)
+        {
+            ref readonly Routing.RefillEntry rf = ref w.RefillQueue.At(p);
+            h.Add(rf.Index);
+            h.Add(rf.Generation);
+        }
+
+        Routing.RouteStore rs = w.Routes;
+        int slots = rs.Pool.HighWater;
+        h.Add(slots);
+        for (int r = 0; r < slots; r++)
+        {
+            h.Add(rs.Pool.GenerationOf(r));
+            if (!rs.Pool.IsAlive(r))
+            {
+                continue;
+            }
+
+            h.Add((int)rs.WinCount[r]);
+            h.Add(rs.PlanCount[r]);
+            h.Add(rs.PlanCost[r]);
+        }
+
         // 9. Управляющее состояние команд.
         h.Add(w.TargetVehicles);
         h.Add(w.Selected.Packed);
         h.Add(w.GridlockStreak);
+
+        // 10. Уровни детализации (core-api 9 п.10, только при Lod.Mode != Off). RenderView не входит.
+        if (w.Lod != null)
+        {
+            Lod.LodCells lc = w.Lod;
+            h.Add(lc.Cells);
+            for (int c = 0; c < lc.Cells; c++)
+            {
+                h.Add(lc.CellLevel[c]);
+                h.Add(lc.CellHoldUntil[c]);
+                h.Add(lc.CellCongStreak[c]);
+            }
+
+            for (int s = 0; s < Lod.LodCells.SlotCount; s++)
+            {
+                Lod.LodFocusSlot f = lc.Focus[s];
+                h.Add(f.Kind);
+                h.Add(f.Cx0);
+                h.Add(f.Cz0);
+                h.Add(f.Cx1);
+                h.Add(f.Cz1);
+                h.Add(f.CenterCx);
+                h.Add(f.CenterCz);
+            }
+
+            h.Add(lc.LodEvalRequested ? 1 : 0);
+            h.Add(lc.LastLodEvalTick);
+        }
 
         return h.Value;
     }
@@ -166,13 +304,18 @@ internal static class StateHash
         h.Add(c.LaneChangesAborted);
         h.Add(c.HardClamps);
         h.Add(c.PathfindQueries);
-        h.Add(c.PathfindCacheHits);
         h.Add(c.RouteDeferred);
         h.Add(c.PathfindExpandedNodes);
         h.Add(c.RouteFailed);
         h.Add(c.Reroutes);
-        h.Add(c.RouteCompactions);
-        h.Add(c.RouteCacheSkips);
+        h.Add(c.PathfindWork);
+        h.Add(c.PlanCompactions);
+        h.Add(c.PlanUnpacks);
+        h.Add(c.UnpackWork);
+        h.Add(c.WindowRefills);
+        h.Add(c.RefillLate);
+        h.Add(c.TimedChecks);
+        h.Add(c.TimedTriggered);
         h.Add(c.CostRecalcs);
         h.Add(c.TimedReroutes);
         h.Add(c.ConnectorEntries);

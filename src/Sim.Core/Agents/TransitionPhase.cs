@@ -27,10 +27,15 @@ internal static class TransitionPhase
 
     public static void Run(World w)
     {
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters, w.Masks);
         AssignConnectors(w);
     }
 
+    /// <summary>
+    /// Фаза 7. Без <paramref name="masks"/> - проход по всем слотам (тесты, микробенчмарки); с масками (ADR-0019, A3) - по маске
+    /// <see cref="TickMasks.Trans"/> фазы 6 по возрастанию индекса: остальным машинам цикл ничего бы не сделал (нет смены полосы,
+    /// нет намерения, <c>S &lt; Length</c>), а чужие машины эта фаза для условия машины не меняет. Debug-сверка маски с полным проходом.
+    /// </summary>
     public static void Run(
         NetworkStore net,
         VehicleStore v,
@@ -39,47 +44,103 @@ internal static class TransitionPhase
         ReadOnlySpan<VehicleTypeDesc> types,
         in PhysicsParams p,
         Span<uint> nodeThroughput,
-        ref SimCounters c)
+        ref SimCounters c,
+        TickMasks? masks = null)
     {
         var e = new RuleEnv(net, v, occ, routes);
         int hw = v.HighWater;
+        if (masks == null)
+        {
+            for (int i = 0; i < hw; i++)
+            {
+                Vehicle(e, types, p, nodeThroughput, i, ref c, null);
+            }
+
+            return;
+        }
+
+#if DEBUG
+        DebugCheckMask(net, v, hw, masks);
+#endif
+        ulong[] trans = masks.Trans;
+        int words = TickMasks.WordsFor(hw);
+        for (int k = 0; k < words; k++)
+        {
+            ulong m = trans[k];
+            while (m != 0UL)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(m);
+                m &= m - 1;
+                Vehicle(e, types, p, nodeThroughput, (k << 6) + b, ref c, masks);
+            }
+        }
+    }
+
+#if DEBUG
+    // Эталон маски фазы 7: предикат прежнего прохода по всем слотам.
+    private static void DebugCheckMask(NetworkStore net, VehicleStore v, int hw, TickMasks masks)
+    {
         for (int i = 0; i < hw; i++)
         {
-            if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
-            {
-                continue;
-            }
+            bool expected = v.Pool.IsAlive(i) && v.Lane[i] >= 0
+                && (v.GhostLane[i] != -1 || v.LaneChangeDir[i] != 0 || v.S[i] >= net.Lanes[v.Lane[i]].Length);
+            System.Diagnostics.Debug.Assert(TickMasks.Test(masks.Trans, i) == expected, "Trans mask differs from full scan");
+        }
+    }
+#endif
 
-            ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
-            if (v.GhostLane[i] != -1)
-            {
-                AdvanceLaneChange(e, t, p, i);
-            }
+    private static void Vehicle(in RuleEnv e, ReadOnlySpan<VehicleTypeDesc> types, in PhysicsParams p, Span<uint> nodeThroughput, int i, ref SimCounters c, TickMasks? masks)
+    {
+        VehicleStore v = e.V;
+        if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+        {
+            return;
+        }
 
-            int dir = v.LaneChangeDir[i];
-            if (dir != 0)
+        float speed0 = v.Speed[i];
+        bool meso0 = v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0;
+        ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
+        if (v.GhostLane[i] != -1)
+        {
+            AdvanceLaneChange(e, t, p, i);
+        }
+
+        int dir = v.LaneChangeDir[i];
+        if (dir != 0)
+        {
+            v.LaneChangeDir[i] = 0;
+            if (v.GhostLane[i] == -1)
             {
-                v.LaneChangeDir[i] = 0;
-                if (v.GhostLane[i] == -1)
+                if (TryBeginLaneChange(e, t, p, i, dir))
                 {
-                    if (TryBeginLaneChange(e, t, p, i, dir))
+                    c.LaneChanges++;
+                    if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
                     {
-                        c.LaneChanges++;
-                    }
-                    else
-                    {
-                        c.LaneChangesAborted++;
+                        v.Lod[i] |= Lod.LodBits.Fresh; // новый лидер/ведомый: поведение пересчитывается в ближайшей фазе 5 (sim-lod.md §2.5)
+                        c.MesoLaneChanges++;
                     }
                 }
-            }
-
-            for (int hop = 0; hop < MaxHopsPerTick; hop++)
-            {
-                if (!TryAdvanceLane(e, types, p, nodeThroughput, i, ref c))
+                else
                 {
-                    break;
+                    c.LaneChangesAborted++;
                 }
             }
+        }
+
+        for (int hop = 0; hop < MaxHopsPerTick; hop++)
+        {
+            if (!TryAdvanceLane(e, types, p, nodeThroughput, i, ref c))
+            {
+                break;
+            }
+        }
+
+        if (masks != null)
+        {
+            // Полоса могла смениться (переход, смена полосы): бит прибытия - по состоянию после фазы 7.
+            TickMasks.Set(masks.Arrive, i, v.DestLane[i] == v.Lane[i] && v.S[i] >= v.DestS[i] && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0);
+            // Переходный клэмп меняет Speed, въезд в ячейку другого уровня - бит Meso: поправка накопителей метрик (A4).
+            masks.Retune(v, i, speed0, meso0);
         }
     }
 
@@ -167,7 +228,7 @@ internal static class TransitionPhase
         }
 
         int next = e.NextLane(i, lane, 1, useRoute: true);
-        if (ld.Kind == LaneKind.Normal && GateRules.GateNode(e.Net, lane) >= 0)
+        if (ld.Kind == LaneKind.Normal && GateRules.GateNodeOfNormal(e.Net, lane) >= 0)
         {
             // Узел с воротами: только с допуском и только на connector допуска (intersections.md §5, §7.3).
             if (!GateRules.IsGranted(v, i))
@@ -195,9 +256,12 @@ internal static class TransitionPhase
         // перекрытие в списке (инвариант зазора >= MinPhysicalGap); если места нет вовсе - ждём в конце полосы.
         float sNew = v.S[i] - ld.Length;
         int tail = e.Occ.LaneTail[next];
+        Lod.QueueMeso? q = e.Occ.Queue;
         if (tail != -1 && tail != i)
         {
-            float sMax = v.S[tail] - v.Length[tail] - p.MinPhysicalGap;
+            // Q-meso: хвост-машина очереди стоит на позиции въезда - берём оценку хвоста «сейчас» (O(1)).
+            float tailS = q != null ? q.TailS(next) : v.S[tail];
+            float sMax = tailS - v.Length[tail] - p.MinPhysicalGap;
             if (sNew > sMax)
             {
                 if (sMax < 0f)
@@ -206,9 +270,10 @@ internal static class TransitionPhase
                 }
 
                 sNew = sMax;
-                if (v.Speed[tail] < v.Speed[i])
+                float tailSpeed = q != null ? q.TailSpeed(next) : v.Speed[tail];
+                if (tailSpeed < v.Speed[i])
                 {
-                    v.Speed[i] = v.Speed[tail];
+                    v.Speed[i] = tailSpeed;
                 }
 
                 c.HardClamps++;
@@ -236,7 +301,7 @@ internal static class TransitionPhase
         }
         else
         {
-            v.GateState[i] &= unchecked((byte)~GateRules.StoppedAtLine); // въезд на connector: Granted и Ticket сохраняются
+            v.GateState[i] &= unchecked((byte)~(GateRules.StoppedAtLine | GateRules.StoppedBeforeSignal)); // въезд на connector: Granted и Ticket сохраняются
         }
 
         e.Occ.Unlink(i);
@@ -247,7 +312,63 @@ internal static class TransitionPhase
 
         v.DesiredSpeed[i] = Idm.DesiredSpeed(types[v.Type[i]], e.Net.Lanes[next].SpeedLimit);
         v.PointHint[i] = 0;
+        if (q != null && e.Net.Lanes[next].Kind == LaneKind.Normal)
+        {
+            EnterLaneChoice(e, types, p, i, next, ref c);
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Q-meso (sim-lod.md §13.5 п. 3): смены полосы на полосе нет, выбор - при въезде. Если маршрут хочет параллельную полосу того же направленного сегмента
+    /// и в ней есть место (<c>Σ(L + s0) + L + s0 &lt;= Length - 25 м</c>, за оценкой хвоста), машина ставится в её хвост; иначе остаётся.
+    /// </summary>
+    private static void EnterLaneChoice(in RuleEnv e, ReadOnlySpan<VehicleTypeDesc> types, in PhysicsParams p, int i, int lane, ref SimCounters c)
+    {
+        VehicleStore v = e.V;
+        Lod.QueueMeso q = e.Occ.Queue!;
+        int desired = e.RouteDesiredLane(i);
+        if (desired < 0 || desired == lane || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0)
+        {
+            return;
+        }
+
+        ref readonly LaneData ld = ref e.Net.Lanes[lane];
+        ref readonly LaneData dl = ref e.Net.Lanes[desired];
+        if (dl.Kind != LaneKind.Normal || dl.Segment != ld.Segment || dl.Direction != ld.Direction || (dl.Flags & 1) != 0)
+        {
+            return;
+        }
+
+        ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
+        float span = v.Length[i] + t.MinGap;
+        if ((q.LaneSpanCm[desired] * 0.01f) + span > dl.Length - Lod.QueueMeso.EntryChoiceReserveM)
+        {
+            return;
+        }
+
+        float s = v.S[i];
+        int tail = e.Occ.LaneTail[desired];
+        if (tail != -1)
+        {
+            float sMax = q.TailS(desired) - v.Length[tail] - p.MinPhysicalGap;
+            if (sMax < 0f)
+            {
+                return;
+            }
+
+            if (s > sMax)
+            {
+                s = sMax;
+            }
+        }
+
+        e.Occ.Unlink(i);
+        v.S[i] = s;
+        e.Occ.PushTail(desired, i);
+        v.DesiredSpeed[i] = Idm.DesiredSpeed(t, dl.SpeedLimit);
+        c.MesoLaneChanges++;
     }
 
     /// <summary>

@@ -32,10 +32,17 @@ public struct SimCounters
     public long GridlockTicksTotal;
     public long LaneChanges, LaneChangesAborted;
     public long HardClamps;               // срабатываний клэмпа I6
-    public long PathfindQueries, PathfindCacheHits, RouteDeferred;
-    public long PathfindExpandedNodes;
-    public long RouteFailed, Reroutes, RouteCompactions, RouteCacheSkips; // маршрутизация (routing.md 8)
+    public long PathfindQueries, RouteDeferred;      // запросов Query; сумма по тикам ждущих поездок без маршрута
+    public long PathfindExpandedNodes, PathfindWork; // раскрытий и релаксаций (дуга графа / клетка матрицы) запросов (routing.md 9.10)
+    public long RouteFailed, Reroutes, PlanCompactions; // маршрутизация (routing.md 8, 9.10)
+    public long PlanUnpacks, UnpackWork;  // развёртываний дуг плана и их работа
+    public long WindowRefills, RefillLate; // дозаполнений окон; машин, дошедших до конца окна без дозаполнения (цель 0)
+    public long TimedChecks, TimedTriggered; // проверок дрейфа плановой перемаршрутизации / из них запросов
     public long CostRecalcs, TimedReroutes; // вес по загрузке и перемаршрутизация по времени (ADR-0006)
+    public long CustomizeRows, CustomizeWork; // волны кастомизации оверлея: строки и релаксации (routing.md 9.10)
+    public long CustomizeLagTicks;        // тики ожидания нового пересчёта весов из-за незаконченной волны
+    public long OverlayRebuilds;          // полные перестройки оверлея после BuildRoad
+    public int OverlayDisabled;           // текущее: 1 - оверлей выключен (не влезла перестройка)
     public long ConnectorEntries;         // сумма проездов через connector'ы (= сумма NodeThroughput)
     public long CommandsApplied, CommandsRejected, CommandsDropped, EventsDropped;
     public long SpawnDeferredTicks, InvalidHandleOps;
@@ -50,6 +57,27 @@ public struct SimCounters
     public long PriorityInversions;       // допусков по инверсии приоритета (долгое ожидание)
     public long BoxWaitTicks;             // Σ тиков, когда допущенная машина стоит на connector'е (v < StuckSpeedThreshold)
     public long GateWaitTicksTotal;       // Σ WaitTicks на момент допуска (среднее ожидание у ворот)
+    // --- светофоры 2.5 (intersections.md §10, ADR-0018); вне хэша, считаются в однопоточной фазе 4. По манёврам - SignalMetrics ---
+    public long SignalLeftWaitMax;        // max WaitTicks при допуске левого/разворота на светофоре (тики); окно - Simulation.ResetSignalWindow
+    public long ArterialSignalGrants;     // допусков на светофоре с Arterial-полосы
+    public long ArterialSignalStops;      // из них машин, останавливавшихся на подходе (GateState.StoppedBeforeSignal)
+    public long StarveDenials;            // отказов 4b-bis (GateDeny.Yield по голоданию)
+    public long ArrowPhases;              // заготовка S2: включений подфазы «стрелка»
+    public long SpillOuts;                // заготовка S3: досрочных концов зелёного из-за забитого выезда
+    public long ExitClaims;               // заготовка S4: поставленных заявок на выезд
+    public long ExitClaimDenials;         // заготовка S4: отказов младшим по заявке
+    public long GrantsRevoked;            // 2.6r R1: снятий допуска на красном (§5.4 п. 6; вне хэша)
+    // --- уровни детализации (ADR-0013, sim-lod.md §4, §8); вне хэша, заполняются с L2/L3 ---
+    public int MicroVehicles, MesoVehicles;                // текущее
+    public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;
+    public long LodEvals, LodCellFlips, LodBudgetSkips, MesoClamps, MesoLaneChanges;
+    // --- метрики качества трафика (2.6c, Metrics/QualityMetrics.cs); вне хэша, выборка раз в 20 тиков ---
+    public int StillMaxTicks;             // max непрерывного StillTicks; окно - Simulation.ResetSignalWindow
+    public int StillConcurrent60Max;      // max одновременно стоящих >= 60 с; окно - Simulation.ResetSignalWindow
+    public long StillEpisodes60, StillEpisodes120;   // эпизоды непрерывного стояния >= 60 с / >= 120 с
+    public long LaneShareSamples;         // выборок (направление многополосного сегмента, >= 4 машин)
+    public long LaneShareMaxPermilleSum;  // Σ доли самой загруженной полосы направления, ‰
+    public long LaneShareH0, LaneShareH1, LaneShareH2, LaneShareH3, LaneShareH4, LaneShareH5, LaneShareH6, LaneShareH7, LaneShareH8, LaneShareH9; // гистограмма той же доли, корзины по 10%
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>
@@ -62,7 +90,6 @@ public struct SimStats
     public int StuckVehicles;
     public int GridlockFlag;              // 0/1 (в спеке bool; int ради blittable-раскладки)
     public float BusHeadwayDeviationS;    // BusHeadwayDeviationTicksTotal*Dt / BusStopArrivals
-    public float PathfindCacheHitRate;
     public float HardClampsPerVehicleMin;
 }
 

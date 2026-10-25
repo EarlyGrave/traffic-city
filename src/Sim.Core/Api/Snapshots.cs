@@ -29,6 +29,7 @@ public enum VehicleRenderFlags : byte
     AtStop = 16,         // автобус стоит на остановке
     Selected = 32,
     OnConnector = 64,
+    Meso = 128,          // машина в meso-ячейке (ADR-0013); L1: бит зарезервирован, ядро его пока не ставит
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 12)]

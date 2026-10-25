@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -25,6 +26,7 @@ internal static class GateRules
 {
     public const byte Granted = 1;
     public const byte StoppedAtLine = 2;
+    public const byte StoppedBeforeSignal = 4;      // 2.5 S1: машина на подходе к светофору ехала < 1 м/с (метрика остановок, вне хэша)
 
     public const float StopLineOffset = 0.5f;      // м: виртуальное препятствие перед концом полосы (§7.1)
     public const float ClearMargin = 1.0f;         // м: точка освобождена, когда задний бампер ушёл за неё на столько (§5.3)
@@ -42,7 +44,30 @@ internal static class GateRules
     public static bool IsGranted(VehicleStore v, int i) => (v.GateState[i] & Granted) != 0;
 
     /// <summary>Узел с воротами (<c>Control != None</c>) в конце Normal-полосы или -1 (connector, тупик, узел без правил).</summary>
-    public static int GateNode(NetworkStore net, int lane)
+    public static int GateNode(NetworkStore net, int lane) =>
+        net.Lanes[lane].Kind == LaneKind.Normal ? GateNodeOfNormal(net, lane) : -1;
+
+    /// <summary>
+    /// То же для полосы, про которую вызывающий уже знает, что она <see cref="LaneKind.Normal"/>: одно чтение <see cref="NetworkStore.LaneGateNode"/>
+    /// (ADR-0016, D5). В Debug - сверка со старым расчётом (<see cref="GateNodeSlow"/>).
+    /// </summary>
+    public static int GateNodeOfNormal(NetworkStore net, int lane)
+    {
+        int node = net.LaneGateNode[lane];
+        Debug.Assert(node == GateNodeSlow(net, lane), "LaneGateNode out of sync (Normal lane)");
+        return node;
+    }
+
+    /// <summary>true: connector <paramref name="lane"/> принадлежит узлу с воротами (одно чтение <see cref="NetworkStore.LaneGateNode"/>).</summary>
+    public static bool IsGatedConnector(NetworkStore net, int lane)
+    {
+        bool gated = net.LaneGateNode[lane] >= 0;
+        Debug.Assert(gated == IsGatedConnectorSlow(net, in net.Lanes[lane]), "LaneGateNode out of sync (connector)");
+        return gated;
+    }
+
+    /// <summary>Прежний расчёт (цепочка LaneData -> LaneNext -> LaneData -> NodeData): эталон для Debug-сверки.</summary>
+    internal static int GateNodeSlow(NetworkStore net, int lane)
     {
         ref readonly LaneData ld = ref net.Lanes[lane];
         if (ld.Kind != LaneKind.Normal || ld.NextCount <= 0)
@@ -54,8 +79,7 @@ internal static class GateRules
         return node >= 0 && net.Nodes[node].Control != NodeControl.None ? node : -1;
     }
 
-    /// <summary>true: connector принадлежит узлу с воротами.</summary>
-    public static bool IsGatedConnector(NetworkStore net, in LaneData ld) =>
+    internal static bool IsGatedConnectorSlow(NetworkStore net, in LaneData ld) =>
         ld.Kind == LaneKind.Connector && ld.Node >= 0 && net.Nodes[ld.Node].Control != NodeControl.None;
 
     /// <summary>
@@ -117,39 +141,37 @@ internal static class GateRules
     /// <summary>
     /// Зазор (м) от текущего положения машины <paramref name="i"/> до ближайшего виртуального препятствия ворот (§7.1, §7.2) либо
     /// <see cref="Idm.FreeGap"/>; <paramref name="speed"/> - скорость препятствия (0 для стоп-линии и конфликтной точки, скорость партнёра
-    /// при следовании за ним в горловине слияния). <paramref name="s"/> - массив позиций (S либо SOld для клэмпа I6). Для недопущенной
-    /// машины на Normal-полосе к узлу с воротами - стоп-линия (с <paramref name="visibilityLimited"/> - только в пределах дистанции
-    /// решения); для допущенной и для машины на connector'е - конфликтные точки, занятые/ожидаемые машинами с меньшим билетом.
+    /// при следовании за ним в горловине слияния). <paramref name="s"/> - массив позиций (S на начало тика). Для недопущенной
+    /// машины на Normal-полосе к узлу с воротами - стоп-линия; <paramref name="beyondDecision"/> = true, если она дальше дистанции решения
+    /// (IDM фазы 5 такую стоп-линию не видит и берёт свободную дорогу, клэмп I6 фазы 6 использует возвращённый зазор в любом случае); для допущенной и для машины на connector'е - конфликтные точки, занятые/ожидаемые машинами с меньшим билетом.
     /// </summary>
-    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, float[] s, int i, float comfortDecel, bool visibilityLimited, out float speed)
+    public static float ObstacleGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ulong[]? nodeBusy, ref SimWork work, float[] s, int i, float comfortDecel, out bool beyondDecision, out float speed)
     {
         speed = 0f;
+        beyondDecision = false;
         int lane = v.Lane[i];
         ref readonly LaneData ld = ref net.Lanes[lane];
         float si = s[i];
         if (ld.Kind == LaneKind.Connector)
         {
-            if (!IsGatedConnector(net, in ld))
+            if (!IsGatedConnector(net, lane))
             {
                 return Idm.FreeGap;
             }
 
-            return ConflictGap(net, v, occ, cs, s, i, lane, si, out speed);
+            return ConflictGap(net, v, occ, cs, nodeBusy, ref work, s, i, lane, si, out speed);
         }
 
-        if (GateNode(net, lane) < 0)
+        if (GateNodeOfNormal(net, lane) < 0)
         {
             return Idm.FreeGap;
         }
 
-        float d = ld.Length - si;
+        float laneLen = net.LaneLength[lane];
+        float d = laneLen - si;
         if (!IsGranted(v, i))
         {
-            if (visibilityLimited && d > DecisionDistance(v.Speed[i], comfortDecel))
-            {
-                return Idm.FreeGap;
-            }
-
+            beyondDecision = d > DecisionDistance(v.Speed[i], comfortDecel);
             return d - StopLineOffset;
         }
 
@@ -159,7 +181,7 @@ internal static class GateRules
             return Idm.FreeGap;
         }
 
-        return ConflictGap(net, v, occ, cs, s, i, conn, si - ld.Length, out speed);
+        return ConflictGap(net, v, occ, cs, nodeBusy, ref work, s, i, conn, si - laneLen, out speed);
     }
 
     /// <summary>
@@ -169,21 +191,39 @@ internal static class GateRules
     /// минус его длина, пока он её не прошёл (zipper без остановки и без «лидера позади»). Записи отсортированы по SMine - первая
     /// блокирующая Cross-точка ближайшая; Merge-точка лежит в конце connector'а.
     /// </summary>
-    public static float ConflictGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, float[] s, int i, int conn, float sOnConn, out float speed)
+    public static float ConflictGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, ConnectorStore cs, ulong[]? nodeBusy, ref SimWork work, float[] s, int i, int conn, float sOnConn, out float speed)
     {
         speed = 0f;
+        work.ConflictGapCallsRaw++;
         int g = net.Lanes[conn].ConflictGroup;
         if (g < 0 || cs.ConflictCount[g] == 0)
         {
             return Idm.FreeGap;
         }
 
-        int firstConn = net.Nodes[cs.Node[g]].FirstConnector;
+        // Маска занятых connector'ов узла (ADR-0016, D3; строит фаза 4): надмножество участников CrossBlocked/MergeGap, поэтому если ни один
+        // конфликтующий connector не занят - препятствий нет. null (тест без фазы 4) - без отсечения.
+        ulong busy = ulong.MaxValue;
+        if (nodeBusy != null)
+        {
+            busy = nodeBusy[cs.Node[g]];
+            if ((cs.ConflictMask[g] & busy) == 0)
+            {
+                work.ConflictGapMaskRejects++;
+                return Idm.FreeGap;
+            }
+        }
+
+        int local = cs.LocalBit[g];
+        int firstConn = cs.Lane[g] - local;
         uint myTicket = v.Ticket[i];
         int end = cs.FirstConflict[g] + cs.ConflictCount[g];
         float best = Idm.FreeGap;
+        int scanned = 0;
+        int occupants = 0;
         for (int e = cs.FirstConflict[g]; e < end; e++)
         {
+            scanned++;
             ref readonly ConflictEntry ce = ref cs.Conflicts[e];
             float sMine = ce.SMineCm * 0.01f;
             if (sMine < sOnConn)
@@ -196,30 +236,41 @@ internal static class GateRules
                 break;
             }
 
+            if (((busy >> ce.OtherLocal) & 1UL) == 0)
+            {
+                continue; // на чужом connector'е никого и допущенных на него нет
+            }
+
+            int gOther = g - local + ce.OtherLocal;
             int other = firstConn + ce.OtherLocal;
             if (ce.Kind == ConflictKind.Merge)
             {
-                float mg = MergeGap(net, v, occ, s, i, myTicket, other, sMine, sOnConn, out float ms);
+                float mg = MergeGap(v, occ, cs, s, i, myTicket, other, gOther, sMine, sOnConn, ref occupants, out float ms);
                 if (mg < best)
                 {
                     best = mg;
                     speed = ms;
                 }
             }
-            else if (CrossBlocked(v, occ, s, i, myTicket, other, ce.SOtherCm * 0.01f, net.Lanes[other].FromLane))
+            else if (CrossBlocked(v, occ, s, i, myTicket, other, ce.SOtherCm * 0.01f, cs.InLane[gOther], ref occupants))
             {
+                work.ConflictEntriesScanned += scanned;
+                work.ConflictOccupantsScanned += occupants;
                 return sMine - ConflictMargin - sOnConn;
             }
         }
 
+        work.ConflictEntriesScanned += scanned;
+        work.ConflictOccupantsScanned += occupants;
         return best;
     }
 
     /// <summary>true: на connector'е <paramref name="other"/> или среди допущенных на его входной полосе есть машина с меньшим билетом, не освободившая точку.</summary>
-    private static bool CrossBlocked(VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sOther, int inLane)
+    private static bool CrossBlocked(VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sOther, int inLane, ref int occupants)
     {
         for (int x = occ.LaneTail[other]; x != -1; x = v.Ahead[x])
         {
+            occupants++;
             if (x != i && TicketLess(v.Ticket[x], myTicket) && s[x] - v.Length[x] < sOther + ClearMargin)
             {
                 return true;
@@ -228,6 +279,7 @@ internal static class GateRules
 
         for (int x = occ.LaneHead[inLane]; x != -1 && IsGranted(v, x); x = BehindOn(v, x, inLane))
         {
+            occupants++;
             if (x != i && v.GrantConnector[x] == other && TicketLess(v.Ticket[x], myTicket))
             {
                 return true;
@@ -238,23 +290,25 @@ internal static class GateRules
     }
 
     /// <summary>Зазор до самого ограничивающего партнёра слияния с меньшим билетом (см. <see cref="ConflictGap"/>) или FreeGap.</summary>
-    private static float MergeGap(NetworkStore net, VehicleStore v, LaneOccupancy occ, float[] s, int i, uint myTicket, int other, float sMine, float sOnConn, out float speed)
+    private static float MergeGap(VehicleStore v, LaneOccupancy occ, ConnectorStore cs, float[] s, int i, uint myTicket, int other, int gOther, float sMine, float sOnConn, ref int occupants, out float speed)
     {
         speed = 0f;
         float best = Idm.FreeGap;
-        float lenOther = net.Lanes[other].Length;
+        float lenOther = cs.Length[gOther];
         for (int x = occ.LaneTail[other]; x != -1; x = v.Ahead[x])
         {
+            occupants++;
             if (x != i && TicketLess(v.Ticket[x], myTicket))
             {
                 Consider(v, x, sMine - (lenOther - s[x]), sMine, sOnConn, ref best, ref speed);
             }
         }
 
-        int inLane = net.Lanes[other].FromLane;
-        float lenIn = net.Lanes[inLane].Length;
+        int inLane = cs.InLane[gOther];
+        float lenIn = cs.InLength[gOther];
         for (int x = occ.LaneHead[inLane]; x != -1 && IsGranted(v, x); x = BehindOn(v, x, inLane))
         {
+            occupants++;
             if (x != i && v.GrantConnector[x] == other && TicketLess(v.Ticket[x], myTicket))
             {
                 Consider(v, x, sMine - lenOther - (lenIn - s[x]), sMine, sOnConn, ref best, ref speed);

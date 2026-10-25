@@ -11,11 +11,13 @@ public struct ScenarioDesc
     public ulong Seed;
     public int DurationTicks;              // информативно для хоста; ядро само не останавливается
     public SimCapacities Capacities;
+    public RoutingDesc Routing;            // иерархическая маршрутизация (routing.md §9); нули = дефолты, Levels 0 = оверлей выключен
     public CityGenDesc City;               // City.Enabled == false -> сеть берётся из Network
     public NetworkDesc Network;            // явная сеть (тесты, ручные карты); может быть пустой
     public DemandDesc Demand;
     public TransitDesc Transit;
     public RulesDesc Rules;
+    public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }
 
@@ -26,14 +28,34 @@ public struct SimCapacities
     public int MaxLanePoints;              // суммарно точек полилиний всех полос
     public int MaxZones, MaxBusRoutes, MaxBusStops;
     public int MaxBusStopsPerRoute;        // по умолчанию 32
-    public int MaxRoutes, MaxRouteSteps;   // кэш маршрутов: число маршрутов и суммарно шагов
+    public int MaxRoutes;                  // слоты маршрутов (машины + поездки с построенным маршрутом)
+    public int MaxPlanSteps;               // арена планов маршрутов (int, 4 Б), routing.md §9.5; окна: MaxRoutes * routing.window_steps
     public int MaxPendingTrips;            // очередь ожидающих спавна поездок
     public int CommandQueueCapacity;       // по умолчанию 1024
     public int EventCapacity;              // по умолчанию 4096 за Step
-    public int PathfindBudgetPerTick;      // запросов A* на тик [шаг 3]
     public int MaxSignalizedNodes;
     public int MaxConnectors;              // connector-полос всего; по умолчанию MaxNodes * 16
     public int MaxConflicts;               // записей ConflictEntry; по умолчанию MaxConnectors * 6
+}
+
+/// <summary>
+/// Параметры иерархической маршрутизации (routing.md §9.9, scenario-format.md §2.1 "routing"). Нули в полях, кроме
+/// <see cref="Levels"/>, заменяются дефолтами в <c>Create</c>; <c>Levels = 0</c> - оверлей не строится (тестовый режим).
+/// </summary>
+public struct RoutingDesc
+{
+    public int Levels;                     // 0..4; дефолт загрузчика 1
+    public int Fanout;                     // ячеек уровня ℓ по стороне ячейки ℓ+1; дефолт 4
+    public float CellSize;                 // сторона ячейки уровня 1, м; дефолт 1000
+    public int WindowSteps;                // слот окна маршрута, шагов 8..32; дефолт 16
+    public int PathfindBudgetPerTick;      // запросов на тик (0 = без ограничения)
+    public int WorkBudgetPerTick;          // релаксаций запросов на тик; дефолт 1500 * PathfindBudgetPerTick (0 = без ограничения)
+    public int QueryWorkCap;               // предел релаксаций одного запроса (query_work_cap); 0 = 4 * DirSegCapacity (routing.md 9.4)
+    public int CustomizeBudgetPerTick;     // релаксаций волны кастомизации на тик; дефолт 10000
+    public float CustomizeEps;             // порог изменения веса для «грязной» ячейки; дефолт 0.05
+    public int CostRecalcTicks;            // период пересчёта весов по загрузке, тиков; дефолт 600 (30 с)
+    public float TimedDrift;               // порог дрейфа остатка стоимости; дефолт 0.15
+    public int TimedDriftAbsTicks;         // абсолютная добавка к порогу, тики; дефолт 400 (20 с)
 }
 
 public enum VehicleCategory : int
@@ -72,6 +94,14 @@ public struct RulesDesc
     public int DefaultYellowTicks, DefaultAllRedTicks; // [шаг 3]
     public float YieldGapTime;             // с [шаг 3]
     public int MaxYieldWaitTicks;          // инверсия приоритета у ворот после такого ожидания, 20 с -> 400
+    // 2.5 (ADR-0018, intersections.md §6.5): дефолты Adaptive, тики; 0 -> значение по умолчанию (WorldBuilder.WithDefaults)
+    public int SignalMinGreenTicks;        // 7 с -> 140
+    public int SignalMaxGreenTicks;        // 24 с -> 480
+    public int SignalGapTicks;             // 2.5 с -> 50
+    public int SignalArrowTriggerTicks;    // 4 с -> 80
+    public int SignalArrowMinTicks;        // 3 с -> 60
+    public int SignalArrowMaxTicks;        // 6 с -> 120
+    public int SignalArrowGapTicks;        // 2 с -> 40
 }
 
 // ---- city (scenario-format.md §2.1 "city") ----
@@ -90,6 +120,21 @@ public enum MinorControl : int
     RightHand = 2,
 }
 
+/// <summary>Режим светофоров, который генератор ставит узлам (2.5, ADR-0018); дефолт сценария - <see cref="Adaptive"/>.</summary>
+public enum CitySignalMode : int
+{
+    Fixed = 0,
+    Adaptive = 1,
+}
+
+/// <summary>Офсеты светофоров генератора (2.5, ADR-0018, intersections.md 6.7): формула этапа 1, чередующаяся волна или без офсетов.</summary>
+public enum CitySignalCoordination : int
+{
+    Legacy = 0,
+    Alternate = 1,
+    None = 2,
+}
+
 public struct CityGenDesc
 {
     public bool Enabled;
@@ -106,6 +151,9 @@ public struct CityGenDesc
     public int ConnectorSamples;
     public CitySignals Signals;
     public MinorControl MinorControl;
+    public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
+    public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (формула этапа 1, дефолт), 1 = alternate, 2 = none
+    public float ProgressionSpeedFactor;               // city.progression_speed_factor: v_p = ArterialSpeed * factor (0 = 1.0), калибровка волны alternate
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----
@@ -200,5 +248,14 @@ public struct TransitDesc
     public int DwellBaseTicks;
     public float DwellPerPassengerTicks;
     public float PassengerRatePerMin;
+
+    /// <summary>Удержание по интервалу (ADR-0008): доля планового интервала между отправлениями; 0 - выключено.</summary>
+    public float HoldAlpha;
+
+    /// <summary>Верхний предел удержания, тиков (сверх обычной стоянки).</summary>
+    public int HoldMaxTicks;
+
+    /// <summary>Контрольные остановки: каждая N-я остановка маршрута (1 - все, конечная не удерживает).</summary>
+    public int HoldEveryN;
     public BusRouteDesc[] RoutesExplicit;  // необязательные явные маршруты
 }

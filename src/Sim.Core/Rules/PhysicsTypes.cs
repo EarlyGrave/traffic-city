@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -32,26 +33,29 @@ internal readonly struct PhysicsParams
 }
 
 /// <summary>
-/// Доступ фаз к кэшу маршрутов (RoutePool появится в задаче шага 3). Маршрут машины i - диапазон
-/// <c>Steps[First[r] .. +Count[r])</c>, r = <c>VehicleStore.Route[i]</c>, шаг <c>RouteCursor[i]</c> - текущая полоса
-/// (обычная и connector чередуются). <see cref="None"/> - маршрутов нет, все машины едут «по умолчанию».
+/// Доступ фаз к окнам маршрутов (<see cref="Routing.RouteStore"/>, routing.md 9.5). Окно машины i - диапазон
+/// <c>Steps[r * Width .. + Count[r])</c>, r = <c>VehicleStore.Route[i]</c>, шаг <c>RouteCursor[i]</c> - текущая полоса
+/// (обычная и connector чередуются). <c>PlanCount[r] &gt; 0</c> - за окном есть ещё не развёрнутый хвост маршрута: последний шаг окна не финиш.
+/// <see cref="None"/> - маршрутов нет, все машины едут «по умолчанию».
 /// </summary>
 internal readonly struct RouteAccess
 {
-    public readonly int[]? First;
-    public readonly int[]? Count;
+    public readonly byte[]? Count;
+    public readonly int[]? PlanCount;
     public readonly RouteStep[]? Steps;
+    public readonly int Width;
 
-    public RouteAccess(int[] first, int[] count, RouteStep[] steps)
+    public RouteAccess(byte[] count, int[] planCount, RouteStep[] steps, int width)
     {
-        First = first;
         Count = count;
+        PlanCount = planCount;
         Steps = steps;
+        Width = width;
     }
 
     public static RouteAccess None => default;
 
-    public static RouteAccess From(World w) => new(w.Routes.First, w.Routes.Count, w.Routes.Steps);
+    public static RouteAccess From(World w) => new(w.Routes.WinCount, w.Routes.PlanCount, w.Routes.Window, w.Routes.WindowSteps);
 
     public bool IsEmpty => Steps is null;
 }
@@ -75,7 +79,7 @@ internal readonly struct RuleEnv
     /// <summary>Действителен ли маршрут машины <paramref name="i"/> для навигации (есть запись и не отмечен промах).</summary>
     public bool HasRoute(int i) => V.Route[i] >= 0 && Routes.Steps is not null && (V.Flags[i] & (byte)VehicleFlags.RouteMissed) == 0;
 
-    /// <summary>Индекс шага маршрута машины <paramref name="i"/> + <paramref name="k"/> в <c>Routes.Steps</c> или -1 (нет маршрута / вышли за конец).</summary>
+    /// <summary>Индекс шага маршрута машины <paramref name="i"/> + <paramref name="k"/> в <c>Routes.Steps</c> или -1 (нет маршрута / вышли за конец окна).</summary>
     public int RouteStepIndex(int i, int k)
     {
         if (!HasRoute(i))
@@ -85,7 +89,23 @@ internal readonly struct RuleEnv
 
         int r = V.Route[i];
         int c = V.RouteCursor[i] + k;
-        return c >= 0 && c < Routes.Count![r] ? Routes.First![r] + c : -1;
+        return c >= 0 && c < Routes.Count![r] ? (r * Routes.Width) + c : -1;
+    }
+
+    /// <summary>
+    /// Первый переход <c>NextLane(i, lane, 1, useRoute: true)</c> для машины на её текущей полосе (ADR-0016, D6): берётся готовый
+    /// <see cref="VehicleStore.NextConn"/>, если он посчитан (&gt;= 0), иначе полный расчёт. В Debug - сверка с полным расчётом.
+    /// </summary>
+    public int FirstHop(int i, int lane)
+    {
+        int nc = V.NextConn[i];
+        if (nc >= 0)
+        {
+            Debug.Assert(nc == NextLane(i, lane, 1, useRoute: true), "NextConn out of sync with NextLane");
+            return nc;
+        }
+
+        return NextLane(i, lane, 1, useRoute: true);
     }
 
     /// <summary>
@@ -178,7 +198,8 @@ internal readonly struct RuleEnv
 
     /// <summary>
     /// Желаемая полоса для MOBIL (routing.md 6.4): полоса, с которой маршрут входит в ближайший connector; на последнем сегменте
-    /// (connector'а дальше нет) - полоса прибытия. -1 - маршрута нет / курсор не на обычной полосе.
+    /// (connector'а дальше нет и план пуст) - полоса прибытия. -1 - маршрута нет / курсор не на обычной полосе / окно кончилось, а план нет
+    /// (последний шаг окна - не финиш, желаемой полосы нет).
     /// </summary>
     public int RouteDesiredLane(int i)
     {
@@ -190,7 +211,7 @@ internal readonly struct RuleEnv
         }
 
         int cur = RouteStepIndex(i, 0);
-        if (cur >= 0 && RouteStepIndex(i, 1) < 0)
+        if (cur >= 0 && RouteStepIndex(i, 1) < 0 && Routes.PlanCount![V.Route[i]] == 0)
         {
             int lane = Routes.Steps![cur].Lane;
             return Net.Lanes[lane].Kind == LaneKind.Normal ? lane : -1;

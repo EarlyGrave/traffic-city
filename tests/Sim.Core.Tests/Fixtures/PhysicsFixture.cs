@@ -51,7 +51,7 @@ internal sealed class PhysicsFixture
     }
 
     /// <summary>Единственный маршрут с индексом 0 из переданных шагов.</summary>
-    public void SetSingleRoute(RouteStep[] steps) => Routes = new RouteAccess(new int[1], new[] { steps.Length }, steps);
+    public void SetSingleRoute(RouteStep[] steps) => Routes = new RouteAccess(new[] { (byte)steps.Length }, new int[1], steps, steps.Length);
 
     public int LaneCount => Net.LaneCount;
 
@@ -192,7 +192,7 @@ internal sealed class PhysicsFixture
     public void Step()
     {
         BehaviourPhase.Run(Net, V, Occ, Routes, Types, P, Tick);
-        IntegratePhase.Run(Net, V, Occ, Routes, Types, P, ref Counters);
+        IntegratePhase.Run(Net, V, Types, P, ref Counters);
         if (_anyPinned)
         {
             for (int i = 0; i < V.HighWater; i++)

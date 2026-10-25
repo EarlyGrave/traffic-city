@@ -29,8 +29,8 @@ public class SimulationTests
         Assert.Equal(2, net.Zones.Length);
         Assert.Equal(0, sim.Tick);
         Assert.Equal(0, sim.SnapshotTick);
-        Assert.Equal(TestScenarios.MaxVehicles, sim.Vehicles.Length);
-        Assert.Equal(TestScenarios.MaxVehicles, sim.PreviousVehicles.Length);
+        Assert.Equal(0, sim.Vehicles.Length); // до первого Step спаны пусты (core-api 5.2)
+        Assert.Equal(0, sim.PreviousVehicles.Length);
         Assert.Equal(0, sim.ActiveVehicleCount);
         Assert.Equal(3, sim.Counters.NodeCount);
         Assert.Equal(2, sim.Counters.ZoneCount);
@@ -353,12 +353,14 @@ public class SimulationTests
     }
 
     [Fact]
-    public void SelectedRoute_ExposesRoutePoolSlice()
+    public void SelectedRoute_ExposesRouteWindow()
     {
         using Simulation sim = Make();
         VehicleHandle h = TestScenarios.PlaceCar(sim, 0, 10f);
         RouteStep[] steps = { new() { Lane = 0, Node = 1 }, new() { Lane = 2, Node = -1 } };
-        Assert.True(sim.World.Routes.TryAdd(steps, 0, 1, sim.Network.Version, out RouteHandle rh));
+        Assert.True(sim.World.Routes.TryAllocate(out RouteHandle rh));
+        steps.CopyTo(sim.World.Routes.Window, rh.Index * sim.World.Routes.WindowSteps);
+        sim.World.Routes.WinCount[rh.Index] = (byte)steps.Length;
         sim.World.Vehicles.Route[h.Index] = rh.Index;
         sim.World.Vehicles.RouteGen[h.Index] = rh.Generation;
         sim.World.Vehicles.RouteCursor[h.Index] = 1;
@@ -456,9 +458,9 @@ public class SimulationTests
         sim.Step(1);
         Assert.Equal(1, sim.SnapshotTick);
         VehicleRenderData first = sim.Vehicles[i];
-        Assert.Equal(TestScenarios.MaxVehicles, sim.Vehicles.Length);
+        Assert.Equal(sim.World.Vehicles.HighWater, sim.Vehicles.Length);
         Assert.NotEqual(0, first.Flags & (byte)VehicleRenderFlags.Active);
-        Assert.Equal(0, sim.PreviousVehicles[i].Flags); // до первого Step слот был пуст
+        Assert.Equal(0, sim.PreviousVehicles.Length); // после первого Step prev пуст
 
         sim.Step(1); // фазы 5-8 подключены: машина едет сама
         Assert.Equal(2, sim.SnapshotTick);

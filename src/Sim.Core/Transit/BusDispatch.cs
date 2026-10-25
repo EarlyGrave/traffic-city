@@ -52,7 +52,7 @@ internal static class BusDispatch
             return;
         }
 
-        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, -1, -1, w.Tick, out RouteHandle h) != BuildStatus.Ok)
+        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, w.Tick, out RouteHandle h) != BuildStatus.Ok)
         {
             return;
         }
@@ -76,6 +76,7 @@ internal static class BusDispatch
         }
 
         v.Flags[i] |= (byte)VehicleFlags.IsBus;
+        w.Queue?.OnBusPlaced(i);   // Q-meso: автобус - кинематический (флаг ставится после постановки на полосу)
         v.BusRoute[i] = r;
         v.BusNextStop[i] = 0;
         br.ActiveBuses++;

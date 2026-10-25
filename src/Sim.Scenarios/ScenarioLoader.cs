@@ -27,11 +27,17 @@ public sealed class LoadedScenario
 
 /// <summary>
 /// Загрузчик сценариев JSON → <see cref="ScenarioDesc"/> по docs/design/scenario-format.md:
-/// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 1.
+/// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 2 (сценарий) / 1 (типы ТС).
 /// </summary>
 public static class ScenarioLoader
 {
-    public const int SupportedFormatVersion = 1;
+    public const int SupportedFormatVersion = 2;
+    public const int VehicleTypesFormatVersion = 1;
+    private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
+    private const int MaxRoutingFanout = 16;
+    private const int MaxLodSlots = 4;           // слотов фокуса (0..3) и закреплений (4..7)
+    private const int MaxLodFocusMargin = 64;      // = Overlay.MaxFanout
+    private const int MaxArenaSteps = 1 << 28;    // предел арены планов (WorldBuilder.MaxPlanStepsCapacity)
     public const int TicksPerSecond = 20;
     private const string DefaultVehicleTypesFile = "vehicle-types.json";
 
@@ -58,7 +64,7 @@ public static class ScenarioLoader
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root);
+        CheckVersion(root, SupportedFormatVersion);
 
         string name = root.Str("name", defaultName);
         ulong seed = root.ULong("seed");
@@ -117,7 +123,9 @@ public static class ScenarioLoader
 
         TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames);
         RulesDesc rules = ParseRules(root.OptObject("rules"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"));
+        RoutingDesc routing = ParseRouting(root.OptObject("routing"));
+        LodDesc lod = ParseLod(root.OptObject("lod"));
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing);
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -125,6 +133,8 @@ public static class ScenarioLoader
             Seed = seed,
             DurationTicks = Ticks(durationS),
             Capacities = caps,
+            Routing = routing,
+            Lod = lod,
             City = city,
             Network = network,
             Demand = demand,
@@ -168,7 +178,7 @@ public static class ScenarioLoader
         }
     }
 
-    private static void CheckVersion(JsonObjectReader root)
+    private static void CheckVersion(JsonObjectReader root, int supported)
     {
         if (!root.Has("format_version"))
         {
@@ -176,10 +186,10 @@ public static class ScenarioLoader
         }
 
         int v = root.Int("format_version");
-        if (v != SupportedFormatVersion)
+        if (v != supported)
         {
             throw new ScenarioException(
-                $"$.format_version: unsupported version {v}, loader supports {SupportedFormatVersion}");
+                $"$.format_version: unsupported version {v}, loader supports {supported}");
         }
     }
 
@@ -200,7 +210,7 @@ public static class ScenarioLoader
     {
         using JsonDocument doc = OpenDoc(text, "vehicle types");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root);
+        CheckVersion(root, VehicleTypesFormatVersion);
         JsonElement[] arr = root.ReqArray("types");
         root.Finish();
         if (arr.Length == 0)
@@ -282,6 +292,9 @@ public static class ScenarioLoader
             ConnectorSamples = 8,
             Signals = CitySignals.ArterialXArterial,
             MinorControl = MinorControl.Yield,
+            SignalMode = CitySignalMode.Adaptive,                 // 2.5 S2: дефолт спеки (ADR-0018); "fixed" - явно в сценарии
+            SignalCoordination = CitySignalCoordination.Legacy,   // 2.5 S3: alternate - опция, дефолт остаётся legacy (замер s10k, ADR-0018)
+            ProgressionSpeedFactor = 1f,
         };
         if (r == null)
         {
@@ -339,9 +352,35 @@ public static class ScenarioLoader
                 $"{r.ChildPath("minor_control")}: expected \"yield\", \"stop\" or \"right_hand\""),
         };
 
+        c.SignalMode = ParseSignalMode(r.Str("signal_mode", "adaptive"), r.ChildPath("signal_mode"));
+        c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
+        c.ProgressionSpeedFactor = (float)r.Num("progression_speed_factor", 1.0, min: 0.5, max: 1.5);
+
         r.Finish();
         return c;
     }
+
+    /// <summary>
+    /// <c>city.signal_mode</c> (scenario-format.md §2.1, 2.5, ADR-0018): "adaptive" (дефолт) или "fixed"; остальное - понятная ошибка.
+    /// Используется и опцией bench/hash <c>--signal-mode</c>.
+    /// </summary>
+    public static CitySignalMode ParseSignalMode(string value, string where) => value switch
+    {
+        "fixed" => CitySignalMode.Fixed,
+        "adaptive" => CitySignalMode.Adaptive,
+        _ => throw new ScenarioException($"{where}: expected \"adaptive\" or \"fixed\""),
+    };
+
+    /// <summary>
+    /// <c>city.signal_coordination</c> (2.5 S3): "alternate" (чередующаяся волна, опция), "legacy" (дефолт, формула офсетов этапа 1), "none" (без офсетов).
+    /// </summary>
+    public static CitySignalCoordination ParseSignalCoordination(string value, string where) => value switch
+    {
+        "legacy" => CitySignalCoordination.Legacy,
+        "alternate" => CitySignalCoordination.Alternate,
+        "none" => CitySignalCoordination.None,
+        _ => throw new ScenarioException($"{where}: expected \"alternate\", \"legacy\" or \"none\""),
+    };
 
     private static int ScaledIrregularDefault(float scale) =>
         (int)Math.Round(12.0 * scale * scale, MidpointRounding.AwayFromZero);
@@ -514,6 +553,9 @@ public static class ScenarioLoader
             DwellBaseTicks = Ticks(8),
             DwellPerPassengerTicks = (float)(1.5 * TicksPerSecond),
             PassengerRatePerMin = 2,
+            HoldAlpha = 0.9f,
+            HoldMaxTicks = Ticks(60),
+            HoldEveryN = 1,
         };
         string busName = "bus";
         if (r != null)
@@ -550,6 +592,9 @@ public static class ScenarioLoader
             t.DwellBaseTicks = Ticks(r.Num("dwell_base_s", 8, min: 0));
             t.DwellPerPassengerTicks = (float)(r.Num("dwell_per_passenger_s", 1.5, min: 0) * TicksPerSecond);
             t.PassengerRatePerMin = (float)r.Num("passenger_rate_per_min", 2, min: 0);
+            t.HoldAlpha = (float)r.Num("hold_alpha", 0.9, min: 0, max: 1);
+            t.HoldMaxTicks = Ticks(r.Num("hold_max_s", 60, min: 0));
+            t.HoldEveryN = r.Int("hold_every_n", 1, min: 1);
 
             JsonElement[]? ex = r.OptArray("routes_explicit");
             if (ex != null)
@@ -623,6 +668,13 @@ public static class ScenarioLoader
             DefaultAllRedTicks = Ticks(1),
             YieldGapTime = 3.0f,
             MaxYieldWaitTicks = Ticks(20),
+            SignalMinGreenTicks = Ticks(7),
+            SignalMaxGreenTicks = Ticks(24),
+            SignalGapTicks = Ticks(2.5),
+            SignalArrowTriggerTicks = Ticks(4),
+            SignalArrowMinTicks = Ticks(3),
+            SignalArrowMaxTicks = Ticks(6),
+            SignalArrowGapTicks = Ticks(2),
         };
         if (r == null)
         {
@@ -640,11 +692,177 @@ public static class ScenarioLoader
         d.DefaultAllRedTicks = Ticks(r.Num("signal_all_red_s", 1, min: 0));
         d.YieldGapTime = (float)r.Num("yield_gap_s", 3.0, min: 0);
         d.MaxYieldWaitTicks = Ticks(r.Num("max_yield_wait_s", 20, min: 0));
+        d.SignalMinGreenTicks = Ticks(r.Num("signal_min_green_s", 7, min: 0.05));
+        d.SignalMaxGreenTicks = Ticks(r.Num("signal_max_green_s", 24, min: 0.05));
+        d.SignalGapTicks = Ticks(r.Num("signal_gap_s", 2.5, min: 0.05));
+        d.SignalArrowTriggerTicks = Ticks(r.Num("signal_arrow_trigger_s", 4, min: 0.05));
+        d.SignalArrowMinTicks = Ticks(r.Num("signal_arrow_min_s", 3, min: 0.05));
+        d.SignalArrowMaxTicks = Ticks(r.Num("signal_arrow_max_s", 6, min: 0.05));
+        d.SignalArrowGapTicks = Ticks(r.Num("signal_arrow_gap_s", 2, min: 0.05));
         r.Finish();
         return d;
     }
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r)
+    // routing.md 9.9, scenario-format.md 2.1 "routing": дефолты - как в спеке; секция необязательна.
+    private static RoutingDesc ParseRouting(JsonObjectReader? r)
+    {
+        var d = new RoutingDesc
+        {
+            Levels = 1,
+            Fanout = 4,
+            CellSize = 1000f,
+            WindowSteps = 16,
+            PathfindBudgetPerTick = 32,
+            CustomizeBudgetPerTick = 10000,
+            CustomizeEps = 0.05f,
+            CostRecalcTicks = Ticks(30),
+            TimedDrift = 0.15f,
+            TimedDriftAbsTicks = Ticks(20),
+        };
+        d.WorkBudgetPerTick = WorkBudgetDefault(d.PathfindBudgetPerTick);
+        if (r == null)
+        {
+            return d;
+        }
+
+        d.Levels = r.Int("levels", 1, min: 0, max: MaxRoutingLevels);
+        d.CellSize = (float)r.Num("cell_m", 1000, min: 1);
+        d.Fanout = r.Int("fanout", 4, min: 2, max: MaxRoutingFanout);
+        d.WindowSteps = r.Int("window_steps", 16, min: 8, max: 32);
+        d.PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", 32, min: 1);
+        d.WorkBudgetPerTick = r.Int("work_budget_per_tick", WorkBudgetDefault(d.PathfindBudgetPerTick), min: 1);
+        d.QueryWorkCap = r.Int("query_work_cap", 0, min: 0); // 0 = 4 * число направленных сегментов (routing.md 9.4)
+        d.CustomizeBudgetPerTick = r.Int("customize_budget_per_tick", 10000, min: 1);
+        d.CustomizeEps = (float)r.Num("customize_eps", 0.05, min: 0, max: 1);
+        d.CostRecalcTicks = Math.Max(1, Ticks(r.Num("cost_recalc_s", 30, min: 0.05)));
+        d.TimedDrift = (float)r.Num("timed_drift", 0.15, min: 0);
+        d.TimedDriftAbsTicks = Ticks(r.Num("timed_drift_abs_s", 20, min: 0));
+        r.Finish();
+        return d;
+    }
+
+    // sim-lod.md, scenario-format.md 2.1 "lod": секция необязательна, без неё (и при mode = off) LOD нет.
+    private static LodDesc ParseLod(JsonObjectReader? r)
+    {
+        var d = new LodDesc
+        {
+            Mode = LodMode.Off,
+            CellM = 1000f,
+            MicroBudget = 15000,
+            EvalTicks = Ticks(5),
+            HoldTicks = Ticks(30),
+            FocusMarginCells = 1,
+            FollowSelected = true,
+            FocusCommands = true,
+            CongestionShare = 0.1f,
+            CongestionMin = 10,
+            MesoHeadwayScale = 0.8f,
+            MesoAccelScale = 1f,
+        };
+        if (r == null)
+        {
+            return d;
+        }
+
+        string mode = r.Str("mode", "off");
+        d.Mode = mode switch
+        {
+            "off" => LodMode.Off,
+            "auto" => LodMode.Auto,
+            "all_meso" => LodMode.AllMeso,
+            _ => throw new ScenarioException($"{r.ChildPath("mode")}: expected \"off\", \"auto\" or \"all_meso\""),
+        };
+        d.CellM = (float)r.Num("cell_m", 1000, min: 1);
+        d.MicroBudget = r.Int("micro_budget", 15000, min: 0);
+        d.EvalTicks = Math.Max(1, Ticks(r.Num("eval_s", 5, min: 0.05)));
+        d.HoldTicks = Ticks(r.Num("hold_s", 30, min: 0));
+        d.FocusMarginCells = r.Int("focus_margin_cells", 1, min: 0, max: MaxLodFocusMargin);
+        d.FollowSelected = r.Bool("follow_selected", true);
+        d.FocusCommands = r.Bool("focus_commands", true);
+        d.CongestionShare = (float)r.Num("congestion_share", 0.1, min: 0, max: 1);
+        d.CongestionMin = r.Int("congestion_min", 10, min: 0);
+        d.MesoHeadwayScale = (float)r.Num("meso_headway_scale", 0.8, min: 0.1, max: 10);
+        d.MesoAccelScale = (float)r.Num("meso_accel_scale", 1.0, min: 0.1, max: 10);
+        string model = r.Str("meso_model", "kinematic");
+        d.MesoModel = model switch
+        {
+            "kinematic" => MesoModel.Kinematic,
+            "queue" => MesoModel.Queue,
+            _ => throw new ScenarioException($"{r.ChildPath("meso_model")}: expected \"kinematic\" or \"queue\""),
+        };
+        if (d.MesoModel == MesoModel.Queue && d.Mode != LodMode.AllMeso)
+        {
+            throw new ScenarioException($"{r.ChildPath("meso_model")}: \"queue\" requires mode \"all_meso\" (prototype Q0)");
+        }
+
+        d.QueueHeadwayScale = (float)r.Num("queue_headway_scale", 0, min: 0, max: 10);
+        d.Focus = ParseLodPlaces(r, "focus");
+        d.Pinned = ParseLodPlaces(r, "pinned");
+
+        JsonObjectReader? tour = r.OptObject("tour");
+        if (tour != null)
+        {
+            d.Tour.PeriodTicks = Math.Max(1, Ticks(tour.Num("period_s", min: 0.05)));
+            d.Tour.RadiusM = (float)tour.Num("radius_m", min: 1);
+            string tp = tour.ChildPath("path");
+            JsonElement[] path = tour.ReqArray("path");
+            if (path.Length == 0)
+            {
+                throw new ScenarioException($"{tp}: expected at least one point");
+            }
+
+            d.Tour.PathX = new float[path.Length];
+            d.Tour.PathZ = new float[path.Length];
+            for (int i = 0; i < path.Length; i++)
+            {
+                string ip = JsonObjectReader.Index(tp, i);
+                JsonElement[] pt = JsonObjectReader.ToArray(path[i], ip);
+                if (pt.Length != 2)
+                {
+                    throw new ScenarioException($"{ip}: expected [x, z]");
+                }
+
+                d.Tour.PathX[i] = (float)JsonObjectReader.NumValue(pt[0], JsonObjectReader.Index(ip, 0));
+                d.Tour.PathZ[i] = (float)JsonObjectReader.NumValue(pt[1], JsonObjectReader.Index(ip, 1));
+            }
+
+            tour.Finish();
+        }
+
+        r.Finish();
+        return d;
+    }
+
+    private static LodPlaceDesc[]? ParseLodPlaces(JsonObjectReader r, string key)
+    {
+        JsonElement[]? arr = r.OptArray(key);
+        if (arr == null)
+        {
+            return null;
+        }
+
+        string path = r.ChildPath(key);
+        if (arr.Length > MaxLodSlots)
+        {
+            throw new ScenarioException($"{path}: at most {MaxLodSlots} entries");
+        }
+
+        var res = new LodPlaceDesc[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var o = new JsonObjectReader(arr[i], JsonObjectReader.Index(path, i));
+            res[i].X = (float)o.Num("x");
+            res[i].Z = (float)o.Num("z");
+            res[i].RadiusM = (float)o.Num("radius_m", min: 0);
+            o.Finish();
+        }
+
+        return res;
+    }
+
+    private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
+
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing)
     {
         var c = new SimCapacities
         {
@@ -658,13 +876,15 @@ public static class ScenarioLoader
             MaxBusStops = r.Int("max_bus_stops", min: 0),
             MaxBusStopsPerRoute = r.Int("max_bus_stops_per_route", 32, min: 1),
             MaxRoutes = r.Int("max_routes", min: 1),
-            MaxRouteSteps = r.Int("max_route_steps", min: 1),
             MaxPendingTrips = r.Int("max_pending_trips", min: 1),
             CommandQueueCapacity = r.Int("command_queue", 1024, min: 1),
             EventCapacity = r.Int("events", 4096, min: 1),
-            PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", min: 1),
             MaxSignalizedNodes = r.Int("max_signalized_nodes", min: 0),
         };
+        // max_plan_steps: дефолт max_routes * (12 + 8 * levels) (формула и замер - routing.md 15, H3); предел арены - 1 << 28.
+        // Окна маршрутов (max_routes * window_steps шагов) отдельного ключа не имеют.
+        long planDefault = Math.Min(MaxArenaSteps, (long)c.MaxRoutes * (12 + (8 * Math.Max(1, routing.Levels))));
+        c.MaxPlanSteps = r.Int("max_plan_steps", (int)planDefault, min: 1, max: MaxArenaSteps);
         c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
         c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
         r.Finish();

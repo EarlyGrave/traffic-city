@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using Sim.Core.Lod;
 
 namespace Sim.Core.Agents;
 
@@ -17,6 +18,7 @@ namespace Sim.Core.Agents;
 internal sealed class LaneOccupancy
 {
     private readonly VehicleStore _v;
+    private readonly ulong[] _linkedBits;
 
     public LaneOccupancy(VehicleStore vehicles, int maxLanes)
     {
@@ -25,6 +27,10 @@ internal sealed class LaneOccupancy
         LaneHead = new int[maxLanes];
         LaneTail = new int[maxLanes];
         LaneCount = new int[maxLanes];
+        OccMask = new ulong[(maxLanes + 63) >> 6];
+        int maxVehicles = vehicles.Lane.Length;
+        Linked = new int[maxVehicles];
+        _linkedBits = new ulong[(maxVehicles + 63) >> 6];
         Array.Fill(LaneHead, -1);
         Array.Fill(LaneTail, -1);
     }
@@ -40,22 +46,80 @@ internal sealed class LaneOccupancy
 
     public int MaxLanes => LaneHead.Length;
 
+    /// <summary>
+    /// Маска занятых полос (бит <c>lane</c> = <c>LaneCount[lane] &gt; 0</c>, ghost-члены включительно); ведётся при переходе пустая &lt;-&gt; непустая
+    /// в <see cref="Insert"/>/<see cref="Remove"/> (ADR-0019, A2). Производное, вне хэша и сейва; обход по возрастанию индекса полосы.
+    /// </summary>
+    public ulong[] OccMask { get; }
+
+    /// <summary>
+    /// Машины, которых связали со списком полосы с прошлой очистки (<see cref="ClearLinked"/>): въезд, вставка, смена полосы, спавн; без повторов.
+    /// Читает и очищает фаза 4 (метка <c>StoppedBeforeSignal</c> для машин вне прохода от головы).
+    /// </summary>
+    public int[] Linked { get; }
+
+    /// <summary>Число машин в <see cref="Linked"/>.</summary>
+    public int LinkedCount { get; private set; }
+
+    /// <summary>Загрузка сейва: <see cref="OccMask"/> по <see cref="LaneCount"/> (производное); <see cref="Linked"/> пуст (первая фаза 4 после загрузки - полный проход).</summary>
+    internal void RebuildMasks(int laneCount)
+    {
+        Array.Clear(OccMask);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (LaneCount[lane] > 0)
+            {
+                OccMask[lane >> 6] |= 1UL << (lane & 63);
+            }
+        }
+    }
+
+    /// <summary>Очищает <see cref="Linked"/> (после того как фаза 4 его обработала).</summary>
+    public void ClearLinked()
+    {
+        for (int k = 0; k < LinkedCount; k++)
+        {
+            int i = Linked[k];
+            _linkedBits[i >> 6] &= ~(1UL << (i & 63));
+        }
+
+        LinkedCount = 0;
+    }
+
+    /// <summary>
+    /// LOD-ячейки (ADR-0013); не null только при <c>Lod.Mode != Off</c>. При въезде на полосу (<see cref="PushTail"/>, <see cref="PushHead"/>,
+    /// <see cref="InsertBetween"/>) уровень машины берётся из ячейки полосы (sim-lod.md §2.5).
+    /// </summary>
+    public LodCells? LodCells { get; set; }
+
+    /// <summary>
+    /// Q-meso (ADR-0019, <c>Lod/QueueMeso.cs</c>); не null только при <c>lod.meso_model = "queue"</c>. Получает каждое добавление/снятие члена списка
+    /// (счётчики полосы, освобождение ведомого очереди) и въезд на обычную полосу (переход в очередь). У машин очереди <c>S</c> - позиция въезда, поэтому
+    /// порядок <c>S</c> в списке не проверяется (FIFO держит сам список).
+    /// </summary>
+    public QueueMeso? Queue { get; set; }
+
     /// <summary>Добавляет машину в хвост полосы (въезд с начала; S должен быть не больше S хвоста). Lane[i] = lane.</summary>
     public void PushTail(int lane, int i)
     {
         Debug.Assert(_v.Lane[i] == -1, "PushTail: машина уже на полосе");
-        Debug.Assert(LaneTail[lane] == -1 || _v.S[i] <= _v.S[LaneTail[lane]], "PushTail: нарушен порядок S");
+        Debug.Assert(LaneTail[lane] == -1 || _v.S[i] <= _v.S[LaneTail[lane]] || Queue != null, "PushTail: нарушен порядок S");
         _v.Lane[i] = lane;
+        _v.MarkRouteDirty(i);
         Insert(lane, i, ahead: LaneTail[lane], behind: -1);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Добавляет машину в голову полосы (S не меньше S головы). Lane[i] = lane.</summary>
     public void PushHead(int lane, int i)
     {
         Debug.Assert(_v.Lane[i] == -1, "PushHead: машина уже на полосе");
-        Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]], "PushHead: нарушен порядок S");
+        Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]] || Queue != null, "PushHead: нарушен порядок S");
         _v.Lane[i] = lane;
+        _v.MarkRouteDirty(i);
+        MarkFollower(LaneHead[lane]);
         Insert(lane, i, ahead: -1, behind: LaneHead[lane]);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Вставка между известными соседями (из <see cref="FindNeighbours"/>); -1 = край. Lane[i] = lane.</summary>
@@ -63,7 +127,10 @@ internal sealed class LaneOccupancy
     {
         Debug.Assert(_v.Lane[i] == -1, "InsertBetween: машина уже на полосе");
         _v.Lane[i] = lane;
+        _v.MarkRouteDirty(i);
+        MarkFollower(behind);
         Insert(lane, i, ahead, behind);
+        EnterLevel(lane, i);
     }
 
     /// <summary>Вставка по текущему S[i] (поиск от хвоста). При равных S новая встаёт позади существующих.</summary>
@@ -118,6 +185,8 @@ internal sealed class LaneOccupancy
         _v.GhostAhead[i] = _v.Ahead[i];
         _v.GhostBehind[i] = _v.Behind[i];
         _v.Lane[i] = target;
+        _v.MarkRouteDirty(i);
+        MarkFollower(behind);
         Insert(target, i, ahead, behind);
     }
 
@@ -141,6 +210,7 @@ internal sealed class LaneOccupancy
         Debug.Assert(g != -1, "CancelLaneChange: нет ghost");
         Remove(_v.Lane[i], i);
         _v.Lane[i] = g;
+        _v.MarkRouteDirty(i);
         _v.Ahead[i] = _v.GhostAhead[i];
         _v.Behind[i] = _v.GhostBehind[i];
         _v.GhostLane[i] = -1;
@@ -153,6 +223,33 @@ internal sealed class LaneOccupancy
     {
         GhostUnlink(i);
         Unlink(i);
+    }
+
+    /// <summary>Вставка перед машиной <paramref name="behind"/> даёт ей нового, более близкого лидера: meso-ведомый пересчитывает поведение в ближайшей фазе 5.</summary>
+    private void MarkFollower(int behind)
+    {
+        if (behind != -1 && LodCells != null && (_v.Lod[behind] & LodBits.Meso) != 0)
+        {
+            _v.Lod[behind] |= LodBits.Fresh;
+        }
+    }
+
+    private void EnterLevel(int lane, int i)
+    {
+        LodCells? lc = LodCells;
+        if (lc != null)
+        {
+            byte level = lc.CellLevel[lc.LaneCell[lane]];
+            LodTransitions.SetLevel(_v, i, level);
+            if (level == LodCells.LevelMeso)
+            {
+                // Новая полоса - другой лидер и, возможно, другой цвет ячейки (другой такт): без пересчёта бюджет пути прежнего решения мог
+                // кончиться до такта новой ячейки (до 7 тиков) и обнулить скорость. Пересчёт в ближайшей фазе 5 гарантирует решение не позже чем за 4 тика до такта.
+                _v.Lod[i] |= LodBits.Fresh;
+            }
+
+            Queue?.OnEnterLane(lane, i);
+        }
     }
 
     // Роль машины в списке lane: основная (Lane) или ghost. Возврат по ref - без копий и аллокаций.
@@ -201,7 +298,24 @@ internal sealed class LaneOccupancy
             LaneTail[lane] = i;
         }
 
-        LaneCount[lane]++;
+        if (LaneCount[lane]++ == 0)
+        {
+            OccMask[lane >> 6] |= 1UL << (lane & 63);
+        }
+
+        MarkLinked(i);
+        Queue?.OnInsert(lane, i);
+    }
+
+    /// <summary>Заносит машину в <see cref="Linked"/> (без повторов): её класс в фазе 4 изменился не движением по списку (вставка, снятие допуска).</summary>
+    public void MarkLinked(int i)
+    {
+        ulong bit = 1UL << (i & 63);
+        if ((_linkedBits[i >> 6] & bit) == 0)
+        {
+            _linkedBits[i >> 6] |= bit;
+            Linked[LinkedCount++] = i;
+        }
     }
 
     private void Remove(int lane, int i)
@@ -228,6 +342,11 @@ internal sealed class LaneOccupancy
 
         AheadRef(i, lane) = -1;
         BehindRef(i, lane) = -1;
-        LaneCount[lane]--;
+        if (--LaneCount[lane] == 0)
+        {
+            OccMask[lane >> 6] &= ~(1UL << (lane & 63));
+        }
+
+        Queue?.OnRemove(lane, i, b);
     }
 }

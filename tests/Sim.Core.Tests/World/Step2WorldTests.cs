@@ -49,11 +49,9 @@ internal static class Step2
         SimCapacities c = r.Caps;
         c.MaxVehicles = 1280;
         c.MaxRoutes = 4096;
-        c.MaxRouteSteps = 262144;
         c.MaxPendingTrips = 2048;
         c.CommandQueueCapacity = 1024;
         c.EventCapacity = 4096;
-        c.PathfindBudgetPerTick = 32;
         DemandDesc dem = r.Demand;
         dem.TargetVehicles = 1000;
         dem.SpawnRampTicks = 2400;
@@ -71,6 +69,7 @@ internal static class Step2
             Seed = r.Seed,
             DurationTicks = 36000,
             Capacities = c,
+            Routing = S1kRouting(),
             City = r.City,
             Demand = dem,
             Transit = Transit(r.Transit, buses),
@@ -90,6 +89,22 @@ internal static class Step2
         };
         return d;
     }
+
+    /// <summary>Секция routing сценария scenarios/s1k.json (иерархия: 1 уровень, ячейка 1 км; бюджеты и дрейф - дефолты шага 2.2).</summary>
+    public static RoutingDesc S1kRouting() => new()
+    {
+        Levels = 1,
+        Fanout = 4,
+        CellSize = 1000f,
+        WindowSteps = 16,
+        PathfindBudgetPerTick = 32,
+        WorkBudgetPerTick = 48000,
+        CustomizeBudgetPerTick = 10000,
+        CustomizeEps = 0.05f,
+        CostRecalcTicks = 600,
+        TimedDrift = 0.15f,
+        TimedDriftAbsTicks = 400,
+    };
 
     /// <summary>Первое нарушение «зазор &gt;= 0» в списках полос (primary и ghost). null = чисто.</summary>
     public static string? CheckGaps(World w)
@@ -374,7 +389,7 @@ public sealed class Step2WorldTests : IClassFixture<Step2Run>
         w.Vehicles.DestZone[h.Index] = zone;
         w.Vehicles.DestLane[h.Index] = zoneLane;
         w.Vehicles.DestS[h.Index] = 1f;
-        Assert.Equal(Sim.Core.Routing.BuildStatus.Ok, w.Router.Build(feeder, w.Net.Lanes[feeder].Length - 5f, zoneLane, 1f, -1, -1, w.Tick, out RouteHandle rh));
+        Assert.Equal(Sim.Core.Routing.BuildStatus.Ok, w.Router.Build(feeder, w.Net.Lanes[feeder].Length - 5f, zoneLane, 1f, w.Tick, out RouteHandle rh));
         w.Vehicles.Route[h.Index] = rh.Index;
         w.Vehicles.RouteGen[h.Index] = rh.Generation;
         w.Vehicles.NextConn[h.Index] = -1;
@@ -465,13 +480,13 @@ public sealed class Step2StuckTests
         w.Vehicles.DesiredSpeed[a.Index] = 0f;
         w.Vehicles.DesiredSpeed[b.Index] = 0f;
         sim.Step(1);
-        SegmentLoad l0 = w.SegmentLoads[0];
+        SegmentLoad l0 = w.EnsureSegmentLoads()[0];
         Assert.Equal(2, l0.Count);
         float laneKm = 2 * w.Net.Segments[0].Length * 0.001f;
         Assert.Equal(2f / laneKm, l0.Density, 3);
         Assert.InRange(l0.SpeedRatio, 0f, 0.1f);
-        Assert.Equal(0, w.SegmentLoads[1].Count);
-        Assert.Equal(1f, w.SegmentLoads[1].SpeedRatio);
+        Assert.Equal(0, w.EnsureSegmentLoads()[1].Count);
+        Assert.Equal(1f, w.EnsureSegmentLoads()[1].SpeedRatio);
     }
 }
 

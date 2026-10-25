@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Api;
 using Sim.Core.Gen;
+using Sim.Core.Lod;
 using Sim.Core.Network;
 using Sim.Core.Util;
 
@@ -15,8 +16,11 @@ internal static class WorldBuilder
     /// <summary>Верхний предел любой ёмкости (защита от случайных значений вроде int.MaxValue).</summary>
     public const int MaxCapacity = 1 << 24;
 
-    /// <summary>Предел арены шагов маршрутов (RouteStep = 8 байт, s100k: ~40 M шагов = 320 МБ); отдельно от <see cref="MaxCapacity"/>.</summary>
-    public const int MaxRouteStepsCapacity = 1 << 28;
+    /// <summary>Предел арены планов маршрутов (int, 4 байта); отдельно от <see cref="MaxCapacity"/>.</summary>
+    public const int MaxPlanStepsCapacity = 1 << 28;
+
+    /// <summary>Предел массива окон маршрутов: <c>max_routes · window_steps</c> шагов по 8 байт.</summary>
+    public const long MaxWindowCells = 1L << 28;
 
     public const int MaxVehicleTypes = 256; // VehicleStore.Type - byte
 
@@ -24,6 +28,18 @@ internal static class WorldBuilder
     {
         world = null;
         CreateStatus st = ValidateCapacities(in desc.Capacities);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidateRouting(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidateLod(in desc.Lod);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -47,7 +63,7 @@ internal static class WorldBuilder
             return st;
         }
 
-        var w = new World(in desc, WithDefaults(desc.Rules), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
+        var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
         {
@@ -63,6 +79,18 @@ internal static class WorldBuilder
         w.Signals.InitFromSeeds(w); // светофоры генератора (intersections.md §6.4); для явной сети seeds нет
 
         st = BuildZones(w, in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = BuildOverlay(w);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = BuildLod(w);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -194,7 +222,6 @@ internal static class WorldBuilder
                 FirstSpawnLane = 0, // TODO(gen): полосы появления назначает ZoneGenerator
                 SpawnLaneCount = 0,
                 IsExternal = z.IsExternal ? (byte)1 : (byte)0,
-                HubNode = NearestNode(w.Net, new Vec2(z.CenterX, z.CenterZ)),
             };
         }
 
@@ -202,23 +229,203 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    // Хаб зоны явной сети (routing.md 4.1): ближайший к центру узел (ничья - меньший индекс); -1 - узлов нет.
-    private static int NearestNode(NetworkStore net, Vec2 c)
+    /// <summary>
+    /// Оверлей маршрутизации (routing.md 9): граф актуализируется по готовой сети, ячейки и входы/выходы раскладываются, все матрицы
+    /// кастомизируются. <c>routing.levels = 0</c> - оверлея нет. Время этого шага - основной риск шага 2.2 (замер в отчёте H1).
+    /// </summary>
+    private static CreateStatus BuildOverlay(World w)
     {
-        int best = -1;
-        float bestD = float.MaxValue;
-        for (int n = 0; n < net.NodeCount; n++)
+        w.Graph.Rebuild();
+        CreateStatus st = CreateStatus.Ok;
+        if (w.Routing.Levels > 0)
         {
-            Vec2 p = net.Nodes[n].Position;
-            float d = ((p.X - c.X) * (p.X - c.X)) + ((p.Z - c.Z) * (p.Z - c.Z));
-            if (d < bestD)
+            st = Routing.Overlay.TryCreate(w.Net, w.Graph, in w.Routing, out Routing.Overlay? ov);
+            w.Overlay = ov;
+        }
+
+        w.Router = new Routing.Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
+        return st;
+    }
+
+    /// <summary>LOD-ячейки (ADR-0013): при <c>Mode = Off</c> ничего не выделяется и не меняется (побитово прежнее ядро).</summary>
+    private static CreateStatus BuildLod(World w)
+    {
+        if (w.LodCfg.Mode == LodMode.Off)
+        {
+            return CreateStatus.Ok;
+        }
+
+        if (w.LodCfg.MesoModel == MesoModel.Queue && w.LodCfg.Mode != LodMode.AllMeso)
+        {
+            return CreateStatus.NotSupported;   // Q0: очередь полосы только в all_meso (смена уровня Q <-> micro - задача Q1)
+        }
+
+        CreateStatus st = LodCells.TryCreate(w.Net, in w.LodCfg, out LodCells? cells);
+        AttachLod(w, cells, st == CreateStatus.Ok);
+        return st;
+    }
+
+    /// <summary>Подключает LOD-ячейки к миру (и модель очереди Q-meso, если она задана); общий код <c>Create</c> и загрузки сейва.</summary>
+    internal static void AttachLod(World w, LodCells? cells, bool ok = true)
+    {
+        w.Lod = cells;
+        w.Occupancy.LodCells = cells;
+        if (ok && cells != null && w.LodCfg.MesoModel == MesoModel.Queue)
+        {
+            w.Queue = new QueueMeso(w, cells);
+            w.Occupancy.Queue = w.Queue;
+            w.Vehicles.QueueBits = w.Queue.QBits;
+        }
+    }
+
+    internal static CreateStatus ValidateLod(in LodDesc l)
+    {
+        if (l.Mode < LodMode.Off || l.Mode > LodMode.AllMeso || !NonNegative(l.CellM) || l.MicroBudget < 0 || l.EvalTicks < 0 ||
+            l.HoldTicks < 0 || l.FocusMarginCells < 0 || !NonNegative(l.CongestionShare) || l.CongestionMin < 0 ||
+            !NonNegative(l.MesoHeadwayScale) || !NonNegative(l.MesoAccelScale) || !NonNegative(l.QueueHeadwayScale) ||
+            l.MesoModel < MesoModel.Kinematic || l.MesoModel > MesoModel.Queue ||
+            (l.Focus?.Length ?? 0) > LodCells.FocusSlots || (l.Pinned?.Length ?? 0) > LodCells.PinSlots)
+        {
+            return CreateStatus.InvalidCapacity;
+        }
+
+        for (int k = 0; k < 2; k++)
+        {
+            LodPlaceDesc[]? places = k == 0 ? l.Focus : l.Pinned;
+            for (int i = 0; i < (places?.Length ?? 0); i++)
             {
-                bestD = d;
-                best = n;
+                LodPlaceDesc p = places![i];
+                if (!IsFinite(p.X) || !IsFinite(p.Z) || !NonNegative(p.RadiusM))
+                {
+                    return CreateStatus.InvalidCapacity;
+                }
             }
         }
 
-        return best;
+        return CreateStatus.Ok;
+    }
+
+    /// <summary>Нулевые поля (desc, собранный вручную) заменяются дефолтами спеки; булевы без дефолта остаются как заданы (загрузчик ставит true).</summary>
+    /// <summary>Калибровка эквивалентности коридору (sim-lod.md §9, итог L2): множитель времени интервала T в meso.</summary>
+    internal const float DefaultMesoHeadwayScale = 0.8f;
+
+    /// <summary>Калибровка насыщенного интервала очереди Q-meso по <c>SaturationProbe</c> (sim-lod.md §13.9): множитель T в <c>h</c>.</summary>
+    internal const float DefaultQueueHeadwayScale = 0.2f;
+
+    internal static LodDesc WithDefaults(LodDesc l)
+    {
+        if (!(l.CellM > 0f))
+        {
+            l.CellM = 1000f;
+        }
+
+        if (l.MicroBudget <= 0)
+        {
+            l.MicroBudget = 15000;
+        }
+
+        if (l.EvalTicks <= 0)
+        {
+            l.EvalTicks = 100;
+        }
+
+        if (l.HoldTicks <= 0)
+        {
+            l.HoldTicks = 600;
+        }
+
+        if (!(l.CongestionShare > 0f))
+        {
+            l.CongestionShare = 0.1f;
+        }
+
+        if (l.CongestionMin <= 0)
+        {
+            l.CongestionMin = 10;
+        }
+
+        if (!(l.MesoHeadwayScale > 0f))
+        {
+            l.MesoHeadwayScale = DefaultMesoHeadwayScale;
+        }
+
+        if (!(l.MesoAccelScale > 0f))
+        {
+            l.MesoAccelScale = 1f;
+        }
+
+        if (!(l.QueueHeadwayScale > 0f))
+        {
+            l.QueueHeadwayScale = DefaultQueueHeadwayScale;
+        }
+
+        return l;
+    }
+
+    internal static CreateStatus ValidateRouting(in ScenarioDesc desc)
+    {
+        RoutingDesc r = desc.Routing;
+        if (r.Levels < 0 || r.Levels > Routing.Overlay.MaxLevels || r.Fanout < 0 || r.Fanout == 1 || r.Fanout > Routing.Overlay.MaxFanout ||
+            !NonNegative(r.CellSize) || (r.WindowSteps != 0 && (r.WindowSteps < 8 || r.WindowSteps > 32)) ||
+            !InRange(r.PathfindBudgetPerTick, 0) || r.WorkBudgetPerTick < 0 || r.CustomizeBudgetPerTick < 0 ||
+            !NonNegative(r.CustomizeEps) || r.CostRecalcTicks < 0 || !NonNegative(r.TimedDrift) || r.TimedDriftAbsTicks < 0 ||
+            desc.Capacities.MaxPlanSteps < 0 || desc.Capacities.MaxPlanSteps > MaxPlanStepsCapacity || r.QueryWorkCap < 0 ||
+            (long)desc.Capacities.MaxRoutes * (r.WindowSteps == 0 ? 16 : r.WindowSteps) > MaxWindowCells)
+        {
+            return CreateStatus.InvalidCapacity;
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    internal static RoutingDesc WithDefaults(RoutingDesc r)
+    {
+        if (r.Fanout <= 0)
+        {
+            r.Fanout = 4;
+        }
+
+        if (!(r.CellSize > 0f))
+        {
+            r.CellSize = 1000f;
+        }
+
+        if (r.WindowSteps <= 0)
+        {
+            r.WindowSteps = 16;
+        }
+
+        if (r.WorkBudgetPerTick <= 0)
+        {
+            r.WorkBudgetPerTick = (int)Math.Min(int.MaxValue, 1500L * r.PathfindBudgetPerTick);
+        }
+
+        if (r.CustomizeBudgetPerTick <= 0)
+        {
+            r.CustomizeBudgetPerTick = 10000;
+        }
+
+        if (!(r.CustomizeEps > 0f))
+        {
+            r.CustomizeEps = 0.05f;
+        }
+
+        if (r.CostRecalcTicks <= 0)
+        {
+            r.CostRecalcTicks = Routing.RoutePhase.DefaultCostRecalcTicks;
+        }
+
+        if (!(r.TimedDrift > 0f))
+        {
+            r.TimedDrift = 0.15f;
+        }
+
+        if (r.TimedDriftAbsTicks <= 0)
+        {
+            r.TimedDriftAbsTicks = 400;
+        }
+
+        return r;
     }
 
     public static void SyncStructuralCounters(World w)
@@ -231,7 +438,7 @@ internal static class WorldBuilder
         w.Counters.ActiveVehicles = w.Vehicles.AliveCount;
     }
 
-    private static CreateStatus ValidateCapacities(in SimCapacities c)
+    internal static CreateStatus ValidateCapacities(in SimCapacities c)
     {
         // Обязательные (> 0).
         if (!InRange(c.MaxVehicles, 1) || !InRange(c.MaxNodes, 1) || !InRange(c.MaxSegments, 1) || !InRange(c.MaxLanes, 1) ||
@@ -243,8 +450,7 @@ internal static class WorldBuilder
 
         // Необязательные (>= 0).
         if (!InRange(c.MaxZones, 0) || !InRange(c.MaxBusRoutes, 0) || !InRange(c.MaxBusStops, 0) ||
-            !InRange(c.MaxBusStopsPerRoute, 0) || !InRange(c.MaxRoutes, 0) || c.MaxRouteSteps < 0 || c.MaxRouteSteps > MaxRouteStepsCapacity ||
-            !InRange(c.PathfindBudgetPerTick, 0) || !InRange(c.MaxSignalizedNodes, 0))
+            !InRange(c.MaxBusStopsPerRoute, 0) || !InRange(c.MaxRoutes, 0) || !InRange(c.MaxSignalizedNodes, 0))
         {
             return CreateStatus.InvalidCapacity;
         }
@@ -260,7 +466,7 @@ internal static class WorldBuilder
 
     private static bool InRange(int v, int min) => v >= min && v <= MaxCapacity;
 
-    private static CreateStatus ValidateVehicleTypes(VehicleTypeDesc[]? types)
+    internal static CreateStatus ValidateVehicleTypes(VehicleTypeDesc[]? types)
     {
         if (types == null || types.Length == 0 || types.Length > MaxVehicleTypes)
         {
@@ -282,7 +488,7 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    private static CreateStatus ValidateDemand(in ScenarioDesc desc)
+    internal static CreateStatus ValidateDemand(in ScenarioDesc desc)
     {
         DemandDesc d = desc.Demand;
         if (d.TargetVehicles < 0 || d.SpawnRampTicks < 0)
@@ -329,7 +535,7 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
-    private static CreateStatus ValidateTransit(in ScenarioDesc desc)
+    internal static CreateStatus ValidateTransit(in ScenarioDesc desc)
     {
         TransitDesc t = desc.Transit;
         int explicitRoutes = t.RoutesExplicit?.Length ?? 0;
@@ -348,7 +554,7 @@ internal static class WorldBuilder
     }
 
     /// <summary>Нулевые поля правил (desc, собранный вручную в тестах) заменяются значениями по умолчанию из спеки.</summary>
-    private static RulesDesc WithDefaults(RulesDesc r)
+    internal static RulesDesc WithDefaults(RulesDesc r)
     {
         if (!(r.MinPhysicalGap > 0f))
         {
@@ -393,6 +599,41 @@ internal static class WorldBuilder
         if (r.MaxYieldWaitTicks <= 0)
         {
             r.MaxYieldWaitTicks = Rules.Intersections.GateRules.DefaultMaxYieldWaitTicks;
+        }
+
+        if (r.SignalMinGreenTicks <= 0)
+        {
+            r.SignalMinGreenTicks = Rules.Intersections.SignalStore.DefaultMinGreenTicks;
+        }
+
+        if (r.SignalMaxGreenTicks <= 0)
+        {
+            r.SignalMaxGreenTicks = Rules.Intersections.SignalStore.DefaultMaxGreenTicks;
+        }
+
+        if (r.SignalGapTicks <= 0)
+        {
+            r.SignalGapTicks = Rules.Intersections.SignalStore.DefaultGapTicks;
+        }
+
+        if (r.SignalArrowTriggerTicks <= 0)
+        {
+            r.SignalArrowTriggerTicks = Rules.Intersections.SignalStore.DefaultArrowTriggerTicks;
+        }
+
+        if (r.SignalArrowMinTicks <= 0)
+        {
+            r.SignalArrowMinTicks = Rules.Intersections.SignalStore.DefaultArrowMinTicks;
+        }
+
+        if (r.SignalArrowMaxTicks <= 0)
+        {
+            r.SignalArrowMaxTicks = Rules.Intersections.SignalStore.DefaultArrowMaxTicks;
+        }
+
+        if (r.SignalArrowGapTicks <= 0)
+        {
+            r.SignalArrowGapTicks = Rules.Intersections.SignalStore.DefaultArrowGapTicks;
         }
 
         return r;

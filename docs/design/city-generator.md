@@ -261,6 +261,11 @@ internal struct SignalPlanSeed
   вдоль каждой горизонтальной артерии при движении с `ArterialSpeed` (600 м / 16.7 м/с = 36 с).
 - Т-узел / крест улица→артерия при `AllArterial`: фаза 0 — рукава артерии (`MajorGreenTicks`),
   фаза 1 — рукава улицы (`MinorGreenTicks`); `OffsetTicks` — по тому же правилу.
+- **2.5 (ADR-0018):** `SignalPlanSeed` дополняется `Mode` (`city.signal_mode`: `adaptive` — дефолт, `fixed`) и `CycleTicks`.
+  Офсеты по `city.signal_coordination`: `alternate` (дефолт) — `intersections.md` §6.7 (`C = 2T`, `Offset = ((x−x₀)+(z−z₀))/v_p mod C`,
+  `Fixed`: `Green = C/2 − Yellow − AllRed`); `legacy` — правило выше (golden-хэши этапа 1/2.4); `none` — `Offset = 0`, без цикла.
+  PRNG не трогается (§3.9 не меняется). Реализация S3 (подробности и замеры - `intersections.md` §6.5/§14.0): дефолт сценария пока `legacy`; `SignalPlanSeed.CycleTicks` (координация только у `Adaptive` артерия x артерия),
+  `city.progression_speed_factor`, знак офсета `-d/v_p`.
 - Состав фаз (какие connector'ы зелёные, разрешённые левые) — спека перекрёстков (`SignalStore`,
   core-api §6.7); `WorldBuilder` передаёт `SignalPlans` туда. До появления шага 3 `SignalPlans`
   просто хранится в результате, а `NodeData.Signal = -1`.
@@ -584,6 +589,6 @@ scenario-format §2.2 и дефолтным `CityGenDesc` (seed `20261024`), е�
 5. **Счётчики**: `RemovedStreets` = удалено минус восстановлено; `SegmentCount = 2N(N+1) − RemovedStreets − MergedNodes`.
 6. **Светофоры**: фазы привязаны к оси, а не к «артерии»: `Green0` — рукава оси X, `Green1` — оси Z. Т-узел при `AllArterial`: артерия вдоль X → `(Major, Minor)`, вдоль Z → `(Minor, Major)`. Цикл `= Green0 + Green1 + 2·(Yellow + AllRed)`. `ia` для смещения = число артериальных колонок строго левее колонки узла. При `AllArterial` узел артерии, потерявший обе улицы (2 рукава), управления `None` — число светофоров может быть < `2·A·(N+1) − A²` (s1k: 181 из 185).
 7. **Connector'ы**: реально ≈10 на узел (s1k: 4 328, 38.5 k точек), оценки §4 завышены (≈12/узел).
-8. **Зоны**: `ZoneData.HubNode` — ближайший к центру зоны узел среди узлов зоны (`NodeData.Zone`), ничья — меньший индекс; для зоны без узлов — ближайший по всей сети. `ZoneLanes` лежат в порядке индексов зон. Результат — `GenZones` (`Zones`, `ZoneLanes`), также выставляются `NodeData.Zone` и `NetworkStore.ZoneCount`.
+8. **Зоны**: (`ZoneData.HubNode` удалён в H3 вместе с кэшем магистралей, routing.md §15.) `ZoneLanes` лежат в порядке индексов зон. Результат — `GenZones` (`Zones`, `ZoneLanes`), также выставляются `NodeData.Zone` и `NetworkStore.ZoneCount`.
 9. **Маршруты**: метка посещения `VisitStamp` уникальна на **попытку** (а не на маршрут), иначе провалившаяся попытка портит следующую. Буфер пути — `SegmentCount` (длина маршрута фактически ограничена `targetLen`). Число промежуточных остановок жёстко ограничено `min(StopsMax, MaxBusStopsPerRoute) − 1`. Результат — `GenTransit` (`Routes`, `Stops`, `RouteStops`, а также `PathSeg/PathDir/PathFirst/PathCount` — рёбра маршрута).
 10. **Статусы**: невалидный `CityGenDesc` → `CreateStatus.InvalidNetwork` из `Generate` (исключение бросает `Create`).

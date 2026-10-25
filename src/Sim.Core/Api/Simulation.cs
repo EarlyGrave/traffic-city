@@ -4,11 +4,14 @@ using Sim.Core.Network;
 
 namespace Sim.Core.Api;
 
+/// <summary>Зонд конца фазы: номер фазы core-api §7 (1..10). Вызывается из <see cref="Simulation.Step"/>; не должен бросать исключений.</summary>
+public delegate void PhaseProbe(int phase);
+
 /// <summary>
 /// Фасад ядра (core-api 3): единственная публичная точка входа. Однопоточный; снапшоты (спаны) валидны до следующего
 /// <see cref="Step"/>. После <see cref="Dispose"/> любой вызов - no-op (спаны пусты, запросы возвращают false).
 /// </summary>
-public sealed class Simulation : IDisposable
+public sealed partial class Simulation : IDisposable
 {
     public const float Dt = 0.05f;
     public const int TicksPerSecond = 20;
@@ -25,9 +28,13 @@ public sealed class Simulation : IDisposable
 
     /// <summary>Валидирует desc, выделяет ВСЕ буферы, строит сеть. Единственное место с исключениями.</summary>
     /// <exception cref="ArgumentException">desc не прошёл валидацию (см. <see cref="CreateStatus"/>).</exception>
-    public static Simulation Create(in ScenarioDesc desc)
+    public static Simulation Create(in ScenarioDesc desc) => Create(in desc, default);
+
+    /// <summary>То же с параметрами среды (число потоков, ADR-0017); результат симуляции от них не зависит.</summary>
+    /// <exception cref="ArgumentException">desc не прошёл валидацию (см. <see cref="CreateStatus"/>).</exception>
+    public static Simulation Create(in ScenarioDesc desc, in SimRuntimeOptions options)
     {
-        CreateStatus st = TryCreate(in desc, out Simulation? sim);
+        CreateStatus st = TryCreate(in desc, in options, out Simulation? sim);
         if (st != CreateStatus.Ok || sim == null)
         {
             throw new ArgumentException($"ScenarioDesc rejected: {st}", nameof(desc));
@@ -37,12 +44,16 @@ public sealed class Simulation : IDisposable
     }
 
     /// <summary>То же без исключений (FFI, хост с кодом ошибки).</summary>
-    public static CreateStatus TryCreate(in ScenarioDesc desc, out Simulation? sim)
+    public static CreateStatus TryCreate(in ScenarioDesc desc, out Simulation? sim) => TryCreate(in desc, default, out sim);
+
+    /// <summary>То же с параметрами среды (число потоков, ADR-0017).</summary>
+    public static CreateStatus TryCreate(in ScenarioDesc desc, in SimRuntimeOptions options, out Simulation? sim)
     {
         sim = null;
         CreateStatus st = WorldBuilder.Create(in desc, out World? w);
         if (st == CreateStatus.Ok && w != null)
         {
+            w.StartWorkers(options.WorkerThreads);
             sim = new Simulation(w);
         }
 
@@ -52,6 +63,7 @@ public sealed class Simulation : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _w.Dispose();
     }
 
     /// <summary>Внутренний доступ для тестов и бенчей (InternalsVisibleTo).</summary>
@@ -73,10 +85,13 @@ public sealed class Simulation : IDisposable
         World w = _w;
         w.EventCount = 0;
         w.EventsOverflowed = false;
+        w.Pool?.Wake();
         for (int t = 0; t < ticks; t++)
         {
             PhaseList.RunTick(w);
         }
+
+        w.Pool?.Rest();
     }
 
     /// <summary>false = очередь полна (команда отброшена, <c>CommandsDropped++</c>) либо симуляция освобождена.</summary>
@@ -103,22 +118,46 @@ public sealed class Simulation : IDisposable
     /// <summary>Тик, которому соответствует <see cref="Vehicles"/> (после каждого Step равен <see cref="Tick"/>).</summary>
     public long SnapshotTick => _disposed ? 0 : _w.SnapshotTick;
 
-    /// <summary>Длина ровно MaxVehicles, индекс = слот; неживые слоты - нули.</summary>
-    public ReadOnlySpan<VehicleRenderData> Vehicles => _disposed ? default : _w.Render[(int)(_w.SnapshotTick & 1)];
+    /// <summary>Длина = HighWater пула на SnapshotTick (до первого Step пусто), индекс = слот; неживые слоты - нули.</summary>
+    public ReadOnlySpan<VehicleRenderData> Vehicles => _disposed ? default : SnapshotSpan((int)(_w.SnapshotTick & 1));
 
-    /// <summary>Состояние на SnapshotTick - 1.</summary>
-    public ReadOnlySpan<VehicleRenderData> PreviousVehicles => _disposed ? default : _w.Render[(int)((_w.SnapshotTick + 1) & 1)];
+    /// <summary>Состояние на SnapshotTick - 1 (после первого Step пусто); длина не больше <see cref="Vehicles"/>.</summary>
+    public ReadOnlySpan<VehicleRenderData> PreviousVehicles => _disposed ? default : SnapshotSpan((int)((_w.SnapshotTick + 1) & 1));
+
+    private ReadOnlySpan<VehicleRenderData> SnapshotSpan(int buffer) => new(_w.Render[buffer], 0, _w.SnapshotSlots[buffer]);
+
+    /// <summary>
+    /// Вид снапшота (ADR-0019, core-api 5): со следующего <c>Step</c> фаза 10 пишет только машины полос, чей ограничивающий прямоугольник пересекает
+    /// прямоугольник (мировые координаты, м; границы упорядочиваются), остальные слоты - нули (<c>Flags = 0</c>). Длина <see cref="Vehicles"/> не меняется.
+    /// Не команда и не в хэше. Нечисловые координаты = вид «всё». Вызывать между <c>Step</c>.
+    /// </summary>
+    public void SetRenderView(float x0, float z0, float x1, float z1)
+    {
+        if (!_disposed)
+        {
+            _w.RenderView.Set(x0, z0, x1, z1);
+        }
+    }
+
+    /// <summary>Вид «всё» (по умолчанию): фаза 10 пишет все живые слоты.</summary>
+    public void SetRenderViewAll()
+    {
+        if (!_disposed)
+        {
+            _w.RenderView.SetAll();
+        }
+    }
 
     public int ActiveVehicleCount => _disposed ? 0 : _w.Vehicles.AliveCount;
 
-    public ReadOnlySpan<SegmentLoad> SegmentLoads => _disposed ? default : _w.SegmentLoads;
+    public ReadOnlySpan<SegmentLoad> SegmentLoads => _disposed ? default : _w.EnsureSegmentLoads();
 
     public ReadOnlySpan<SignalState> SignalStates =>
         _disposed ? default : new ReadOnlySpan<SignalState>(_w.SignalStates, 0, _w.SignalCount);
 
     public ReadOnlySpan<byte> LaneSignals => _disposed ? default : _w.LaneSignals;
 
-    /// <summary>Маршрут выбранной машины (срез арены маршрутов); пуст, если ничего не выбрано или маршрута нет.</summary>
+    /// <summary>Окно маршрута выбранной машины (срез массива окон; впереди ≤ 8 сегментов, хвост плана наружу не отдаётся); пуст, если ничего не выбрано или маршрута нет.</summary>
     public RouteView SelectedRoute
     {
         get
@@ -136,7 +175,7 @@ public sealed class Simulation : IDisposable
             }
 
             var rh = new RouteHandle(route, _w.Vehicles.RouteGen[i]);
-            ReadOnlySpan<RouteStep> steps = _w.Routes.GetSteps(rh);
+            ReadOnlySpan<RouteStep> steps = _w.Routes.GetWindow(rh);
             return steps.IsEmpty ? default : new RouteView(_w.Selected, steps, _w.Vehicles.RouteCursor[i]);
         }
     }
@@ -155,6 +194,17 @@ public sealed class Simulation : IDisposable
             // После Dispose счётчики остаются читаемыми (мир не освобождается явно, GC соберёт).
             return ref _w.Counters;
         }
+    }
+
+    /// <summary>Копирует ожидание у светофоров по манёврам (монотонное, с начала симуляции) в <paramref name="dst"/>.</summary>
+    public void CopySignalMetrics(SignalMetrics dst) => _w.SignalWait.CopyTo(dst);
+
+    /// <summary>Начало окна замера: обнуляет немонотонный максимум <c>SignalLeftWaitMax</c> (остальные счётчики берутся разностью).</summary>
+    public void ResetSignalWindow()
+    {
+        _w.Counters.SignalLeftWaitMax = 0;
+        _w.Counters.StillMaxTicks = 0;
+        _w.Counters.StillConcurrent60Max = 0;
     }
 
     public void GetStats(out SimStats stats)
@@ -183,11 +233,6 @@ public sealed class Simulation : IDisposable
             stats.BusHeadwayDeviationS = (float)(c.BusHeadwayDeviationTicksTotal * (double)Dt / c.BusHeadwaySamples);
         }
 
-        if (c.PathfindQueries > 0)
-        {
-            stats.PathfindCacheHitRate = (float)((double)c.PathfindCacheHits / c.PathfindQueries);
-        }
-
         if (c.VehicleTicksTotal > 0)
         {
             // Жёстких клэмпов на машино-минуту.
@@ -199,6 +244,21 @@ public sealed class Simulation : IDisposable
     public ReadOnlySpan<uint> NodeThroughput => _disposed ? default : _w.NodeThroughput;
 
     public ReadOnlySpan<BusRouteStats> BusRouteStats => _disposed ? default : _w.BusRouteStats;
+
+    // ---- профилирование (core-api §3, routing.md §8) ----
+
+    /// <summary>
+    /// Зонд: вызывается после каждой из фаз 1..10 тика (подфазы 2b/4a/4b/8b - в составе своих номеров). По умолчанию null - ядро только
+    /// проверяет поле. Ядро время не читает: длительность фаз меряет хост. Делегат задаётся один раз, аллокаций в <see cref="Step"/> нет.
+    /// </summary>
+    public PhaseProbe? OnPhaseEnd
+    {
+        get => _w.PhaseProbe;
+        set => _w.PhaseProbe = value;
+    }
+
+    /// <summary>Счётчики работы горячего пути (ADR-0016): детерминированы, не входят в хэш. Монотонные; хост берёт разности.</summary>
+    public ref readonly SimWork Work => ref _w.Work;
 
     // ---- детерминизм ----
 

@@ -25,14 +25,16 @@ public class ScenarioLoaderTests
 
     private const string Caps = """
         "capacities": { "max_vehicles": 64, "max_nodes": 8, "max_segments": 8, "max_lanes": 64, "max_lane_points": 512,
-          "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64, "max_route_steps": 4096,
-          "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1 }
+          "max_zones": 4, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 64,
+          "max_plan_steps": 2048, "max_pending_trips": 64, "max_signalized_nodes": 1 }
         """;
 
+    private static readonly float[] _tourX = { 0f, 100f };
+    private static readonly float[] _tourZ = { 0f, 200f };
     private static readonly float[] _onlyCar = { 1f, 0f };
     private static readonly float[] _carThreeBusOne = { 3f, 1f };
 
-    private static string Minimal(string extra = "", string version = "1") =>
+    private static string Minimal(string extra = "", string version = "2") =>
         "{ \"format_version\": " + version + ", \"seed\": 7, \"duration_s\": 10, \"vehicles\": { \"count\": 5 }, "
         + Caps + (extra.Length > 0 ? ", " + extra : string.Empty) + " }";
 
@@ -90,6 +92,9 @@ public class ScenarioLoaderTests
         Assert.Equal(14, d.Transit.StopsPerRouteMax);
         Assert.Equal(160, d.Transit.DwellBaseTicks);
         Assert.Equal(30f, d.Transit.DwellPerPassengerTicks);
+        Assert.Equal(0.9f, d.Transit.HoldAlpha);
+        Assert.Equal(1200, d.Transit.HoldMaxTicks);
+        Assert.Equal(1, d.Transit.HoldEveryN);
         Assert.Equal(1200, d.Rules.StuckThresholdTicks);
         Assert.Equal(60, d.Rules.DefaultYellowTicks);
         Assert.Equal(20, d.Rules.DefaultAllRedTicks);
@@ -181,20 +186,111 @@ public class ScenarioLoaderTests
     }
 
     [Theory]
-    [InlineData("s1k", 8192, 262144, 700, 1000)]
-    [InlineData("s10k", 32000, 4000000, 2800, 10000)]
-    [InlineData("s100k", 250000, 40000000, 17000, 100000)]
-    [InlineData("s1m", 1300000, 128000000, 170000, 1000000)]
-    public void LadderCapacities(string name, int routes, int steps, int nodes, int vehicles)
+    [InlineData("s1k", 8192, 81920, 700, 1000)]
+    [InlineData("s10k", 32000, 640000, 2800, 10000)]
+    [InlineData("s100k", 250000, 7000000, 17000, 100000)]
+    [InlineData("s1m", 1300000, 47000000, 170000, 1000000)]
+    public void LadderCapacities(string name, int routes, int planSteps, int nodes, int vehicles)
     {
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
         Assert.Equal(routes, d.Capacities.MaxRoutes);
-        Assert.Equal(steps, d.Capacities.MaxRouteSteps);
+        Assert.Equal(planSteps, d.Capacities.MaxPlanSteps);
         Assert.Equal(nodes, d.Capacities.MaxNodes);
         Assert.Equal(nodes * 16, d.Capacities.MaxConnectors);
         Assert.Equal(nodes * 16 * 6, d.Capacities.MaxConflicts);
         Assert.Equal(400, d.Rules.MaxYieldWaitTicks);
         Assert.Equal(vehicles, d.Demand.TargetVehicles);
+    }
+
+    [Theory]
+    [InlineData("s1k", 1, 32, 48000, 10000, 600)]
+    [InlineData("s10k", 1, 128, 192000, 20000, 600)]
+    [InlineData("s100k", 2, 512, 400000, 100000, 600)]
+    [InlineData("s1m", 3, 2048, 2000000, 2000000, 2400)]
+    public void LadderRouting(string name, int levels, int pathfind, int work, int customize, int recalcTicks)
+    {
+        ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
+        RoutingDesc r = d.Routing;
+        Assert.Equal(levels, r.Levels);
+        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(4, r.Fanout);
+        Assert.Equal(16, r.WindowSteps);
+        Assert.Equal(pathfind, r.PathfindBudgetPerTick);
+        Assert.Equal(work, r.WorkBudgetPerTick);
+        Assert.Equal(customize, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.05f, r.CustomizeEps);
+        Assert.Equal(recalcTicks, r.CostRecalcTicks);
+        Assert.Equal(0.15f, r.TimedDrift);
+        Assert.Equal(400, r.TimedDriftAbsTicks);
+    }
+
+    [Fact]
+    public void RoutingDefaultsWhenSectionAbsent()
+    {
+        RoutingDesc r = Load(Minimal()).Routing;
+        Assert.Equal(1, r.Levels);
+        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(4, r.Fanout);
+        Assert.Equal(16, r.WindowSteps);
+        Assert.Equal(32, r.PathfindBudgetPerTick);
+        Assert.Equal(1500 * 32, r.WorkBudgetPerTick);
+        Assert.Equal(10000, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.05f, r.CustomizeEps);
+        Assert.Equal(600, r.CostRecalcTicks);
+        Assert.Equal(0.15f, r.TimedDrift);
+        Assert.Equal(400, r.TimedDriftAbsTicks);
+    }
+
+    [Fact]
+    public void RoutingKeysAreReadWithUnits()
+    {
+        RoutingDesc r = Load(Minimal(
+            "\"routing\": { \"levels\": 3, \"cell_m\": 300, \"fanout\": 2, \"window_steps\": 12, \"pathfind_budget_per_tick\": 5, "
+            + "\"customize_budget_per_tick\": 77, \"customize_eps\": 0.1, \"cost_recalc_s\": 15, \"timed_drift\": 0.3, \"timed_drift_abs_s\": 10 }"))
+            .Routing;
+        Assert.Equal(3, r.Levels);
+        Assert.Equal(300f, r.CellSize);
+        Assert.Equal(2, r.Fanout);
+        Assert.Equal(12, r.WindowSteps);
+        Assert.Equal(5, r.PathfindBudgetPerTick);
+        Assert.Equal(7500, r.WorkBudgetPerTick); // дефолт 1500 * pathfind_budget_per_tick
+        Assert.Equal(77, r.CustomizeBudgetPerTick);
+        Assert.Equal(0.1f, r.CustomizeEps);
+        Assert.Equal(300, r.CostRecalcTicks);
+        Assert.Equal(0.3f, r.TimedDrift);
+        Assert.Equal(200, r.TimedDriftAbsTicks);
+
+        ScenarioDesc d = Load(Minimal("\"routing\": { \"levels\": 0, \"work_budget_per_tick\": 9 }"));
+        Assert.Equal(0, d.Routing.Levels);
+        Assert.Equal(9, d.Routing.WorkBudgetPerTick);
+    }
+
+    [Fact]
+    public void RoutingErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"routing\": { \"levels\": 5 }"));
+        Assert.Contains("$.routing.levels", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"fanout\": 1 }"));
+        Assert.Contains("$.routing.fanout", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"window_steps\": 40 }"));
+        Assert.Contains("$.routing.window_steps", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"routing\": { \"cell_mm\": 1 }"));
+        Assert.Contains("$.routing.cell_mm", e.Message, StringComparison.Ordinal);
+
+        // pathfind_budget_per_tick переехал из capacities в routing (format_version 2).
+        e = Fails(Minimal().Replace("\"max_nodes\": 8", "\"max_nodes\": 8, \"pathfind_budget_per_tick\": 8", StringComparison.Ordinal));
+        Assert.Contains("$.capacities.pathfind_budget_per_tick", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaxPlanStepsDefaultsFromRoutesAndLevels()
+    {
+        string noPlan = Minimal().Replace("\"max_plan_steps\": 2048, ", string.Empty, StringComparison.Ordinal);
+        Assert.Equal(64 * (12 + 8), Load(noPlan).Capacities.MaxPlanSteps);
+        Assert.Equal(64 * (12 + 24), Load(noPlan.Replace("\"capacities\"", "\"routing\": { \"levels\": 3 }, \"capacities\"", StringComparison.Ordinal)).Capacities.MaxPlanSteps);
+        Assert.Equal(2048, Load(Minimal()).Capacities.MaxPlanSteps);
+        ScenarioException e = Fails(Minimal().Replace("\"max_plan_steps\": 2048", "\"max_plan_steps\": 300000000", StringComparison.Ordinal));
+        Assert.Contains("$.capacities.max_plan_steps", e.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -223,6 +319,23 @@ public class ScenarioLoaderTests
     {
         Assert.Equal(0f, Load(Minimal("\"city\": { \"scale\": 1.0 }")).City.NodeJitter);
         Assert.Equal(5f, Load(Minimal("\"city\": { \"node_jitter_m\": 5 }")).City.NodeJitter);
+    }
+
+    [Fact]
+    public void City_SignalModeAndCoordination_DefaultsAndErrors()
+    {
+        CityGenDesc c = Load(Minimal("\"city\": { \"scale\": 1.0 }")).City;
+        Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);   // 2.5 S2: дефолт спеки
+        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);   // 2.5 S3: alternate - опция, дефолт legacy
+        c = Load(Minimal("\"city\": { \"signal_mode\": \"fixed\", \"signal_coordination\": \"legacy\" }")).City;
+        Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
+        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);
+        Assert.Equal(CitySignalCoordination.Alternate, Load(Minimal("\"city\": { \"signal_coordination\": \"alternate\" }")).City.SignalCoordination);
+        Assert.Equal(CitySignalCoordination.None, Load(Minimal("\"city\": { \"signal_coordination\": \"none\" }")).City.SignalCoordination);
+        c = Load(Minimal("\"city\": { \"signal_mode\": \"adaptive\" }")).City;
+        Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);
+        Assert.Contains("$.city.signal_coordination", Fails(Minimal("\"city\": { \"signal_coordination\": \"x\" }")).Message, StringComparison.Ordinal);
+        Assert.Contains("expected", Fails(Minimal("\"city\": { \"signal_mode\": \"x\" }")).Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -269,13 +382,13 @@ public class ScenarioLoaderTests
     [Fact]
     public void WrongFormatVersionIsError()
     {
-        ScenarioException e = Fails(Minimal(version: "2"));
+        ScenarioException e = Fails(Minimal(version: "1")); // формат 1 больше не принимается (ADR-0009)
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
 
         e = Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(Minimal(), Types.Replace("\"format_version\": 1", "\"format_version\": 9", StringComparison.Ordinal)));
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
 
-        e = Fails(Minimal().Replace("\"format_version\": 1, ", string.Empty, StringComparison.Ordinal));
+        e = Fails(Minimal().Replace("\"format_version\": 2, ", string.Empty, StringComparison.Ordinal));
         Assert.Contains("$.format_version", e.Message, StringComparison.Ordinal);
     }
 
@@ -325,5 +438,119 @@ public class ScenarioLoaderTests
 
         code = ValidateCommand.Run(["validate"], ok, err);
         Assert.Equal(2, code);
+    }
+
+    [Fact]
+    public void LodDefaultsWhenSectionAbsent_ModeOff()
+    {
+        LodDesc l = Load(Minimal()).Lod;
+        Assert.Equal(LodMode.Off, l.Mode);
+        Assert.Equal(1000f, l.CellM);
+        Assert.Equal(15000, l.MicroBudget);
+        Assert.Equal(100, l.EvalTicks);
+        Assert.Equal(600, l.HoldTicks);
+        Assert.Equal(1, l.FocusMarginCells);
+        Assert.True(l.FollowSelected);
+        Assert.True(l.FocusCommands);
+        Assert.Equal(0.1f, l.CongestionShare);
+        Assert.Equal(10, l.CongestionMin);
+        Assert.Equal(0.8f, l.MesoHeadwayScale);
+        Assert.Equal(1f, l.MesoAccelScale);
+        Assert.Null(l.Focus);
+        Assert.Null(l.Pinned);
+        Assert.Equal(0, l.Tour.PeriodTicks);
+
+        // Пустая секция - те же дефолты, режим off.
+        Assert.Equal(LodMode.Off, Load(Minimal("\"lod\": { }")).Lod.Mode);
+    }
+
+    [Fact]
+    public void LodKeysAreReadWithUnits()
+    {
+        LodDesc l = Load(Minimal(
+            "\"lod\": { \"mode\": \"auto\", \"cell_m\": 500, \"micro_budget\": 3000, \"eval_s\": 2, \"hold_s\": 10, "
+            + "\"focus_margin_cells\": 2, \"follow_selected\": false, \"focus_commands\": false, \"congestion_share\": 0.2, "
+            + "\"congestion_min\": 7, \"meso_headway_scale\": 1.1, \"meso_accel_scale\": 0.9, "
+            + "\"focus\": [ { \"x\": 10, \"z\": 20, \"radius_m\": 1500 } ], "
+            + "\"pinned\": [ { \"x\": 1, \"z\": 2, \"radius_m\": 0 }, { \"x\": 3, \"z\": 4, \"radius_m\": 5 } ], "
+            + "\"tour\": { \"period_s\": 10, \"radius_m\": 1500, \"path\": [[0, 0], [100, 200]] } }")).Lod;
+        Assert.Equal(LodMode.Auto, l.Mode);
+        Assert.Equal(500f, l.CellM);
+        Assert.Equal(3000, l.MicroBudget);
+        Assert.Equal(40, l.EvalTicks);
+        Assert.Equal(200, l.HoldTicks);
+        Assert.Equal(2, l.FocusMarginCells);
+        Assert.False(l.FollowSelected);
+        Assert.False(l.FocusCommands);
+        Assert.Equal(0.2f, l.CongestionShare);
+        Assert.Equal(7, l.CongestionMin);
+        Assert.Equal(1.1f, l.MesoHeadwayScale);
+        Assert.Equal(0.9f, l.MesoAccelScale);
+        Assert.Single(l.Focus!);
+        Assert.Equal(10f, l.Focus![0].X);
+        Assert.Equal(20f, l.Focus[0].Z);
+        Assert.Equal(1500f, l.Focus[0].RadiusM);
+        Assert.Equal(2, l.Pinned!.Length);
+        Assert.Equal(4f, l.Pinned[1].Z);
+        Assert.Equal(200, l.Tour.PeriodTicks);
+        Assert.Equal(1500f, l.Tour.RadiusM);
+        Assert.Equal(_tourX, l.Tour.PathX);
+        Assert.Equal(_tourZ, l.Tour.PathZ);
+
+        Assert.Equal(LodMode.AllMeso, Load(Minimal("\"lod\": { \"mode\": \"all_meso\" }")).Lod.Mode);
+        Assert.Equal(LodMode.Off, Load(Minimal("\"lod\": { \"mode\": \"off\", \"cell_m\": 250 }")).Lod.Mode);
+        Assert.Equal(MesoModel.Kinematic, Load(Minimal("\"lod\": { \"mode\": \"all_meso\" }")).Lod.MesoModel);
+        LodDesc q = Load(Minimal("\"lod\": { \"mode\": \"all_meso\", \"meso_model\": \"queue\", \"queue_headway_scale\": 0.7 }")).Lod;
+        Assert.Equal(MesoModel.Queue, q.MesoModel);
+        Assert.Equal(0.7f, q.QueueHeadwayScale);
+    }
+
+    [Fact]
+    public void LodQueueModel_ErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"lod\": { \"mode\": \"all_meso\", \"meso_model\": \"cells\" }"));
+        Assert.Contains("$.lod.meso_model", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"mode\": \"auto\", \"meso_model\": \"queue\" }"));
+        Assert.Contains("$.lod.meso_model", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LodErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"lod\": { \"mode\": \"fast\" }"));
+        Assert.Contains("$.lod.mode", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"cell_m\": 0 }"));
+        Assert.Contains("$.lod.cell_m", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"micro_budget\": -1 }"));
+        Assert.Contains("$.lod.micro_budget", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"congestion_share\": 1.5 }"));
+        Assert.Contains("$.lod.congestion_share", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"follow_selected\": 1 }"));
+        Assert.Contains("$.lod.follow_selected", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"cell_mm\": 1 }"));
+        Assert.Contains("$.lod.cell_mm", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"focus\": [ { \"x\": 1, \"z\": 2 } ] }"));
+        Assert.Contains("$.lod.focus[0].radius_m", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"focus\": [ { \"x\": 1, \"z\": 2, \"radius_m\": 3, \"y\": 0 } ] }"));
+        Assert.Contains("$.lod.focus[0].y", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"pinned\": [ {\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1}, "
+            + "{\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1} ] }"));
+        Assert.Contains("$.lod.pinned", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"period_s\": 5, \"radius_m\": 100, \"path\": [] } }"));
+        Assert.Contains("$.lod.tour.path", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"period_s\": 5, \"radius_m\": 100, \"path\": [[1]] } }"));
+        Assert.Contains("$.lod.tour.path[0]", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"radius_m\": 100, \"path\": [[1, 2]] } }"));
+        Assert.Contains("$.lod.tour.period_s", e.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("s1k")]
+    [InlineData("s10k")]
+    public void LadderScenariosWithoutLodSection_AreModeOff(string name)
+    {
+        // До шага L5 лестница без секции lod: поведение и хэш прежние.
+        LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
+        Assert.Equal(LodMode.Off, sc.Desc.Lod.Mode);
     }
 }

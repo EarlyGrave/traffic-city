@@ -2,7 +2,8 @@
   "scenario": "s1k",
   "ticks": 2000,
   "warmup_ticks": 2400,
-  "commit": "ca21af6",
+  "threads": 1,
+  "commit": "d32717e",
   "environment": {
     "runtime": ".NET 10.0.13",
     "os": "Ubuntu 24.04.5 LTS",
@@ -11,98 +12,140 @@
   },
   "perf": {
     "tick_ms": {
-      "p50": 0.463105,
-      "p95": 0.630356,
-      "p99": 0.788756,
-      "max": 6.485105
+      "p50": 0.16274,
+      "p95": 0.291443,
+      "p99": 0.494192,
+      "max": 3.703227
+    },
+    "work_per_tick": {
+      "behaviour_vehicles": 998.579,
+      "leader_lookahead_hops": 1211.33,
+      "obstacle_gap_calls": 999.914,
+      "conflict_gap_calls_behaviour": 425.4565,
+      "conflict_gap_calls_integrate": 0,
+      "conflict_gap_mask_rejects": 313.5555,
+      "conflict_entries_scanned": 340.8,
+      "conflict_occupants_scanned": 82.5435,
+      "gate_candidates": 110.192,
+      "gate_trygrant_calls": 110.192,
+      "gate_trygrant_entries": 109.73,
+      "route_refill_checks": 7.0545,
+      "next_conn_recomputes": 6.4165,
+      "snapshot_slots": 1000.9965
     },
     "tick_ms_runs": [
       {
-        "p50": 0.463105,
-        "p95": 0.630356
+        "p50": 0.16274,
+        "p95": 0.291443
       },
       {
-        "p50": 0.370916,
-        "p95": 0.5394
+        "p50": 0.215925,
+        "p95": 0.400454
       },
       {
-        "p50": 0.47953,
-        "p95": 0.707112
+        "p50": 0.138112,
+        "p95": 0.191062
       }
     ],
-    "ticks_per_sec": 2241.7471574763736,
-    "vehicle_updates_per_sec": 2241489.3565532635,
+    "ticks_per_sec": 5517.041746105976,
+    "vehicle_updates_per_sec": 5516034.885987312,
     "alloc_bytes_per_tick": 0,
     "gc_gen0": 0,
     "gc_gen1": 0,
     "gc_gen2": 0,
-    "peak_memory_mb": 41.0859375,
-    "bytes_per_vehicle": 6996.124124124124,
+    "peak_memory_mb": 43.83203125,
+    "bytes_per_vehicle": 6796.512,
     "bytes_per_vehicle_note": "(GC.GetTotalMemory(true) after run - GC.GetTotalMemory(true) before Simulation.Create) / active vehicles at end",
-    "active_vehicles": 999,
-    "pathfind_queries": 2016,
+    "active_vehicles": 1000,
+    "active_vehicles_start": 998,
+    "target_vehicles": 1000,
+    "ramp_complete": true,
+    "warmup_ticks_actual": 2400,
+    "pathfind_queries": 1578,
     "pathfind_ms_p95": null,
     "pathfind_ms_p95_note": "core public API does not expose per-query search time"
   },
   "traffic": {
-    "avg_speed_kmh": 33.14376449584961,
-    "avg_trip_time_s": 155.60630798339844,
-    "trips_completed_per_min": 28.09090805053711,
+    "avg_speed_kmh": 33.354183197021484,
+    "avg_trip_time_s": 136.44509887695312,
+    "trips_completed_per_min": 58.3636360168457,
     "stuck_vehicles": 0,
     "gridlock_flag": false,
     "bus_headway_deviation_s": null,
     "top10_intersections": [
       {
-        "node": 55,
-        "total": 72,
-        "vehicles_per_min": 19.63636334375902
+        "node": 138,
+        "total": 89,
+        "vehicles_per_min": 24.272726911035456
       },
       {
-        "node": 54,
+        "node": 130,
+        "total": 77,
+        "vehicles_per_min": 20.99999968707562
+      },
+      {
+        "node": 134,
+        "total": 77,
+        "vehicles_per_min": 20.99999968707562
+      },
+      {
+        "node": 301,
+        "total": 77,
+        "vehicles_per_min": 20.99999968707562
+      },
+      {
+        "node": 213,
+        "total": 71,
+        "vehicles_per_min": 19.3636360750957
+      },
+      {
+        "node": 305,
+        "total": 70,
+        "vehicles_per_min": 19.09090880643238
+      },
+      {
+        "node": 385,
+        "total": 69,
+        "vehicles_per_min": 18.81818153776906
+      },
+      {
+        "node": 217,
+        "total": 67,
+        "vehicles_per_min": 18.272727000442423
+      },
+      {
+        "node": 51,
         "total": 66,
         "vehicles_per_min": 17.999999731779102
       },
       {
-        "node": 46,
-        "total": 65,
-        "vehicles_per_min": 17.72727246311578
-      },
-      {
-        "node": 47,
-        "total": 64,
-        "vehicles_per_min": 17.45454519445246
-      },
-      {
-        "node": 48,
-        "total": 63,
-        "vehicles_per_min": 17.181817925789144
-      },
-      {
-        "node": 51,
-        "total": 62,
-        "vehicles_per_min": 16.909090657125823
-      },
-      {
-        "node": 53,
-        "total": 62,
-        "vehicles_per_min": 16.909090657125823
-      },
-      {
-        "node": 56,
-        "total": 60,
-        "vehicles_per_min": 16.36363611979918
-      },
-      {
-        "node": 121,
-        "total": 59,
-        "vehicles_per_min": 16.090908851135865
-      },
-      {
-        "node": 43,
-        "total": 58,
-        "vehicles_per_min": 15.818181582472544
+        "node": 117,
+        "total": 66,
+        "vehicles_per_min": 17.999999731779102
       }
     ],
     "note": "traffic counters are cumulative since simulation start (include warmup)"
+  },
+  "routing": {
+    "pathfind_queries": 1578,
+    "pathfind_work": 1411655,
+    "pathfind_expanded_nodes": 286503,
+    "route_failed": 0,
+    "route_deferred": 0,
+    "reroutes": 107,
+    "timed_checks": 959,
+    "timed_triggered": 245,
+    "timed_reroutes": 70,
+    "plan_unpacks": 981,
+    "unpack_work": 46561,
+    "window_refills": 1492,
+    "refill_late": 0,
+    "plan_compactions": 0,
+    "cost_recalcs": 7,
+    "customize_rows": 1064,
+    "customize_work": 419832,
+    "customize_lag_ticks": 0,
+    "overlay_rebuilds": 0,
+    "overlay_disabled": 0
   }
 }

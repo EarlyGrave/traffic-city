@@ -17,33 +17,51 @@ internal static class ArrivalPhase
     public static void Run(World w)
     {
         // Буфер событий мира: пишем через общий счётчик; переполнение помечает Emit мира, поэтому здесь отдельный путь не нужен.
+        // Обход по маске прибывших (ADR-0019, A3): фаза 6 кладёт кандидатов, фаза 7 пересчитывает бит у обработанных; порядок - по возрастанию индекса.
         VehicleStore v = w.Vehicles;
-        for (int i = 0; i < v.HighWater; i++)
+        ulong[] arrive = w.Masks.Arrive;
+        int hw = v.HighWater;
+#if DEBUG
+        for (int i = 0; i < hw; i++)
         {
-            if (!v.Pool.IsAlive(i))
-            {
-                continue;
-            }
-
-            int dest = v.DestLane[i];
-            bool arrived = dest >= 0 && v.Lane[i] == dest && v.S[i] >= v.DestS[i];
-            if (!arrived || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0) // автобусы: BusStopPhase
-            {
-                continue;
-            }
-
-            VehicleHandle h = v.HandleOf(i);
-            w.Counters.TripsCompleted++;
-            w.Counters.TripTimeTicksTotal += w.Tick - v.SpawnTick[i];
-            w.Emit(SimEventKind.TripCompleted, 0, h.Index, h.Generation);
-            w.Occupancy.UnlinkAll(i);
-            if (v.Route[i] >= 0)
-            {
-                w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
-            }
-
-            v.Despawn(h);
+            System.Diagnostics.Debug.Assert(TickMasks.Test(arrive, i) == (v.Pool.IsAlive(i) && Arrived(v, i)), "Arrive mask differs from full scan");
         }
+#endif
+        int words = TickMasks.WordsFor(hw);
+        for (int k = 0; k < words; k++)
+        {
+            ulong m = arrive[k];
+            while (m != 0UL)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(m);
+                m &= m - 1;
+                int i = (k << 6) + b;
+                if (!v.Pool.IsAlive(i) || !Arrived(v, i))
+                {
+                    continue;
+                }
+
+                VehicleHandle h = v.HandleOf(i);
+                w.Counters.TripsCompleted++;
+                w.Counters.TripTimeTicksTotal += w.Tick - v.SpawnTick[i];
+                w.Emit(SimEventKind.TripCompleted, 0, h.Index, h.Generation);
+                w.Occupancy.UnlinkAll(i);
+                if (v.Route[i] >= 0)
+                {
+                    w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
+                }
+
+                w.Masks.Remove(v, i);   // метрики фазы 9 считают только оставшихся (A4)
+                v.Despawn(h);
+            }
+        }
+    }
+
+    // Условие прибытия: полоса назначения и позиция достигнуты, не автобус (автобусы: BusStopPhase).
+    private static bool Arrived(VehicleStore v, int i)
+    {
+        int dest = v.DestLane[i];
+        return dest >= 0 && v.Lane[i] == dest && v.S[i] >= v.DestS[i] && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0;
     }
 
     public static void Run(

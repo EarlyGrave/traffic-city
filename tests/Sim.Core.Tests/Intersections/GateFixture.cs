@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Routing;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
 using Sim.Core.Tests.Worlds;
@@ -44,6 +45,7 @@ internal static class GateFixture
         ScenarioDesc d = TestScenarios.Line();
         SimCapacities c = d.Capacities;
         c.MaxVehicles = 512;
+        c.MaxRoutes = 512;
         c.MaxNodes = 16;
         c.MaxSegments = 16;
         c.MaxLanes = 256;
@@ -107,7 +109,7 @@ internal static class GateFixture
     }
 
     /// <summary>Ставит машину на полосу (без спавнера): позиция переднего бампера s, скорость, connector развилки (-1 = случайный STAGE2-выбор).</summary>
-    public static int Place(Simulation sim, int lane, float s, float speed, int connector = -1)
+    public static int Place(Simulation sim, int lane, float s, float speed, int connector = -1, bool routed = false)
     {
         World w = sim.World;
         VehicleStore v = w.Vehicles;
@@ -122,7 +124,21 @@ internal static class GateFixture
         v.SpawnTick[i] = w.Tick;
         v.DestZone[i] = -1;
         w.Occupancy.InsertSorted(lane, i);
-        v.NextConn[i] = connector >= 0 ? connector : TransitionPhase.ChooseConnector(w, i, lane);
+        v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane); // инвариант ADR-0016 D6: NextConn == NextLane(i, lane, 1) (без маршрута - connector по умолчанию)
+        if (routed && connector >= 0)
+        {
+            // Без маршрута фазы 4-5 берут connector по умолчанию (PhysicsTypes.DefaultConnector), а не NextConn: настоящий манёвр задаёт только маршрут.
+            int dest = w.Net.Lanes[connector].ToLane;
+            v.DestLane[i] = dest;
+            v.DestS[i] = w.Net.Lanes[dest].Length - 5f;
+            Assert.Equal(BuildStatus.Ok, w.Router.Build(lane, s, dest, v.DestS[i], w.Tick, out RouteHandle h2));
+            v.Route[i] = h2.Index;
+            v.RouteGen[i] = h2.Generation;
+            v.RouteCursor[i] = 0;
+            v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
+            Assert.Equal(connector, v.NextConn[i]);
+        }
+
         w.Counters.VehiclesSpawned++;
         return i;
     }
@@ -135,6 +151,7 @@ internal sealed class FlowSource
     public int HeadwayTicks;
     public int Offset;
     public int Connector = -1;     // -1 = случайный выбор STAGE2
+    public bool Routed;            // true: машине строится маршрут через Connector/ToArm (иначе connector по умолчанию - прямо)
     public int ToArm = -1;         // >= 0: connector на этот рукав (приоритет над Connector)
     public int Pending;
     public int Spawned;
@@ -173,6 +190,9 @@ internal sealed class FlowDriver
     public string? TicketOrderViolation;
     public Action<FlowDriver>? OnTick { get; set; }
 
+    /// <summary>Вызывается при выходе машины в сток: (полоса стока, полоса источника или -1, время поездки в тиках). Не аллоцирует, если делегат не аллоцирует.</summary>
+    public Action<int, int, long>? OnExit { get; set; }
+
     public FlowDriver(Simulation sim)
     {
         Sim = sim;
@@ -194,9 +214,9 @@ internal sealed class FlowDriver
     /// <summary>Среднее время поездки (с) машин, стартовавших на полосе <paramref name="lane"/>.</summary>
     public float MeanTravelFrom(int lane) => ExitsByLane[lane] == 0 ? 0f : (float)(TravelTicksByLane[lane] * 0.05 / ExitsByLane[lane]);
 
-    public FlowSource AddSource(int lane, int headwayTicks, int toArm = -1, int offset = 0, int connector = -1)
+    public FlowSource AddSource(int lane, int headwayTicks, int toArm = -1, int offset = 0, int connector = -1, bool routed = false)
     {
-        var s = new FlowSource { Lane = lane, HeadwayTicks = headwayTicks, Offset = offset, ToArm = toArm, Connector = connector };
+        var s = new FlowSource { Lane = lane, HeadwayTicks = headwayTicks, Offset = offset, ToArm = toArm, Connector = connector, Routed = routed };
         Sources.Add(s);
         return s;
     }
@@ -258,6 +278,7 @@ internal sealed class FlowDriver
         }
 
         Sim.Step(1);
+        W.Queue?.SynthesizeAll(W.Tick);   // Q-meso: позиции машин очереди - синтез (ViewS), проверки и стоки смотрят на них
 
         // Проверки.
         hw = v.HighWater;
@@ -278,7 +299,7 @@ internal sealed class FlowDriver
 
             if (ld.Kind == LaneKind.Normal)
             {
-                if (v.Speed[i] < 0.1f && ld.Length - v.S[i] <= 3.5f)
+                if (SpeedOf(i) < 0.1f && ld.Length - PosOf(i) <= 3.5f)
                 {
                     StoppedNearLine[i] = true;
                 }
@@ -313,7 +334,7 @@ internal sealed class FlowDriver
             }
         }
 
-        GapViolation ??= Step2.CheckGaps(W);
+        GapViolation ??= W.Queue == null ? Step2.CheckGaps(W) : CheckGapsSynth();
         ConflictViolation ??= Step3Gates.CheckConnectorConflicts(W);
         OnTick?.Invoke(this);
 
@@ -337,7 +358,7 @@ internal sealed class FlowDriver
                 LastTicketOnLane[lane] = t;
             }
 
-            if (!IsSink(lane) || v.S[i] < SinkS)
+            if (!IsSink(lane) || PosOf(i) < SinkS)
             {
                 continue;
             }
@@ -345,6 +366,7 @@ internal sealed class FlowDriver
             Exits++;
             ExitsPerSink[lane]++;
             TravelTicksTotal += W.Tick - v.SpawnTick[i];
+            OnExit?.Invoke(lane, SpawnLane[i], W.Tick - v.SpawnTick[i]);
             if (SpawnLane[i] >= 0)
             {
                 ExitsByLane[SpawnLane[i]]++;
@@ -353,11 +375,44 @@ internal sealed class FlowDriver
 
             SpawnLane[i] = -1;
             W.Occupancy.UnlinkAll(i);
+            if (v.Route[i] >= 0)
+            {
+                W.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
+                v.Route[i] = -1;
+            }
+
             v.Despawn(v.HandleOf(i));
         }
     }
 
     public int Alive => W.Vehicles.AliveCount;
+
+    /// <summary>Позиция машины: обычно <c>S</c>; у машины очереди Q-meso - синтез (<c>QueueMeso.ViewS</c>, обновляется после каждого тика драйвера).</summary>
+    public float PosOf(int i) => W.Queue != null && W.Queue.IsQueued(i) ? W.Queue.ViewS[i] : W.Vehicles.S[i];
+
+    /// <summary>Скорость машины (у машины очереди - синтез).</summary>
+    public float SpeedOf(int i) => W.Queue != null && W.Queue.IsQueued(i) ? W.Queue.ViewSpeed[i] : W.Vehicles.Speed[i];
+
+    // I6 по синтезированным позициям (Q-meso): S[Ahead] - L[Ahead] >= S.
+    private string? CheckGapsSynth()
+    {
+        VehicleStore v = W.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+            {
+                continue;
+            }
+
+            int a = v.Ahead[i];
+            if (a != -1 && PosOf(a) - v.Length[a] - PosOf(i) < -1e-3f)
+            {
+                return $"tick {W.Tick}: lane {v.Lane[i]}: vehicle {i} (s={PosOf(i):F3}) overlaps leader {a} (s={PosOf(a):F3})";
+            }
+        }
+
+        return null;
+    }
 
     public float MeanTravelS => Exits == 0 ? 0f : (float)(TravelTicksTotal * 0.05 / Exits);
 
@@ -383,14 +438,14 @@ internal sealed class FlowDriver
         float speed = Idm.DesiredSpeed(t, W.Net.Lanes[src.Lane].SpeedLimit);
         if (tail != -1)
         {
-            float gap = v.S[tail] - v.Length[tail] - s;
+            float gap = PosOf(tail) - v.Length[tail] - s;
             if (gap < t.MinGap + 4f)
             {
                 return false;
             }
 
             float vSafe = MathF.Sqrt(2f * t.ComfortDecel * (gap - t.MinGap));
-            speed = MathF.Min(speed, MathF.Min(v.Speed[tail] + 2f, vSafe));
+            speed = MathF.Min(speed, MathF.Min(SpeedOf(tail) + 2f, vSafe));
         }
 
         int conn = src.Connector;
@@ -399,7 +454,7 @@ internal sealed class FlowDriver
             conn = GateFixture.ConnectorTo(W, src.Lane, src.ToArm);
         }
 
-        int i = GateFixture.Place(Sim, src.Lane, s, speed, conn);
+        int i = GateFixture.Place(Sim, src.Lane, s, speed, conn, src.Routed);
         SpawnLane[i] = src.Lane;
         return true;
     }

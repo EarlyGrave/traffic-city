@@ -459,14 +459,42 @@ internal static class Spawner
             return false;
         }
 
-        w.Occupancy.FindNeighbours(lane, s, out int ahead, out int behind);
+        int ahead;
+        int behind;
         float gapAhead = Idm.FreeGap;
-        if (ahead != -1)
+        Lod.QueueMeso? q = w.Queue;
+        if (q != null)
         {
-            gapAhead = v.S[ahead] - v.Length[ahead] - s;
-            if (gapAhead < t.MinGap)
+            // Q-meso: у машин очереди S - позиция въезда, поиск места по S бессмыслен. Новая машина встаёт в хвост очереди (FIFO): позиция - не дальше
+            // оценки хвоста за вычетом его длины и s0 (при нехватке места - отказ, как у занятой полосы).
+            ahead = w.Occupancy.LaneTail[lane];
+            behind = -1;
+            if (ahead != -1)
             {
-                return false;
+                float cap = q.TailS(lane) - v.Length[ahead] - t.MinGap;
+                if (cap < 0f)
+                {
+                    return false;
+                }
+
+                if (s > cap)
+                {
+                    s = cap;
+                }
+
+                gapAhead = q.TailS(lane) - v.Length[ahead] - s;
+            }
+        }
+        else
+        {
+            w.Occupancy.FindNeighbours(lane, s, out ahead, out behind);
+            if (ahead != -1)
+            {
+                gapAhead = v.S[ahead] - v.Length[ahead] - s;
+                if (gapAhead < t.MinGap)
+                {
+                    return false;
+                }
             }
         }
 
@@ -506,6 +534,7 @@ internal static class Spawner
         v.Route[i] = trip.Route;
         v.RouteGen[i] = trip.RouteGen;
         v.RouteCursor[i] = 0;
+        v.MarkRouteDirty(i);
         w.Occupancy.InsertBetween(lane, i, ahead, behind);
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;

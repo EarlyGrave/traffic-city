@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
@@ -70,6 +71,28 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        int rThreads = ReadThreads(resultPath);
+        int bThreads = ReadThreads(basePath);
+        if (rThreads != bThreads)
+        {
+            error.WriteLine($"compare: refusing to compare runs with different threads (baseline {bThreads}, result {rThreads})");
+            return ExitUsage;
+        }
+
+        string rView = ReadView(resultPath);
+        string bView = ReadView(basePath);
+        if (rView != bView)
+        {
+            error.WriteLine($"compare: refusing to compare runs with different snapshot views (baseline '{bView}', result '{rView}')");
+            return ExitUsage;
+        }
+
+        RampInfo rRamp = ReadRamp(resultPath);
+        RampInfo bRamp = ReadRamp(basePath);
+        bool rampMismatch = false;
+        var notes = new List<string>();
+        EvaluateRamp(rRamp, bRamp, notes, out rampMismatch);
+
         double limit = bP95 * (1 + tol);
         bool slow = rP95 > limit;
         bool alloc = rAlloc > 0;
@@ -88,9 +111,200 @@ public static class CompareCommand
             output.WriteLine($"warning: scenario differs (baseline '{bScenario}', result '{rScenario}')");
         }
 
-        output.WriteLine(slow || alloc ? "FAIL" : "OK");
-        return slow || alloc ? ExitRegression : ExitOk;
+        PrintInfo(resultPath, basePath, output);
+        foreach (string n in notes)
+        {
+            output.WriteLine(n);
+        }
+
+        bool fail = slow || alloc || rampMismatch;
+        output.WriteLine(fail ? "FAIL" : "OK");
+        return fail ? ExitRegression : ExitOk;
     }
+
+    /// <summary>Вид снапшота из JSON (поле <c>view</c>; старые файлы и нечитаемый JSON - <c>all</c>).</summary>
+    internal static string ReadView(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("view", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? "all" : "all";
+        }
+        catch (JsonException)
+        {
+            return "all";
+        }
+    }
+
+    /// <summary>Число потоков ядра из JSON (поле <c>threads</c>; старые файлы и нечитаемый JSON - 1).</summary>
+    internal static int ReadThreads(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("threads", out JsonElement t) && t.TryGetInt32(out int n) ? n : 1;
+        }
+        catch (JsonException)
+        {
+            return 1;
+        }
+    }
+
+    /// <summary>Сведения о рампе из JSON (поля необязательны: старые файлы их не содержат).</summary>
+    internal readonly record struct RampInfo(bool? Complete, int? ActiveStart, int? ActiveEnd, int? Target);
+
+    /// <summary>Максимальная относительная разница активных машин, выше которой compare предупреждает.</summary>
+    internal const double ActiveWarnShare = 0.10;
+
+    /// <summary>
+    /// Разный <c>ramp_complete</c> у результата и baseline — FAIL: p95 при разгоне и в стационаре несопоставимы
+    /// (ложная регрессия или ложный «ок»). Сильно разное число активных и отсутствие сведений — только предупреждение.
+    /// </summary>
+    internal static void EvaluateRamp(RampInfo result, RampInfo baseline, List<string> notes, out bool mismatch)
+    {
+        mismatch = false;
+        if (result.Complete is null || baseline.Complete is null)
+        {
+            if (result.Complete == false || baseline.Complete == false)
+            {
+                notes.Add("warning: " + (result.Complete == false ? "result" : "baseline")
+                    + " ramp_complete=false, the other side has no ramp info (old format): p95 may be incomparable");
+            }
+            else if (result.Complete is null != baseline.Complete is null)
+            {
+                notes.Add("warning: ramp info is missing on one side (old format baseline?): cannot verify that both runs are past the spawn ramp");
+            }
+
+            return;
+        }
+
+        if (result.Complete != baseline.Complete)
+        {
+            mismatch = true;
+            notes.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"ramp_complete differs (baseline {baseline.Complete.ToString()!.ToLowerInvariant()}, result {result.Complete.ToString()!.ToLowerInvariant()}): p95 of a partially loaded and a fully loaded city are incomparable  RAMP MISMATCH"));
+            return;
+        }
+
+        if (result.ActiveEnd is int ra && baseline.ActiveEnd is int ba && ba > 0
+            && Math.Abs(ra - ba) > ActiveWarnShare * ba)
+        {
+            notes.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"warning: active vehicles differ by more than {ActiveWarnShare * 100:0}% (baseline {ba}, result {ra})"));
+        }
+    }
+
+    private static RampInfo ReadRamp(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            if (!d.RootElement.TryGetProperty("perf", out JsonElement perf))
+            {
+                return default;
+            }
+
+            bool? complete = perf.TryGetProperty("ramp_complete", out JsonElement c)
+                && c.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? c.GetBoolean()
+                : null;
+            return new RampInfo(complete, Int(perf, "active_vehicles_start"), Int(perf, "active_vehicles"), Int(perf, "target_vehicles"));
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+        catch (InvalidOperationException)
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Справочно (не влияет на exit code - работа меняется намеренно при оптимизациях): <c>work_per_tick.*</c> и
+    /// <c>perf.phase_ms.*.p50/p95</c>, которые есть в результате; baseline - если в нём тоже есть.
+    /// </summary>
+    internal static void PrintInfo(string resultPath, string basePath, TextWriter output)
+    {
+        Dictionary<string, double> res = ReadInfo(resultPath);
+        if (res.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, double> bas = ReadInfo(basePath);
+        CultureInfo ci = CultureInfo.InvariantCulture;
+        output.WriteLine("info (not gated)          baseline       result       delta");
+        foreach (KeyValuePair<string, double> kv in res)
+        {
+            if (bas.TryGetValue(kv.Key, out double b))
+            {
+                string d = b != 0 ? string.Create(ci, $"{((kv.Value / b) - 1) * 100,+8:0.0;-0.0}%") : "       -";
+                output.WriteLine(string.Create(ci, $"{kv.Key,-34} {b,10:0.####} {kv.Value,12:0.####} {d}"));
+            }
+            else
+            {
+                output.WriteLine(string.Create(ci, $"{kv.Key,-34} {"-",10} {kv.Value,12:0.####}"));
+            }
+        }
+    }
+
+    private static Dictionary<string, double> ReadInfo(string path)
+    {
+        var map = new Dictionary<string, double>();
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            if (d.RootElement.TryGetProperty("work_per_tick", out JsonElement w) && w.ValueKind == JsonValueKind.Object)
+            {
+                AddNumbers(map, "work.", w);
+            }
+
+            if (d.RootElement.TryGetProperty("perf", out JsonElement perf))
+            {
+                if (perf.TryGetProperty("work_per_tick", out JsonElement w2) && w2.ValueKind == JsonValueKind.Object)
+                {
+                    AddNumbers(map, "work.", w2);
+                }
+
+                if (perf.TryGetProperty("phase_ms", out JsonElement ph) && ph.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (JsonProperty p in ph.EnumerateObject())
+                    {
+                        if (p.Value.ValueKind == JsonValueKind.Object)
+                        {
+                            AddNumbers(map, "phase_ms." + p.Name + ".", p.Value, "p50", "p95");
+                        }
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        return map;
+    }
+
+    private static void AddNumbers(Dictionary<string, double> map, string prefix, JsonElement obj, params string[] only)
+    {
+        foreach (JsonProperty p in obj.EnumerateObject())
+        {
+            if (p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDouble(out double v)
+                && (only.Length == 0 || Array.IndexOf(only, p.Name) >= 0))
+            {
+                map[prefix + p.Name] = v;
+            }
+        }
+    }
+
+    private static int? Int(JsonElement e, string name) =>
+        e.TryGetProperty(name, out JsonElement v) && v.TryGetInt32(out int i) ? i : null;
 
     private static int RunBudget(string resultPath, double budget, TextWriter output, TextWriter error)
     {

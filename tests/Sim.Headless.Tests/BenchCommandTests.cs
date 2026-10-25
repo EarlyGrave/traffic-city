@@ -42,6 +42,28 @@ public sealed class BenchCommandTests : IDisposable
         return code;
     }
 
+    [Theory]
+    [InlineData("all", true)]
+    [InlineData("focus", true)]
+    [InlineData("0,0,100,100", true)]
+    [InlineData("1,2,3", false)]
+    [InlineData("a,b,c,d", false)]
+    [InlineData("whole", false)]
+    public void ViewSpec_Parses(string text, bool ok) => Assert.Equal(ok, ViewSpec.TryParse(text, out _));
+
+    [Fact]
+    public void Compare_RefusesDifferentViews_AndTreatsMissingViewAsAll()
+    {
+        string all = Write("all.json", 1.0, 0);
+        string focus = Path.Combine(_dir, "focus.json");
+        File.WriteAllText(focus, File.ReadAllText(all).Replace("{\"scenario\"", "{\"view\":\"focus\",\"scenario\""));
+        string allExplicit = Path.Combine(_dir, "all2.json");
+        File.WriteAllText(allExplicit, File.ReadAllText(all).Replace("{\"scenario\"", "{\"view\":\"all\",\"scenario\""));
+        Assert.Equal(CompareCommand.ExitUsage, Compare(focus, all, out string text));
+        Assert.Contains("snapshot views", text);
+        Assert.Equal(CompareCommand.ExitOk, Compare(allExplicit, all, out _));
+    }
+
     [Fact]
     public void ArgsParse_RejectsUnknownAndMissingValue()
     {
@@ -125,6 +147,152 @@ public sealed class BenchCommandTests : IDisposable
         Assert.Equal(3, perf.GetProperty("tick_ms_runs").GetArrayLength());
         double[] p95s = perf.GetProperty("tick_ms_runs").EnumerateArray().Select(x => x.GetProperty("p95").GetDouble()).OrderBy(x => x).ToArray();
         Assert.Equal(p95s[1], perf.GetProperty("tick_ms").GetProperty("p95").GetDouble());
+    }
+
+    [Fact]
+    public void Bench_WritesSignalMetrics_AndSeedOverride()
+    {
+        string scenarios = FindScenariosDir();
+        string outPath = Path.Combine(_dir, "sig.json");
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "400", "--warmup-ticks", "200", "--seed", "7", "--signal-mode", "fixed", "--signal-coordination", "legacy", "--out", outPath, "--scenarios-dir", scenarios }, o, e);
+        Assert.True(code == 0, e.ToString());
+        using JsonDocument d = JsonDocument.Parse(File.ReadAllText(outPath));
+        Assert.Equal(7UL, d.RootElement.GetProperty("seed").GetUInt64());
+        Assert.Equal("fixed", d.RootElement.GetProperty("signal_mode").GetString());
+        Assert.Equal("legacy", d.RootElement.GetProperty("signal_coordination").GetString());
+        JsonElement t = d.RootElement.GetProperty("traffic");
+        foreach (string k in new[] { "signal_wait_s", "signal_wait_p95_s", "signal_grants" })
+        {
+            foreach (string m in new[] { "straight", "right", "left", "uturn" })
+            {
+                Assert.True(t.GetProperty(k).TryGetProperty(m, out _), k + "." + m);
+            }
+        }
+
+        foreach (string k in new[] { "left_wait_max_s", "arterial_stop_share", "stuck_episodes", "starve_denials", "arrow_phases", "spill_outs", "exit_claims", "gate_denied_exit" })
+        {
+            Assert.True(t.TryGetProperty(k, out _), k);
+        }
+
+        Assert.Equal(0, t.GetProperty("arrow_phases").GetInt64());
+        Assert.Equal(0, t.GetProperty("exit_claims").GetInt64());
+    }
+
+    [Theory]
+    [InlineData("--signal-mode", "bogus", "expected")]
+    [InlineData("--signal-coordination", "bogus", "expected")]
+    [InlineData("--seed", "-1", "unsigned")]
+    public void Bench_UnsupportedSignalOptions_AreClearErrors(string opt, string value, string text)
+    {
+        string scenarios = FindScenariosDir();
+        var o = new StringWriter();
+        var e = new StringWriter();
+        int code = BenchCommand.Run(
+            new[] { "bench", "--scenario", "demo-grid", "--ticks", "5", "--warmup-ticks", "0", opt, value, "--out", Path.Combine(_dir, "x.json"), "--scenarios-dir", scenarios }, o, e);
+        Assert.Equal(BenchCommand.ExitUsage, code);
+        Assert.Contains(text, e.ToString());
+    }
+
+    private string WriteRamp(string name, double p95, bool? complete, int active = 1000, int target = 1000)
+    {
+        string path = Path.Combine(_dir, name);
+        string ramp = complete is null
+            ? string.Empty
+            : ",\"ramp_complete\":" + (complete.Value ? "true" : "false") + ",\"active_vehicles\":" + active + ",\"active_vehicles_start\":" + active + ",\"target_vehicles\":" + target;
+        File.WriteAllText(
+            path,
+            "{\"scenario\":\"s1k\",\"perf\":{\"tick_ms\":{\"p95\":" + p95.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            "},\"alloc_bytes_per_tick\":0" + ramp + "}}");
+        return path;
+    }
+
+    [Fact]
+    public void Compare_RampMismatch_Fails()
+    {
+        Assert.Equal(1, Compare(WriteRamp("r.json", 1.0, false, 500), WriteRamp("b.json", 1.0, true), out string o));
+        Assert.Contains("RAMP MISMATCH", o);
+    }
+
+    [Fact]
+    public void Compare_RampBothComplete_Ok()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true), WriteRamp("b.json", 1.0, true), out string o));
+        Assert.DoesNotContain("warning", o);
+    }
+
+    [Fact]
+    public void Compare_LegacyBaselineWithoutRampInfo_ReadsAndWarns()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true), Write("b.json", 1.0, 0), out string o));
+        Assert.Contains("ramp info is missing", o);
+        Assert.Equal(0, Compare(Write("r2.json", 1.0, 0), Write("b2.json", 1.0, 0), out string o2));
+        Assert.DoesNotContain("warning", o2);
+    }
+
+    [Fact]
+    public void Compare_IncompleteResultAgainstLegacyBaseline_Warns()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, false, 500), Write("b.json", 1.0, 0), out string o));
+        Assert.Contains("ramp_complete=false", o);
+    }
+
+    [Fact]
+    public void Compare_ActiveVehiclesDiffer_WarnsButDoesNotFail()
+    {
+        Assert.Equal(0, Compare(WriteRamp("r.json", 1.0, true, 1300), WriteRamp("b.json", 1.0, true, 1000), out string o));
+        Assert.Contains("active vehicles differ", o);
+    }
+
+    [Theory]
+    [InlineData(1000, 1000, true)]
+    [InlineData(980, 1000, true)]
+    [InlineData(979, 1000, false)]
+    [InlineData(0, 0, true)]
+    [InlineData(4991, 10000, false)]
+    public void IsFull_UsesShareOfTarget(int active, int target, bool expected) =>
+        Assert.Equal(expected, BenchCommand.IsFull(active, target));
+
+    [Fact]
+    public void CliArgs_Flag_NeedsNoValue()
+    {
+        Assert.True(CliArgs.TryParse(new[] { "x", "--f", "--a", "1" }, new[] { "--a" }, new[] { "--f" }, out CliArgs a));
+        Assert.True(a.Has("--f"));
+        Assert.Equal("1", a.Get("--a"));
+        Assert.False(a.Has("--g"));
+    }
+
+    [Fact]
+    public void Bench_WarmupUntilFull_ReportsRampFields()
+    {
+        string scenarios = FindScenariosDir();
+        string full = Path.Combine(_dir, "full.json");
+        string partial = Path.Combine(_dir, "partial.json");
+        var e = new StringWriter();
+        Assert.Equal(
+            0,
+            BenchCommand.Run(
+                new[] { "bench", "--scenario", "s1k", "--ticks", "20", "--warmup-ticks", "5", "--warmup-until-full", "--warmup-max-ticks", "6000", "--out", full, "--scenarios-dir", scenarios },
+                new StringWriter(),
+                e));
+        Assert.Equal(
+            0,
+            BenchCommand.Run(
+                new[] { "bench", "--scenario", "s1k", "--ticks", "20", "--warmup-ticks", "5", "--out", partial, "--scenarios-dir", scenarios },
+                new StringWriter(),
+                e));
+        using JsonDocument f = JsonDocument.Parse(File.ReadAllText(full));
+        using JsonDocument p = JsonDocument.Parse(File.ReadAllText(partial));
+        JsonElement fp = f.RootElement.GetProperty("perf");
+        JsonElement pp = p.RootElement.GetProperty("perf");
+        Assert.True(fp.GetProperty("ramp_complete").GetBoolean());
+        Assert.Equal(1000, fp.GetProperty("target_vehicles").GetInt32());
+        Assert.True(fp.GetProperty("active_vehicles_start").GetInt32() >= 980);
+        Assert.True(fp.GetProperty("warmup_ticks_actual").GetInt32() > 5);
+        Assert.False(pp.GetProperty("ramp_complete").GetBoolean());
+        Assert.Equal(5, pp.GetProperty("warmup_ticks_actual").GetInt32());
     }
 
     [Fact]

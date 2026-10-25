@@ -11,8 +11,7 @@ using Sim.Core.Util;
 namespace Sim.Bench;
 
 /// <summary>
-/// Маршрутизация (routing.md): A* на случайной паре DirSeg, сборка маршрута с попаданием в кэш магистралей
-/// и прямая сборка. Сеть генерируется из scenarios/{s1k,s100k}.json (как GenFixture в тестах).
+/// Маршрутизация (routing.md): A* на случайной паре DirSeg, запрос по оверлею (H2) и плоский на IndexedHeap4, полный маршрут (запрос + развёртывание + раскладка). Сеть генерируется из scenarios/{s1k,s100k}.json (как GenFixture в тестах).
 /// </summary>
 [MemoryDiagnoser]
 public class RoutingBenchmarks
@@ -20,9 +19,11 @@ public class RoutingBenchmarks
     private const int Pairs = 256;
 
     private NetworkStore _net = null!;
-    private RoutePool _pool = null!;
-    private RouteBuilder _builder = null!;
+    private RouteGraph _graph = null!;
     private AStarSearcher _star = null!;
+    private OverlaySearcher _overlayQuery = null!;
+    private OverlaySearcher _flatQuery = null!;
+    private int[] _plan = null!;
     private int[] _path = null!;
     private readonly int[] _starts1 = new int[1];
     private readonly float[] _startG1 = new float[1];
@@ -30,10 +31,10 @@ public class RoutingBenchmarks
     private readonly int[] _pairGoal = new int[Pairs];
     private readonly int[] _pairStartLane = new int[Pairs];
     private readonly int[] _pairGoalLane = new int[Pairs];
-    private int _cacheFrom, _cacheTo, _cacheStartLane, _cacheGoalLane;
+    private readonly RouteStep[] _steps = new RouteStep[4096];
     private int _i;
 
-    [Params("s1k", "s100k")]
+    [Params("s1k", "s10k", "s100k")]
     public string Scenario { get; set; } = "s1k";
 
     [GlobalSetup]
@@ -124,10 +125,19 @@ public class RoutingBenchmarks
         _net.ZoneCount = zones.ZoneCount;
         _net.ZoneLaneCount = zones.ZoneLaneCount;
 
-        _pool = new RoutePool(65_000, 4_000_000);
-        _builder = new RouteBuilder(_net, _pool, caps.MaxZones, 0);
-        _star = new AStarSearcher(_builder.Graph);
-        _path = new int[_builder.Graph.DirSegCount + 1];
+        _graph = new RouteGraph(_net);
+        _graph.Rebuild();
+        _star = new AStarSearcher(_graph);
+        _path = new int[_graph.DirSegCount + 1];
+        _plan = new int[_graph.DirSegCount + 8];
+        var routing = new RoutingDesc { Levels = Scenario == "s100k" ? 2 : 1, Fanout = 4, CellSize = 1000f, CustomizeEps = 0.05f };
+        if (Overlay.TryCreate(_net, _graph, in routing, out Overlay? overlay) != CreateStatus.Ok)
+        {
+            throw new InvalidOperationException("overlay creation failed");
+        }
+
+        _overlayQuery = new OverlaySearcher(_net, _graph, overlay);
+        _flatQuery = new OverlaySearcher(_net, _graph, null);
 
         var rng = Pcg32.Create(2026, 1);
         for (int i = 0; i < Pairs; i++)
@@ -137,45 +147,13 @@ public class RoutingBenchmarks
             _pairStart[i] = RouteGraph.DirSegOfLane(_net, _pairStartLane[i]);
             _pairGoal[i] = RouteGraph.DirSegOfLane(_net, _pairGoalLane[i]);
         }
-
-        // Пара зон для попадания в кэш: первая подходящая.
-        for (int a = 0; a < _net.ZoneCount; a++)
-        {
-            for (int b = 0; b < _net.ZoneCount; b++)
-            {
-                if (a == b || _net.Zones[a].HubNode < 0 || _net.Zones[b].HubNode < 0 || _net.Zones[a].HubNode == _net.Zones[b].HubNode)
-                {
-                    continue;
-                }
-
-                int la = ZoneLane(a);
-                int lb = ZoneLane(b);
-                if (la < 0 || lb < 0)
-                {
-                    continue;
-                }
-
-                _builder.BeginTick();
-                if (_builder.Build(la, 0f, lb, 0f, a, b, 1, out RouteHandle h) == BuildStatus.Ok)
-                {
-                    _pool.Free(h);
-                    _cacheFrom = a;
-                    _cacheTo = b;
-                    _cacheStartLane = la;
-                    _cacheGoalLane = lb;
-                    return;
-                }
-            }
-        }
-
-        throw new InvalidOperationException("no zone pair for cache benchmark");
     }
 
     [Benchmark]
     public float AStarRandomPair()
     {
         int i = _i++ & (Pairs - 1);
-        RouteGraph g = _builder.Graph;
+        RouteGraph g = _graph;
         int s = _pairStart[i];
         _starts1[0] = s;
         _startG1[0] = g.SegCost[s];
@@ -184,24 +162,30 @@ public class RoutingBenchmarks
         return _star.LastCost;
     }
 
+    /// <summary>Запрос по оверлею (план без развёртывания) на той же паре, что <see cref="AStarRandomPair"/>.</summary>
     [Benchmark]
-    public int BuildCacheHit()
-    {
-        _builder.BeginTick();
-        _builder.Build(_cacheStartLane, 0f, _cacheGoalLane, 0f, _cacheFrom, _cacheTo, 2, out RouteHandle h);
-        int n = _pool.Count[h.Index];
-        _pool.Free(h);
-        return n;
-    }
-
-    [Benchmark]
-    public int BuildDirectRandomPair()
+    public float OverlayQueryRandomPair()
     {
         int i = _i++ & (Pairs - 1);
-        _builder.BeginTick();
-        _builder.Build(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, -1, -1, 3, out RouteHandle h);
-        int n = _pool.Count[h.Index];
-        _pool.Free(h);
+        _overlayQuery.Query(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, _plan, out _);
+        return _overlayQuery.PlanCost;
+    }
+
+    /// <summary>Плоский поиск на IndexedHeap4 (эталон H2: тот же код без оверлея).</summary>
+    [Benchmark]
+    public float FlatIndexedQueryRandomPair()
+    {
+        int i = _i++ & (Pairs - 1);
+        _flatQuery.Query(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, _plan, out _);
+        return _flatQuery.PlanCost;
+    }
+
+    /// <summary>Полный маршрут по оверлею: запрос, развёртывание плана и раскладка на полосы.</summary>
+    [Benchmark]
+    public int OverlayRouteRandomPair()
+    {
+        int i = _i++ & (Pairs - 1);
+        _overlayQuery.Route(_pairStartLane[i], 0f, _pairGoalLane[i], 0f, _steps, out int n);
         return n;
     }
 
@@ -213,26 +197,11 @@ public class RoutingBenchmarks
             if (_net.Lanes[lane].Kind == LaneKind.Normal && _net.Lanes[lane].Segment >= 0)
             {
                 int u = RouteGraph.DirSegOfLane(_net, lane);
-                if (_builder.Graph.ArcFirst[u + 1] > _builder.Graph.ArcFirst[u])
+                if (_graph.ArcFirst[u + 1] > _graph.ArcFirst[u])
                 {
                     return lane;
                 }
             }
         }
-    }
-
-    private int ZoneLane(int zone)
-    {
-        ref readonly ZoneData z = ref _net.Zones[zone];
-        for (int i = 0; i < z.SpawnLaneCount; i++)
-        {
-            int lane = _net.ZoneLanes[z.FirstSpawnLane + i];
-            if (_net.Lanes[lane].Kind == LaneKind.Normal)
-            {
-                return lane;
-            }
-        }
-
-        return -1;
     }
 }

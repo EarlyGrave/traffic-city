@@ -102,7 +102,7 @@ public class HandleAndCommandTests
     [Fact]
     public void SetSignalPlan_PayloadFitsLargestMember()
     {
-        // Самая большая нагрузка (32 B) не должна затирать Kind/Tag.
+        // Самая большая нагрузка (46 B) не должна затирать Kind/Tag.
         var c = Command.MakeSetSignalPlan(new SetSignalPlanCmd { YellowTicks = ushort.MaxValue, AllRedTicks = ushort.MaxValue }, 77);
         Assert.Equal(CommandKind.SetSignalPlan, c.Kind);
         Assert.Equal(77u, c.Tag);

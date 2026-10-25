@@ -14,7 +14,7 @@ internal struct PendingTrip
     public byte Type;
     public int DestLane;     // полоса прибытия или -1 (ещё не выбрана; выбирает спавнер при генерации либо фаза 3)
     public float DestS;
-    public int Route;        // индекс RoutePool; действителен только при RouteGen != 0
+    public int Route;        // слот RouteStore; действителен только при RouteGen != 0
     public int RouteGen;     // поколение маршрута; 0 = маршрут ещё не построен (поколение живого слота всегда нечётное и > 0)
 
     /// <summary>true = маршрут построен (фаза 2 ставит на дорогу только такие поездки).</summary>
@@ -38,6 +38,27 @@ internal sealed class PendingTrips
     }
 
     public int Capacity => _ring.Capacity;
+
+    // ---- сейв (Save/) ----
+
+    internal RingBuffer<PendingTrip> Ring => _ring;
+
+    /// <summary>Загрузка: очередь из <paramref name="count"/> поездок (голова = 0); <see cref="Unrouted"/> считается <see cref="RecountUnrouted"/> после заполнения.</summary>
+    internal void RestoreCount(int count) => _ring.RestoreCount(count);
+
+    internal void RecountUnrouted()
+    {
+        int n = 0;
+        for (int i = 0; i < _ring.Count; i++)
+        {
+            if (!_ring.At(i).HasRoute)
+            {
+                n++;
+            }
+        }
+
+        _unrouted = n;
+    }
 
     public int Count => _ring.Count;
 

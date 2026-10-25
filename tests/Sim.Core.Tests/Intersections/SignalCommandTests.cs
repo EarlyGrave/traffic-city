@@ -57,7 +57,7 @@ public class SignalCommandTests
         Assert.Equal(1, w.SignalCount);
         Assert.Equal(1, sim.Counters.SignalizedNodes);
         Assert.Equal(0, w.Signals.Node[0]);
-        Assert.Equal(SignalMode.Fixed, w.Signals.Mode[0]);
+        Assert.Equal(SignalMode.Adaptive, w.Signals.Mode[0]);   // 2.5: план по умолчанию - Adaptive (ADR-0018)
 
         // повтор - no-op, слот не дублируется
         Send(sim, Command.MakeSetNodeControl(0, NodeControl.Signal, 8));

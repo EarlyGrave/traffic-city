@@ -251,8 +251,6 @@ internal static class ZoneGenerator
 
         int accI = acc;
 
-        AssignHubs(net, zones, zoneCount);
-
         // ---- 5.3 веса: ровно один вызов на зону, в порядке индексов ----
         float jit = demand.WeightJitter;
         int empty = 0;
@@ -284,66 +282,6 @@ internal static class ZoneGenerator
         result.SpawnLanesTotal = accI;
         result.EmptyZones = empty;
         return CreateStatus.Ok;
-    }
-
-    /// <summary>HubNode: ближайший к центру зоны узел среди узлов зоны (ничья — меньший индекс); пустая зона — ближайший по сети.</summary>
-    private static void AssignHubs(NetworkStore net, GenZones zones, int zoneCount)
-    {
-        int nodeCount = net.NodeCount;
-        int[] start = new int[zoneCount + 1];
-        for (int n = 0; n < nodeCount; n++)
-        {
-            start[net.Nodes[n].Zone + 1]++;
-        }
-
-        for (int z = 0; z < zoneCount; z++)
-        {
-            start[z + 1] += start[z];
-        }
-
-        int[] fill = new int[zoneCount];
-        int[] byZone = new int[nodeCount];
-        for (int n = 0; n < nodeCount; n++)
-        {
-            int z = net.Nodes[n].Zone;
-            byZone[start[z] + fill[z]++] = n;
-        }
-
-        for (int z = 0; z < zoneCount; z++)
-        {
-            Vec2 c = zones.Zones[z].Center;
-            int best = -1;
-            float bestD = float.MaxValue;
-            if (start[z + 1] > start[z])
-            {
-                for (int k = start[z]; k < start[z + 1]; k++)
-                {
-                    NearestStep(net, byZone[k], c, ref best, ref bestD);
-                }
-            }
-            else
-            {
-                for (int n = 0; n < nodeCount; n++)
-                {
-                    NearestStep(net, n, c, ref best, ref bestD);
-                }
-            }
-
-            zones.Zones[z].HubNode = best;
-        }
-    }
-
-    private static void NearestStep(NetworkStore net, int n, Vec2 c, ref int best, ref float bestD)
-    {
-        Vec2 p = net.Nodes[n].Position;
-        float dx = p.X - c.X;
-        float dz = p.Z - c.Z;
-        float d = (dx * dx) + (dz * dz);
-        if (d < bestD || (d == bestD && n < best))
-        {
-            bestD = d;
-            best = n;
-        }
     }
 
     private static int Clamp(int v, int max) => v < 0 ? 0 : (v > max ? max : v);

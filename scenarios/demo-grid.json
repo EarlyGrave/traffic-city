@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "name": "demo-grid",
   "seed": 1,
   "duration_s": 60,
@@ -33,9 +33,10 @@
   },
   "vehicles": { "count": 30, "spawn_ramp_s": 10 },
   "demand": { "zone_m": 200, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
+  "routing": { "levels": 1, "cell_m": 250, "pathfind_budget_per_tick": 8 },
   "capacities": {
     "max_vehicles": 64, "max_nodes": 16, "max_segments": 16, "max_lanes": 256, "max_lane_points": 2048,
-    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_route_steps": 16384,
-    "max_pending_trips": 64, "pathfind_budget_per_tick": 8, "max_signalized_nodes": 1
+    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256,
+    "max_plan_steps": 8192, "max_pending_trips": 64, "max_signalized_nodes": 1
   }
 }

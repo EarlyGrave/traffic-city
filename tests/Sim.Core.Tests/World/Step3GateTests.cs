@@ -181,15 +181,15 @@ internal static class Step3Gates
 
             int r = v.Route[i];
             active++;
-            int f = w.Routes.First[r];
-            int n = w.Routes.Count[r];
+            int f = r * w.Routes.WindowSteps;
+            int n = w.Routes.WinCount[r];
             bool anyRemain = false;
             bool anyLaneRemain = false;
             bool anyFull = false;
             var seen = new HashSet<int>();
             for (int k = 0; k < n; k++)
             {
-                RouteStep rs = w.Routes.Steps[f + k];
+                RouteStep rs = w.Routes.Window[f + k];
                 bool inN = rs.Node >= 0 && chainNodes.Contains(rs.Node);
                 anyFull |= inN;
                 if (k >= v.RouteCursor[i])
@@ -378,8 +378,9 @@ public class Step3GateReportTests
     public Step3GateReportTests(ITestOutputHelper output) => _out = output;
 
     [Theory]
-    [InlineData(36000)]
-    public void Report_S1k(int ticks)
+    [InlineData(36000, false)]
+    [InlineData(36000, true)]
+    public void Report_S1k(int ticks, bool adaptive)
     {
         if (Environment.GetEnvironmentVariable("TC_STEP3_REPORT") != "1")
         {
@@ -387,6 +388,7 @@ public class Step3GateReportTests
         }
 
         ScenarioDesc d = Step2.S1k(buses: true);
+        d.City.SignalMode = adaptive ? CitySignalMode.Adaptive : CitySignalMode.Fixed;   // 2.5 S2: дефолт сценария - adaptive; Fixed + legacy - эталон «до»
         using Simulation sim = Simulation.Create(in d);
         sim.Step(200);
         long sum = 0;
@@ -442,12 +444,35 @@ public class Step3GateReportTests
         double us = 1e6 / Stopwatch.Frequency;
         SimCounters c = sim.Counters;
         sim.GetStats(out SimStats st);
-        _out.WriteLine($"=== s1k + intersections, {(ticks + 200) / 1200.0:F1} min game time ===");
+        _out.WriteLine($"=== s1k + intersections ({(adaptive ? "adaptive" : "fixed")}), {(ticks + 200) / 1200.0:F1} min game time ===");
         _out.WriteLine($"active={c.ActiveVehicles} spawned={c.VehiclesSpawned} completed={c.TripsCompleted} pendingTrips={sim.World.Trips.Count}");
         _out.WriteLine($"avg_speed_kmh={st.AvgSpeedKmh:F2} avg_trip_time_s={st.AvgTripTimeS:F1} trips_per_min={st.TripsCompletedPerMin:F2}");
         _out.WriteLine($"reroutes={sim.Counters.Reroutes} timed_reroutes={sim.Counters.TimedReroutes} cost_recalcs={sim.Counters.CostRecalcs} queries={sim.Counters.PathfindQueries} deferred={sim.Counters.RouteDeferred}");
+        _out.WriteLine($"routing: work={c.PathfindWork} expanded={c.PathfindExpandedNodes} failed={c.RouteFailed} refills={c.WindowRefills} refill_late={c.RefillLate} unpacks={c.PlanUnpacks} unpack_work={c.UnpackWork} plan_compactions={c.PlanCompactions} timed_checks={c.TimedChecks} timed_triggered={c.TimedTriggered} customize_rows={c.CustomizeRows} customize_work={c.CustomizeWork} lag_ticks={c.CustomizeLagTicks}");
         _out.WriteLine($"stuck_now={c.StuckVehicles} stuck_max={maxStuck} stuck_events_total={c.StuckEventsTotal} stuck_ticks_total={c.StuckTicksTotal} gridlock_flag={c.GridlockFlag} gridlock_ticks_total={c.GridlockTicksTotal}");
         _out.WriteLine($"grants={c.Grants} denied_exit={c.GateDeniedExit} inversions={c.PriorityInversions} box_wait_ticks={c.BoxWaitTicks} gate_wait_avg_s={(c.Grants > 0 ? c.GateWaitTicksTotal * 0.05 / c.Grants : 0):F2}");
+        SignalMetrics sm = sim.World.SignalWait;
+        string[] mn = { "straight", "right", "left", "uturn" };
+        for (int m = 0; m < SignalMetrics.Maneuvers; m++)
+        {
+            long n = sm.Grants[m];
+            long need = ((n * 95) + 99) / 100;
+            long acc = 0;
+            int p95 = 0;
+            for (int b = 0; b < SignalMetrics.HistBuckets && n > 0; b++)
+            {
+                acc += sm.Hist[(m * SignalMetrics.HistBuckets) + b];
+                if (acc >= need)
+                {
+                    p95 = b;
+                    break;
+                }
+            }
+
+            _out.WriteLine($"signal_wait {mn[m]}: grants={n} mean_s={(n > 0 ? sm.WaitTicks[m] * 0.05 / n : 0):F2} p95_s={p95}");
+        }
+
+        _out.WriteLine($"signal: left_wait_max_s={c.SignalLeftWaitMax * 0.05:F1} arterial_grants={c.ArterialSignalGrants} arterial_stop_share={(c.ArterialSignalGrants > 0 ? c.ArterialSignalStops / (double)c.ArterialSignalGrants : 0):F4} starve_denials={c.StarveDenials} arrow_phases={c.ArrowPhases} spill_outs={c.SpillOuts} exit_claims={c.ExitClaims}");
         _out.WriteLine($"bus: dispatched={c.BusDispatched} stop_arrivals={c.BusStopArrivals} boarded={c.BusPassengersBoarded} headway_samples={c.BusHeadwaySamples} bus_headway_deviation_s={st.BusHeadwayDeviationS:F2}");
         _out.WriteLine($"hard_clamps={c.HardClamps} lane_changes={c.LaneChanges} aborted={c.LaneChangesAborted} connector_entries={c.ConnectorEntries} spawn_deferred_ticks={c.SpawnDeferredTicks} events_dropped={c.EventsDropped}");
         _out.WriteLine($"tick: mean={sum / (double)ticks * us:F1} us p50={samples[ticks / 2] * us:F1} p95={samples[(int)(ticks * 0.95)] * us:F1} p99={samples[(int)(ticks * 0.99)] * us:F1} max={max * us:F1} us; >1ms: {over1ms}");

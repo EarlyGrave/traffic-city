@@ -1,5 +1,7 @@
+using System;
 using System.Diagnostics;
 using Sim.Core.Api;
+using Sim.Core.Rules;
 using Sim.Core.Util;
 
 namespace Sim.Core.Agents;
@@ -21,7 +23,9 @@ internal sealed class VehicleStore
     public readonly float[] Length;
     public readonly byte[] Type;
     public readonly float[] DesiredSpeed;
-    public readonly float[] SOld;          // scratch фазы 6: S на начало тика (клэмп I6), не входит в хэш
+    public readonly float[] ClampLeadGap;  // зазор до лидера для клэмпа I6: пишет фаза 5, читает фаза 6 (ADR-0016, D2); не в хэше
+    public readonly byte[] ClampFlags;     // бит0 - лидер/препятствие есть, бит1 - виртуальное (без MinPhysicalGap)
+    public readonly float[] ClampGateGap;  // сырой зазор ворот (без ограничения видимости); Idm.FreeGap - нет
 
     // --- порядок на полосе (intrusive double-linked list, 6.4) ---
     public readonly int[] Ahead;
@@ -43,6 +47,7 @@ internal sealed class VehicleStore
     public readonly int[] DestLane;
     public readonly float[] DestS;
     public readonly int[] NextConn;        // кэш NextConnector: connector ближайшей развилки по маршруту (-1 = не выбран); пересчитывает конец фазы 7
+    public readonly ulong[] RouteDirtyBits; // бит i = у машины изменился вход AssignConnectors (полоса, маршрут, окно, флаги); вне хэша (ADR-0016, D7; ADR-0019, A3: обход по маске)
 
     // --- ворота перекрёстка (intersections.md §4, §5; биты GateState - Rules.Intersections.GateRules) ---
     public readonly byte[] GateState;      // бит0 Granted (допуск выдан), бит1 StoppedAtLine
@@ -63,7 +68,15 @@ internal sealed class VehicleStore
     public readonly ushort[] DwellTicks;
     public readonly ushort[] Passengers;
 
-    public VehicleStore(int maxVehicles)
+    // --- уровни детализации (ADR-0013, sim-lod.md §1): выделены только при Lod.Mode != Off, иначе пустые (длина 0) ---
+    public readonly byte[] Lod;            // бит0 meso, бит1 MesoFresh (LodBits)
+    public readonly float[] MesoAllow;     // путь, который meso-машина может проехать до следующего пересчёта, м
+    public readonly float[] MesoNext;      // скорость, назначенная фазой 5 meso-машине на этот тик (применяет фаза 6; < 0 - нет); в границах тика, вне хэша
+
+    /// <summary>Q-meso (<c>Lod/QueueMeso.cs</c>): бит i = машина очереди полосы, фазы 5-6 её пропускают. Пустой - модели очереди нет (обход по всем слотам).</summary>
+    public ulong[] QueueBits = Array.Empty<ulong>();
+
+    public VehicleStore(int maxVehicles, bool lod = false)
     {
         Debug.Assert(maxVehicles >= 0);
         Pool = new HandlePool(maxVehicles);
@@ -74,7 +87,10 @@ internal sealed class VehicleStore
         Length = new float[maxVehicles];
         Type = new byte[maxVehicles];
         DesiredSpeed = new float[maxVehicles];
-        SOld = new float[maxVehicles];
+        ClampLeadGap = new float[maxVehicles];
+        ClampFlags = new byte[maxVehicles];
+        ClampGateGap = new float[maxVehicles];
+        Array.Fill(ClampGateGap, Idm.FreeGap);
         Ahead = new int[maxVehicles];
         Behind = new int[maxVehicles];
         GhostLane = new int[maxVehicles];
@@ -90,6 +106,8 @@ internal sealed class VehicleStore
         DestLane = new int[maxVehicles];
         DestS = new float[maxVehicles];
         NextConn = new int[maxVehicles];
+        RouteDirtyBits = new ulong[(maxVehicles + 63) >> 6];
+        Array.Fill(RouteDirtyBits, ulong.MaxValue);
         GateState = new byte[maxVehicles];
         GrantConnector = new int[maxVehicles];
         Ticket = new uint[maxVehicles];
@@ -103,6 +121,9 @@ internal sealed class VehicleStore
         BusNextStop = new int[maxVehicles];
         DwellTicks = new ushort[maxVehicles];
         Passengers = new ushort[maxVehicles];
+        Lod = lod ? new byte[maxVehicles] : Array.Empty<byte>();
+        MesoAllow = lod ? new float[maxVehicles] : Array.Empty<float>();
+        MesoNext = lod ? new float[maxVehicles] : Array.Empty<float>();
         for (int i = 0; i < maxVehicles; i++)
         {
             ResetSlot(i);
@@ -156,6 +177,16 @@ internal sealed class VehicleStore
         return new VehicleHandle(index, Pool.GenerationOf(index));
     }
 
+    /// <summary>Помечает все машины для пересчёта в <c>AssignConnectors</c> (изменилась сеть/узлы; ADR-0016, D7).</summary>
+    public void MarkAllRouteDirty() => Array.Fill(RouteDirtyBits, ulong.MaxValue);
+
+    /// <summary>Помечает машину для пересчёта в <c>AssignConnectors</c>.</summary>
+    public void MarkRouteDirty(int i) => RouteDirtyBits[i >> 6] |= 1UL << (i & 63);
+
+    public bool IsRouteDirty(int i) => ((RouteDirtyBits[i >> 6] >> (i & 63)) & 1UL) != 0UL;
+
+    public void ClearRouteDirty(int i) => RouteDirtyBits[i >> 6] &= ~(1UL << (i & 63));
+
     private void ResetSlot(int i)
     {
         Lane[i] = -1;
@@ -165,7 +196,9 @@ internal sealed class VehicleStore
         Length[i] = 0f;
         Type[i] = 0;
         DesiredSpeed[i] = 0f;
-        SOld[i] = 0f;
+        ClampLeadGap[i] = 0f;
+        ClampFlags[i] = 0;
+        ClampGateGap[i] = Idm.FreeGap;
         Ahead[i] = -1;
         Behind[i] = -1;
         GhostLane[i] = -1;
@@ -181,6 +214,7 @@ internal sealed class VehicleStore
         DestLane[i] = -1;
         DestS[i] = 0f;
         NextConn[i] = -1;
+        MarkRouteDirty(i);
         GateState[i] = 0;
         GrantConnector[i] = -1;
         Ticket[i] = 0;
@@ -194,5 +228,11 @@ internal sealed class VehicleStore
         BusNextStop[i] = 0;
         DwellTicks[i] = 0;
         Passengers[i] = 0;
+        if (Lod.Length != 0)
+        {
+            Lod[i] = 0;
+            MesoAllow[i] = 0f;
+            MesoNext[i] = -1f;
+        }
     }
 }

@@ -11,7 +11,7 @@ namespace Sim.Core.Transit;
 /// (2) Прибытие: автобус на полосе остановки, не дальше <see cref="BusStopRules.ArriveDistance"/> до её точки и почти стоит
 /// -> <c>AtStop</c>, высаживается треть пассажиров (на конечной - все), садятся ожидающие в пределах вместимости; стоянка =
 /// <c>DwellBase + DwellPerPassenger * (вышло + село)</c>, не больше <see cref="MaxDwellTicks"/>. (3) Отправление по окончании стоянки:
-/// строится маршрут к следующей остановке (<c>Router.Build</c>; при отложенном построении автобус ждёт), остановки без пути пропускаются;
+/// строится маршрут к следующей остановке (<c>Router.Build</c>, тот же иерархический запрос, что у машин; при отложенном построении автобус ждёт), остановки без пути пропускаются;
 /// на конечной (или если дальше пути нет) автобус деспаунится. Метрики: <c>BusStopArrivals</c>, отклонение интервала между последовательными
 /// прибытиями на остановке от планового (<c>HeadwayTicks</c>).
 /// </summary>
@@ -123,11 +123,15 @@ internal static class BusStopPhase
 
         stop.Waiting = (ushort)(stop.Waiting - board);
         v.Passengers[i] = (ushort)(pax - alight + board);
+        float oldSpeed = v.Speed[i];
         v.Speed[i] = 0f;
+        w.Masks.Retune(v, i, oldSpeed, v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0);   // накопители метрик фазы 9 (ADR-0019, A4)
         v.Flags[i] |= (byte)VehicleFlags.AtStop;
         TransitDesc cfg = w.TransitCfg;
         int dwell = cfg.DwellBaseTicks + (int)(cfg.DwellPerPassengerTicks * (alight + board));
-        v.DwellTicks[i] = (ushort)(dwell < 1 ? 1 : dwell > MaxDwellTicks ? MaxDwellTicks : dwell);
+        dwell = dwell < 1 ? 1 : dwell > MaxDwellTicks ? MaxDwellTicks : dwell;
+        dwell += HoldTicks(cfg, in stop, in br, v.BusNextStop[i], terminal, w.Tick + dwell);
+        v.DwellTicks[i] = (ushort)(dwell > ushort.MaxValue ? ushort.MaxValue : dwell);
 
         ref SimCounters c = ref w.Counters;
         ref BusRouteStats rs = ref w.BusRouteStats[r];
@@ -151,6 +155,27 @@ internal static class BusStopPhase
         w.Emit(SimEventKind.BusStopArrived, 0, r, si);
     }
 
+    /// <summary>
+    /// Удержание по интервалу (ADR-0008): автобус на контрольной остановке не уходит раньше <c>LastDepartTick + HoldAlpha * Headway</c>
+    /// (<paramref name="departAt"/> - тик отправления без удержания); добавка не больше <c>HoldMaxTicks</c>. 0 - без удержания.
+    /// </summary>
+    private static int HoldTicks(TransitDesc cfg, in BusStopData stop, in BusRouteData br, int k, bool terminal, long departAt)
+    {
+        if (!(cfg.HoldAlpha > 0f) || terminal || stop.LastDepartTick < 0 || cfg.HoldEveryN < 1 || k % cfg.HoldEveryN != 0)
+        {
+            return 0;
+        }
+
+        long earliest = stop.LastDepartTick + (long)(cfg.HoldAlpha * br.HeadwayTicks);
+        long extra = earliest - departAt;
+        if (extra <= 0)
+        {
+            return 0;
+        }
+
+        return (int)(extra > cfg.HoldMaxTicks ? cfg.HoldMaxTicks : extra);
+    }
+
     private static void Dwell(World w, int i)
     {
         VehicleStore v = w.Vehicles;
@@ -172,7 +197,7 @@ internal static class BusStopPhase
         for (int k = v.BusNextStop[i] + 1; k < br.StopCount; k++)
         {
             ref readonly BusStopData next = ref net.BusStops[br.FirstStop + k];
-            BuildStatus st = w.Router.Build(v.Lane[i], v.S[i], next.Lane, next.S, -1, -1, w.Tick, out RouteHandle h);
+            BuildStatus st = w.Router.Build(v.Lane[i], v.S[i], next.Lane, next.S, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
                 return; // стоим и повторяем на следующем тике (DwellTicks уже 0)
@@ -191,9 +216,15 @@ internal static class BusStopPhase
             v.Route[i] = h.Index;
             v.RouteGen[i] = h.Generation;
             v.RouteCursor[i] = 0;
+            v.MarkRouteDirty(i);
             v.NextConn[i] = -1;
             v.DestLane[i] = next.Lane;
             v.DestS[i] = next.S;
+            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
+            {
+                net.BusStops[br.FirstStop + v.BusNextStop[i]].LastDepartTick = w.Tick;
+            }
+
             v.BusNextStop[i] = k;
             v.DwellTicks[i] = 0;
             v.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.AtStop);
@@ -214,6 +245,7 @@ internal static class BusStopPhase
             w.Routes.Free(new RouteHandle(v.Route[i], v.RouteGen[i]));
         }
 
+        w.Masks.Remove(v, i);   // метрики фазы 9 считают только оставшихся (ADR-0019, A4)
         v.Despawn(v.HandleOf(i));
     }
 }

@@ -16,7 +16,7 @@ public class LayoutTests
         { typeof(Command), 64 },
         { typeof(BuildRoadCmd), 24 },
         { typeof(SpawnTripCmd), 24 },
-        { typeof(SetSignalPlanCmd), 32 },
+        { typeof(SetSignalPlanCmd), 46 },   // 2.5: 32 -> 46 (поля Adaptive, ADR-0018)
         { typeof(CreateBusRouteCmd), 12 },
         { typeof(AppendBusStopCmd), 16 },
         { typeof(SpawnBusCmd), 4 },
@@ -104,7 +104,7 @@ public class LayoutTests
     // (RouteView, NetworkView) не могут быть аргументом generic. Остальные публичные struct обязаны быть blittable.
     private static readonly string[] _notBlittableByDesign =
     {
-        nameof(ScenarioDesc), nameof(NetworkDesc), nameof(DemandDesc), nameof(TransitDesc), nameof(BusRouteDesc),
+        nameof(ScenarioDesc), nameof(NetworkDesc), nameof(DemandDesc), nameof(TransitDesc), nameof(BusRouteDesc), nameof(LodDesc), nameof(LodTourDesc), nameof(LoadOptions),
     };
 
     [Fact]

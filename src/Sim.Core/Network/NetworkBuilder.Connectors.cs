@@ -114,6 +114,7 @@ internal sealed partial class NetworkBuilder
 
             int first = _s.LanePointCount + (p * samples);
             float length = EmitBezier(li, lo, first, samples, _planMan[p] == Maneuver.UTurn, out float speed);
+            _s.LaneLength[laneIdx] = length;
             _s.Lanes[laneIdx] = new LaneData
             {
                 Kind = LaneKind.Connector,
@@ -151,6 +152,7 @@ internal sealed partial class NetworkBuilder
         nd.FirstConnector = baseLane;
         nd.ConnectorCount = plan;
         RefreshArmFlags(node);
+        _s.RefreshLaneGateNode(node);
         _s.Version++;
         return NetworkStatus.Ok;
     }
@@ -432,6 +434,8 @@ internal sealed partial class NetworkBuilder
             _s.LanePoints[first + k] = pt;
             _s.LanePointS[first + k] = s;
         }
+
+        _s.FillPieceHeadings(first, samples);
 
         // Лимит скорости: sqrt(a_lat · R), R = chord / (2 sin(|turn|/2)) при |turn| ≥ 10°; sin(turn/2) = sqrt((1 − cos)/2) без тригонометрии.
         float cosTurn = (t0.X * t3.X) + (t0.Z * t3.Z);

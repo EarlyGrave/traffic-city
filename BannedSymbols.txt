@@ -26,7 +26,12 @@ T:System.Diagnostics.Stopwatch;Замеры времени — только сн
 T:System.Console;Ядро не пишет в консоль
 N:System.IO;Ядро не трогает файлы и потоки
 
-// Ядро однопоточное и синхронное.
+// Многопоточность - только через Util/WorkerPool (ADR-0017): там RS0030 отключён точечно (#pragma), везде в ядре потоки запрещены.
+T:System.Threading.ThreadPool;Потоки ядра - только Util/WorkerPool (ADR-0017)
+T:System.Threading.Tasks.Parallel;Потоки ядра - только Util/WorkerPool (ADR-0017)
+T:System.Threading.Thread;Потоки ядра - только Util/WorkerPool (ADR-0017)
+
+// Ядро синхронное: async/Task запрещены, ожидание по времени запрещено.
 N:System.Threading.Tasks;async/Task/ValueTask запрещены в ядре
 M:System.Threading.Thread.Sleep(System.Int32);Блокировки по времени запрещены
 M:System.Threading.Thread.Sleep(System.TimeSpan);Блокировки по времени запрещены

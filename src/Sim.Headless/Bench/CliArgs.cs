@@ -12,12 +12,22 @@ public sealed class CliArgs
     public string Error { get; private set; } = "";
 
     /// <summary>Разбирает args[1..]; допустимые опции — <paramref name="allowed"/> (с префиксом "--"), у каждой есть значение.</summary>
-    public static bool TryParse(string[] args, string[] allowed, out CliArgs result)
+    public static bool TryParse(string[] args, string[] allowed, out CliArgs result) =>
+        TryParse(args, allowed, Array.Empty<string>(), out result);
+
+    /// <summary>То же, плюс булевы флаги без значения (<paramref name="flags"/>, например "--warmup-until-full").</summary>
+    public static bool TryParse(string[] args, string[] allowed, string[] flags, out CliArgs result)
     {
         result = new CliArgs();
         for (int i = 1; i < args.Length; i++)
         {
             string a = args[i];
+            if (Array.IndexOf(flags, a) >= 0)
+            {
+                result._values[a] = "true";
+                continue;
+            }
+
             if (Array.IndexOf(allowed, a) < 0)
             {
                 result.Error = $"unknown option '{a}'";
@@ -36,6 +46,8 @@ public sealed class CliArgs
 
         return true;
     }
+
+    public bool Has(string name) => _values.ContainsKey(name);
 
     public string? Get(string name) => _values.TryGetValue(name, out string? v) ? v : null;
 

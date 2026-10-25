@@ -86,7 +86,6 @@ public struct ZoneData
     public int FirstSpawnLane, SpawnLaneCount; // диапазон в ZoneLanes
     public byte IsExternal;         // краевая зона
     public byte Reserved0, Reserved1, Reserved2;
-    public int HubNode;             // узел-хаб зоны для кэша магистралей (routing.md §4.1); -1 — нет
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -99,6 +98,9 @@ public struct BusStopData
     public ushort Waiting;
     public ushort Reserved;
     public long LastArrivalTick;
+
+    /// <summary>Тик последнего отправления автобуса с остановки (удержание, ADR-0008); -1 - не было.</summary>
+    public long LastDepartTick;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
