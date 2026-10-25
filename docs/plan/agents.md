@@ -95,3 +95,5 @@
 | 86 | save-fuzz-fix (worktree) | sonnet | дыра валидатора сейва (фазз после мержа) | done, merged (3 дыры закрыты) |
 | 90 | ci-baseline-ci (worktree) | sonnet | 3.0: `perf/baseline-ci.json` из лога CI PR #5 (ADR-0007) | wip |
 | 91 | lane-miss (worktree) | sonnet | 3.0: причина `lane_miss_share` s10k ≈ 0.45, фикс по Парето | wip |
+| 92 | pedestrians-spec (worktree) | opus | 3.1: ADR-0020 + `docs/design/pedestrians.md` | wip |
+| 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | wip |
