@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Lod;
 using Sim.Core.Metrics;
@@ -309,6 +310,18 @@ internal static class WorldLoader
         {
             c.FailBlock = SaveFormat.FourCc("WRLD"u8);
             return st;
+        }
+
+        // NextConn честного сейва равен полному расчёту (Debug-сверка FirstHop); испорченный, но структурно допустимый (соседний connector той же полосы)
+        // исполнение в Debug роняло бы. Маршруты и сеть уже загружены: перезаписываем посчитанным (для честного файла значение не меняется).
+        VehicleStore veh = w.Vehicles;
+        for (int i = 0; i < veh.HighWater; i++)
+        {
+            int ln = veh.Lane[i];
+            if (veh.NextConn[i] >= 0 && ln >= 0 && veh.Pool.IsAlive(i))
+            {
+                veh.NextConn[i] = RouteNav.NextConnector(w, i, ln);
+            }
         }
 
         // Производные оставшихся хранилищ.

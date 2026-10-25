@@ -30,15 +30,15 @@
 | `NetworkStore` статика | `Nodes`, `Segments`, `Lanes` (все поля), `NodeArms`, `ArmFlags`, `ArmDir`, `LaneNext`, `SegmentPoints`, `LanePoints`, `LanePointS`, `Zones`, `ZoneLanes`, `BusStops`, `BusRoutes`, `BusRouteStops`, счётчики `*Count` | `LanePieceHeading`, `LaneLength`, `LaneGateNode`, `IncHead/IncNext`, `CellNext`, `Cells` (вставка в порядке индекса = исходной, пока нет сноса) |
 | `NetworkStore` динамика | `NodeTicket`, `OutReserved`, `BusStops.Waiting/LastArrivalTick`, `BusRoutes.ActiveBuses/LastDispatchTick` | — |
 | `ConnectorStore` | `Count`, `ConflictsUsed`, `Lane`, `Node`, `InLane`, `OutLane`, `LocalBit`, `Maneuver`, `FromArm`, `Flags`, `FirstConflict`, `ConflictCount`, `ConflictMask`, `Conflicts` — раскладка зависит от истории `BuildRoad` | `Length`, `InLength` |
-| `SignalStore` + выходы фазы 4 | все массивы до `Count` (включая `PhaseMask`, `TicksLeft`), `SignalStates`, `SignalCount`, `LaneSignals` (1 Б/полосу — дешевле, чем доказывать чистоту) | — |
-| `VehicleStore` | `Pool` (поколения, free-list **в LIFO-порядке**, `HighWater`), `Lane, S, Speed, Accel, Length, Type, DesiredSpeed, Ahead, Behind, GhostLane, GhostAhead, GhostBehind, LaneChangeDir, LaneChangeTicks, NextMobilTick, Route, RouteGen, RouteCursor, DestZone, DestLane, DestS, NextConn, GateState, GrantConnector, Ticket, WaitTicks, PointHint, Lateral, SpawnTick, StillTicks, Flags, BusRoute, BusNextStop, DwellTicks, Passengers` (124 Б/слот) | `ClampLeadGap/ClampFlags/ClampGateGap` (scratch 5→6), `RouteDirty` (после `Load` = 1 у живых: пересчёт входа `AssignConnectors` тот же) |
+| `SignalStore` + выходы фазы 4 | все массивы до `Count` (включая `PhaseMask`, `TicksLeft`), `SignalStates`, `SignalCount`, `LaneSignals` (1 Б/полосу — дешевле, чем доказывать чистоту). 2.5 S2 (ADR-0018): параметры плана (`MinGreenTicks`, `GapTicks`, `ArrowTrigger/Min/Max/GapTicks`, `CycleTicks`, `Flags`) и состояние автомата с подфазами - `Machine`, `Sub`, `GreenMask` (открытая маска), `NextMask/NextAxis/NextSub/NextArrowArms` (переход через жёлтый и all-red читает следующий тик), `ArrowArms`, `GreenElapsed`, `GapLeft` (таймеры gap-out/max-out/ArrowGap), `ArmLeftYield[Count·16]` и `ArmLeftHead[Count·16]` (счёт уступания левого на зелёном: читается раньше записи, индекс машины-головы; без них стрелка в момент включения сработала бы позже/раньше) | Статика слота, её строит `SignalStore.RebuildStatics` тем же кодом, что `TryAdd`: `ArmMask/LeftMask/RightMask`, `ArmAxis`, `ArmOpp`, `HasArrow`, `ArmCountOf`, список входных полос детекторов `SigLane/SigLaneArm/SigLaneAxis/SigLaneLeft/SigLaneCount` (функция сети, `PhaseMask` и манёвров connector'ов). Детекторов-накопителей нет: спрос читается из `LaneOccupancy`/машин на лету. `ArrowEntries` - дельта-счётчик внутри тика (в `SimCounters.ArrowPhases`), не состояние |
+| `VehicleStore` | `Pool` (поколения, free-list **в LIFO-порядке**, `HighWater`), `Lane, S, Speed, Accel, Length, Type, DesiredSpeed, Ahead, Behind, GhostLane, GhostAhead, GhostBehind, LaneChangeDir, LaneChangeTicks, NextMobilTick, Route, RouteGen, RouteCursor, DestZone, DestLane, DestS, NextConn, GateState, GrantConnector, Ticket, WaitTicks, PointHint, Lateral, SpawnTick, StillTicks, Flags, BusRoute, BusNextStop, DwellTicks, Passengers` (124 Б/слот) и `Gate.DenyReason` (1 Б/слот, 2.5 S2: детекторы Adaptive читают код отказа конца прошлой фазы 4 раньше, чем фаза 4 его перепишет; столбец VEHC 40) | `ClampLeadGap/ClampFlags/ClampGateGap` (scratch 5→6), `RouteDirty` (после `Load` = 1 у живых: пересчёт входа `AssignConnectors` тот же) |
 | `LaneOccupancy` | `LaneHead`, `LaneTail`, `LaneCount` | — |
 | Очереди | `PendingTrips` (FIFO + `_unrouted`), `Rerouting`, `RefillQueue`, `Commands` (не применённые команды — 64 Б сырые, раскладка `core-api.md` §4 и так C ABI) — в **логическом** порядке, `head` при загрузке = 0 | — |
 | `RouteStore` | `Pool`, `WinCount, PlanFirst, PlanCount, PlanCap, PlanCost, PlanTick`, окна живых слотов (`WinCount` шагов), `PlanArena[0..PlanUsed)`, `Compactions`. Окна и планы **не** производные: распакованы при старых весах | `_compactKeys/_compactItems` |
 | `RouteGraph` | `SegCost` (веса по загрузке на момент пересчёта), `ArcCost` (штраф узла берётся из `Control` на момент последней перестройки: после `SetNodeControl` до следующей перестройки графа он историчен), `WeightsVersion`, `BuiltVersion` (граф может отставать от `Net.Version`) | топология (`ArcFirst/To/Maneuver`, `StartNode/EndNode/EndPos`, `VMax`): `Rebuild()`, затем вернуть веса и версии |
 | `Overlay` | параметры (проверка), раскладка (`LevelNx/Nz`, `CellBase`, `Entry*/Exit*First/Count/Cap`, `MatrixFirst`, `Entries`, `Exits`, построенные узлы/DirSeg, `_failed`), `Matrix` (до занятой длины), `Dirty`, `CustomizedSegCost`, `WeightsVersion`, `WaveActive/Cell/Row`, `Disabled`, `Rebuilds`. Матрицы посреди волны — смесь старых и новых весов, пересчитать нельзя | `NodeCellX/Z`, `CutLevel`, `LevelDiv`, `EntryIdx/ExitIdx` |
-| Метрики фазы 9 | `SegmentLoads` (читает фаза 3 следующего тика) и `SegmentLoadsTick`, `NodeThroughput`, `BusRouteStats`; `SignalMetrics` (S1 светофоров) и `ConnWaitSum/ConnGrantCount` - блок `SMET` | — |
-| Спавнер, ворота, воркеры | — | `SpawnerData` (лениво из зон и типов на первом тике), `GateScratch` целиком (в т.ч. `PrevList/NextList`, `DenyReason`, `CandStamp`, `NodeBusy`, маски `GatedMask/ConnMask/SignalMask`: после загрузки `FullScan = true` - первая фаза 4 делает полный проход, он по построению даёт то же, что активный; `OutTouched` строится по ненулевым `OutReserved`), `Behaviour/Integrate/SnapshotJob`, `Pool` |
+| Метрики фазы 9 | `SegmentLoads` (читает фаза 3 следующего тика) и `SegmentLoadsTick`, `NodeThroughput`, `BusRouteStats`; `SignalMetrics` (S1 светофоров), `ConnWaitSum/ConnGrantCount` (накопители допусков за окно пересчёта весов) и `ConnDelay` (EWMA измеренной задержки connector'а, 2.5 S2; лежат в `GateScratch`, но это состояние: читаются `SignalDelays.Update` раньше записи и входят в хэш) - блок `SMET` | — |
+| Спавнер, ворота, воркеры | — | `SpawnerData` (лениво из зон и типов на первом тике), `GateScratch` целиком, кроме `ConnWaitSum/ConnGrantCount/ConnDelay` и `DenyReason` (см. выше) (в т.ч. `PrevList/NextList`, `CandStamp`, `NodeBusy`, маски `GatedMask/ConnMask/SignalMask`: после загрузки `FullScan = true` - первая фаза 4 делает полный проход, он по построению даёт то же, что активный; `OutTouched` строится по ненулевым `OutReserved`), `Behaviour/Integrate/SnapshotJob`, `Pool` |
 | Маски активных множеств | — | `World.Masks` (`TickMasks`: перестраивается фазой 6 каждого тика), `LaneOccupancy.OccMask` (из `LaneCount > 0`), `LaneOccupancy.Linked` (пуст: первая фаза 4 - полный проход), `VehicleStore.RouteDirtyBits` (после загрузки все 1: пересчёт `AssignConnectors` даёт сохранённый `NextConn`), `ClampLeadGap/ClampFlags/ClampGateGap` (scratch фаз 5-6) |
 | Снапшоты, события, вид | — | `Render[2]`: после `Load` фаза 10 заполняет `Render[Tick & 1]` (`SnapshotTick = Tick`), `PreviousVehicles` = копия; `Events` пуст; `RenderViewState` (`SetRenderView`) - презентация, не сохраняется (вид «всё») |
 | LOD (ADR-0013), блок `LODS` | параметры сетки (`OriginX/Z`, `CellsX/Z` - заданы размерами сети в `Create` и после `BuildRoad` не меняются), по машине `Lod` (биты meso/fresh/queue/head/parked), `MesoAllow`, `MesoNext`; по ячейке `CellLevel`, `CellHoldUntil`, `CellCongStreak`; `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick` | привязка узлов/полос к ячейкам (`NodeCell`, `LaneCell`, `LaneColor`, CSR полос) - `OnNetworkGrown` |
@@ -132,7 +132,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `NZON` | C | `ZoneCount` | `ZoneData` по полям, `ZoneLanes` |
 | `NBUS` | C | остановки / маршруты | статические поля `BusStopData`/`BusRouteData`, `BusRouteStops` |
 | `CONN` | C | `Count` / `ConflictsUsed` | §1, `Conflicts` по полям (`OtherLocal, Flags, SMineCm, SOtherCm`) |
-| `SIGS` | C | `Count` | `SignalStore` (все массивы до `Count`, `GreenTicks`/`PhaseMask` — `Count·8`), `SignalStates`, `SignalCount` |
+| `SIGS` | C | `Count` | `SignalStore` (все массивы до `Count`, `GreenTicks`/`PhaseMask` — `Count·8`, `ArmLeftYield/ArmLeftHead` — `Count·16`), `SignalStates`, `SignalCount`; столбцы 18-37 - Adaptive/стрелка (2.5 S2) |
 | `NDYN` | C | `NodeCount` | `NodeTicket`, `NodeThroughput` |
 | `LDYN` | C | `LaneCount` | `LaneHead`, `LaneTail`, `LaneCount`, `OutReserved`, `LaneSignals` |
 | `SDYN` | C | `SegmentCount` | `SegmentLoads` по полям |
@@ -393,7 +393,9 @@ s10k с цифрами размера и времени. Клиентские к
 
 | Версия | Изменение | Миграция |
 |---|---|---|
-| 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`) | — |
+| 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`). Дополнен в рамках 2.5 S2 (адаптивные светофоры, ADR-0018) без `world_version++`: `PARM` 76-82 (дефолты `RulesDesc.Signal*`), `SIGS` 18-37, `SMET` 6 (`ConnDelay`), `VEHC` 40 (`DenyReason`) | — |
+
+Решение по 2.5 S2: `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
 ## 13. Открытые вопросы
 1. (владелец) Совместимость сейвов до релиза: держать миграции с первой `world_version` или до первой публичной сборки
@@ -493,6 +495,13 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 73 | TransitPassengerRatePerMin | f32 | 1 | 0 |
 | `PARM` | 74 | NetLaneWidth | f32 | 1 | 0 |
 | `PARM` | 75 | NetConnectorSamples | i32 | 1 | 0 |
+| `PARM` | 76 | RulesSignalMinGreenTicks | i32 | 1 | 140 |
+| `PARM` | 77 | RulesSignalMaxGreenTicks | i32 | 1 | 480 |
+| `PARM` | 78 | RulesSignalGapTicks | i32 | 1 | 50 |
+| `PARM` | 79 | RulesSignalArrowTriggerTicks | i32 | 1 | 80 |
+| `PARM` | 80 | RulesSignalArrowMinTicks | i32 | 1 | 60 |
+| `PARM` | 81 | RulesSignalArrowMaxTicks | i32 | 1 | 120 |
+| `PARM` | 82 | RulesSignalArrowGapTicks | i32 | 1 | 40 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -722,6 +731,26 @@ s10k с цифрами размера и времени. Клиентские к
 | `SIGS` | 15 | StatePhase | u8 | SignalCount | 0 |
 | `SIGS` | 16 | StateInterval | u8 | SignalCount | 0 |
 | `SIGS` | 17 | StateTicksToChange | u16 | SignalCount | 0 |
+| `SIGS` | 18 | MinGreenTicks | u16 | Count | 0 |
+| `SIGS` | 19 | GapTicks | u16 | Count | 0 |
+| `SIGS` | 20 | ArrowTriggerTicks | u16 | Count | 0 |
+| `SIGS` | 21 | ArrowMinTicks | u16 | Count | 0 |
+| `SIGS` | 22 | ArrowMaxTicks | u16 | Count | 0 |
+| `SIGS` | 23 | ArrowGapTicks | u16 | Count | 0 |
+| `SIGS` | 24 | CycleTicks | u16 | Count | 0 |
+| `SIGS` | 25 | PlanFlags | u8 | Count | 0 |
+| `SIGS` | 26 | Machine | u8 | Count | 0 |
+| `SIGS` | 27 | Sub | u8 | Count | 0 |
+| `SIGS` | 28 | GreenMask | u64 | Count | 0 |
+| `SIGS` | 29 | NextMask | u64 | Count | 0 |
+| `SIGS` | 30 | NextAxis | u8 | Count | 0 |
+| `SIGS` | 31 | NextSub | u8 | Count | 0 |
+| `SIGS` | 32 | NextArrowArms | u16 | Count | 0 |
+| `SIGS` | 33 | ArrowArms | u16 | Count | 0 |
+| `SIGS` | 34 | GreenElapsed | u16 | Count | 0 |
+| `SIGS` | 35 | GapLeft | u16 | Count | 0 |
+| `SIGS` | 36 | ArmLeftYield | u16 | Count * 16 | 0 |
+| `SIGS` | 37 | ArmLeftHead | i32 | Count * 16 | -1 |
 | `NDYN` | 1 | NodeTicket | u32 | NodeCount | 0 |
 | `NDYN` | 2 | NodeThroughput | u32 | NodeCount | 0 |
 | `LDYN` | 1 | LaneHead | i32 | LaneCount | -1 |
@@ -779,6 +808,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `VEHC` | 37 | BusNextStop | i32 | HighWater | 0 |
 | `VEHC` | 38 | DwellTicks | u16 | HighWater | 0 |
 | `VEHC` | 39 | Passengers | u16 | HighWater | 0 |
+| `VEHC` | 40 | DenyReason | u8 | HighWater | 0 |
 | `TRIP` | 1 | Count | i32 | 1 | 0 |
 | `TRIP` | 2 | FromZone | i32 | Count | 0 |
 | `TRIP` | 3 | ToZone | i32 | Count | 0 |
@@ -879,4 +909,5 @@ s10k с цифрами размера и времени. Клиентские к
 | `SMET` | 3 | SignalHist | i64 | 4 * 121 | 0 |
 | `SMET` | 4 | ConnWaitSum | i64 | Count | 0 |
 | `SMET` | 5 | ConnGrantCount | i32 | Count | 0 |
+| `SMET` | 6 | ConnDelay | f32 | Count | 0 |
 <!-- schema:end -->

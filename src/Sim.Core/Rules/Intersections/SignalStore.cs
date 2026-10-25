@@ -605,6 +605,15 @@ internal sealed class SignalStore
         return true;
     }
 
+    /// <summary>Загрузка сейва: статика (производное от сети и <c>PhaseMask</c>) всех слотов тем же кодом, что при <see cref="TryAdd"/>.</summary>
+    internal void RebuildStatics(World w)
+    {
+        for (int s = 0; s < Count; s++)
+        {
+            BuildStatics(w, s, Node[s]);
+        }
+    }
+
     /// <summary>Статика слота (6.5): маски рукавов, оси, встречные, возможность стрелки, список входных полос узла.</summary>
     private void BuildStatics(World w, int slot, int node)
     {

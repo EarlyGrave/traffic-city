@@ -216,6 +216,27 @@ internal static partial class SaveSchema
         Col.Field<SignalState>(15, "StatePhase", w => w.SignalStates, _signalStateN, "SignalCount", nameof(SignalState.Phase)),
         Col.Field<SignalState>(16, "StateInterval", w => w.SignalStates, _signalStateN, "SignalCount", nameof(SignalState.Interval)),
         Col.Field<SignalState>(17, "StateTicksToChange", w => w.SignalStates, _signalStateN, "SignalCount", nameof(SignalState.TicksToChange)),
+        // 2.5 S2 (ADR-0018): параметры плана Adaptive/стрелки и состояние автомата с подфазами. Статика слота (рукава, оси, входные полосы) - производное (RebuildStatics).
+        Col.Array<ushort>(18, "MinGreenTicks", w => w.Signals.MinGreenTicks, _signalN, "Count"),
+        Col.Array<ushort>(19, "GapTicks", w => w.Signals.GapTicks, _signalN, "Count"),
+        Col.Array<ushort>(20, "ArrowTriggerTicks", w => w.Signals.ArrowTriggerTicks, _signalN, "Count"),
+        Col.Array<ushort>(21, "ArrowMinTicks", w => w.Signals.ArrowMinTicks, _signalN, "Count"),
+        Col.Array<ushort>(22, "ArrowMaxTicks", w => w.Signals.ArrowMaxTicks, _signalN, "Count"),
+        Col.Array<ushort>(23, "ArrowGapTicks", w => w.Signals.ArrowGapTicks, _signalN, "Count"),
+        Col.Array<ushort>(24, "CycleTicks", w => w.Signals.CycleTicks, _signalN, "Count"),
+        Col.Array<byte>(25, "PlanFlags", w => w.Signals.Flags, _signalN, "Count"),
+        Col.Array<byte>(26, "Machine", w => w.Signals.Machine, _signalN, "Count"),
+        Col.Array<byte>(27, "Sub", w => w.Signals.Sub, _signalN, "Count"),
+        Col.Array<ulong>(28, "GreenMask", w => w.Signals.GreenMask, _signalN, "Count"),
+        Col.Array<ulong>(29, "NextMask", w => w.Signals.NextMask, _signalN, "Count"),
+        Col.Array<byte>(30, "NextAxis", w => w.Signals.NextAxis, _signalN, "Count"),
+        Col.Array<byte>(31, "NextSub", w => w.Signals.NextSub, _signalN, "Count"),
+        Col.Array<ushort>(32, "NextArrowArms", w => w.Signals.NextArrowArms, _signalN, "Count"),
+        Col.Array<ushort>(33, "ArrowArms", w => w.Signals.ArrowArms, _signalN, "Count"),
+        Col.Array<ushort>(34, "GreenElapsed", w => w.Signals.GreenElapsed, _signalN, "Count"),
+        Col.Array<ushort>(35, "GapLeft", w => w.Signals.GapLeft, _signalN, "Count"),
+        Col.Array<ushort>(36, "ArmLeftYield", w => w.Signals.ArmLeftYield, w => w.Signals.Count * SignalStore.ArmCap, "Count * 16"),
+        Col.Array<int>(37, "ArmLeftHead", w => w.Signals.ArmLeftHead, w => w.Signals.Count * SignalStore.ArmCap, "Count * 16", "-1"),
     });
 
     private static BlockDef NodeDynamic() => new("NDYN", "узлы: билеты ворот и пропускная способность", new[]

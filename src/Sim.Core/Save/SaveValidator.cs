@@ -133,6 +133,9 @@ internal static class SaveValidator
             cs.InLength[g] = n.Lanes[cs.InLane[g]].Length;
         }
 
+        // Статика светофоров (рукава, оси, входные полосы Adaptive): производное от сети, строится тем же кодом, что при TryAdd.
+        w.Signals.RebuildStatics(w);
+
         return LoadStatus.Ok;
     }
 
@@ -205,7 +208,8 @@ internal static class SaveValidator
 
             if (l.Kind == LaneKind.Connector)
             {
-                if ((uint)l.Node >= (uint)nodes || (uint)l.FromLane >= (uint)lanes || (uint)l.ToLane >= (uint)lanes)
+                if ((uint)l.Node >= (uint)nodes || (uint)l.FromLane >= (uint)lanes || (uint)l.ToLane >= (uint)lanes ||
+                    n.Lanes[l.FromLane].Kind == LaneKind.Connector || n.Lanes[l.ToLane].Kind == LaneKind.Connector)   // концы connector'а - обычные полосы (граф и ворота читают их Segment)
                 {
                     return Bad(c, i, 6);
                 }
@@ -335,10 +339,31 @@ internal static class SaveValidator
         for (int s = 0; s < sg.Count; s++)
         {
             int nd = sg.Node[s];
-            if ((uint)nd >= (uint)nodes || n.Nodes[nd].Signal != s || sg.PhaseCount[s] > SignalStore.MaxPhases || (uint)sg.Mode[s] > (uint)SignalMode.FlashYellow ||
+            if ((uint)nd >= (uint)nodes || n.Nodes[nd].Signal != s || sg.PhaseCount[s] > SignalStore.MaxPhases || (uint)sg.Mode[s] > (uint)SignalMode.Adaptive ||
                 (byte)sg.Interval[s] > (byte)SignalInterval.Off || sg.Phase[s] >= SignalStore.MaxPhases)
             {
                 return Bad(c, s, 20);
+            }
+
+            if (sg.Machine[s] > 1 || sg.Sub[s] > 1 || sg.NextSub[s] > 1 || sg.NextAxis[s] >= SignalStore.MaxPhases)
+            {
+                return Bad(c, s, 26);
+            }
+
+            // Рукавов у узла <= ArmCap: биты стрелки за ними и подсчёт уступания по несуществующим рукавам читать нечем.
+            int armMask = (1 << Math.Min(n.Nodes[nd].ArmCount, SignalStore.ArmCap)) - 1;
+            if (((sg.ArrowArms[s] | sg.NextArrowArms[s]) & ~armMask) != 0)
+            {
+                return Bad(c, s, 27);
+            }
+
+            for (int a = 0; a < SignalStore.ArmCap; a++)
+            {
+                int head = sg.ArmLeftHead[(s * SignalStore.ArmCap) + a];
+                if (head < -1 || head >= w.Caps.MaxVehicles)
+                {
+                    return Bad(c, s, 28);
+                }
             }
         }
 
@@ -441,6 +466,11 @@ internal static class SaveValidator
             if (v.NextConn[i] < -1 || v.NextConn[i] >= lanes)
             {
                 return Bad(c, i, 334);
+            }
+
+            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Tie)
+            {
+                return Bad(c, i, 340);
             }
 
             if (v.GrantConnector[i] < -1 || v.GrantConnector[i] >= lanes)
@@ -775,6 +805,14 @@ internal static class SaveValidator
         if (w.TargetVehicles < 0 || w.GridlockStreak < 0 || w.Tick < 0)
         {
             return Bad(c, 0, 90);
+        }
+
+        for (int g = 0; g < w.Connectors.Count; g++)
+        {
+            if (!Fin(w.Gate.ConnDelay[g]) || w.Gate.ConnDelay[g] < 0f || w.Gate.ConnWaitSum[g] < 0L || w.Gate.ConnGrantCount[g] < 0)
+            {
+                return Bad(c, g, 92);
+            }
         }
 
         if ((w.Overlay != null) != (w.Routing.Levels > 0) || (w.Lod != null) != (w.LodCfg.Mode != LodMode.Off) ||

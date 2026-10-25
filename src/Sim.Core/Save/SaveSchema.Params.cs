@@ -100,6 +100,15 @@ internal static partial class SaveSchema
         // Геометрия построителя сети (нужна BuildRoad после загрузки): остальные параметры NetworkOptions - константы.
         Col.Scalar<float>(74, "NetLaneWidth", w => w.Builder.Options.LaneWidth, (c, v) => c.NetLaneWidth = v),
         Col.Scalar<int>(75, "NetConnectorSamples", w => w.Builder.Options.ConnectorSamples, (c, v) => c.NetConnectorSamples = v),
+
+        // RulesDesc, добавлено в 2.5 S2 (дефолты Adaptive; значения с применёнными дефолтами WorldBuilder)
+        Col.Scalar<int>(76, "RulesSignalMinGreenTicks", w => w.Rules.SignalMinGreenTicks, (c, v) => c.Rules.SignalMinGreenTicks = v, "140"),
+        Col.Scalar<int>(77, "RulesSignalMaxGreenTicks", w => w.Rules.SignalMaxGreenTicks, (c, v) => c.Rules.SignalMaxGreenTicks = v, "480"),
+        Col.Scalar<int>(78, "RulesSignalGapTicks", w => w.Rules.SignalGapTicks, (c, v) => c.Rules.SignalGapTicks = v, "50"),
+        Col.Scalar<int>(79, "RulesSignalArrowTriggerTicks", w => w.Rules.SignalArrowTriggerTicks, (c, v) => c.Rules.SignalArrowTriggerTicks = v, "80"),
+        Col.Scalar<int>(80, "RulesSignalArrowMinTicks", w => w.Rules.SignalArrowMinTicks, (c, v) => c.Rules.SignalArrowMinTicks = v, "60"),
+        Col.Scalar<int>(81, "RulesSignalArrowMaxTicks", w => w.Rules.SignalArrowMaxTicks, (c, v) => c.Rules.SignalArrowMaxTicks = v, "120"),
+        Col.Scalar<int>(82, "RulesSignalArrowGapTicks", w => w.Rules.SignalArrowGapTicks, (c, v) => c.Rules.SignalArrowGapTicks = v, "40"),
     })
     {
         PreWorld = true,

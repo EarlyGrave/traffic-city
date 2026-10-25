@@ -75,6 +75,7 @@ internal static partial class SaveSchema
         Col.Array<int>(37, "BusNextStop", w => w.Vehicles.BusNextStop, _vehicleHw, "HighWater", "0", _vehPool),
         Col.Array<ushort>(38, "DwellTicks", w => w.Vehicles.DwellTicks, _vehicleHw, "HighWater", "0", _vehPool),
         Col.Array<ushort>(39, "Passengers", w => w.Vehicles.Passengers, _vehicleHw, "HighWater", "0", _vehPool),
+        Col.Array<byte>(40, "DenyReason", w => w.Gate.DenyReason, _vehicleHw, "HighWater", "0", _vehPool),   // GateDeny конца прошлой фазы 4: детекторы Adaptive (SignalPhase.Detect) читают его раньше записи
     })
     {
         // Сеть и её динамика загружены: проверки и производные до первого обхода сети (в т.ч. Graph.Rebuild в RGRP).
@@ -341,5 +342,6 @@ internal static partial class SaveSchema
         Col.Array<long>(3, "SignalHist", w => w.SignalWait.Hist, static _ => SignalMetrics.Maneuvers * SignalMetrics.HistBuckets, "4 * 121"),
         Col.Array<long>(4, "ConnWaitSum", w => w.Gate.ConnWaitSum, _connN, "Count"),
         Col.Array<int>(5, "ConnGrantCount", w => w.Gate.ConnGrantCount, _connN, "Count"),
+        Col.Array<float>(6, "ConnDelay", w => w.Gate.ConnDelay, _connN, "Count"),
     });
 }

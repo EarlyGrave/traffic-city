@@ -20,6 +20,7 @@ public class WorldSaveMomentsTests
     /// <summary>Что встретилось в моментах сейва (тест не проверяет «хоть раз»: он проверяет, что проверяемый мир действительно бывает в этих состояниях).</summary>
     private sealed class Coverage
     {
+        public int ArrowSub, SubPhaseTransition, GapRunning, LeftYield, AdaptiveSlots;
         public int Wave, RecalcPending, Ghost, LaneChange, Rerouting, Refill, Trips, Commands, AtStop, Selected, Granted, Stuck, WaitTicks, Meso, Queue, Head, Parked, Buses;
 
         public void Observe(Simulation sim)
@@ -32,6 +33,24 @@ public class WorldSaveMomentsTests
             Trips += w.Trips.Count > 0 ? 1 : 0;
             Commands += w.Commands.Count > 0 ? 1 : 0;
             Selected += w.Vehicles.IsAlive(w.Selected) ? 1 : 0;
+            SignalStore sg = w.Signals;
+            for (int k = 0; k < sg.Count; k++)
+            {
+                if (sg.Machine[k] == 0)
+                {
+                    continue;
+                }
+
+                AdaptiveSlots++;
+                ArrowSub += sg.Sub[k] != 0 ? 1 : 0;
+                SubPhaseTransition += sg.Interval[k] != SignalInterval.Green ? 1 : 0;
+                GapRunning += sg.GapLeft[k] != 0 && sg.GapLeft[k] != sg.GapTicks[k] ? 1 : 0;
+                for (int a = 0; a < sg.ArmCountOf[k]; a++)
+                {
+                    LeftYield += sg.ArmLeftYield[(k * SignalStore.ArmCap) + a] != 0 ? 1 : 0;
+                }
+            }
+
             VehicleStore v = w.Vehicles;
             bool ghost = false, change = false, atStop = false, granted = false, stuck = false, wait = false, bus = false, queue = false, head = false, parked = false, meso = false;
             for (int i = 0; i < v.HighWater; i++)
@@ -72,7 +91,7 @@ public class WorldSaveMomentsTests
 
         public override string ToString() =>
             $"wave {Wave}, recalcPending {RecalcPending}, ghost {Ghost}, laneChange {LaneChange}, rerouting {Rerouting}, refill {Refill}, trips {Trips}, commands {Commands}, " +
-            $"atStop {AtStop}, buses {Buses}, selected {Selected}, granted {Granted}, waiting {WaitTicks}, stuck {Stuck}, meso {Meso}, queue {Queue}, head {Head}, parked {Parked}";
+            $"adaptiveSlots {AdaptiveSlots}, arrowSub {ArrowSub}, transitions {SubPhaseTransition}, gapRunning {GapRunning}, leftYield {LeftYield}, atStop {AtStop}, buses {Buses}, selected {Selected}, granted {Granted}, waiting {WaitTicks}, stuck {Stuck}, meso {Meso}, queue {Queue}, head {Head}, parked {Parked}";
     }
 
     /// <summary>Сценарий команд: детерминированная функция номера тика и состояния мира (одинакова у эталона, сохраняемого прогона и загруженного).</summary>
@@ -212,6 +231,35 @@ public class WorldSaveMomentsTests
         SaveEveryTick(in d, 0, 1200, 1, 20, cov);
         _out.WriteLine(cov.ToString());
         Assert.True(cov.Wave > 0 && cov.Ghost > 0 && cov.Commands > 0 && cov.Trips > 0 && cov.Granted > 0 && cov.Selected > 0, cov.ToString());
+    }
+
+    [Fact]
+    public void Small_AdaptiveSignals_SaveEveryTickAroundArrowAndGapOut()
+    {
+        // Генератор ставит узлам Adaptive со стрелкой. Пробный прогон находит первое включение стрелки; сейв - на каждом тике вокруг него:
+        // подфаза Arrow, переходы жёлтый/all-red между масками, счёт gap и уступания левого (ArmLeftYield/ArmLeftHead) - всё, что читает следующий тик раньше записи.
+        ScenarioDesc d = WorldSaveFixtures.Small();
+        d.City.SignalMode = CitySignalMode.Adaptive;
+        int firstArrow = -1;
+        using (Simulation probe = Simulation.Create(in d))
+        {
+            for (int t = 0; t < 4000 && firstArrow < 0; t++)
+            {
+                Script(probe);
+                probe.Step(1);
+                if (probe.Counters.ArrowPhases > 0)
+                {
+                    firstArrow = t;
+                }
+            }
+        }
+
+        Assert.True(firstArrow >= 0, "стрелка не включилась за 4000 тиков малого сценария");
+        var cov = new Coverage();
+        int from = Math.Max(0, firstArrow - 120);
+        SaveEveryTick(in d, from, firstArrow + 80, 1, 25, cov);
+        _out.WriteLine($"first arrow at tick {firstArrow}; " + cov);
+        Assert.True(cov.AdaptiveSlots > 0 && cov.ArrowSub > 0 && cov.SubPhaseTransition > 0 && cov.GapRunning > 0 && cov.LeftYield > 0, cov.ToString());
     }
 
     [Fact]
