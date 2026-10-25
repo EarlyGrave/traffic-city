@@ -114,6 +114,13 @@
 - **Время «до» для сравнения на этой же машине**: выгрузить дерево старого коммита в каталог scratchpad (экспорт архивом), собрать и прогнать там
   `dotnet test` / `bench` (без второго worktree). Tick p95 на облачной машине шумит ±10% между запусками — сравнивать несколько прогонов, не один.
 
+- **Тесты с воркерами ядра (`WorkerPool`)**: `GetAllocatedBytesForCurrentThread` не видит воркеров, а `GC.GetTotalAllocatedBytes(true)` и счётчик потоков видят весь процесс,
+  включая соседние тесты xunit (в параллельном прогоне «0 B» давало 168 Б). → такие тесты — в `[CollectionDefinition(..., DisableParallelization = true)]`
+  (имя типа не на `Collection`: CA1711). Перегрузки `BehaviourPhase.Run(net, v, ...)` для тестов/бенчей держат задание в `[ThreadStatic]`, иначе `new` на каждый тик ломает
+  `RingPhaseTests.AllPhases_Allocate_ZeroBytesPerTick`.
+- **Проверять выход фазы 5 «вручную» после тика нельзя сравнивать с хэшем конца тика**: повторный `BehaviourPhase.Run` считает по позициям после фазы 6 и меняет `Accel` (он в хэше).
+  Сравнение потоков — до ручного прогона, выходы фазы — между прямым и обратным обходом одного и того же состояния.
+
 ## Тесты 0 B и JIT
 - **Редкий флейк `Step_Allocates_ZeroBytes_InSteadyState` (~1-2% прогонов `dotnet test traffic-city.sln`, только при параллельной
   загрузке CPU/классов): 3-8 КБ в окне «0 B», по фазам - в произвольной (IntegratePhase, SyncStructuralCounters).** Исходный код
