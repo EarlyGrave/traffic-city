@@ -56,3 +56,37 @@ jobs:
           name: perf-results
           path: perf/results/*.json
           if-no-files-found: ignore
+
+  # Rust-пилот ядра (ADR-0022, docs/design/rust-pilot.md §9). Шаг ffi-smoke добавляет задача R6.
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustup предустановлен; rust-toolchain.toml ставит 1.97.0 + clippy/rustfmt при первом вызове cargo.
+      - name: Show toolchain
+        run: rustc --version && cargo --version
+
+      - uses: actions/cache@v4
+        with:
+          path: rust/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build tc-ffi (release)
+        if: hashFiles('rust/crates/tc-ffi/Cargo.toml') != ''
+        run: cargo build --release -p tc-ffi --locked
+
+      - name: Third-party crates check
+        run: bash ../scripts/rust-check.sh --deps-only
