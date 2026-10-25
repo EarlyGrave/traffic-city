@@ -225,6 +225,25 @@ internal static class SaveValidator
             }
         }
 
+        // Диапазон connector'ов узла: только connector'ы этого узла (RefreshLaneGateNode / BuildStatics читают FromLane и Segment по этим полосам).
+        for (int i = 0; i < nodes; i++)
+        {
+            ref readonly NodeData nd = ref n.Nodes[i];
+            if (nd.FirstArm < 0)
+            {
+                continue;
+            }
+
+            for (int p = 0; p < nd.ConnectorCount; p++)
+            {
+                ref readonly LaneData cl = ref n.Lanes[nd.FirstConnector + p];
+                if (cl.Kind != LaneKind.Connector || cl.Node != i)
+                {
+                    return Bad(c, i, 2);
+                }
+            }
+        }
+
         for (int i = 0; i < arms; i++)
         {
             if ((uint)n.NodeArms[i] >= (uint)segs || !Fin(n.ArmDir[i].X) || !Fin(n.ArmDir[i].Z))
@@ -238,6 +257,31 @@ internal static class SaveValidator
             if ((uint)n.LaneNext[i] >= (uint)lanes)
             {
                 return Bad(c, i, 9);
+            }
+        }
+
+        // Граф полос (его читают NextLane/DefaultConnector/ворота): обычная полоса ссылается только на свои connector'ы (FromLane == она сама),
+        // connector - ровно на одну следующую полосу, свою ToLane. Иначе NextConn/ворота не сходятся с полным расчётом.
+        for (int i = 0; i < lanes; i++)
+        {
+            ref readonly LaneData l = ref n.Lanes[i];
+            if (l.Kind == LaneKind.Connector)
+            {
+                if (l.NextCount != 1 || n.LaneNext[l.FirstNext] != l.ToLane)
+                {
+                    return Bad(c, i, 29);
+                }
+
+                continue;
+            }
+
+            for (int k = 0; k < l.NextCount; k++)
+            {
+                ref readonly LaneData cl = ref n.Lanes[n.LaneNext[l.FirstNext + k]];
+                if (cl.Kind != LaneKind.Connector || cl.FromLane != i)
+                {
+                    return Bad(c, i, 29);
+                }
             }
         }
 
@@ -813,6 +857,26 @@ internal static class SaveValidator
             {
                 return Bad(c, g, 92);
             }
+        }
+
+        // Маршрут принадлежит одной машине: живой слот с совпавшим поколением, без совладельцев (общий маршрут при шаге одной машины
+        // сдвигает окно другой, NextConn расходится с полным расчётом).
+        VehicleStore v = w.Vehicles;
+        var owned = new ulong[(w.Routes.Pool.Capacity + 63) >> 6];
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            int r = v.Route[i];
+            if (r < 0 || !v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            if (!w.Routes.Pool.IsAlive(r, v.RouteGen[i]) || (owned[r >> 6] & (1UL << (r & 63))) != 0)
+            {
+                return Bad(c, i, 93);
+            }
+
+            owned[r >> 6] |= 1UL << (r & 63);
         }
 
         if ((w.Overlay != null) != (w.Routing.Levels > 0) || (w.Lod != null) != (w.LodCfg.Mode != LodMode.Off) ||
