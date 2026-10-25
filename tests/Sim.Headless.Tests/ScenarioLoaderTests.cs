@@ -92,7 +92,7 @@ public class ScenarioLoaderTests
         Assert.Equal(14, d.Transit.StopsPerRouteMax);
         Assert.Equal(160, d.Transit.DwellBaseTicks);
         Assert.Equal(30f, d.Transit.DwellPerPassengerTicks);
-        Assert.Equal(0f, d.Transit.HoldAlpha);
+        Assert.Equal(0.9f, d.Transit.HoldAlpha);
         Assert.Equal(1200, d.Transit.HoldMaxTicks);
         Assert.Equal(1, d.Transit.HoldEveryN);
         Assert.Equal(1200, d.Rules.StuckThresholdTicks);
