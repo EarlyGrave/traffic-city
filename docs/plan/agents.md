@@ -70,3 +70,6 @@
 | 54 | hotpath-plan (worktree) | opus | 2.4b: план горячего пути s10k | done, merged (ADR-0016, P1–P5) |
 | 48 | cs2-risks (worktree) | opus | реестр рисков по урокам CS2 | done, merged (27 проблем, топ-5 рисков) |
 | 56 | sim-lod-spec (worktree) | opus | 2.6: ADR-0013 уровни детализации + новая лестница | done, merged (micro+meso, L1–L5) |
+| 67 | signals-spec (worktree) | opus | 2.5: ADR адаптивных светофоров + координация («зелёная волна») | wip |
+| 68 | saves-spec (worktree) | opus | 2.6b: ADR-0012 сохранения и версия мира | wip |
+| 69 | lod-l1 (worktree) | sonnet | 2.6 L1: каркас LOD (секция lod, ячейки, режим off) | wip |
