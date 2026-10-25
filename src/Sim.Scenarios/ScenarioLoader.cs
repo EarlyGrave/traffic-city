@@ -550,6 +550,9 @@ public static class ScenarioLoader
             DwellBaseTicks = Ticks(8),
             DwellPerPassengerTicks = (float)(1.5 * TicksPerSecond),
             PassengerRatePerMin = 2,
+            HoldAlpha = 0.9f,
+            HoldMaxTicks = Ticks(60),
+            HoldEveryN = 1,
         };
         string busName = "bus";
         if (r != null)
@@ -586,6 +589,9 @@ public static class ScenarioLoader
             t.DwellBaseTicks = Ticks(r.Num("dwell_base_s", 8, min: 0));
             t.DwellPerPassengerTicks = (float)(r.Num("dwell_per_passenger_s", 1.5, min: 0) * TicksPerSecond);
             t.PassengerRatePerMin = (float)r.Num("passenger_rate_per_min", 2, min: 0);
+            t.HoldAlpha = (float)r.Num("hold_alpha", 0.9, min: 0, max: 1);
+            t.HoldMaxTicks = Ticks(r.Num("hold_max_s", 60, min: 0));
+            t.HoldEveryN = r.Int("hold_every_n", 1, min: 1);
 
             JsonElement[]? ex = r.OptArray("routes_explicit");
             if (ex != null)

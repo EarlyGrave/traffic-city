@@ -136,7 +136,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `NDYN` | C | `NodeCount` | `NodeTicket`, `NodeThroughput` |
 | `LDYN` | C | `LaneCount` | `LaneHead`, `LaneTail`, `LaneCount`, `OutReserved`, `LaneSignals` |
 | `SDYN` | C | `SegmentCount` | `SegmentLoads` по полям |
-| `BDYN` | C | остановки / маршруты | `Waiting`, `LastArrivalTick`; `ActiveBuses`, `LastDispatchTick`; `BusRouteStats` по полям |
+| `BDYN` | C | остановки / маршруты | `Waiting`, `LastArrivalTick`, `LastDepartTick`; `ActiveBuses`, `LastDispatchTick`; `BusRouteStats` по полям |
 | `VEHC` | C | `HighWater` | `HighWater`, `FreeList` (снизу вверх), `Generation`, поля §1 |
 | `TRIP` | C | очередь | `PendingTrip` по полям в порядке FIFO, `Unrouted` |
 | `QUES` | C | очереди | `Rerouting (Index, Generation, ReadyTick, Kind)`, `Refill (Index, Generation)`, `Commands` (`raw`, 64 Б) |
@@ -502,6 +502,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 80 | RulesSignalArrowMinTicks | i32 | 1 | 60 |
 | `PARM` | 81 | RulesSignalArrowMaxTicks | i32 | 1 | 120 |
 | `PARM` | 82 | RulesSignalArrowGapTicks | i32 | 1 | 40 |
+| `PARM` | 83 | TransitHoldAlpha | f32 | 1 | 0 |
+| `PARM` | 84 | TransitHoldMaxTicks | i32 | 1 | 0 |
+| `PARM` | 85 | TransitHoldEveryN | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -785,6 +788,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `BDYN` | 6 | StatsArrivals | i64 | BusRouteCount | 0 |
 | `BDYN` | 7 | StatsHeadwayDeviationTicksTotal | i64 | BusRouteCount | 0 |
 | `BDYN` | 8 | StatsLastDispatchTick | i64 | BusRouteCount | -1 |
+| `BDYN` | 9 | LastDepartTick | i64 | BusStopCount | -1 |
 | `VEHC` | 1 | HighWater | i32 | 1 | 0 |
 | `VEHC` | 2 | FreeCount | i32 | 1 | 0 |
 | `VEHC` | 3 | FreeList | i32 | FreeCount | 0 |

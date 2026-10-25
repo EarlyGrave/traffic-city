@@ -28,7 +28,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "9a067da851a95476", "91d2332112829e50", "71e8589efe51bbe4", "87ce8eeef92ed3ea" };
+        string[] expected = { "764c5b6de750ae15", "34a5c23411d36b7e", "aeca0135024eff72", "ae9bce579a59f785" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -43,7 +43,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S10k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s10k", threads);
-        string[] expected = { "86c5fa43f14764c3", "730ebad8907bca72", "ffdf7aea9ac56e76" };
+        string[] expected = { "41e484b2dfde848b", "342c2f1b4f50889a", "a46b6ed830102e37" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);

@@ -234,6 +234,21 @@ public class WorldSaveMomentsTests
     }
 
     [Fact]
+    public void Small_BusHolding_SaveEveryTick()
+    {
+        // Удержание автобусов (ADR-0008): LastDepartTick и удлинённая стоянка (DwellTicks) переживают сейв/загрузку на каждом тике.
+        ScenarioDesc d = WorldSaveFixtures.Small();
+        d.Transit.HoldAlpha = 0.9f;
+        d.Transit.HoldMaxTicks = 600;
+        d.Transit.HoldEveryN = 1;
+        d.Transit.DwellBaseTicks = 40;
+        var cov = new Coverage();
+        SaveEveryTick(in d, 0, 1500, 1, 20, cov);
+        _out.WriteLine(cov.ToString());
+        Assert.True(cov.AtStop > 0, cov.ToString());
+    }
+
+    [Fact]
     public void Small_AdaptiveSignals_SaveEveryTickAroundArrowAndGapOut()
     {
         // Генератор ставит узлам Adaptive со стрелкой. Пробный прогон находит первое включение стрелки; сейв - на каждом тике вокруг него:

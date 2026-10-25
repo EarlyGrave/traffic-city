@@ -201,6 +201,7 @@ internal static class TransitGenerator
                 Route = routeIndex,
                 Waiting = 0,
                 LastArrivalTick = -1,
+                LastDepartTick = -1,
             };
             store.RouteStops[idx] = idx;
             store.StopCount++;

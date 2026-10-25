@@ -925,7 +925,7 @@ internal struct PendingTrip                         // очередь MaxPending
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public struct BusStopData { public int Lane; public float S; public BusStopKind Kind; public int Route; public ushort Waiting; public ushort Reserved; public long LastArrivalTick; }
+public struct BusStopData { public int Lane; public float S; public BusStopKind Kind; public int Route; public ushort Waiting; public ushort Reserved; public long LastArrivalTick; public long LastDepartTick; }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct BusRouteData { public int FirstStop, StopCount; public int HeadwayTicks; public int VehicleType; public int ActiveBuses; public long LastDispatchTick; public int Generation; }
