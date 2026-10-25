@@ -493,9 +493,10 @@ internal sealed class QueueMeso
         LaneQCount[lane]++;
         Total++;
         int now = Now;
-        QEnter[i] = now;
         v.StillTicks[i] = 0;
         v.Accel[i] = 0f;
+        QEnter[i] = now;
+        VffOnLane(i, lane);
         int ready = ComputeReady(i, lane, now);
         QReady[i] = ready;
         WheelInsert(i, ready);
@@ -510,7 +511,7 @@ internal sealed class QueueMeso
         int a = AheadPrimary(i, lane);
         if (v.DestLane[i] == lane && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0)
         {
-            int r = now + CeilTicks((v.DestS[i] - s0) / vff);
+            int r = now + FreeTicks(i, v.DestS[i] - s0);
             if (a != -1 && IsQueued(a) && QReady[a] > r)
             {
                 r = QReady[a];
@@ -520,7 +521,7 @@ internal sealed class QueueMeso
         }
 
         float d = _net.LaneLength[lane] - s0 - GateRules.DecisionDistance(vff, t.ComfortDecel);
-        int ready = now + CeilTicks(d / vff);
+        int ready = now + FreeTicks(i, d);
         if (a != -1 && IsQ(a))
         {
             int after = QReady[a] + Headway(i, a, vff);
@@ -705,7 +706,7 @@ internal sealed class QueueMeso
         VehicleStore v = _v;
         ref readonly VehicleTypeDesc t = ref _w.Types[v.Type[i]];
         float vff = Vff(i);
-        float free = v.S[i] + (vff * (Now - QEnter[i]) * _dt);
+        float free = v.S[i] + FreeTravel(i, Now - QEnter[i], out float freeSpeed);
         float len = _net.LaneLength[lane];
         float cap = _net.LaneGateNode[lane] >= 0 ? len - GateRules.StopLineOffset - t.MinGap : len;
         float capSpeed = 0f;
@@ -713,7 +714,7 @@ internal sealed class QueueMeso
         // Ждала в очереди (свободный ход довёл бы её до дистанции решения раньше чем на такт назад): стоит на месте в плотной очереди за лидером
         // (зазор s0, скорость 0) и трогается сама (ленивая M2) - волна старта очереди. Иначе догоняет лидера на ходу (равновесный зазор M2).
         float dd = len - v.S[i] - GateRules.DecisionDistance(vff, t.ComfortDecel);
-        bool waited = Now - (QEnter[i] + CeilTicks(dd / vff)) > BehaviourJob.MesoPeriodTicks;
+        bool waited = Now - (QEnter[i] + FreeTicks(i, dd)) > BehaviourJob.MesoPeriodTicks;
         if (a != -1)
         {
             float va = waited ? 0f : Math.Min(vff, v.Speed[a]);
@@ -728,7 +729,7 @@ internal sealed class QueueMeso
         if (free <= cap)
         {
             s = free;
-            speed = vff;
+            speed = freeSpeed;
         }
         else
         {
@@ -753,7 +754,7 @@ internal sealed class QueueMeso
             return x == -1 ? _net.LaneLength[lane] : v.S[x];
         }
 
-        float free = v.S[x] + (Vff(x) * (Now - QEnter[x]) * _dt);
+        float free = v.S[x] + FreeTravel(x, Now - QEnter[x], out _);
         float jam = _net.LaneLength[lane] - GateRules.StopLineOffset - (LaneSpanCm[lane] * 0.01f) + v.Length[x];
         float r = free < jam ? free : jam;
         return r > v.S[x] ? r : v.S[x];
@@ -774,9 +775,9 @@ internal sealed class QueueMeso
             return v.Speed[x];
         }
 
-        float free = v.S[x] + (Vff(x) * (Now - QEnter[x]) * _dt);
+        float free = v.S[x] + FreeTravel(x, Now - QEnter[x], out float freeSpeed);
         float jam = _net.LaneLength[lane] - GateRules.StopLineOffset - (LaneSpanCm[lane] * 0.01f) + v.Length[x];
-        return free < jam ? Vff(x) : 0f;
+        return free < jam ? freeSpeed : 0f;
     }
 
     /// <summary>
@@ -875,7 +876,7 @@ internal sealed class QueueMeso
 
         ref readonly VehicleTypeDesc t = ref _w.Types[v.Type[y]];
         float vff = Vff(y);
-        float free = v.S[y] + (vff * (time - QEnter[y]) * _dt);
+        float free = v.S[y] + FreeTravel(y, time - QEnter[y], out float freeSpeed);
         float cap;
         float capSpeed;
         if (havePrev)
@@ -893,7 +894,7 @@ internal sealed class QueueMeso
         if (free <= cap)
         {
             s = free;
-            speed = vff;
+            speed = freeSpeed;
         }
         else
         {
@@ -1046,6 +1047,49 @@ internal sealed class QueueMeso
 
     /// <summary>Зазор бампер-в-бампер, на котором кинематика meso (M2) едет за лидером со скоростью <paramref name="v"/>: <c>s0 + v·T·meso_headway_scale</c>.</summary>
     private float FollowGap(in VehicleTypeDesc t, float v) => t.MinGap + (v * t.HeadwayTime * _w.LodCfg.MesoHeadwayScale);
+
+    /// <summary>
+    /// Свободный ход машины очереди от въезда (sim-lod.md §13.9): въехала со скоростью <c>v_in</c> (её <c>Speed</c> на момент въезда) и разгоняется
+    /// равноускоренно с <c>a·accel_scale</c> до <c>v_ff</c>, дальше едет с <c>v_ff</c>. Возвращает путь, м; <paramref name="speed"/> - скорость в этот момент.
+    /// </summary>
+    private float FreeTravel(int x, float ticks, out float speed)
+    {
+        float vff = Vff(x);
+        float vin = Math.Min(Math.Max(_v.Speed[x], 0f), vff);
+        float acc = Accel(x);
+        float tau = (ticks > 0f ? ticks : 0f) * _dt;
+        float ta = acc > 0.01f ? (vff - vin) / acc : 0f;
+        if (tau < ta)
+        {
+            speed = vin + (acc * tau);
+            return (vin * tau) + (0.5f * acc * tau * tau);
+        }
+
+        speed = vff;
+        return (vin * ta) + (0.5f * acc * ta * ta) + (vff * (tau - ta));
+    }
+
+    private float Accel(int x) => _w.Types[_v.Type[x]].Accel * _w.LodCfg.MesoAccelScale;
+
+    /// <summary>Тиков свободного хода (<see cref="FreeTravel"/>) до пути <paramref name="dist"/>, м.</summary>
+    private int FreeTicks(int x, float dist)
+    {
+        if (!(dist > 0f))
+        {
+            return 0;
+        }
+
+        float vff = Vff(x);
+        float vin = Math.Min(Math.Max(_v.Speed[x], 0f), vff);
+        float acc = Accel(x);
+        float ta = acc > 0.01f ? (vff - vin) / acc : 0f;
+        float da = (vin * ta) + (0.5f * acc * ta * ta);
+        float sec = dist <= da
+            ? (MathF.Sqrt((vin * vin) + (2f * acc * dist)) - vin) / acc
+            : ta + ((dist - da) / vff);
+        float c = MathF.Ceiling(sec / _dt);
+        return c < 1e8f ? (int)c : 100_000_000;
+    }
 
     private int CeilTicks(float seconds)
     {
