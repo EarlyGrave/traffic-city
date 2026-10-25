@@ -98,3 +98,6 @@
 | 92 | pedestrians-spec (worktree) | opus | 3.1: ADR-0020 + `docs/design/pedestrians.md` | done, merged (P1→P2→P3∥P4∥P5; world_version 2 с миграцией) |
 | 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | done, merged (SourceForge-зеркало + Xvfb/llvmpipe; s1k 32.5 FPS; машин на кадре нет — разобрать в 3.3) |
 | 94 | peds-p1 (worktree) | sonnet | 3.1 P1: сеть пешеходов, `PedDesc`, загрузчик `peds`, геометрия для клиента | wip |
+| 95 | rust-pilot-spec (worktree) | opus | 4.6: ADR-0022 Rust-пилот ядра, граница FFI, кросс-хэш | wip |
+| 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | wip |
+| 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | wip |
