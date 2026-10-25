@@ -113,3 +113,33 @@ public struct BusRouteData
     public long LastDispatchTick;
     public int Generation;
 }
+
+/// <summary>Вид ребра графа пешеходов (pedestrians.md §2.1).</summary>
+public enum PedEdgeKind : byte
+{
+    Sidewalk = 0,       // тротуар вдоль стороны сегмента (или его отрезок между переходами на перегоне)
+    EndCap = 1,         // обход тупика: соединяет два угла вокруг конца дороги
+    Crossing = 2,       // переход через рукав узла
+    MidCrossing = 3,    // переход на перегоне у остановки
+}
+
+/// <summary>
+/// Ребро графа пешеходов (статика, производное от сети; pedestrians.md §2.1). Порядок рёбер: тротуары (по сегменту и стороне),
+/// обходы тупиков, переходы узлов (по слоту рукава), переходы на перегоне (по номеру).
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct PedEdgeData
+{
+    public int A, B;                // узлы графа пешеходов (углы и «средние» узлы)
+    public int LenMm;               // длина по полилинии (переход: 2·h + ширина тротуара), мм
+    public int CostTicks;           // статический приор стоимости, тики (длина / 1.3 м/с + ожидание); измеренную часть добавит P3
+    public PedEdgeKind Kind;
+    public byte Side;               // тротуар: 0 справа от A→B, 1 слева; иначе 0
+    public byte Flags;              // бит0 - у перехода есть светофор (узел Signal)
+    public byte Reserved;
+    public int Segment;             // сегмент-владелец (тротуар, переход на перегоне, рукав перехода) или -1
+    public int Node;                // узел (Crossing, EndCap) или -1
+    public int Slot;                // Crossing/EndCap: слот рукава в NodeArms; MidCrossing: номер перехода m; иначе -1
+    public float S0, S1;            // тротуар: диапазон по оси сегмента, м; MidCrossing: S0 = S1 = s перехода
+    public int FirstPoint, PointCount; // полилиния в PedEdgePoints
+}

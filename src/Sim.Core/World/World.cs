@@ -29,6 +29,7 @@ internal sealed class World : IDisposable
     public readonly VehicleTypeDesc[] Types;
     public readonly DemandDesc Demand;
     public readonly TransitDesc TransitCfg;
+    public readonly PedDesc PedCfg;            // с применёнными дефолтами (PedNetwork.WithDefaults); Enabled = false - пешеходов нет, ничего не выделено
     public readonly LodDesc LodCfg;            // с применёнными дефолтами (WorldBuilder.WithDefaults); Mode = Off - LOD нет
 
     // ---- хранилища ----
@@ -165,6 +166,7 @@ internal sealed class World : IDisposable
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);
+        PedCfg = desc.Peds.Enabled ? Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled
@@ -182,7 +184,7 @@ internal sealed class World : IDisposable
         // 0 = по умолчанию (intersections.md §4): MaxNodes * 16 connector'ов, MaxConnectors * 6 записей конфликтов.
         int maxConnectors = c.MaxConnectors > 0 ? c.MaxConnectors : checked(c.MaxNodes * 16);
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
-        Connectors = new ConnectorStore(maxConnectors, maxConflicts);
+        Connectors = new ConnectorStore(maxConnectors, maxConflicts, PedCfg.Enabled);
         Signals = new SignalStore(c.MaxSignalizedNodes, rules.SignalArrowGapTicks);
         Masks = new TickMasks(c.MaxVehicles);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);

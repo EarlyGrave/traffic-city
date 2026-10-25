@@ -61,6 +61,14 @@ internal sealed class ConnectorStore
     public readonly ulong[] ConflictMask;
     public readonly ConflictEntry[] Conflicts;
 
+    /// <summary>
+    /// Производные пешеходов (pedestrians.md §2.2, вне хэша): индекс перехода (слот рукава в <c>NodeArms</c>), который connector пересекает
+    /// на участке <c>S ∈ [0, w]</c> (<see cref="CrossInX"/>) или <c>[L_c − w, L_c]</c> (<see cref="CrossOutX"/>), иначе -1.
+    /// null, если секции <c>peds</c> нет - тогда массивы не выделяются. Заполняет <c>PedNetwork</c>.
+    /// </summary>
+    public readonly int[]? CrossInX;
+    public readonly int[]? CrossOutX;
+
     public int Count;
     public int ConflictsUsed;
 
@@ -69,7 +77,7 @@ internal sealed class ConnectorStore
     private readonly float[] _sOn = new float[MaxLocal * MaxLocal];   // [i*MaxLocal+j] = s на connector'е i для пары (i, j)
     private readonly float[] _box = new float[MaxLocal * 4];
 
-    public ConnectorStore(int maxConnectors, int maxConflicts)
+    public ConnectorStore(int maxConnectors, int maxConflicts, bool peds = false)
     {
         int c = Math.Max(0, maxConnectors);
         Lane = new int[c];
@@ -86,6 +94,13 @@ internal sealed class ConnectorStore
         ConflictCount = new int[c];
         ConflictMask = new ulong[c];
         Conflicts = new ConflictEntry[Math.Max(0, maxConflicts)];
+        if (peds)
+        {
+            CrossInX = new int[c];
+            CrossOutX = new int[c];
+            Array.Fill(CrossInX, -1);
+            Array.Fill(CrossOutX, -1);
+        }
     }
 
     public int MaxConnectors => Lane.Length;

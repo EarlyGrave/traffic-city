@@ -121,11 +121,17 @@ public static class ScenarioLoader
         demand.SpawnRampTicks = rampTicks;
         demand.TypeMix = typeMix;
 
-        TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames);
+        PedDesc peds = ParsePeds(root.OptObject("peds"));
+        TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames, peds.Enabled);
+        if (peds.Enabled && peds.StuckStopTicks <= 0)
+        {
+            peds.StuckStopTicks = Math.Max(3 * transit.HeadwayTicks, Ticks(900));   // stuck_stop_s: max(3 · headway_s, 900)
+        }
+
         RulesDesc rules = ParseRules(root.OptObject("rules"));
         RoutingDesc routing = ParseRouting(root.OptObject("routing"));
         LodDesc lod = ParseLod(root.OptObject("lod"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing);
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds);
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -135,6 +141,7 @@ public static class ScenarioLoader
             Capacities = caps,
             Routing = routing,
             Lod = lod,
+            Peds = peds,
             City = city,
             Network = network,
             Demand = demand,
@@ -539,7 +546,7 @@ public static class ScenarioLoader
 
     // ---------------------------------------------------------------- transit
 
-    private static TransitDesc ParseTransit(JsonObjectReader? r, string[] typeNames)
+    private static TransitDesc ParseTransit(JsonObjectReader? r, string[] typeNames, bool pedsEnabled)
     {
         var t = new TransitDesc
         {
@@ -556,6 +563,7 @@ public static class ScenarioLoader
             HoldAlpha = 0.9f,
             HoldMaxTicks = Ticks(60),
             HoldEveryN = 1,
+            PassengerModel = pedsEnabled ? PassengerModel.Agents : PassengerModel.Counter,
         };
         string busName = "bus";
         if (r != null)
@@ -595,6 +603,19 @@ public static class ScenarioLoader
             t.HoldAlpha = (float)r.Num("hold_alpha", 0.9, min: 0, max: 1);
             t.HoldMaxTicks = Ticks(r.Num("hold_max_s", 60, min: 0));
             t.HoldEveryN = r.Int("hold_every_n", 1, min: 1);
+            t.Bidirectional = r.Bool("bidirectional", false);
+            string pm = r.Str("passenger_model", pedsEnabled ? "agents" : "counter");
+            t.PassengerModel = pm switch
+            {
+                "counter" => PassengerModel.Counter,
+                "agents" => PassengerModel.Agents,
+                _ => throw new ScenarioException($"{r.ChildPath("passenger_model")}: expected \"counter\" or \"agents\""),
+            };
+            if (t.PassengerModel == PassengerModel.Agents && !pedsEnabled)
+            {
+                throw new ScenarioException($"{r.ChildPath("passenger_model")}: \"agents\" requires an enabled $.peds section");
+            }
+
 
             JsonElement[]? ex = r.OptArray("routes_explicit");
             if (ex != null)
@@ -617,6 +638,90 @@ public static class ScenarioLoader
         }
 
         return t;
+    }
+
+    // ---------------------------------------------------------------- peds (scenario-format.md §2.4)
+
+    private const int MaxPedCount = 10_000_000;
+    private const double MaxPedDistanceM = 100_000;
+
+    /// <summary>Секция <c>peds</c> -> <see cref="PedDesc"/> в целых единицах ядра: мм, мм/тик (км/ч / 3.6 · 50), тики. Нет секции - <c>Enabled = false</c>.</summary>
+    private static PedDesc ParsePeds(JsonObjectReader? r)
+    {
+        if (r == null)
+        {
+            return default;
+        }
+
+        var p = new PedDesc { Enabled = r.Bool("enabled", true) };
+        p.Count = r.Int("count", min: 0, max: MaxPedCount);
+        p.Residents = r.Int("residents", 2 * p.Count, min: p.Count, max: 2 * MaxPedCount);
+        p.SpawnRampTicks = Ticks(r.Num("spawn_ramp_s", 120, min: 0));
+        (p.SpeedMinMmPerTick, p.SpeedMaxMmPerTick) = ParseKmhRange(r, "speed_kmh", 4.0, 5.4);
+        (p.ActivityMinTicks, p.ActivityMaxTicks) = ParseSecondsRange(r, "activity_s", 600, 1800);
+        p.WalkOnlyMm = Mm(r.Num("walk_only_m", 800, min: 0, max: MaxPedDistanceM));
+        p.MaxWalkToStopMm = Mm(r.Num("max_walk_to_stop_m", 500, min: 0, max: MaxPedDistanceM));
+        p.MaxWalkMm = Mm(r.Num("max_walk_m", 1500, min: 0, max: MaxPedDistanceM));
+        p.SidewalkWidthMm = Mm(r.Num("sidewalk_width_m", 3, min: 0.5, max: 20));
+        p.CrosswalkWidthMm = Mm(r.Num("crosswalk_width_m", 3, min: 0.5, max: 20));
+        string arterial = r.Str("arterial_crossings", "signal_only");
+        p.ArterialCrossings = arterial switch
+        {
+            "signal_only" => ArterialCrossings.SignalOnly,
+            "all" => ArterialCrossings.All,
+            _ => throw new ScenarioException($"{r.ChildPath("arterial_crossings")}: expected \"signal_only\" or \"all\""),
+        };
+        p.MidblockAtStops = r.Bool("midblock_at_stops", true);
+        p.WalkTicks = Math.Max(1, Ticks(r.Num("walk_s", 5, min: 0.05)));
+        p.ClearSpeedMmPerTick = KmhToMmPerTick(r.Num("clear_speed_kmh", 4.3, min: 0.1, max: 20));
+        p.MaxCloseTicks = Ticks(r.Num("max_close_s", 10, min: 0));
+        p.CarWindowTicks = Ticks(r.Num("car_window_s", 5, min: 0));
+        p.PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", 8, min: 0);
+        p.WorkBudgetPerTick = r.Int("work_budget_per_tick", 8000, min: 0);
+        p.StuckCrossTicks = Math.Max(1, Ticks(r.Num("stuck_cross_s", 120, min: 0.05)));
+        p.StuckStopTicks = r.Has("stuck_stop_s") ? Math.Max(1, Ticks(r.Num("stuck_stop_s", min: 0.05))) : 0;   // 0 -> max(3 · headway_s, 900) после разбора transit
+        r.Finish();
+        return p;
+    }
+
+    private static int Mm(double meters) => (int)Math.Round(meters * 1000.0);
+
+    private static int KmhToMmPerTick(double kmh) => Math.Max(1, (int)Math.Round(kmh / 3.6 * 50.0));
+
+    private static (int Min, int Max) ParseKmhRange(JsonObjectReader r, string key, double defMin, double defMax)
+    {
+        (double lo, double hi) = ParseRange(r, key, defMin, defMax, 0.1, 30);
+        return (KmhToMmPerTick(lo), KmhToMmPerTick(hi));
+    }
+
+    private static (int Min, int Max) ParseSecondsRange(JsonObjectReader r, string key, double defMin, double defMax)
+    {
+        (double lo, double hi) = ParseRange(r, key, defMin, defMax, 0.05, 1e7);
+        return (Math.Max(1, Ticks(lo)), Math.Max(1, Ticks(hi)));
+    }
+
+    private static (double Min, double Max) ParseRange(JsonObjectReader r, string key, double defMin, double defMax, double lowest, double highest)
+    {
+        JsonElement[]? arr = r.OptArray(key);
+        if (arr == null)
+        {
+            return (defMin, defMax);
+        }
+
+        string path = r.ChildPath(key);
+        if (arr.Length != 2)
+        {
+            throw new ScenarioException($"{path}: expected array of 2 numbers [min, max]");
+        }
+
+        double lo = JsonObjectReader.NumValue(arr[0], JsonObjectReader.Index(path, 0), lowest, highest);
+        double hi = JsonObjectReader.NumValue(arr[1], JsonObjectReader.Index(path, 1), lowest, highest);
+        if (lo > hi)
+        {
+            throw new ScenarioException($"{path}: min must be <= max");
+        }
+
+        return (lo, hi);
     }
 
     private static BusRouteDesc[] ParseExplicitRoutes(JsonElement[] arr, string path)
@@ -860,9 +965,11 @@ public static class ScenarioLoader
         return res;
     }
 
+    private static readonly string[] _pedCapacityKeys = { "max_peds", "max_residents", "max_ped_path_steps" };
+
     private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing)
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds)
     {
         var c = new SimCapacities
         {
@@ -887,6 +994,25 @@ public static class ScenarioLoader
         c.MaxPlanSteps = r.Int("max_plan_steps", (int)planDefault, min: 1, max: MaxArenaSteps);
         c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
         c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
+        if (peds.Enabled)
+        {
+            // pedestrians.md §12: max_peds >= count · 1.3, max_residents >= residents.
+            long minPeds = (((long)peds.Count * 13L) + 9L) / 10L;
+            c.MaxPeds = r.Int("max_peds", min: (int)Math.Max(1L, minPeds));
+            c.MaxResidents = r.Int("max_residents", min: Math.Max(1, peds.Residents));
+            c.MaxPedPathSteps = r.Int("max_ped_path_steps", 64, min: 1, max: 4096);
+        }
+        else
+        {
+            foreach (string key in _pedCapacityKeys)
+            {
+                if (r.Has(key))
+                {
+                    throw new ScenarioException($"{r.ChildPath(key)}: allowed only with an enabled $.peds section");
+                }
+            }
+        }
+
         r.Finish();
         return c;
     }

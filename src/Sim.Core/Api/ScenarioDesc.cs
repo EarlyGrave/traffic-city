@@ -18,6 +18,7 @@ public struct ScenarioDesc
     public TransitDesc Transit;
     public RulesDesc Rules;
     public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
+    public PedDesc Peds;                   // пешеходы и жители (ADR-0020, pedestrians.md); Enabled = false (по умолчанию) - ничего не выделяется и не меняется
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }
 
@@ -36,6 +37,9 @@ public struct SimCapacities
     public int MaxSignalizedNodes;
     public int MaxConnectors;              // connector-полос всего; по умолчанию MaxNodes * 16
     public int MaxConflicts;               // записей ConflictEntry; по умолчанию MaxConnectors * 6
+    public int MaxPeds;                    // только при Peds.Enabled (pedestrians.md §12): >= Peds.Count * 1.3
+    public int MaxResidents;               // только при Peds.Enabled: >= Peds.Residents
+    public int MaxPedPathSteps;            // только при Peds.Enabled: шагов пути пешехода (дефолт загрузчика 64)
 }
 
 /// <summary>
@@ -258,4 +262,56 @@ public struct TransitDesc
     /// <summary>Контрольные остановки: каждая N-я остановка маршрута (1 - все, конечная не удерживает).</summary>
     public int HoldEveryN;
     public BusRouteDesc[] RoutesExplicit;  // необязательные явные маршруты
+
+    /// <summary>Модель пассажиров (ADR-0020); дефолт загрузчика: <see cref="PassengerModel.Agents"/> при включённых <c>peds</c>, иначе <see cref="PassengerModel.Counter"/>.</summary>
+    public PassengerModel PassengerModel;
+
+    /// <summary>Парный обратный маршрут к каждому (scenario-format.md §2.4, pedestrians.md §17 п. 3). P1: только поле; генератор его пока не читает.</summary>
+    public bool Bidirectional;
+}
+
+/// <summary>Модель пассажиров автобусов (ADR-0020): счётчик ADR-0008 или пассажиры-пешеходы.</summary>
+public enum PassengerModel : int
+{
+    Counter = 0,
+    Agents = 1,
+}
+
+/// <summary>Переходы через артерии вне светофоров (pedestrians.md §2.1, §17 п. 2).</summary>
+public enum ArterialCrossings : int
+{
+    SignalOnly = 0,
+    All = 1,
+}
+
+/// <summary>
+/// Секция сценария <c>peds</c> (scenario-format.md §2.4, pedestrians.md §12). Единицы ядра уже целые: мм, мм/тик (при 20 Гц), тики.
+/// Нулевая структура = выключено. Нули в остальных полях (desc, собранный вручную) заменяются дефолтами спеки
+/// (<c>Peds.PedNetwork.WithDefaults</c>). P1 использует только геометрию и политику переходов; поведение агентов - P2+.
+/// </summary>
+public struct PedDesc
+{
+    public bool Enabled;
+    public int Count;                      // цель активных пешеходов
+    public int Residents;                  // жителей-источников; дефолт загрузчика 2 * Count
+    public int SpawnRampTicks;             // дефолт 120 с
+    public int SpeedMinMmPerTick;          // round(км/ч / 3.6 * 50); дефолт 4.0 км/ч
+    public int SpeedMaxMmPerTick;          // дефолт 5.4 км/ч
+    public int ActivityMinTicks;           // дефолт 600 с
+    public int ActivityMaxTicks;           // дефолт 1800 с
+    public int WalkOnlyMm;                 // дефолт 800 м
+    public int MaxWalkToStopMm;            // дефолт 500 м
+    public int MaxWalkMm;                  // дефолт 1500 м
+    public int SidewalkWidthMm;            // дефолт 3000
+    public int CrosswalkWidthMm;           // дефолт 3000
+    public ArterialCrossings ArterialCrossings;   // дефолт SignalOnly
+    public bool MidblockAtStops;           // дефолт true (загрузчик); для desc, собранного вручную, задаётся явно
+    public int WalkTicks;                  // «Walk» пешеходной фазы; дефолт 5 с
+    public int ClearSpeedMmPerTick;        // дефолт 4.3 км/ч
+    public int MaxCloseTicks;              // дефолт 10 с
+    public int CarWindowTicks;             // дефолт 5 с
+    public int PathfindBudgetPerTick;      // дефолт 8
+    public int WorkBudgetPerTick;          // дефолт 8000
+    public int StuckCrossTicks;            // дефолт 120 с
+    public int StuckStopTicks;             // дефолт max(3 * transit.headway_s, 900) с
 }

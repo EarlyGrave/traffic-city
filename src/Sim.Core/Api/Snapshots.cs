@@ -104,6 +104,14 @@ public readonly ref struct NetworkView
     public readonly ReadOnlySpan<BusRouteData> BusRoutes;
     public readonly ReadOnlySpan<int> BusRouteStops;    // индексы остановок, диапазоны из BusRouteData
 
+    // Сеть пешеходов (ADR-0020, pedestrians.md §2.4): пусто, если секции peds нет. Статика: читать после Create/Load и при смене Version.
+    public readonly ReadOnlySpan<PedEdgeData> Sidewalks;   // тротуары и обходы тупиков (полилинии в PedEdgePoints)
+    public readonly ReadOnlySpan<PedEdgeData> Crossings;   // переходы узлов и перегонов (по два конца в PedEdgePoints)
+    public readonly ReadOnlySpan<Vec2> PedEdgePoints;
+    public readonly ReadOnlySpan<Vec2> PedCorners;         // позиции углов узлов, индекс = слот рукава в NodeArms (углы обходов тупиков - в полилиниях)
+    public readonly float SidewalkWidthM;
+    public readonly float CrosswalkWidthM;
+
     public NetworkView(
         int version,
         ReadOnlySpan<NodeData> nodes,
@@ -114,7 +122,13 @@ public readonly ref struct NetworkView
         ReadOnlySpan<ZoneData> zones,
         ReadOnlySpan<BusStopData> busStops,
         ReadOnlySpan<BusRouteData> busRoutes,
-        ReadOnlySpan<int> busRouteStops)
+        ReadOnlySpan<int> busRouteStops,
+        ReadOnlySpan<PedEdgeData> sidewalks = default,
+        ReadOnlySpan<PedEdgeData> crossings = default,
+        ReadOnlySpan<Vec2> pedEdgePoints = default,
+        ReadOnlySpan<Vec2> pedCorners = default,
+        float sidewalkWidthM = 0f,
+        float crosswalkWidthM = 0f)
     {
         Version = version;
         Nodes = nodes;
@@ -126,6 +140,12 @@ public readonly ref struct NetworkView
         BusStops = busStops;
         BusRoutes = busRoutes;
         BusRouteStops = busRouteStops;
+        Sidewalks = sidewalks;
+        Crossings = crossings;
+        PedEdgePoints = pedEdgePoints;
+        PedCorners = pedCorners;
+        SidewalkWidthM = sidewalkWidthM;
+        CrosswalkWidthM = crosswalkWidthM;
     }
 }
 
