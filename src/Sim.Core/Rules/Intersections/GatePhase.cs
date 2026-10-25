@@ -47,9 +47,12 @@ internal static class GatePhase
 
         g.BusyTouchedCount = 0;
 
+        // 0c. Снятие допуска на красном (§5.4 п. 6, ADR-0019): до сбора кандидатов и пересборки OutReserved/NodeBusy по допущенным.
+        RefreshMasks(w);
+        RevokeOnRed(w);
+
         // 1. Сбор кандидатов. Обычно - по активным множествам (маски занятых полос, ADR-0019 A2); полный проход по машинам - в первый тик и
         // после смены сети/узлов (RefreshMasks), а в Debug - как эталон, с которым сверяется активный проход на каждом тике.
-        RefreshMasks(w);
         int candidates;
         if (g.FullScan)
         {
@@ -112,6 +115,65 @@ internal static class GatePhase
         }
 
         g.TouchedCount = 0;
+    }
+
+    /// <summary>
+    /// Снятие допуска на красном (intersections.md §5.4 п. 6). На входных Normal-полосах узлов <c>Signal</c> в режиме <c>Fixed</c> допущенные машины
+    /// обходятся от головы (допущенные - префикс списка полосы): первая, у которой сигнал её connector'а <c>Red</c> и которая ещё комфортно
+    /// останавливается (<c>Length - S - StopLineOffset &gt; v^2/(2*ComfortDecel) + 1 м</c>), теряет допуск вместе со всеми допущенными за ней.
+    /// Машины на connector'ах и не успевающие остановиться не трогаются. Обход - по маске занятых полос со светофором (по возрастанию индекса).
+    /// </summary>
+    private static void RevokeOnRed(World w)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        LaneOccupancy occ = w.Occupancy;
+        GateScratch g = w.Gate;
+        ulong[] occMask = occ.OccMask;
+        ulong[] signal = g.SignalMask;
+        for (int wi = 0; wi < occMask.Length; wi++)
+        {
+            ulong active = occMask[wi] & signal[wi];
+            while (active != 0UL)
+            {
+                int bit = BitOperations.TrailingZeroCount(active);
+                active &= active - 1UL;
+                int lane = (wi << 6) + bit;
+                int slot = net.Nodes[net.LaneGateNode[lane]].Signal;
+                if (slot < 0 || slot >= w.Signals.Count || w.Signals.Mode[slot] != SignalMode.Fixed)
+                {
+                    continue;
+                }
+
+                bool revoking = false;
+                int x = occ.LaneHead[lane];
+                while (x != -1 && GateRules.IsGranted(v, x))
+                {
+                    int next = GateRules.BehindOn(v, x, lane);
+                    if (v.Lane[x] == lane)   // ghost: её допуск ведёт основная полоса
+                    {
+                        int gc = v.GrantConnector[x];
+                        if (!revoking && gc >= 0 && w.LaneSignals[gc] == (byte)LaneSignal.Red)
+                        {
+                            ref readonly VehicleTypeDesc t = ref w.Types[v.Type[x]];
+                            float d = net.LaneLength[lane] - v.S[x] - GateRules.StopLineOffset;
+                            float sp = v.Speed[x];
+                            revoking = d > (sp * sp / (2f * t.ComfortDecel)) + 1f;
+                        }
+
+                        if (revoking)
+                        {
+                            v.GateState[x] = 0;
+                            v.GrantConnector[x] = -1;
+                            w.Counters.GrantsRevoked++;
+                            occ.MarkLinked(x);   // метка StoppedBeforeSignal для остановившихся в хвосте (активный проход их не обходит)
+                        }
+                    }
+
+                    x = next;
+                }
+            }
+        }
     }
 
     /// <summary>

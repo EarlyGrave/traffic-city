@@ -281,6 +281,12 @@ internal sealed class LaneOccupancy
             OccMask[lane >> 6] |= 1UL << (lane & 63);
         }
 
+        MarkLinked(i);
+    }
+
+    /// <summary>Заносит машину в <see cref="Linked"/> (без повторов): её класс в фазе 4 изменился не движением по списку (вставка, снятие допуска).</summary>
+    public void MarkLinked(int i)
+    {
         ulong bit = 1UL << (i & 63);
         if ((_linkedBits[i >> 6] & bit) == 0)
         {

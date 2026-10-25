@@ -66,6 +66,7 @@ public struct SimCounters
     public long SpillOuts;                // заготовка S3: досрочных концов зелёного из-за забитого выезда
     public long ExitClaims;               // заготовка S4: поставленных заявок на выезд
     public long ExitClaimDenials;         // заготовка S4: отказов младшим по заявке
+    public long GrantsRevoked;            // 2.6r R1: снятий допуска на красном (§5.4 п. 6; вне хэша)
     // --- уровни детализации (ADR-0013, sim-lod.md §4, §8); вне хэша, заполняются с L2/L3 ---
     public int MicroVehicles, MesoVehicles;                // текущее
     public long MicroVehicleTicks, MesoVehicleTicks, MicroDistanceMm, MesoDistanceMm;

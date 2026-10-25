@@ -550,6 +550,7 @@ public static class BenchCommand
         WriteNullable(w, "arterial_stop_share", s.ArterialStopShare);
         w.WriteNumber("stuck_episodes", s.StuckEpisodes);
         w.WriteNumber("starve_denials", s.StarveDenials);
+        w.WriteNumber("grants_revoked", s.GrantsRevoked);
         w.WriteNumber("arrow_phases", s.ArrowPhases);
         w.WriteNumber("spill_outs", s.SpillOuts);
         w.WriteNumber("exit_claims", s.ExitClaims);
@@ -660,7 +661,7 @@ internal sealed class SignalWindow
     public double LeftWaitMaxS;
     public long ArterialGrants;
     public double? ArterialStopShare;
-    public long StuckEpisodes, StarveDenials, ArrowPhases, SpillOuts, ExitClaims, ExitClaimDenials, GateDeniedExit, TripsCompleted;
+    public long StuckEpisodes, StarveDenials, GrantsRevoked, ArrowPhases, SpillOuts, ExitClaims, ExitClaimDenials, GateDeniedExit, TripsCompleted;
     public double? AvgSpeedKmh;
 
     public static SignalWindow Compute(Simulation sim, in SimCounters before, SignalMetrics sigBefore)
@@ -708,6 +709,7 @@ internal sealed class SignalWindow
 
         s.StuckEpisodes = c.StuckEventsTotal - before.StuckEventsTotal;
         s.StarveDenials = c.StarveDenials - before.StarveDenials;
+        s.GrantsRevoked = c.GrantsRevoked - before.GrantsRevoked;
         s.ArrowPhases = c.ArrowPhases - before.ArrowPhases;
         s.SpillOuts = c.SpillOuts - before.SpillOuts;
         s.ExitClaims = c.ExitClaims - before.ExitClaims;
