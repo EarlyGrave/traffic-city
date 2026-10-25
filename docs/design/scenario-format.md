@@ -48,7 +48,10 @@
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
     "signals": "arterial_x_arterial" | "all_arterial" | "none",   // где ставить светофоры. Дефолт "arterial_x_arterial"
-    "minor_control": "yield" | "stop" | "right_hand"               // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
+    "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
+    "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
+    "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт "alternate"; "legacy" — формула этапа 1
+    "progression_speed_factor": number                             // скорость волны = arterial_speed · k. Дефолт 1.0
   },
 
   "network": {                          // явная сеть (тесты, ручные карты); взаимоисключима с city.enabled
@@ -96,7 +99,10 @@
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
     "yield_gap_s": 3.0,
-    "max_yield_wait_s": 20              // инверсия приоритета у ворот (intersections.md §5.4)
+    "max_yield_wait_s": 20,             // инверсия приоритета у ворот (intersections.md §5.4)
+    "signal_min_green_s": 7, "signal_max_green_s": 24, "signal_gap_s": 2.5,          // Adaptive (intersections.md §6.5), 2.5
+    "signal_arrow_trigger_s": 4, "signal_arrow_min_s": 3, "signal_arrow_max_s": 6, "signal_arrow_gap_s": 2,
+    "exit_claim_s": 10                  // заявка на выезд (intersections.md §5.4 п. 3-bis)
   },
 
   "routing": {                          // → RoutingDesc (routing.md §9, ADR-0009)

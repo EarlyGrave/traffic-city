@@ -312,6 +312,10 @@ public struct RulesDesc
     public int DefaultYellowTicks, DefaultAllRedTicks; // светофоры по умолчанию [шаг 3]
     public float YieldGapTime;             // «уступи дорогу» — временной зазор, с (intersections.md §5.4)
     public int MaxYieldWaitTicks;          // инверсия приоритета после такого ожидания у ворот, 20 с → 400 (intersections.md §5.4)
+    // 2.5 (ADR-0018, intersections.md §6.5, §5.4 п. 3-bis): дефолты Adaptive и заявки на выезд, тики
+    public int SignalMinGreenTicks, SignalMaxGreenTicks, SignalGapTicks;          // 7 с, 24 с, 2.5 с
+    public int SignalArrowTriggerTicks, SignalArrowMinTicks, SignalArrowMaxTicks, SignalArrowGapTicks; // 4, 3, 6, 2 с
+    public int ExitClaimTicks;             // 10 с
 }
 ```
 
@@ -389,12 +393,17 @@ public struct SpawnTripCmd
 public struct SetSignalPlanCmd       // [шаг 3] состав фаз (какие connector'ы зелёные) задаёт спека перекрёстков
 {
     public int Node;
-    public SignalMode Mode;           // Off = 0, Fixed = 1, FlashYellow = 2 (int)
+    public SignalMode Mode;           // Off = 0, Fixed = 1, FlashYellow = 2, Adaptive = 3 (int; 2.5, ADR-0018)
     public ushort OffsetTicks;        // сдвиг цикла
     public byte PhaseCount;           // 1..8
     public byte Reserved;
-    public ushort Green0, Green1, Green2, Green3, Green4, Green5, Green6, Green7; // зелёный по фазам, тики
+    public ushort Green0, Green1, Green2, Green3, Green4, Green5, Green6, Green7; // зелёный по фазам (Adaptive: MaxGreen), тики
     public ushort YellowTicks, AllRedTicks;
+    // 2.5 (ADR-0018, intersections.md §6.5): 0 → дефолт RulesDesc. Размер 32 → 46 B (payload ≤ 56 B).
+    public ushort MinGreenTicks, GapTicks, ArrowTriggerTicks, ArrowMinTicks, ArrowMaxTicks;
+    public ushort CycleTicks;         // Adaptive: > 0 — координация (окна осей по (tick + Offset) mod Cycle), только 2 оси
+    public byte Flags;                // бит0 Arrows: Adaptive — стрелка по спросу; Fixed — стрелка каждый цикл (ArrowMaxTicks)
+    public byte Reserved2;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -548,6 +557,9 @@ public struct SignalState
 }
 public enum LaneSignal : byte { None = 0, Red = 1, Yellow = 2, Green = 3 }   // LaneSignals[laneIndex]
 ```
+
+2.5: `SignalState.Phase` = ось, бит7 — подфаза «стрелка» (`Adaptive`/`Fixed`+стрелка); `TicksToChange` для `Adaptive`-зелёного —
+гарантированный остаток (может продлиться). Стрелку клиент видит и по `LaneSignals` (зелёные только Left/Right connector'ы).
 
 `SignalStates` — массив по регулируемым узлам (длина `Counters.SignalizedNodes`), `LaneSignals` —
 по всем полосам (для connector-полос — состояние, для обычных — `None`). Клиент красит
@@ -909,6 +921,10 @@ public struct BusRouteData { public int FirstStop, StopCount; public int Headway
 connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узел — предел зафиксирован). Состав фаз по
 умолчанию (оси противоположных рукавов, разрешающий левый), `ConnectorStore`, `ConflictEntry` и ворота —
 `intersections.md` §3–6.
+2.5 (ADR-0018): параметры `Adaptive` (`MinGreen, Gap, ArrowTrigger, ArrowMin, ArrowMax, CycleTicks, Flags`), состояние контроллера
+(`Sub, GreenMask, NextMask, GreenElapsed, GapLeft, SpillTicks, ArrowArms, ArmLeftYield[8], ArmLeftHead[8]`), статика по рукавам
+(`ArmMask/LeftMask/RightMask`, `SigLane[]`) — `intersections.md` §6.5. Рядом: `ExitClaimer[]`, `ExitClaimUntil[]` по полосам (§5.4 п. 3-bis),
+`ConnWaitSum/ConnGrantCount/ConnDelay` по connector'ам (§6.9). Всё состояние — в хэше и (ADR-0012) в сейве.
 
 ## 7. Порядок обновления тика
 
