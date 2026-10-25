@@ -1,4 +1,7 @@
 using System;
+using System.Threading;
+using Sim.Core.Api;
+using Sim.Core.Util;
 
 namespace Sim.Core.Tests.Fixtures;
 
@@ -14,6 +17,9 @@ namespace Sim.Core.Tests.Fixtures;
 /// Окно с изменившимся <see cref="GC.CollectionCount"/> отбрасывается и повторяется. Фоновый GC считается невидимым для
 /// CollectionCount, поэтому в csproj отключён concurrent GC.</item>
 /// </list>
+/// <see cref="MeasureSimThreads"/> - то же для симуляции с воркерами (ADR-0017): считает аллокации потока теста и потоков WorkerPool
+/// (каждый читает свой счётчик), но не фоновых потоков рантайма. <c>GC.GetTotalAllocatedBytes</c> для этого не годится: tiered-JIT,
+/// таймеры и xUnit аллоцируют ~170 Б в произвольном окне, и под нагрузкой (окно длиннее) это попадает в каждое окно подряд.
 /// Окно, прошедшее оба условия, возвращается как есть: реальная аллокация ядра (на каждый тик/запрос) не маскируется.
 /// Код в окне должен быть установившимся режимом: он выполняется минимум дважды.
 /// </summary>
@@ -44,4 +50,84 @@ internal static class AllocationProbe
     }
 
     public static long Measure(Action window) => Measure(window, out _);
+
+    /// <summary>Как <see cref="Measure(Action)"/>, но суммирует поток теста и все потоки пула воркеров симуляции <paramref name="sim"/>.</summary>
+    public static long MeasureSimThreads(Simulation sim, Action window)
+    {
+        WorkerPool? pool = sim.World.Pool;
+        var job = new SnapshotJob(pool?.Workers ?? 1);
+        window();
+        for (int attempt = 1; attempt <= MaxWindows; attempt++)
+        {
+            int gcBefore = GC.CollectionCount(0);
+            long before = job.Snapshot(pool);
+            window();
+            long after = job.Snapshot(pool);
+            if (before >= 0 && after >= 0 && GC.CollectionCount(0) == gcBefore)
+            {
+                return after - before;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"GC срабатывал или воркеры не откликались в каждом из {MaxWindows} окон замера: измерить аллокации потоков симуляции нельзя.");
+    }
+
+    /// <summary>Задание пула: каждый поток один раз читает собственный счётчик аллокаций и ждёт остальных (иначе один воркер забрал бы все чанки).</summary>
+    private sealed class SnapshotJob : IRangeJob
+    {
+        private readonly long[] _bytes;
+        private readonly int[] _seen;
+        private int _reported;
+
+        public SnapshotJob(int workers)
+        {
+            _bytes = new long[workers];
+            _seen = new int[workers];
+        }
+
+        /// <summary>Сумма счётчиков всех потоков симуляции или -1, если воркер не успел откликнуться (машина перегружена): окно повторяют.</summary>
+        public long Snapshot(WorkerPool? pool)
+        {
+            if (pool is null || pool.Workers <= 1)
+            {
+                return GC.GetAllocatedBytesForCurrentThread();
+            }
+
+            Array.Clear(_seen);
+            Volatile.Write(ref _reported, 0);
+            pool.Wake();
+            pool.Run(this, pool.Workers * 4 * WorkerPool.ChunkSize);
+            pool.Rest();
+            if (Volatile.Read(ref _reported) != _bytes.Length)
+            {
+                return -1;
+            }
+
+            long sum = 0;
+            foreach (long b in _bytes)
+            {
+                sum += b;
+            }
+
+            return sum;
+        }
+
+        public void RunRange(int worker, int begin, int end)
+        {
+            if (Interlocked.Exchange(ref _seen[worker], 1) != 0)
+            {
+                return;
+            }
+
+            _bytes[worker] = GC.GetAllocatedBytesForCurrentThread();
+            Interlocked.Increment(ref _reported);
+            long deadline = Environment.TickCount64 + 2000;
+            var sw = new SpinWait();
+            while (Volatile.Read(ref _reported) < _bytes.Length && Environment.TickCount64 < deadline)
+            {
+                sw.SpinOnce(-1);
+            }
+        }
+    }
 }

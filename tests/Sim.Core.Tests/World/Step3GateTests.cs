@@ -7,6 +7,7 @@ using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Tests.Fixtures;
 using Xunit.Abstractions;
 
 namespace Sim.Core.Tests.Worlds;
@@ -306,13 +307,14 @@ public sealed class Step3GateRun
             }
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int t = 0; t < 1000; t++)
+        sim.Step(1200); // прогрев (JIT, холодные пути), как в Step2Run/Step3Run
+        Allocated1000Ticks = AllocationProbe.Measure(() =>
         {
-            sim.Step(1);
-        }
-
-        Allocated1000Ticks = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int t = 0; t < 1000; t++)
+            {
+                sim.Step(1);
+            }
+        });
         CountersEnd = sim.Counters;
         sim.GetStats(out SimStats st);
         StatsEnd = st;

@@ -228,16 +228,7 @@ public class QueueMesoTests
         ScenarioDesc d = City();
         using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 2 });
         sim.Step(3600);
-        long best = long.MaxValue;
-        for (int attempt = 0; attempt < 50 && best != 0; attempt++)
-        {
-            long a = GC.GetTotalAllocatedBytes(true);
-            sim.Step(100);
-            long b = GC.GetTotalAllocatedBytes(true);
-            best = Math.Min(best, b - a);
-        }
-
-        Assert.Equal(0, best);
+        Assert.Equal(0, AllocationProbe.MeasureSimThreads(sim, () => sim.Step(100)));
     }
 
     [Fact]

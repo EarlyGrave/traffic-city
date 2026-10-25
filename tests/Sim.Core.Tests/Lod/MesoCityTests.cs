@@ -179,17 +179,8 @@ public class MesoCityTests
         using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 2 });
         sim.Step(3600);
 
-        // GetTotalAllocatedBytes видит и воркеров, и чужие потоки (JIT): минимум по окнам - реальная аллокация ядра есть в каждом.
-        long best = long.MaxValue;
-        for (int attempt = 0; attempt < 50 && best != 0; attempt++)
-        {
-            long a = GC.GetTotalAllocatedBytes(true);
-            sim.Step(100);
-            long b = GC.GetTotalAllocatedBytes(true);
-            best = Math.Min(best, b - a);
-        }
-
-        Assert.Equal(0, best);
+        // Поток теста + потоки пула; фоновые потоки рантайма не считаются (AllocationProbe.MeasureSimThreads).
+        Assert.Equal(0, AllocationProbe.MeasureSimThreads(sim, () => sim.Step(100)));
     }
 
     /// <summary>Контракт ADR-0017 для meso-ветки фазы 5: выходы по машине не зависят от порядка обхода индексов.</summary>
