@@ -99,7 +99,7 @@
 | 93 | godot-cloud (worktree) | sonnet | 3.3a: разведка запуска Godot 4.7 в облаке (скриншоты, FPS) | done, merged (SourceForge-зеркало + Xvfb/llvmpipe; s1k 32.5 FPS; машин на кадре нет — разобрать в 3.3) |
 | 94 | peds-p1 (worktree) | sonnet | 3.1 P1: сеть пешеходов, `PedDesc`, загрузчик `peds`, геометрия для клиента | done, merged (27 новых тестов; golden s1k/s10k без изменений) |
 | 95 | rust-pilot-spec (worktree) | opus | 4.6: ADR-0022 Rust-пилот ядра, граница FFI, кросс-хэш | done, merged (R1–R8 + R-CI; тулчейн 1.97 есть, crates.io открыт) |
-| 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | wip |
-| 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | wip |
+| 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | done, merged (M1–M10; скриптов нет) |
+| 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | done, merged (T1–T14; дренаж вместо удаления машин) |
 | 98 | peds-p2 (worktree) | sonnet | 3.1 P2: агенты, жители, пути, события, снапшот, сейв w2, метрики, сценарии | wip |
 | 99 | rust-r1 (worktree) | sonnet | 4.6 R1 + R-CI: workspace `rust/`, Util, clippy-правила, rust-check, job CI, хук `.rs` | wip |
