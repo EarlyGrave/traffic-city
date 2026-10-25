@@ -52,4 +52,24 @@ public struct SimWork
 
     // Сырой счётчик вызовов ConflictGap: фазы 5 и 6 берут разность до/после цикла и пишут в именованные поля выше.
     internal long ConflictGapCallsRaw;
+
+    /// <summary>Прибавляет все счётчики <paramref name="o"/> (сведение счётчиков воркеров параллельной фазы, ADR-0017; целые - порядок не важен). Новое поле - добавить и сюда.</summary>
+    internal void Add(in SimWork o)
+    {
+        BehaviourVehicles += o.BehaviourVehicles;
+        LeaderLookaheadHops += o.LeaderLookaheadHops;
+        ObstacleGapCalls += o.ObstacleGapCalls;
+        ConflictGapCallsBehaviour += o.ConflictGapCallsBehaviour;
+        ConflictGapCallsIntegrate += o.ConflictGapCallsIntegrate;
+        ConflictGapMaskRejects += o.ConflictGapMaskRejects;
+        ConflictEntriesScanned += o.ConflictEntriesScanned;
+        ConflictOccupantsScanned += o.ConflictOccupantsScanned;
+        GateCandidates += o.GateCandidates;
+        GateTryGrantCalls += o.GateTryGrantCalls;
+        GateTryGrantEntries += o.GateTryGrantEntries;
+        RouteRefillChecks += o.RouteRefillChecks;
+        NextConnRecomputes += o.NextConnRecomputes;
+        SnapshotSlots += o.SnapshotSlots;
+        ConflictGapCallsRaw += o.ConflictGapCallsRaw;
+    }
 }

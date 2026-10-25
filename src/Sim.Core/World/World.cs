@@ -4,6 +4,7 @@ using Sim.Core.Api;
 using Sim.Core.Gen;
 using Sim.Core.Network;
 using Sim.Core.Routing;
+using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
 using Sim.Core.Util;
 
@@ -15,7 +16,7 @@ namespace Sim.Core;
 /// Фазы тика - <c>internal static class XxxPhase { public static void Run(World w) }</c>.
 /// Namespace <c>Sim.Core</c> (а не <c>Sim.Core.World</c>): одноимённый namespace затенял бы тип во всех <c>Sim.Core.*</c>.
 /// </summary>
-internal sealed class World
+internal sealed class World : IDisposable
 {
     // ---- параметры (копии из ScenarioDesc) ----
     public readonly SimCapacities Caps;
@@ -62,6 +63,8 @@ internal sealed class World
     public SimCounters Counters;
     public SimWork Work;                  // счётчики работы горячего пути (ADR-0016), вне хэша
     public PhaseProbe? PhaseProbe;        // зонд конца фазы (core-api §3); задаёт хост, ядро время не читает
+    public BehaviourJob Behaviour = new(1);  // задание фазы 5 (ADR-0017); счётчики по воркерам
+    public WorkerPool? Pool;              // воркеры параллельных фаз; null = один поток (SimRuntimeOptions.WorkerThreads <= 1)
     public readonly RingBuffer<Command> Commands;
     public readonly SimEvent[] Events;
     public int EventCount;
@@ -83,6 +86,25 @@ internal sealed class World
     public readonly VehicleRenderData[][] Render;
     public long SnapshotTick;
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
+
+    /// <summary>Запускает <paramref name="threads"/> - 1 воркеров (≤ 1: ничего не создаёт). Вызывает <c>Simulation</c> сразу после построения мира.</summary>
+    public void StartWorkers(int threads)
+    {
+        if (threads <= 1)
+        {
+            return;
+        }
+
+        threads = Math.Min(threads, SimRuntimeOptions.MaxWorkerThreads);
+        Pool = new WorkerPool(threads);
+        Behaviour = new BehaviourJob(threads);
+    }
+
+    public void Dispose()
+    {
+        Pool?.Dispose();
+        Pool = null;
+    }
 
     public World(in ScenarioDesc desc, in RulesDesc rules, in RoutingDesc routing, VehicleTypeDesc[] types)
     {

@@ -28,9 +28,13 @@ public sealed class Simulation : IDisposable
 
     /// <summary>Валидирует desc, выделяет ВСЕ буферы, строит сеть. Единственное место с исключениями.</summary>
     /// <exception cref="ArgumentException">desc не прошёл валидацию (см. <see cref="CreateStatus"/>).</exception>
-    public static Simulation Create(in ScenarioDesc desc)
+    public static Simulation Create(in ScenarioDesc desc) => Create(in desc, default);
+
+    /// <summary>То же с параметрами среды (число потоков, ADR-0017); результат симуляции от них не зависит.</summary>
+    /// <exception cref="ArgumentException">desc не прошёл валидацию (см. <see cref="CreateStatus"/>).</exception>
+    public static Simulation Create(in ScenarioDesc desc, in SimRuntimeOptions options)
     {
-        CreateStatus st = TryCreate(in desc, out Simulation? sim);
+        CreateStatus st = TryCreate(in desc, in options, out Simulation? sim);
         if (st != CreateStatus.Ok || sim == null)
         {
             throw new ArgumentException($"ScenarioDesc rejected: {st}", nameof(desc));
@@ -40,12 +44,16 @@ public sealed class Simulation : IDisposable
     }
 
     /// <summary>То же без исключений (FFI, хост с кодом ошибки).</summary>
-    public static CreateStatus TryCreate(in ScenarioDesc desc, out Simulation? sim)
+    public static CreateStatus TryCreate(in ScenarioDesc desc, out Simulation? sim) => TryCreate(in desc, default, out sim);
+
+    /// <summary>То же с параметрами среды (число потоков, ADR-0017).</summary>
+    public static CreateStatus TryCreate(in ScenarioDesc desc, in SimRuntimeOptions options, out Simulation? sim)
     {
         sim = null;
         CreateStatus st = WorldBuilder.Create(in desc, out World? w);
         if (st == CreateStatus.Ok && w != null)
         {
+            w.StartWorkers(options.WorkerThreads);
             sim = new Simulation(w);
         }
 
@@ -55,6 +63,7 @@ public sealed class Simulation : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _w.Dispose();
     }
 
     /// <summary>Внутренний доступ для тестов и бенчей (InternalsVisibleTo).</summary>
@@ -76,10 +85,13 @@ public sealed class Simulation : IDisposable
         World w = _w;
         w.EventCount = 0;
         w.EventsOverflowed = false;
+        w.Pool?.Wake();
         for (int t = 0; t < ticks; t++)
         {
             PhaseList.RunTick(w);
         }
+
+        w.Pool?.Rest();
     }
 
     /// <summary>false = очередь полна (команда отброшена, <c>CommandsDropped++</c>) либо симуляция освобождена.</summary>
