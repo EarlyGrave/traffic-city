@@ -33,7 +33,7 @@ internal static class IntegratePhase
     public static IntegrateJob Prepare(World w)
     {
         IntegrateJob job = w.Integrate;
-        job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w));
+        job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), w.Gate.SignalMask);
         return job;
     }
 
@@ -82,14 +82,16 @@ internal sealed partial class IntegrateJob : IRangeJob
     private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
     private PhysicsParams _p;
     private byte[] _lod = Array.Empty<byte>();   // VehicleStore.Lod; длина 0 - LOD выключен
+    private ulong[] _signalMask = Array.Empty<ulong>();   // GateScratch.SignalMask; длина 0 - метка StoppedBeforeSignal не ведётся
 
     public IntegrateJob(int workers)
     {
         _clamps = new long[Stride * Math.Max(1, workers)];
     }
 
-    public void Prepare(NetworkStore net, VehicleStore v, VehicleTypeDesc[] types, in PhysicsParams p)
+    public void Prepare(NetworkStore net, VehicleStore v, VehicleTypeDesc[] types, in PhysicsParams p, ulong[]? signalMask = null)
     {
+        _signalMask = signalMask ?? Array.Empty<ulong>();
         _net = net;
         _v = v;
         _types = types;
@@ -119,6 +121,28 @@ internal sealed partial class IntegrateJob : IRangeJob
             c.MesoClamps += _clamps[k + 1];
             _clamps[k] = 0;
             _clamps[k + 1] = 0;
+        }
+    }
+
+    /// <summary>
+    /// Метка «ехала &lt; 1 м/с на подходе к светофору» (<see cref="GateRules.StoppedBeforeSignal"/>, диагностика вне хэша): её ставила фаза 4 при проходе
+    /// по всем машинам по скорости на начало тика; с активными множествами (ADR-0019, A2) фаза 4 видит только голову полосы, остальным метку ставит
+    /// фаза 6 по скорости конца тика - та же скорость, что фаза 4 прочитает в следующем тике (смена полосы и вставка - через <see cref="LaneOccupancy.Linked"/>).
+    /// Пишет только слот машины <paramref name="i"/>.
+    /// </summary>
+    private void MarkStoppedBeforeSignal(int i)
+    {
+        byte gs = _v.GateState[i];
+        if ((gs & (GateRules.Granted | GateRules.StoppedBeforeSignal)) != 0)
+        {
+            return;   // допущена (метка не нужна) либо уже помечена
+        }
+
+        ulong[] mask = _signalMask;
+        int lane = _v.Lane[i];
+        if (mask.Length != 0 && ((mask[lane >> 6] >> (lane & 63)) & 1UL) != 0UL)
+        {
+            _v.GateState[i] = (byte)(gs | GateRules.StoppedBeforeSignal);
         }
     }
 
@@ -179,6 +203,11 @@ internal sealed partial class IntegrateJob : IRangeJob
 
         v.S[i] = sNew;
         v.Speed[i] = vNew;
+        if (vNew < 1f)
+        {
+            MarkStoppedBeforeSignal(i);
+        }
+
         if (vNew < p.StuckSpeedThreshold && !BusStopRules.IsServing(_net, v, i))
         {
             if (v.StillTicks[i] < ushort.MaxValue)
@@ -228,6 +257,11 @@ internal sealed partial class IntegrateJob : IRangeJob
 
         v.S[i] += d;
         v.MesoAllow[i] = allow - d;
+        if (speed < 1f)
+        {
+            MarkStoppedBeforeSignal(i);
+        }
+
         if (speed < _p.StuckSpeedThreshold && !BusStopRules.IsServing(_net, v, i))
         {
             if (v.StillTicks[i] < ushort.MaxValue)

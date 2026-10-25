@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Numerics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -9,7 +11,8 @@ namespace Sim.Core.Rules.Intersections;
 /// Ворота перекрёстков (intersections.md §5, §8) - вторая половина фазы 4 (после <see cref="SignalPhase"/>). Единственное
 /// место, выдающее допуски: <c>GateState.Granted</c>, <c>GrantConnector</c>, <c>Ticket</c>; ведёт <c>WaitTicks</c>, <c>NodeTicket</c>
 /// и пересобирает <c>OutReserved</c> (Σ длин машин, допущенных или находящихся в узле с выездом на полосу).
-/// Порядок: (0) OutReserved по допущенным; (1) один проход по машинам по возрастанию индекса - кандидаты в intrusive-списки узлов;
+/// Порядок: (0) OutReserved по допущенным; (1) кандидаты в intrusive-списки узлов - обход занятых полос по маскам (ADR-0019, A2; эталон -
+/// полный проход по машинам по возрастанию индекса, <c>ScanAll</c>);
 /// (2) узлы в порядке первого касания, внутри узла кандидаты по ключу (WaitTicks desc, Index asc); условия §5.4 по очереди.
 /// PRNG не используется, аллокаций нет (сортировка в stackalloc).
 /// Уточнения реализации: кандидатом может быть не только голова полосы, но и машина, у которой все впереди на полосе уже
@@ -27,10 +30,6 @@ internal static class GatePhase
         LaneOccupancy occ = w.Occupancy;
         GateScratch g = w.Gate;
         var e = new RuleEnv(net, v, occ, RouteAccess.From(w));
-        float stuckSpeed = w.Rules.StuckSpeedThreshold;
-        byte[] lodBits = v.Lod;                       // длина 0 - LOD выключен (ветка meso не исполняется)
-        byte[] laneColor = w.Lod?.LaneColor ?? System.Array.Empty<byte>();
-        int mesoBeat = (int)(w.Tick & 3);
 
         // 0. OutReserved: обнулить затронутые в прошлом тике полосы; заново соберём по допущенным и находящимся в узле.
         for (int k = 0; k < g.OutTouchedCount; k++)
@@ -47,9 +46,380 @@ internal static class GatePhase
         }
 
         g.BusyTouchedCount = 0;
-        ConnectorStore cs = w.Connectors;
 
-        // 1. Сбор кандидатов.
+        // 1. Сбор кандидатов. Обычно - по активным множествам (маски занятых полос, ADR-0019 A2); полный проход по машинам - в первый тик и
+        // после смены сети/узлов (RefreshMasks), а в Debug - как эталон, с которым сверяется активный проход на каждом тике.
+        RefreshMasks(w);
+        int candidates;
+        if (g.FullScan)
+        {
+            g.FullScan = false;
+            candidates = ScanAll(w, in e);
+        }
+        else
+        {
+#if DEBUG
+            DebugSnapshotInput(w);
+#endif
+            candidates = ScanActive(w, in e);
+#if DEBUG
+            candidates = DebugCompareWithFullScan(w, in e, candidates);
+#endif
+        }
+
+        occ.ClearLinked();
+        (g.PrevList, g.NextList) = (g.NextList, g.PrevList);
+        g.PrevCount = g.NextCount;
+        w.Work.GateCandidates += candidates;
+
+        // 2. Разрешение по узлам.
+        Span<int> buf = stackalloc int[MaxCandidatesPerNode];
+        for (int k = 0; k < g.TouchedCount; k++)
+        {
+            int node = g.TouchedNodes[k];
+            int count = 0;
+            for (int i = g.NodeCandHead[node]; i != -1; i = g.CandNext[i])
+            {
+                if (count == MaxCandidatesPerNode)
+                {
+                    break;
+                }
+
+                // Вставка по ключу (WaitTicks desc, Index asc).
+                int pos = count;
+                while (pos > 0 && Before(v, i, buf[pos - 1]))
+                {
+                    buf[pos] = buf[pos - 1];
+                    pos--;
+                }
+
+                buf[pos] = i;
+                count++;
+            }
+
+            for (int q = 0; q < count; q++)
+            {
+                int i = buf[q];
+                GateDeny deny = TryGrant(w, in e, node, i, g.CandConn[i]);
+                g.DenyReason[i] = (byte)deny;
+                if (deny == GateDeny.Exit)
+                {
+                    w.Counters.GateDeniedExit++;
+                }
+            }
+
+            g.NodeCandHead[node] = -1;
+        }
+
+        g.TouchedCount = 0;
+    }
+
+    /// <summary>
+    /// Статические маски полос (какие полосы - connector'ы, с воротами, со светофором) пересобираются, когда изменилась сеть
+    /// (<see cref="NetworkStore.Version"/>: BuildRoad, SetNodeControl). Смена сети меняет и классы машин на полосах (полоса потеряла ворота -
+    /// <c>GateState</c> её машин сбрасывается полным проходом), поэтому тот же тик идёт полным проходом.
+    /// </summary>
+    private static void RefreshMasks(World w)
+    {
+        NetworkStore net = w.Net;
+        GateScratch g = w.Gate;
+        if (g.MaskVersion == net.Version)
+        {
+            return;
+        }
+
+        Array.Clear(g.GatedMask);
+        Array.Clear(g.ConnMask);
+        Array.Clear(g.SignalMask);
+        int n = Math.Min(net.LaneCount, g.GatedMask.Length << 6);
+        for (int lane = 0; lane < n; lane++)
+        {
+            ulong bit = 1UL << (lane & 63);
+            if (net.Lanes[lane].Kind == LaneKind.Connector)
+            {
+                g.ConnMask[lane >> 6] |= bit;
+                continue;
+            }
+
+            int node = net.LaneGateNode[lane];
+            if (node >= 0)
+            {
+                g.GatedMask[lane >> 6] |= bit;
+                if (net.Nodes[node].Control == NodeControl.Signal)
+                {
+                    g.SignalMask[lane >> 6] |= bit;
+                }
+            }
+        }
+
+        g.MaskVersion = net.Version;
+        g.FullScan = true;
+    }
+
+    /// <summary>
+    /// Активный проход (ADR-0019, A2): те же эффекты, что у <see cref="ScanAll"/>, но обходятся только занятые connector'ы и занятые Normal-полосы
+    /// с воротами (маска <see cref="LaneOccupancy.OccMask"/>, по возрастанию индекса полосы). На полосе с воротами достаточно префикса допущенных
+    /// машин (они образуют голову списка: допуск получает только машина, перед которой все допущены) и первой недопущенной - единственного кандидата
+    /// полосы. Состояние остальных машин (<c>WaitTicks</c>, <c>DenyReason</c>) сбрасывается по списку прошлого тика (<c>PrevList</c>: у всех
+    /// остальных оно уже нулевое), а метка <c>StoppedBeforeSignal</c> ставится в фазе 6 и при связывании со списком полосы (<see cref="LaneOccupancy.Linked"/>).
+    /// Порядок кандидатов в списках узлов иной, чем у полного прохода, но результат от него не зависит: внутри узла сортировка по ключу
+    /// (<c>WaitTicks desc, Index asc</c>), узлы друг с другом не связаны.
+    /// </summary>
+    private static int ScanActive(World w, in RuleEnv e)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        LaneOccupancy occ = w.Occupancy;
+        GateScratch g = w.Gate;
+        byte[] lodBits = v.Lod;                       // длина 0 - LOD выключен (ветка meso не исполняется)
+        byte[] laneColor = w.Lod?.LaneColor ?? System.Array.Empty<byte>();
+        int mesoBeat = (int)(w.Tick & 3);
+        int stamp = ++g.Stamp;
+        g.NextCount = 0;
+        int candidates = 0;
+
+        // Быстрый отсев головы далеко от стоп-линии: дальше max(30 м, MinGap + допуск метки остановки) и дальше DecisionDistance при самой малой
+        // комфортной тормозной способности типов (DecisionDistance убывает по ней: оценка сверху, сравнение в том же float).
+        float farDistance = GateRules.MinDecisionDistance;
+        float minDecel = float.MaxValue;
+        for (int k = 0; k < w.Types.Length; k++)
+        {
+            farDistance = Math.Max(farDistance, w.Types[k].MinGap + GateRules.StopLineTolerance);
+            minDecel = Math.Min(minDecel, w.Types[k].ComfortDecel);
+        }
+
+        if (minDecel < 0.1f)
+        {
+            minDecel = 0.1f;   // как в DecisionDistance
+        }
+
+        ulong[] occMask = occ.OccMask;
+        ulong[] gated = g.GatedMask;
+        ulong[] conn = g.ConnMask;
+        for (int wi = 0; wi < occMask.Length; wi++)
+        {
+            ulong active = occMask[wi] & (gated[wi] | conn[wi]);
+            while (active != 0UL)
+            {
+                int bit = BitOperations.TrailingZeroCount(active);
+                active &= active - 1UL;
+                int lane = (wi << 6) + bit;
+                if (((conn[wi] >> bit) & 1UL) != 0UL)
+                {
+                    ScanConnector(w, lane);
+                }
+                else
+                {
+                    candidates += ScanGatedLane(w, in e, lane, lodBits, laneColor, mesoBeat, stamp, farDistance, minDecel);
+                }
+            }
+        }
+
+        // Машины, связанные со списком полосы после прошлой фазы 4 (въезд, вставка, смена полосы, спавн): метка остановки перед светофором
+        // по их скорости на начало этого тика - как у полного прохода (дальше её ставит фаза 6 по скорости конца тика).
+        ulong[] signal = g.SignalMask;
+        int[] linked = occ.Linked;
+        for (int k = 0; k < occ.LinkedCount; k++)
+        {
+            int i = linked[k];
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            int lane = v.Lane[i];
+            if (lane >= 0 && ((signal[lane >> 6] >> (lane & 63)) & 1UL) != 0UL && !GateRules.IsGranted(v, i) && v.Speed[i] < 1f)
+            {
+                v.GateState[i] |= GateRules.StoppedBeforeSignal;
+            }
+        }
+
+        // Сброс по списку прошлого тика: всё, что было кандидатом (или хранит отказ), а теперь им не стало.
+        int[] prev = g.PrevList;
+        for (int k = 0; k < g.PrevCount; k++)
+        {
+            int i = prev[k];
+            if (g.CandStamp[i] == stamp)
+            {
+                continue;   // кандидат и в этом тике: WaitTicks уже увеличен, запись в NextList есть
+            }
+
+            int lane = v.Lane[i];
+            if (!v.Pool.IsAlive(i) || lane < 0)
+            {
+                v.WaitTicks[i] = 0;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (net.Lanes[lane].Kind == LaneKind.Connector)
+            {
+                v.WaitTicks[i] = 0;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (GateRules.GateNodeOfNormal(net, lane) < 0)
+            {
+                v.WaitTicks[i] = 0;
+                v.GateState[i] = 0;
+                v.GrantConnector[i] = -1;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (!GateRules.IsGranted(v, i) && lodBits.Length != 0 && (lodBits[i] & Lod.LodBits.Meso) != 0 && laneColor[lane] != mesoBeat)
+            {
+                g.NextList[g.NextCount++] = i;   // meso не в свой такт: WaitTicks и DenyReason не трогаем (sim-lod.md §2.4), запись остаётся в списке
+                continue;
+            }
+
+            v.WaitTicks[i] = 0;
+            g.DenyReason[i] = (byte)GateDeny.None;
+        }
+
+        return candidates;
+    }
+
+    /// <summary>Машины connector'а: узел занят (NodeBusy), допущенная резервирует выезд (то же, что ветка connector'а в <see cref="ScanAll"/>).</summary>
+    private static void ScanConnector(World w, int lane)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        GateScratch g = w.Gate;
+        ConnectorStore cs = w.Connectors;
+        ref readonly LaneData ld = ref net.Lanes[lane];
+        Debug.Assert(ld.Kind == LaneKind.Connector, "ScanConnector: не connector");
+        float stuckSpeed = w.Rules.StuckSpeedThreshold;
+        for (int x = w.Occupancy.LaneHead[lane]; x != -1; x = GateRules.BehindOn(v, x, lane))
+        {
+            if (v.Lane[x] != lane)
+            {
+                continue;   // ghost: у connector'а смены полосы нет, но обход единообразен с Normal-полосой
+            }
+
+            MarkBusy(g, cs, ld.ConflictGroup);
+            if (GateRules.IsGranted(v, x))
+            {
+                AddReserved(net, g, ld.ToLane, v.Length[x]);
+                if (v.Speed[x] < stuckSpeed)
+                {
+                    w.Counters.BoxWaitTicks++;
+                }
+            }
+        }
+    }
+
+    /// <summary>Полоса с воротами: префикс допущенных и первая недопущенная (кандидат). Возвращает 1, если кандидат есть.</summary>
+    private static int ScanGatedLane(World w, in RuleEnv e, int lane, byte[] lodBits, byte[] laneColor, int mesoBeat, int stamp, float farDistance, float minDecel)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        LaneOccupancy occ = w.Occupancy;
+        GateScratch g = w.Gate;
+        ConnectorStore cs = w.Connectors;
+        int node = GateRules.GateNodeOfNormal(net, lane);
+        Debug.Assert(node >= 0 && net.Lanes[lane].Kind != LaneKind.Connector, "ScanGatedLane: полоса без ворот в маске");
+        float laneLen = net.LaneLength[lane];
+        bool signalNode = ((g.SignalMask[lane >> 6] >> (lane & 63)) & 1UL) != 0UL;
+        bool aheadOk = true;   // впереди на полосе (без ghost) нет машины либо она допущена
+        int x = occ.LaneHead[lane];
+        while (x != -1)
+        {
+            if (v.Lane[x] != lane)
+            {
+                x = v.GhostBehind[x];   // ghost: её допуск и порядок ведёт основная полоса
+                continue;
+            }
+
+            if (GateRules.IsGranted(v, x))
+            {
+                int behind = v.Behind[x];
+                int gc = v.GrantConnector[x];
+                if (gc < 0 || net.Lanes[gc].FromLane != lane)
+                {
+                    v.GateState[x] = 0;   // допуск от другой полосы: сброс (машина допущенной впереди больше не считается)
+                    v.GrantConnector[x] = -1;
+                    aheadOk = false;
+                }
+                else
+                {
+                    AddReserved(net, g, net.Lanes[gc].ToLane, v.Length[x]);
+                    MarkBusy(g, cs, net.Lanes[gc].ConflictGroup);
+                }
+
+                x = behind;
+                continue;
+            }
+
+            float speed = v.Speed[x];
+            if (signalNode && speed < 1f)
+            {
+                v.GateState[x] |= GateRules.StoppedBeforeSignal;   // метрика остановок на светофоре (2.5 S1); сбрасывается допуском
+            }
+
+            float d = laneLen - v.S[x];
+            if (d > farDistance && d > (speed * speed / (2f * minDecel)) + (1.5f * speed) && d > 3f * speed)
+            {
+                return 0;   // дальше дистанции решения при любой комфортной тормозной способности и дальше StoppedAtLine: ни кандидата, ни метки
+            }
+
+            ref readonly VehicleTypeDesc t = ref w.Types[v.Type[x]];
+            if (speed < 0.1f && d <= t.MinGap + GateRules.StopLineTolerance)
+            {
+                v.GateState[x] |= GateRules.StoppedAtLine;
+            }
+
+            bool meso = lodBits.Length != 0 && (lodBits[x] & Lod.LodBits.Meso) != 0;
+            if (meso && laneColor[lane] != mesoBeat)
+            {
+                return 0;   // meso: кандидатом бывает только в такт цвета своей ячейки (sim-lod.md §2.4)
+            }
+
+            if (!aheadOk || d > GateRules.DecisionDistance(speed, t.ComfortDecel))
+            {
+                return 0;   // WaitTicks и DenyReason сбросит список прошлого тика
+            }
+
+            int conn = e.FirstHop(x, lane);
+            if (conn < 0 || net.Lanes[conn].Kind != LaneKind.Connector || net.Lanes[conn].FromLane != lane)
+            {
+                return 0;   // маршрут требует другую полосу - connector'а с этой полосы нет (routing.md §6.2)
+            }
+
+            // Единицы WaitTicks - тики: meso-кандидат видится раз в 4 тика (sim-lod.md §2.4).
+            int waitStep = meso ? 4 : 1;
+            v.WaitTicks[x] = (ushort)Math.Min(ushort.MaxValue, v.WaitTicks[x] + waitStep);
+            g.CandConn[x] = conn;
+            g.CandStamp[x] = stamp;
+            g.NextList[g.NextCount++] = x;
+            if (g.NodeCandHead[node] == -1)
+            {
+                g.TouchedNodes[g.TouchedCount++] = node;
+            }
+
+            g.CandNext[x] = g.NodeCandHead[node];
+            g.NodeCandHead[node] = x;
+            return 1;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Полный проход по машинам (эталон до ADR-0019 A2): первый тик, смена сети/узлов, Debug-сверка. Заполняет <c>NextList</c> всеми машинами с
+    /// ненулевыми <c>WaitTicks</c>/<c>DenyReason</c> (надмножество списка активного прохода).
+    /// </summary>
+    private static int ScanAll(World w, in RuleEnv e)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        GateScratch g = w.Gate;
+        float stuckSpeed = w.Rules.StuckSpeedThreshold;
+        byte[] lodBits = v.Lod;                       // длина 0 - LOD выключен (ветка meso не исполняется)
+        byte[] laneColor = w.Lod?.LaneColor ?? System.Array.Empty<byte>();
+        int mesoBeat = (int)(w.Tick & 3);
+        ConnectorStore cs = w.Connectors;
         int hw = v.HighWater;
         int candidates = 0;
         for (int i = 0; i < hw; i++)
@@ -165,49 +535,160 @@ internal static class GatePhase
             g.NodeCandHead[node] = i;
         }
 
-        w.Work.GateCandidates += candidates;
+        g.NextCount = 0;
+        for (int i = 0; i < hw; i++)
+        {
+            if (v.WaitTicks[i] != 0 || g.DenyReason[i] != 0)
+            {
+                g.NextList[g.NextCount++] = i;
+            }
+        }
 
-        // 2. Разрешение по узлам.
-        Span<int> buf = stackalloc int[MaxCandidatesPerNode];
+        return candidates;
+    }
+
+#if DEBUG
+    private static void DebugSnapshotInput(World w)
+    {
+        VehicleStore v = w.Vehicles;
+        GateScratch g = w.Gate;
+        int hw = v.HighWater;
+        Array.Copy(v.WaitTicks, g.DbgWait0, hw);
+        Array.Copy(g.DenyReason, g.DbgDeny0, hw);
+        Array.Copy(v.GateState, g.DbgGate0, hw);
+        Array.Copy(v.GrantConnector, g.DbgGrant0, hw);
+        g.DbgBox0 = w.Counters.BoxWaitTicks;
+    }
+
+    /// <summary>
+    /// Debug-сверка (ADR-0019 риск 4: пропуск в маске - молчаливая ошибка): после активного прохода снимается результат, вход восстанавливается,
+    /// выполняется полный проход <see cref="ScanAll"/>, и всё, что читают дальше фазы 4-6 (WaitTicks, GateState, GrantConnector, DenyReason
+    /// недопущенных на полосах с воротами, OutReserved, NodeBusy, число кандидатов, BoxWaitTicks), сравнивается. Метка StoppedBeforeSignal
+    /// (диагностика, вне хэша) - односторонне: всё, что поставил полный проход в этом тике, должен был поставить и активный. Дальше живёт результат
+    /// полного прохода (он равен активному). Кроме того, список <c>NextList</c> активного прохода обязан содержать всех живых с ненулевым состоянием.
+    /// </summary>
+    private static int DebugCompareWithFullScan(World w, in RuleEnv e, int candidatesFast)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        GateScratch g = w.Gate;
+        int hw = v.HighWater;
+
+        Array.Clear(g.DbgListed);
+        for (int k = 0; k < g.NextCount; k++)
+        {
+            int i = g.NextList[k];
+            g.DbgListed[i >> 6] |= 1UL << (i & 63);
+        }
+
+        for (int i = 0; i < hw; i++)
+        {
+            if (v.Pool.IsAlive(i) && (v.WaitTicks[i] != 0 || g.DenyReason[i] != 0) && (g.DbgListed[i >> 6] & (1UL << (i & 63))) == 0)
+            {
+                Debug.Fail($"GatePhase: машина {i} с WaitTicks={v.WaitTicks[i]}/Deny={g.DenyReason[i]} не в списке прошлого тика");
+            }
+        }
+
+        Array.Copy(v.WaitTicks, g.DbgWait1, hw);
+        Array.Copy(g.DenyReason, g.DbgDeny1, hw);
+        Array.Copy(v.GateState, g.DbgGate1, hw);
+        Array.Copy(v.GrantConnector, g.DbgGrant1, hw);
+        Array.Copy(net.OutReserved, g.DbgOut1, net.OutReserved.Length);
+        Array.Copy(g.NodeBusy, g.DbgBusy1, g.NodeBusy.Length);
+        long boxFast = w.Counters.BoxWaitTicks;
+
         for (int k = 0; k < g.TouchedCount; k++)
         {
-            int node = g.TouchedNodes[k];
-            int count = 0;
-            for (int i = g.NodeCandHead[node]; i != -1; i = g.CandNext[i])
-            {
-                if (count == MaxCandidatesPerNode)
-                {
-                    break;
-                }
-
-                // Вставка по ключу (WaitTicks desc, Index asc).
-                int pos = count;
-                while (pos > 0 && Before(v, i, buf[pos - 1]))
-                {
-                    buf[pos] = buf[pos - 1];
-                    pos--;
-                }
-
-                buf[pos] = i;
-                count++;
-            }
-
-            for (int q = 0; q < count; q++)
-            {
-                int i = buf[q];
-                GateDeny deny = TryGrant(w, in e, node, i, g.CandConn[i]);
-                g.DenyReason[i] = (byte)deny;
-                if (deny == GateDeny.Exit)
-                {
-                    w.Counters.GateDeniedExit++;
-                }
-            }
-
-            g.NodeCandHead[node] = -1;
+            g.NodeCandHead[g.TouchedNodes[k]] = -1;
         }
 
         g.TouchedCount = 0;
+        for (int k = 0; k < g.OutTouchedCount; k++)
+        {
+            net.OutReserved[g.OutTouched[k]] = 0f;
+        }
+
+        g.OutTouchedCount = 0;
+        for (int k = 0; k < g.BusyTouchedCount; k++)
+        {
+            g.NodeBusy[g.BusyTouched[k]] = 0UL;
+        }
+
+        g.BusyTouchedCount = 0;
+        Array.Copy(g.DbgWait0, v.WaitTicks, hw);
+        Array.Copy(g.DbgDeny0, g.DenyReason, hw);
+        Array.Copy(g.DbgGate0, v.GateState, hw);
+        Array.Copy(g.DbgGrant0, v.GrantConnector, hw);
+        w.Counters.BoxWaitTicks = g.DbgBox0;
+
+        int candidates = ScanAll(w, in e);
+
+        if (candidates != candidatesFast)
+        {
+            Debug.Fail($"GatePhase: кандидатов {candidatesFast} (активный проход) против {candidates} (полный)");
+        }
+
+        if (w.Counters.BoxWaitTicks != boxFast)
+        {
+            Debug.Fail($"GatePhase: BoxWaitTicks {boxFast} (активный проход) против {w.Counters.BoxWaitTicks} (полный)");
+        }
+
+        for (int i = 0; i < hw; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            if (g.DbgWait1[i] != v.WaitTicks[i])
+            {
+                Debug.Fail($"GatePhase: WaitTicks[{i}] {g.DbgWait1[i]} против {v.WaitTicks[i]} (полный проход)");
+            }
+
+            if (g.DbgGrant1[i] != v.GrantConnector[i])
+            {
+                Debug.Fail($"GatePhase: GrantConnector[{i}] {g.DbgGrant1[i]} против {v.GrantConnector[i]} (полный проход)");
+            }
+
+            byte full = v.GateState[i];
+            const byte sbs = GateRules.StoppedBeforeSignal;
+            if ((g.DbgGate1[i] & ~sbs) != (full & ~sbs))
+            {
+                Debug.Fail($"GatePhase: GateState[{i}] {g.DbgGate1[i]} против {full} (полный проход)");
+            }
+
+            if ((full & sbs) != 0 && (g.DbgGate0[i] & sbs) == 0 && (g.DbgGate1[i] & sbs) == 0)
+            {
+                Debug.Fail($"GatePhase: StoppedBeforeSignal[{i}] не поставлена активным проходом");
+            }
+
+            int lane = v.Lane[i];
+            if (lane >= 0 && net.Lanes[lane].Kind != LaneKind.Connector && GateRules.GateNodeOfNormal(net, lane) >= 0
+                && !GateRules.IsGranted(v, i) && g.DbgDeny1[i] != g.DenyReason[i])
+            {
+                Debug.Fail($"GatePhase: DenyReason[{i}] {g.DbgDeny1[i]} против {g.DenyReason[i]} (полный проход)");
+            }
+        }
+
+        for (int l = 0; l < net.OutReserved.Length; l++)
+        {
+            if (BitConverter.SingleToInt32Bits(g.DbgOut1[l]) != BitConverter.SingleToInt32Bits(net.OutReserved[l]))
+            {
+                Debug.Fail($"GatePhase: OutReserved[{l}] {g.DbgOut1[l]} против {net.OutReserved[l]} (полный проход)");
+            }
+        }
+
+        for (int n = 0; n < g.NodeBusy.Length; n++)
+        {
+            if (g.DbgBusy1[n] != g.NodeBusy[n])
+            {
+                Debug.Fail($"GatePhase: NodeBusy[{n}] {g.DbgBusy1[n]:x} против {g.NodeBusy[n]:x} (полный проход)");
+            }
+        }
+
+        return candidates;
     }
+#endif
 
     /// <summary>
     /// Сброс допусков узла (intersections.md §5.7) при смене <c>Control</c> / перестройке connector'ов: машины на входных

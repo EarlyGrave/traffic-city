@@ -18,6 +18,7 @@ namespace Sim.Core.Agents;
 internal sealed class LaneOccupancy
 {
     private readonly VehicleStore _v;
+    private readonly ulong[] _linkedBits;
 
     public LaneOccupancy(VehicleStore vehicles, int maxLanes)
     {
@@ -26,6 +27,10 @@ internal sealed class LaneOccupancy
         LaneHead = new int[maxLanes];
         LaneTail = new int[maxLanes];
         LaneCount = new int[maxLanes];
+        OccMask = new ulong[(maxLanes + 63) >> 6];
+        int maxVehicles = vehicles.Lane.Length;
+        Linked = new int[maxVehicles];
+        _linkedBits = new ulong[(maxVehicles + 63) >> 6];
         Array.Fill(LaneHead, -1);
         Array.Fill(LaneTail, -1);
     }
@@ -40,6 +45,33 @@ internal sealed class LaneOccupancy
     public int[] LaneCount { get; }
 
     public int MaxLanes => LaneHead.Length;
+
+    /// <summary>
+    /// Маска занятых полос (бит <c>lane</c> = <c>LaneCount[lane] &gt; 0</c>, ghost-члены включительно); ведётся при переходе пустая &lt;-&gt; непустая
+    /// в <see cref="Insert"/>/<see cref="Remove"/> (ADR-0019, A2). Производное, вне хэша и сейва; обход по возрастанию индекса полосы.
+    /// </summary>
+    public ulong[] OccMask { get; }
+
+    /// <summary>
+    /// Машины, которых связали со списком полосы с прошлой очистки (<see cref="ClearLinked"/>): въезд, вставка, смена полосы, спавн; без повторов.
+    /// Читает и очищает фаза 4 (метка <c>StoppedBeforeSignal</c> для машин вне прохода от головы).
+    /// </summary>
+    public int[] Linked { get; }
+
+    /// <summary>Число машин в <see cref="Linked"/>.</summary>
+    public int LinkedCount { get; private set; }
+
+    /// <summary>Очищает <see cref="Linked"/> (после того как фаза 4 его обработала).</summary>
+    public void ClearLinked()
+    {
+        for (int k = 0; k < LinkedCount; k++)
+        {
+            int i = Linked[k];
+            _linkedBits[i >> 6] &= ~(1UL << (i & 63));
+        }
+
+        LinkedCount = 0;
+    }
 
     /// <summary>
     /// LOD-ячейки (ADR-0013); не null только при <c>Lod.Mode != Off</c>. При въезде на полосу (<see cref="PushTail"/>, <see cref="PushHead"/>,
@@ -244,7 +276,17 @@ internal sealed class LaneOccupancy
             LaneTail[lane] = i;
         }
 
-        LaneCount[lane]++;
+        if (LaneCount[lane]++ == 0)
+        {
+            OccMask[lane >> 6] |= 1UL << (lane & 63);
+        }
+
+        ulong bit = 1UL << (i & 63);
+        if ((_linkedBits[i >> 6] & bit) == 0)
+        {
+            _linkedBits[i >> 6] |= bit;
+            Linked[LinkedCount++] = i;
+        }
     }
 
     private void Remove(int lane, int i)
@@ -271,6 +313,9 @@ internal sealed class LaneOccupancy
 
         AheadRef(i, lane) = -1;
         BehindRef(i, lane) = -1;
-        LaneCount[lane]--;
+        if (--LaneCount[lane] == 0)
+        {
+            OccMask[lane >> 6] &= ~(1UL << (lane & 63));
+        }
     }
 }
