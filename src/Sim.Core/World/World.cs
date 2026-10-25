@@ -8,6 +8,7 @@ using Sim.Core.Network;
 using Sim.Core.Routing;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Save;
 using Sim.Core.Util;
 
 namespace Sim.Core;
@@ -56,6 +57,12 @@ internal sealed class World : IDisposable
     public CityGenResult CityInfo;
     public SignalPlanSeed[] SignalPlanSeeds = System.Array.Empty<SignalPlanSeed>();
     public GenTransit? Transit;
+
+    // ---- сейв (Save/): не входят ни в хэш, ни в состояние мира ----
+    public SaveScratch? SaveScratch;                                       // буферы сохранения (растут при первом вызове)
+    public KeptBlock[] KeptBlocks = System.Array.Empty<KeptBlock>();       // неизвестные необязательные блоки загруженного сейва: переписываются в следующий
+    public HostBlock[] LoadedHostBlocks = System.Array.Empty<HostBlock>(); // блоки хоста загруженного сейва (камера, meta); хост читает и сам решает, что писать дальше
+    public byte[] LoadedHostData = System.Array.Empty<byte>();
 
     // ---- PRNG: по подпотоку на подсистему (core-api 8) ----
     public Pcg32 RngCityGen;

@@ -175,6 +175,25 @@ internal sealed class LodCells
         return CreateStatus.Ok;
     }
 
+    /// <summary>
+    /// Загрузка сейва: сетка с сохранёнными параметрами (она задана размерами сети в <c>Create</c> и после <c>BuildRoad</c> не меняется), привязка узлов и полос
+    /// к ячейкам заново (производное сети). Уровни ячеек, слоты фокуса и счётчики заполняет загрузчик.
+    /// </summary>
+    public static LoadStatus TryRestore(NetworkStore net, float cellM, float originX, float originZ, int cellsX, int cellsZ, out LodCells? cells)
+    {
+        cells = null;
+        if (!float.IsFinite(cellM) || cellM <= 0f || !float.IsFinite(originX) || !float.IsFinite(originZ) || cellsX < 1 || cellsZ < 1 ||
+            (long)cellsX * cellsZ > MaxCells)
+        {
+            return LoadStatus.InvalidValue;
+        }
+
+        var c = new LodCells(net, cellM, originX, originZ, cellsX, cellsZ);
+        c.OnNetworkGrown();
+        cells = c;
+        return LoadStatus.Ok;
+    }
+
     /// <summary>Цвет ячейки (0..3) = такт meso: <c>(cx &amp; 1) | (cz &amp; 1) &lt;&lt; 1</c> (sim-lod.md §0).</summary>
     public int ColorOf(int cell)
     {

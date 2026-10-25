@@ -35,16 +35,19 @@
 | `LaneOccupancy` | `LaneHead`, `LaneTail`, `LaneCount` | — |
 | Очереди | `PendingTrips` (FIFO + `_unrouted`), `Rerouting`, `RefillQueue`, `Commands` (не применённые команды — 64 Б сырые, раскладка `core-api.md` §4 и так C ABI) — в **логическом** порядке, `head` при загрузке = 0 | — |
 | `RouteStore` | `Pool`, `WinCount, PlanFirst, PlanCount, PlanCap, PlanCost, PlanTick`, окна живых слотов (`WinCount` шагов), `PlanArena[0..PlanUsed)`, `Compactions`. Окна и планы **не** производные: распакованы при старых весах | `_compactKeys/_compactItems` |
-| `RouteGraph` | `SegCost` (веса по загрузке на момент пересчёта), `WeightsVersion` | топология (`ArcFirst/To/Cost/Maneuver`, `StartNode/EndNode/EndPos`, `VMax`): `Rebuild()`, затем вернуть `SegCost` |
+| `RouteGraph` | `SegCost` (веса по загрузке на момент пересчёта), `ArcCost` (штраф узла берётся из `Control` на момент последней перестройки: после `SetNodeControl` до следующей перестройки графа он историчен), `WeightsVersion`, `BuiltVersion` (граф может отставать от `Net.Version`) | топология (`ArcFirst/To/Maneuver`, `StartNode/EndNode/EndPos`, `VMax`): `Rebuild()`, затем вернуть веса и версии |
 | `Overlay` | параметры (проверка), раскладка (`LevelNx/Nz`, `CellBase`, `Entry*/Exit*First/Count/Cap`, `MatrixFirst`, `Entries`, `Exits`, построенные узлы/DirSeg, `_failed`), `Matrix` (до занятой длины), `Dirty`, `CustomizedSegCost`, `WeightsVersion`, `WaveActive/Cell/Row`, `Disabled`, `Rebuilds`. Матрицы посреди волны — смесь старых и новых весов, пересчитать нельзя | `NodeCellX/Z`, `CutLevel`, `LevelDiv`, `EntryIdx/ExitIdx` |
-| Метрики фазы 9 | `SegmentLoads` (читает фаза 3 следующего тика), `NodeThroughput`, `BusRouteStats` | — |
-| Спавнер, ворота, воркеры | — | `SpawnerData` (из зон и типов), `GateScratch`, `Behaviour/Integrate/SnapshotJob`, `Pool` |
-| Снапшоты, события | — | `Render[2]`: после `Load` фаза 10 заполняет текущий, `PreviousVehicles` = текущий; `Events` пуст |
-| LOD (ADR-0013, когда появится) | по машине `Lod`, `MesoAllow`, `MesoFresh`; по ячейке `CellLevel`, `CellHoldUntil`, `CellCongStreak`; `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick` | структура ячеек (`LaneCell` и т.п.) |
+| Метрики фазы 9 | `SegmentLoads` (читает фаза 3 следующего тика) и `SegmentLoadsTick`, `NodeThroughput`, `BusRouteStats`; `SignalMetrics` (S1 светофоров) и `ConnWaitSum/ConnGrantCount` - блок `SMET` | — |
+| Спавнер, ворота, воркеры | — | `SpawnerData` (лениво из зон и типов на первом тике), `GateScratch` целиком (в т.ч. `PrevList/NextList`, `DenyReason`, `CandStamp`, `NodeBusy`, маски `GatedMask/ConnMask/SignalMask`: после загрузки `FullScan = true` - первая фаза 4 делает полный проход, он по построению даёт то же, что активный; `OutTouched` строится по ненулевым `OutReserved`), `Behaviour/Integrate/SnapshotJob`, `Pool` |
+| Маски активных множеств | — | `World.Masks` (`TickMasks`: перестраивается фазой 6 каждого тика), `LaneOccupancy.OccMask` (из `LaneCount > 0`), `LaneOccupancy.Linked` (пуст: первая фаза 4 - полный проход), `VehicleStore.RouteDirtyBits` (после загрузки все 1: пересчёт `AssignConnectors` даёт сохранённый `NextConn`), `ClampLeadGap/ClampFlags/ClampGateGap` (scratch фаз 5-6) |
+| Снапшоты, события, вид | — | `Render[2]`: после `Load` фаза 10 заполняет `Render[Tick & 1]` (`SnapshotTick = Tick`), `PreviousVehicles` = копия; `Events` пуст; `RenderViewState` (`SetRenderView`) - презентация, не сохраняется (вид «всё») |
+| LOD (ADR-0013), блок `LODS` | параметры сетки (`OriginX/Z`, `CellsX/Z` - заданы размерами сети в `Create` и после `BuildRoad` не меняются), по машине `Lod` (биты meso/fresh/queue/head/parked), `MesoAllow`, `MesoNext`; по ячейке `CellLevel`, `CellHoldUntil`, `CellCongStreak`; `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick` | привязка узлов/полос к ячейкам (`NodeCell`, `LaneCell`, `LaneColor`, CSR полос) - `OnNetworkGrown` |
+| Q-meso (ADR-0019), блок `QMSO` | по машине `QEnter`, `QReady`, тик колеса таймеров (`_wTick`), по полосе `LaneLastExit`; агрегаты `PendingDistMm`, `Events`, `Wakes` | `QBits`, `LaneQCount`, `LaneSpanCm`, `KinMask/_kinCount`, `HeadMask/_headCount`, `Total/Parked/StuckCount`, колесо (корзины - из тиков машин; порядок внутри корзины не важен: события обходятся по маске), `ViewS/ViewSpeed` (синтез фазы 10) |
 
 **Мёртвые слоты** (машины, маршруты, блоки арены вне живых планов, хвосты `PlanCap > PlanCount`) пишутся **каноническими
 значениями** — теми, что получает свежий слот (ссылки −1, остальное 0), кроме поколения. Так байты сейва не зависят от мусора.
 Если `Spawn` не переинициализирует какое-то поле свежего слота — это баг, который всплывёт в T2: тогда поле чинится в ядре.
+Арена планов маршрутов пишется так же: блоки живых слотов `[PlanFirst, PlanFirst + PlanCount)` как есть, остальное - нули.
 
 ## 2. Контейнер (сырой, его пишет и читает ядро)
 
@@ -148,6 +151,8 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 
 Статика сети (`N*`, `CONN`, раскладка `OVLY`) отделена от динамики (`*DYN`, `VEHC`, `ROUT`…) намеренно: будущий
 «компактный сейв» опускает статику и пересобирает её (§11 п.3) без смены остальных блоков.
+
+Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
 ## 4. Версии и миграции
 
@@ -388,7 +393,7 @@ s10k с цифрами размера и времени. Клиентские к
 
 | Версия | Изменение | Миграция |
 |---|---|---|
-| 1 | первый формат (этот документ) | — |
+| 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`) | — |
 
 ## 13. Открытые вопросы
 1. (владелец) Совместимость сейвов до релиза: держать миграции с первой `world_version` или до первой публичной сборки
@@ -396,10 +401,482 @@ s10k с цифрами размера и времени. Клиентские к
 2. (владелец) Автосейв: частота, число слотов, допустимая пауза кадра; нужна ли для s1m копия частями между тиками.
 3. (владелец) Облако: лимит размера (s1m ≈ 0.2 ГБ сжатый) — нужен ли «компактный сейв» (без статики сети, −50%) раньше этапа 3.
 4. (владелец) Обновлённый ассет: по умолчанию сохранённые параметры (побитово) или новые для новых спавнов?
-5. «Компактный сейв»: канонический порядок раскладки сети (connector'ы/конфликты/входы оверлея по узлам в порядке индекса,
-   а не истории `BuildRoad`) — менять ли построитель сейчас, пока это дёшево (влияет на golden-хэши после `BuildRoad`).
+5. «Компактный сейв»: канонический порядок раскладки сети - **решено владельцем (2026-10-25) и сделано**: connector'ы и конфликты (`ConnectorStore`) идут по возрастанию индекса узла
+   (`BuildRoad` строит концы сегмента по возрастанию индекса; ранее созданный флагом 1, но не построенный узел с индексом ниже построенных - `NotSupported`), входы/выходы оверлея - по возрастанию
+   DirSeg с запасом `Overlay.CapFor(count)` (лестница, функция числа входов; нехватка запаса после дописывания - полная перестройка). Раскладка живого мира равна построенной заново по
+   узлам и сегментам (тест `CanonicalLayoutTests`). Индексы полос остаются историческими (сегменты `BuildRoad` лежат после уже построенных connector'ов): у «компактного сейва» они
+   придут из `FirstLane*/FirstConnector` узлов и сегментов. Golden-хэши s1k/s10k (без `BuildRoad`) не изменились; тестов с хэшем после `BuildRoad` не было.
 6. Снос дорог (этап 2+): пул узлов/сегментов с free-list → `IncHead/Cells` перестают быть производными «в порядке индекса» —
    при появлении сноса перенести их в сохраняемые или доказать независимость.
 
 ## Приложение A. Реестр столбцов `world_version = 1`
-Заполняет S2 вместе с `Save/SaveSchema.cs` (блок, id, имя, тип, длина, дефолт для старых версий).
+
+Стрится из `Save/SaveSchema*.cs` (`SaveSchema.AppendixMarkdown()`); тест `SaveSchemaTests.EveryDoc_Appendix_MatchesRegistry` сверяет таблицу с реестром
+(обновить: `TC_DUMP_SCHEMA=<файл> dotnet test --filter SaveSchemaTests`). Дефолт - значение для сейвов без столбца (новые столбцы будущих версий) и канон мёртвого слота.
+Длина указана словами: счётчики структуры - из блока `NETW`/своего блока, `HighWater` - число слотов пула.
+
+<!-- schema:begin -->
+| Блок | id | Имя | Тип | Длина | Дефолт |
+|---|---|---|---|---|---|
+| `PARM` | 1 | Seed | u64 | 1 | 0 |
+| `PARM` | 2 | MaxVehicles | i32 | 1 | 0 |
+| `PARM` | 3 | MaxNodes | i32 | 1 | 0 |
+| `PARM` | 4 | MaxSegments | i32 | 1 | 0 |
+| `PARM` | 5 | MaxLanes | i32 | 1 | 0 |
+| `PARM` | 6 | MaxLanePoints | i32 | 1 | 0 |
+| `PARM` | 7 | MaxZones | i32 | 1 | 0 |
+| `PARM` | 8 | MaxBusRoutes | i32 | 1 | 0 |
+| `PARM` | 9 | MaxBusStops | i32 | 1 | 0 |
+| `PARM` | 10 | MaxBusStopsPerRoute | i32 | 1 | 0 |
+| `PARM` | 11 | MaxRoutes | i32 | 1 | 0 |
+| `PARM` | 12 | MaxPlanSteps | i32 | 1 | 0 |
+| `PARM` | 13 | MaxPendingTrips | i32 | 1 | 0 |
+| `PARM` | 14 | CommandQueueCapacity | i32 | 1 | 0 |
+| `PARM` | 15 | EventCapacity | i32 | 1 | 0 |
+| `PARM` | 16 | MaxSignalizedNodes | i32 | 1 | 0 |
+| `PARM` | 17 | MaxConnectors | i32 | 1 | 0 |
+| `PARM` | 18 | MaxConflicts | i32 | 1 | 0 |
+| `PARM` | 19 | RulesMinPhysicalGap | f32 | 1 | 0 |
+| `PARM` | 20 | RulesStuckThresholdTicks | i32 | 1 | 0 |
+| `PARM` | 21 | RulesStuckSpeedThreshold | f32 | 1 | 0 |
+| `PARM` | 22 | RulesGridlockStuckShare | f32 | 1 | 0 |
+| `PARM` | 23 | RulesGridlockMinStuck | i32 | 1 | 0 |
+| `PARM` | 24 | RulesGridlockHoldTicks | i32 | 1 | 0 |
+| `PARM` | 25 | RulesMobilEveryTicks | i32 | 1 | 0 |
+| `PARM` | 26 | RulesDefaultYellowTicks | i32 | 1 | 0 |
+| `PARM` | 27 | RulesDefaultAllRedTicks | i32 | 1 | 0 |
+| `PARM` | 28 | RulesYieldGapTime | f32 | 1 | 0 |
+| `PARM` | 29 | RulesMaxYieldWaitTicks | i32 | 1 | 0 |
+| `PARM` | 30 | RoutingLevels | i32 | 1 | 0 |
+| `PARM` | 31 | RoutingFanout | i32 | 1 | 0 |
+| `PARM` | 32 | RoutingCellSize | f32 | 1 | 0 |
+| `PARM` | 33 | RoutingWindowSteps | i32 | 1 | 0 |
+| `PARM` | 34 | RoutingPathfindBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 35 | RoutingWorkBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 36 | RoutingQueryWorkCap | i32 | 1 | 0 |
+| `PARM` | 37 | RoutingCustomizeBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 38 | RoutingCustomizeEps | f32 | 1 | 0 |
+| `PARM` | 39 | RoutingCostRecalcTicks | i32 | 1 | 0 |
+| `PARM` | 40 | RoutingTimedDrift | f32 | 1 | 0 |
+| `PARM` | 41 | RoutingTimedDriftAbsTicks | i32 | 1 | 0 |
+| `PARM` | 42 | LodMode | i32 | 1 | 0 |
+| `PARM` | 43 | LodCellM | f32 | 1 | 0 |
+| `PARM` | 44 | LodMicroBudget | i32 | 1 | 0 |
+| `PARM` | 45 | LodEvalTicks | i32 | 1 | 0 |
+| `PARM` | 46 | LodHoldTicks | i32 | 1 | 0 |
+| `PARM` | 47 | LodFocusMarginCells | i32 | 1 | 0 |
+| `PARM` | 48 | LodFollowSelected | u8 | 1 | 0 |
+| `PARM` | 49 | LodFocusCommands | u8 | 1 | 0 |
+| `PARM` | 50 | LodCongestionShare | f32 | 1 | 0 |
+| `PARM` | 51 | LodCongestionMin | i32 | 1 | 0 |
+| `PARM` | 52 | LodMesoHeadwayScale | f32 | 1 | 0 |
+| `PARM` | 53 | LodMesoAccelScale | f32 | 1 | 0 |
+| `PARM` | 54 | LodMesoModel | i32 | 1 | 0 |
+| `PARM` | 55 | LodQueueHeadwayScale | f32 | 1 | 0 |
+| `PARM` | 56 | DemandTargetVehicles | i32 | 1 | 0 |
+| `PARM` | 57 | DemandSpawnRampTicks | i32 | 1 | 0 |
+| `PARM` | 58 | DemandZoneSize | f32 | 1 | 0 |
+| `PARM` | 59 | DemandModel | i32 | 1 | 0 |
+| `PARM` | 60 | DemandGravityExponent | f32 | 1 | 0 |
+| `PARM` | 61 | DemandWeightJitter | f32 | 1 | 0 |
+| `PARM` | 62 | DemandExternalShare | f32 | 1 | 0 |
+| `PARM` | 63 | DemandMinTripLength | f32 | 1 | 0 |
+| `PARM` | 64 | TransitRoutes | i32 | 1 | 0 |
+| `PARM` | 65 | TransitHeadwayTicks | i32 | 1 | 0 |
+| `PARM` | 66 | TransitStopsPerRouteMin | i32 | 1 | 0 |
+| `PARM` | 67 | TransitStopsPerRouteMax | i32 | 1 | 0 |
+| `PARM` | 68 | TransitStopSpacing | f32 | 1 | 0 |
+| `PARM` | 69 | TransitStopKind | i32 | 1 | 0 |
+| `PARM` | 70 | TransitBusType | i32 | 1 | 0 |
+| `PARM` | 71 | TransitDwellBaseTicks | i32 | 1 | 0 |
+| `PARM` | 72 | TransitDwellPerPassengerTicks | f32 | 1 | 0 |
+| `PARM` | 73 | TransitPassengerRatePerMin | f32 | 1 | 0 |
+| `PARM` | 74 | NetLaneWidth | f32 | 1 | 0 |
+| `PARM` | 75 | NetConnectorSamples | i32 | 1 | 0 |
+| `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
+| `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
+| `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
+| `DEMD` | 4 | ZoneHalfSize | f32 | Zones.Length | 0 |
+| `DEMD` | 5 | ZoneWeight | f32 | Zones.Length | 0 |
+| `DEMD` | 6 | ZoneIsExternal | u8 | Zones.Length | 0 |
+| `DEMD` | 7 | OdFromZone | i32 | OdPairs.Length | 0 |
+| `DEMD` | 8 | OdToZone | i32 | OdPairs.Length | 0 |
+| `DEMD` | 9 | OdWeight | f32 | OdPairs.Length | 0 |
+| `VTYP` | 1 | Category | i32 | Types.Length | 0 |
+| `VTYP` | 2 | Length | f32 | Types.Length | 0 |
+| `VTYP` | 3 | Width | f32 | Types.Length | 0 |
+| `VTYP` | 4 | MaxSpeed | f32 | Types.Length | 0 |
+| `VTYP` | 5 | SpeedFactor | f32 | Types.Length | 0 |
+| `VTYP` | 6 | Accel | f32 | Types.Length | 0 |
+| `VTYP` | 7 | ComfortDecel | f32 | Types.Length | 0 |
+| `VTYP` | 8 | HeadwayTime | f32 | Types.Length | 0 |
+| `VTYP` | 9 | MinGap | f32 | Types.Length | 0 |
+| `VTYP` | 10 | Delta | f32 | Types.Length | 0 |
+| `VTYP` | 11 | Politeness | f32 | Types.Length | 0 |
+| `VTYP` | 12 | LaneChangeThreshold | f32 | Types.Length | 0 |
+| `VTYP` | 13 | SafeDecel | f32 | Types.Length | 0 |
+| `VTYP` | 14 | RightBias | f32 | Types.Length | 0 |
+| `VTYP` | 15 | LaneChangeDurationTicks | i32 | Types.Length | 0 |
+| `WRLD` | 1 | Tick | i64 | 1 | 0 |
+| `WRLD` | 2 | NetVersion | i32 | 1 | 0 |
+| `WRLD` | 3 | TargetVehicles | i32 | 1 | 0 |
+| `WRLD` | 4 | SelectedIndex | i32 | 1 | 0 |
+| `WRLD` | 5 | SelectedGeneration | i32 | 1 | 0 |
+| `WRLD` | 6 | GridlockStreak | i32 | 1 | 0 |
+| `WRLD` | 7 | RecalcPending | u8 | 1 | 0 |
+| `WRLD` | 8 | SegmentLoadsTick | i64 | 1 | -1 |
+| `WRLD` | 9 | RngState | u64 | 6 | 0 |
+| `WRLD` | 10 | RngInc | u64 | 6 | 0 |
+| `CNTR` | 1 | Ticks | i64 | 1 | 0 |
+| `CNTR` | 2 | VehiclesSpawned | i64 | 1 | 0 |
+| `CNTR` | 3 | TripsCompleted | i64 | 1 | 0 |
+| `CNTR` | 4 | TripsDropped | i64 | 1 | 0 |
+| `CNTR` | 5 | TripTimeTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 6 | DistanceTotalMm | i64 | 1 | 0 |
+| `CNTR` | 7 | VehicleTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 8 | MovingVehicleTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 9 | ActiveVehicles | i32 | 1 | 0 |
+| `CNTR` | 10 | StuckVehicles | i32 | 1 | 0 |
+| `CNTR` | 11 | StuckEventsTotal | i64 | 1 | 0 |
+| `CNTR` | 12 | StuckTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 13 | GridlockFlag | i32 | 1 | 0 |
+| `CNTR` | 14 | GridlockTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 15 | LaneChanges | i64 | 1 | 0 |
+| `CNTR` | 16 | LaneChangesAborted | i64 | 1 | 0 |
+| `CNTR` | 17 | HardClamps | i64 | 1 | 0 |
+| `CNTR` | 18 | PathfindQueries | i64 | 1 | 0 |
+| `CNTR` | 19 | RouteDeferred | i64 | 1 | 0 |
+| `CNTR` | 20 | PathfindExpandedNodes | i64 | 1 | 0 |
+| `CNTR` | 21 | PathfindWork | i64 | 1 | 0 |
+| `CNTR` | 22 | RouteFailed | i64 | 1 | 0 |
+| `CNTR` | 23 | Reroutes | i64 | 1 | 0 |
+| `CNTR` | 24 | PlanCompactions | i64 | 1 | 0 |
+| `CNTR` | 25 | PlanUnpacks | i64 | 1 | 0 |
+| `CNTR` | 26 | UnpackWork | i64 | 1 | 0 |
+| `CNTR` | 27 | WindowRefills | i64 | 1 | 0 |
+| `CNTR` | 28 | RefillLate | i64 | 1 | 0 |
+| `CNTR` | 29 | TimedChecks | i64 | 1 | 0 |
+| `CNTR` | 30 | TimedTriggered | i64 | 1 | 0 |
+| `CNTR` | 31 | CostRecalcs | i64 | 1 | 0 |
+| `CNTR` | 32 | TimedReroutes | i64 | 1 | 0 |
+| `CNTR` | 33 | CustomizeRows | i64 | 1 | 0 |
+| `CNTR` | 34 | CustomizeWork | i64 | 1 | 0 |
+| `CNTR` | 35 | CustomizeLagTicks | i64 | 1 | 0 |
+| `CNTR` | 36 | OverlayRebuilds | i64 | 1 | 0 |
+| `CNTR` | 37 | OverlayDisabled | i32 | 1 | 0 |
+| `CNTR` | 38 | ConnectorEntries | i64 | 1 | 0 |
+| `CNTR` | 39 | CommandsApplied | i64 | 1 | 0 |
+| `CNTR` | 40 | CommandsRejected | i64 | 1 | 0 |
+| `CNTR` | 41 | CommandsDropped | i64 | 1 | 0 |
+| `CNTR` | 42 | EventsDropped | i64 | 1 | 0 |
+| `CNTR` | 43 | SpawnDeferredTicks | i64 | 1 | 0 |
+| `CNTR` | 44 | InvalidHandleOps | i64 | 1 | 0 |
+| `CNTR` | 45 | SignalizedNodes | i32 | 1 | 0 |
+| `CNTR` | 46 | NodeCount | i32 | 1 | 0 |
+| `CNTR` | 47 | SegmentCount | i32 | 1 | 0 |
+| `CNTR` | 48 | LaneCount | i32 | 1 | 0 |
+| `CNTR` | 49 | ZoneCount | i32 | 1 | 0 |
+| `CNTR` | 50 | BusDispatched | i64 | 1 | 0 |
+| `CNTR` | 51 | BusStopArrivals | i64 | 1 | 0 |
+| `CNTR` | 52 | BusHeadwayDeviationTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 53 | BusHeadwaySamples | i64 | 1 | 0 |
+| `CNTR` | 54 | BusPassengersBoarded | i64 | 1 | 0 |
+| `CNTR` | 55 | Grants | i64 | 1 | 0 |
+| `CNTR` | 56 | GateDeniedExit | i64 | 1 | 0 |
+| `CNTR` | 57 | PriorityInversions | i64 | 1 | 0 |
+| `CNTR` | 58 | BoxWaitTicks | i64 | 1 | 0 |
+| `CNTR` | 59 | GateWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 60 | SignalLeftWaitMax | i64 | 1 | 0 |
+| `CNTR` | 61 | ArterialSignalGrants | i64 | 1 | 0 |
+| `CNTR` | 62 | ArterialSignalStops | i64 | 1 | 0 |
+| `CNTR` | 63 | StarveDenials | i64 | 1 | 0 |
+| `CNTR` | 64 | ArrowPhases | i64 | 1 | 0 |
+| `CNTR` | 65 | SpillOuts | i64 | 1 | 0 |
+| `CNTR` | 66 | ExitClaims | i64 | 1 | 0 |
+| `CNTR` | 67 | ExitClaimDenials | i64 | 1 | 0 |
+| `CNTR` | 68 | GrantsRevoked | i64 | 1 | 0 |
+| `CNTR` | 69 | MicroVehicles | i32 | 1 | 0 |
+| `CNTR` | 70 | MesoVehicles | i32 | 1 | 0 |
+| `CNTR` | 71 | MicroVehicleTicks | i64 | 1 | 0 |
+| `CNTR` | 72 | MesoVehicleTicks | i64 | 1 | 0 |
+| `CNTR` | 73 | MicroDistanceMm | i64 | 1 | 0 |
+| `CNTR` | 74 | MesoDistanceMm | i64 | 1 | 0 |
+| `CNTR` | 75 | LodEvals | i64 | 1 | 0 |
+| `CNTR` | 76 | LodCellFlips | i64 | 1 | 0 |
+| `CNTR` | 77 | LodBudgetSkips | i64 | 1 | 0 |
+| `CNTR` | 78 | MesoClamps | i64 | 1 | 0 |
+| `CNTR` | 79 | MesoLaneChanges | i64 | 1 | 0 |
+| `NETW` | 1 | NodeCount | i32 | 1 | 0 |
+| `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
+| `NETW` | 3 | LaneCount | i32 | 1 | 0 |
+| `NETW` | 4 | LanePointCount | i32 | 1 | 0 |
+| `NETW` | 5 | SegmentPointCount | i32 | 1 | 0 |
+| `NETW` | 6 | NodeArmCount | i32 | 1 | 0 |
+| `NETW` | 7 | LaneNextCount | i32 | 1 | 0 |
+| `NETW` | 8 | ZoneCount | i32 | 1 | 0 |
+| `NETW` | 9 | ZoneLaneCount | i32 | 1 | 0 |
+| `NETW` | 10 | BusStopCount | i32 | 1 | 0 |
+| `NETW` | 11 | BusRouteCount | i32 | 1 | 0 |
+| `NETW` | 12 | BusRouteStopCount | i32 | 1 | 0 |
+| `NNOD` | 1 | PositionX | f32 | NodeCount | 0 |
+| `NNOD` | 2 | PositionZ | f32 | NodeCount | 0 |
+| `NNOD` | 3 | Elevation | f32 | NodeCount | 0 |
+| `NNOD` | 4 | Radius | f32 | NodeCount | 0 |
+| `NNOD` | 5 | Control | i32 | NodeCount | 0 |
+| `NNOD` | 6 | FirstArm | i32 | NodeCount | -1 |
+| `NNOD` | 7 | ArmCount | i32 | NodeCount | 0 |
+| `NNOD` | 8 | FirstConnector | i32 | NodeCount | 0 |
+| `NNOD` | 9 | ConnectorCount | i32 | NodeCount | 0 |
+| `NNOD` | 10 | Signal | i32 | NodeCount | -1 |
+| `NNOD` | 11 | Zone | i32 | NodeCount | -1 |
+| `NNOD` | 12 | Generation | i32 | NodeCount | 0 |
+| `NSEG` | 1 | NodeA | i32 | SegmentCount | 0 |
+| `NSEG` | 2 | NodeB | i32 | SegmentCount | 0 |
+| `NSEG` | 3 | Length | f32 | SegmentCount | 0 |
+| `NSEG` | 4 | SpeedLimit | f32 | SegmentCount | 0 |
+| `NSEG` | 5 | Kind | u8 | SegmentCount | 0 |
+| `NSEG` | 6 | LanesAB | u8 | SegmentCount | 0 |
+| `NSEG` | 7 | LanesBA | u8 | SegmentCount | 0 |
+| `NSEG` | 8 | FirstLaneAB | i32 | SegmentCount | -1 |
+| `NSEG` | 9 | FirstLaneBA | i32 | SegmentCount | -1 |
+| `NSEG` | 10 | FirstPoint | i32 | SegmentCount | 0 |
+| `NSEG` | 11 | PointCount | i32 | SegmentCount | 0 |
+| `NSEG` | 12 | Generation | i32 | SegmentCount | 0 |
+| `NLAN` | 1 | Kind | u8 | LaneCount | 0 |
+| `NLAN` | 2 | LaneNo | u8 | LaneCount | 0 |
+| `NLAN` | 3 | Direction | u8 | LaneCount | 0 |
+| `NLAN` | 4 | Flags | u8 | LaneCount | 0 |
+| `NLAN` | 5 | Segment | i32 | LaneCount | -1 |
+| `NLAN` | 6 | Node | i32 | LaneCount | -1 |
+| `NLAN` | 7 | FromLane | i32 | LaneCount | -1 |
+| `NLAN` | 8 | ToLane | i32 | LaneCount | -1 |
+| `NLAN` | 9 | Length | f32 | LaneCount | 0 |
+| `NLAN` | 10 | SpeedLimit | f32 | LaneCount | 0 |
+| `NLAN` | 11 | FirstPoint | i32 | LaneCount | 0 |
+| `NLAN` | 12 | PointCount | i32 | LaneCount | 0 |
+| `NLAN` | 13 | Left | i32 | LaneCount | -1 |
+| `NLAN` | 14 | Right | i32 | LaneCount | -1 |
+| `NLAN` | 15 | FirstNext | i32 | LaneCount | 0 |
+| `NLAN` | 16 | NextCount | i32 | LaneCount | 0 |
+| `NLAN` | 17 | ConflictGroup | i32 | LaneCount | -1 |
+| `NLAN` | 18 | Generation | i32 | LaneCount | 0 |
+| `NARM` | 1 | NodeArms | i32 | NodeArmCount | 0 |
+| `NARM` | 2 | ArmFlags | u8 | NodeArmCount | 0 |
+| `NARM` | 3 | ArmDirX | f32 | NodeArmCount | 0 |
+| `NARM` | 4 | ArmDirZ | f32 | NodeArmCount | 0 |
+| `NLNX` | 1 | LaneNext | i32 | LaneNextCount | 0 |
+| `NPTS` | 1 | SegmentPointsX | f32 | SegmentPointCount | 0 |
+| `NPTS` | 2 | SegmentPointsZ | f32 | SegmentPointCount | 0 |
+| `NPTS` | 3 | LanePointsX | f32 | LanePointCount | 0 |
+| `NPTS` | 4 | LanePointsZ | f32 | LanePointCount | 0 |
+| `NPTS` | 5 | LanePointS | f32 | LanePointCount | 0 |
+| `NZON` | 1 | CenterX | f32 | ZoneCount | 0 |
+| `NZON` | 2 | CenterZ | f32 | ZoneCount | 0 |
+| `NZON` | 3 | HalfSize | f32 | ZoneCount | 0 |
+| `NZON` | 4 | Weight | f32 | ZoneCount | 0 |
+| `NZON` | 5 | FirstSpawnLane | i32 | ZoneCount | 0 |
+| `NZON` | 6 | SpawnLaneCount | i32 | ZoneCount | 0 |
+| `NZON` | 7 | IsExternal | u8 | ZoneCount | 0 |
+| `NZON` | 8 | ZoneLanes | i32 | ZoneLaneCount | 0 |
+| `NBUS` | 1 | StopLane | i32 | BusStopCount | 0 |
+| `NBUS` | 2 | StopS | f32 | BusStopCount | 0 |
+| `NBUS` | 3 | StopKind | i32 | BusStopCount | 0 |
+| `NBUS` | 4 | StopRoute | i32 | BusStopCount | -1 |
+| `NBUS` | 5 | RouteFirstStop | i32 | BusRouteCount | 0 |
+| `NBUS` | 6 | RouteStopCount | i32 | BusRouteCount | 0 |
+| `NBUS` | 7 | RouteHeadwayTicks | i32 | BusRouteCount | 0 |
+| `NBUS` | 8 | RouteVehicleType | i32 | BusRouteCount | 0 |
+| `NBUS` | 9 | RouteGeneration | i32 | BusRouteCount | 0 |
+| `NBUS` | 10 | BusRouteStops | i32 | BusRouteStopCount | 0 |
+| `CONN` | 1 | Count | i32 | 1 | 0 |
+| `CONN` | 2 | ConflictsUsed | i32 | 1 | 0 |
+| `CONN` | 3 | Lane | i32 | Count | 0 |
+| `CONN` | 4 | Node | i32 | Count | 0 |
+| `CONN` | 5 | InLane | i32 | Count | 0 |
+| `CONN` | 6 | OutLane | i32 | Count | 0 |
+| `CONN` | 7 | LocalBit | u8 | Count | 0 |
+| `CONN` | 8 | Maneuver | u8 | Count | 0 |
+| `CONN` | 9 | FromArm | u8 | Count | 0 |
+| `CONN` | 10 | Flags | u8 | Count | 0 |
+| `CONN` | 11 | FirstConflict | i32 | Count | 0 |
+| `CONN` | 12 | ConflictCount | i32 | Count | 0 |
+| `CONN` | 13 | ConflictMask | u64 | Count | 0 |
+| `CONN` | 14 | OtherLocal | u8 | ConflictsUsed | 0 |
+| `CONN` | 15 | ConflictFlags | u8 | ConflictsUsed | 0 |
+| `CONN` | 16 | SMineCm | u16 | ConflictsUsed | 0 |
+| `CONN` | 17 | SOtherCm | u16 | ConflictsUsed | 0 |
+| `SIGS` | 1 | Count | i32 | 1 | 0 |
+| `SIGS` | 2 | SignalCount | i32 | 1 | 0 |
+| `SIGS` | 3 | Node | i32 | Count | -1 |
+| `SIGS` | 4 | Mode | i32 | Count | 0 |
+| `SIGS` | 5 | PhaseCount | u8 | Count | 0 |
+| `SIGS` | 6 | YellowTicks | u16 | Count | 0 |
+| `SIGS` | 7 | AllRedTicks | u16 | Count | 0 |
+| `SIGS` | 8 | OffsetTicks | u16 | Count | 0 |
+| `SIGS` | 9 | Phase | u8 | Count | 0 |
+| `SIGS` | 10 | Interval | u8 | Count | 0 |
+| `SIGS` | 11 | TicksLeft | u16 | Count | 0 |
+| `SIGS` | 12 | GreenTicks | u16 | Count * 8 | 0 |
+| `SIGS` | 13 | PhaseMask | u64 | Count * 8 | 0 |
+| `SIGS` | 14 | StateNode | i32 | SignalCount | 0 |
+| `SIGS` | 15 | StatePhase | u8 | SignalCount | 0 |
+| `SIGS` | 16 | StateInterval | u8 | SignalCount | 0 |
+| `SIGS` | 17 | StateTicksToChange | u16 | SignalCount | 0 |
+| `NDYN` | 1 | NodeTicket | u32 | NodeCount | 0 |
+| `NDYN` | 2 | NodeThroughput | u32 | NodeCount | 0 |
+| `LDYN` | 1 | LaneHead | i32 | LaneCount | -1 |
+| `LDYN` | 2 | LaneTail | i32 | LaneCount | -1 |
+| `LDYN` | 3 | LaneCount | i32 | LaneCount | 0 |
+| `LDYN` | 4 | OutReserved | f32 | LaneCount | 0 |
+| `LDYN` | 5 | LaneSignals | u8 | LaneCount | 0 |
+| `SDYN` | 1 | Density | f32 | SegmentCount | 0 |
+| `SDYN` | 2 | SpeedRatio | f32 | SegmentCount | 1 |
+| `SDYN` | 3 | LoadCount | u16 | SegmentCount | 0 |
+| `BDYN` | 1 | Waiting | u16 | BusStopCount | 0 |
+| `BDYN` | 2 | LastArrivalTick | i64 | BusStopCount | -1 |
+| `BDYN` | 3 | ActiveBuses | i32 | BusRouteCount | 0 |
+| `BDYN` | 4 | LastDispatchTick | i64 | BusRouteCount | -1 |
+| `BDYN` | 5 | StatsActiveBuses | i32 | BusRouteCount | 0 |
+| `BDYN` | 6 | StatsArrivals | i64 | BusRouteCount | 0 |
+| `BDYN` | 7 | StatsHeadwayDeviationTicksTotal | i64 | BusRouteCount | 0 |
+| `BDYN` | 8 | StatsLastDispatchTick | i64 | BusRouteCount | -1 |
+| `VEHC` | 1 | HighWater | i32 | 1 | 0 |
+| `VEHC` | 2 | FreeCount | i32 | 1 | 0 |
+| `VEHC` | 3 | FreeList | i32 | FreeCount | 0 |
+| `VEHC` | 4 | Generation | i32 | HighWater | 0 |
+| `VEHC` | 5 | Lane | i32 | HighWater | -1 |
+| `VEHC` | 6 | S | f32 | HighWater | 0 |
+| `VEHC` | 7 | Speed | f32 | HighWater | 0 |
+| `VEHC` | 8 | Accel | f32 | HighWater | 0 |
+| `VEHC` | 9 | Length | f32 | HighWater | 0 |
+| `VEHC` | 10 | Type | u8 | HighWater | 0 |
+| `VEHC` | 11 | DesiredSpeed | f32 | HighWater | 0 |
+| `VEHC` | 12 | Ahead | i32 | HighWater | -1 |
+| `VEHC` | 13 | Behind | i32 | HighWater | -1 |
+| `VEHC` | 14 | GhostLane | i32 | HighWater | -1 |
+| `VEHC` | 15 | GhostAhead | i32 | HighWater | -1 |
+| `VEHC` | 16 | GhostBehind | i32 | HighWater | -1 |
+| `VEHC` | 17 | LaneChangeDir | i8 | HighWater | 0 |
+| `VEHC` | 18 | LaneChangeTicks | u16 | HighWater | 0 |
+| `VEHC` | 19 | NextMobilTick | u16 | HighWater | 0 |
+| `VEHC` | 20 | Route | i32 | HighWater | -1 |
+| `VEHC` | 21 | RouteGen | i32 | HighWater | 0 |
+| `VEHC` | 22 | RouteCursor | i32 | HighWater | 0 |
+| `VEHC` | 23 | DestZone | i32 | HighWater | -1 |
+| `VEHC` | 24 | DestLane | i32 | HighWater | -1 |
+| `VEHC` | 25 | DestS | f32 | HighWater | 0 |
+| `VEHC` | 26 | NextConn | i32 | HighWater | -1 |
+| `VEHC` | 27 | GateState | u8 | HighWater | 0 |
+| `VEHC` | 28 | GrantConnector | i32 | HighWater | -1 |
+| `VEHC` | 29 | Ticket | u32 | HighWater | 0 |
+| `VEHC` | 30 | WaitTicks | u16 | HighWater | 0 |
+| `VEHC` | 31 | PointHint | i32 | HighWater | 0 |
+| `VEHC` | 32 | Lateral | f32 | HighWater | 0 |
+| `VEHC` | 33 | SpawnTick | i64 | HighWater | 0 |
+| `VEHC` | 34 | StillTicks | u16 | HighWater | 0 |
+| `VEHC` | 35 | Flags | u8 | HighWater | 0 |
+| `VEHC` | 36 | BusRoute | i32 | HighWater | -1 |
+| `VEHC` | 37 | BusNextStop | i32 | HighWater | 0 |
+| `VEHC` | 38 | DwellTicks | u16 | HighWater | 0 |
+| `VEHC` | 39 | Passengers | u16 | HighWater | 0 |
+| `TRIP` | 1 | Count | i32 | 1 | 0 |
+| `TRIP` | 2 | FromZone | i32 | Count | 0 |
+| `TRIP` | 3 | ToZone | i32 | Count | 0 |
+| `TRIP` | 4 | FromLane | i32 | Count | 0 |
+| `TRIP` | 5 | FromS | f32 | Count | 0 |
+| `TRIP` | 6 | Type | u8 | Count | 0 |
+| `TRIP` | 7 | DestLane | i32 | Count | 0 |
+| `TRIP` | 8 | DestS | f32 | Count | 0 |
+| `TRIP` | 9 | Route | i32 | Count | 0 |
+| `TRIP` | 10 | RouteGen | i32 | Count | 0 |
+| `QUES` | 1 | ReroutingCount | i32 | 1 | 0 |
+| `QUES` | 2 | RefillCount | i32 | 1 | 0 |
+| `QUES` | 3 | CommandCount | i32 | 1 | 0 |
+| `QUES` | 4 | ReroutingIndex | i32 | ReroutingCount | 0 |
+| `QUES` | 5 | ReroutingGeneration | i32 | ReroutingCount | 0 |
+| `QUES` | 6 | ReroutingReadyTick | i64 | ReroutingCount | 0 |
+| `QUES` | 7 | ReroutingKind | i32 | ReroutingCount | 0 |
+| `QUES` | 8 | RefillIndex | i32 | RefillCount | 0 |
+| `QUES` | 9 | RefillGeneration | i32 | RefillCount | 0 |
+| `QUES` | 10 | Commands | raw[64] | CommandCount | 0 |
+| `ROUT` | 1 | HighWater | i32 | 1 | 0 |
+| `ROUT` | 2 | FreeCount | i32 | 1 | 0 |
+| `ROUT` | 3 | FreeList | i32 | FreeCount | 0 |
+| `ROUT` | 4 | Generation | i32 | HighWater | 0 |
+| `ROUT` | 5 | PlanUsed | i32 | 1 | 0 |
+| `ROUT` | 6 | Compactions | i32 | 1 | 0 |
+| `ROUT` | 7 | WindowSteps | i32 | 1 | 0 |
+| `ROUT` | 8 | WinCount | u8 | HighWater | 0 |
+| `ROUT` | 9 | PlanFirst | i32 | HighWater | 0 |
+| `ROUT` | 10 | PlanCount | i32 | HighWater | 0 |
+| `ROUT` | 11 | PlanCap | i32 | HighWater | 0 |
+| `ROUT` | 12 | PlanCost | f32 | HighWater | 0 |
+| `ROUT` | 13 | PlanTick | i64 | HighWater | 0 |
+| `ROUT` | 14 | WinLane | i32 | Σ WinCount живых | 0 |
+| `ROUT` | 15 | WinNode | i32 | Σ WinCount живых | -1 |
+| `ROUT` | 16 | PlanArena | i32 | PlanUsed | 0 |
+| `RGRP` | 1 | BuiltVersion | i32 | 1 | -1 |
+| `RGRP` | 2 | WeightsVersion | i32 | 1 | 0 |
+| `RGRP` | 3 | SegCost | f32 | DirSegCount | 0 |
+| `RGRP` | 4 | ArcCost | f32 | ArcCount | 0 |
+| `OVLY` (routing.levels > 0) | 1 | Levels | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 2 | OriginX | f32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 3 | OriginZ | f32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 4 | Nx1 | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 5 | Nz1 | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 6 | EntriesLen | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 7 | ExitsLen | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 8 | MatrixLen | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 9 | BuiltNodes | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 10 | BuiltDirSegs | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 11 | WeightsVersion | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 12 | Disabled | u8 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 13 | Rebuilds | i64 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 14 | WaveActive | u8 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 15 | WaveCell | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 16 | WaveRow | i32 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 17 | CustomizeRows | i64 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 18 | CustomizeWork | i64 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 19 | FullRows | i64 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 20 | FullWork | i64 | 1 | 0 |
+| `OVLY` (routing.levels > 0) | 21 | EntryCount | i32 | CellCap | 0 |
+| `OVLY` (routing.levels > 0) | 22 | EntryCap | i32 | CellCap | 0 |
+| `OVLY` (routing.levels > 0) | 23 | ExitCount | i32 | CellCap | 0 |
+| `OVLY` (routing.levels > 0) | 24 | ExitCap | i32 | CellCap | 0 |
+| `OVLY` (routing.levels > 0) | 25 | Dirty | u8 | CellCap | 0 |
+| `OVLY` (routing.levels > 0) | 26 | Entries | i32 | Σ EntryCap | 0 |
+| `OVLY` (routing.levels > 0) | 27 | Exits | i32 | Σ ExitCap | 0 |
+| `OVLY` (routing.levels > 0) | 28 | Matrix | f32 | Σ EntryCap · ExitCap | +inf |
+| `OVLY` (routing.levels > 0) | 29 | CustomizedSegCost | f32 | BuiltDirSegs | 0 |
+| `LODS` (lod.mode != off) | 1 | OriginX | f32 | 1 | 0 |
+| `LODS` (lod.mode != off) | 2 | OriginZ | f32 | 1 | 0 |
+| `LODS` (lod.mode != off) | 3 | CellsX | i32 | 1 | 0 |
+| `LODS` (lod.mode != off) | 4 | CellsZ | i32 | 1 | 0 |
+| `LODS` (lod.mode != off) | 5 | LodEvalRequested | u8 | 1 | 0 |
+| `LODS` (lod.mode != off) | 6 | LastLodEvalTick | i64 | 1 | 0 |
+| `LODS` (lod.mode != off) | 7 | CellLevel | u8 | Cells | 0 |
+| `LODS` (lod.mode != off) | 8 | CellHoldUntil | i64 | Cells | 0 |
+| `LODS` (lod.mode != off) | 9 | CellCongStreak | u8 | Cells | 0 |
+| `LODS` (lod.mode != off) | 10 | FocusKind | u8 | 8 | 0 |
+| `LODS` (lod.mode != off) | 11 | FocusCx0 | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 12 | FocusCz0 | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 13 | FocusCx1 | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 14 | FocusCz1 | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 15 | FocusCenterCx | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 16 | FocusCenterCz | i32 | 8 | 0 |
+| `LODS` (lod.mode != off) | 17 | VehicleLod | u8 | HighWater | 0 |
+| `LODS` (lod.mode != off) | 18 | MesoAllow | f32 | HighWater | 0 |
+| `LODS` (lod.mode != off) | 19 | MesoNext | f32 | HighWater | -1 |
+| `QMSO` (lod.meso_model = queue) | 1 | PendingDistMm | i64 | 1 | 0 |
+| `QMSO` (lod.meso_model = queue) | 2 | Events | i64 | 1 | 0 |
+| `QMSO` (lod.meso_model = queue) | 3 | Wakes | i64 | 1 | 0 |
+| `QMSO` (lod.meso_model = queue) | 4 | QEnter | i32 | HighWater | 0 |
+| `QMSO` (lod.meso_model = queue) | 5 | QReady | i32 | HighWater | 0 |
+| `QMSO` (lod.meso_model = queue) | 6 | WheelTick | i32 | HighWater | -1 |
+| `QMSO` (lod.meso_model = queue) | 7 | LaneLastExit | i32 | LaneCount | 0 |
+| `SMET` | 1 | SignalWaitTicks | i64 | 4 | 0 |
+| `SMET` | 2 | SignalGrants | i64 | 4 | 0 |
+| `SMET` | 3 | SignalHist | i64 | 4 * 121 | 0 |
+| `SMET` | 4 | ConnWaitSum | i64 | Count | 0 |
+| `SMET` | 5 | ConnGrantCount | i32 | Count | 0 |
+<!-- schema:end -->

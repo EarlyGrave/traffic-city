@@ -138,6 +138,46 @@ internal sealed class NetworkStore
 
     public int BusRouteStopCount { get; internal set; }
 
+    /// <summary>
+    /// Наибольший индекс узла с построенными рукавами/connector'ами (<c>FirstArm &gt;= 0</c>) или -1. Канонический порядок раскладки
+    /// (save-format.md §13 п. 5): connector'ы и конфликты узлов лежат по возрастанию индекса узла, поэтому новый узел можно строить,
+    /// только если его индекс больше этого.
+    /// </summary>
+    public int HighestBuiltNode()
+    {
+        for (int n = NodeCount - 1; n >= 0; n--)
+        {
+            if (Nodes[n].FirstArm >= 0)
+            {
+                return n;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Загрузка сейва: производные массивы полос (<c>LaneLength</c>, <c>LanePieceHeading</c>, <c>LaneGateNode</c>) по сохранённым полосам, точкам и узлам.
+    /// Полосы с диапазоном точек вне <c>LanePointCount</c> пропускаются (их отклоняет проверка загрузчика раньше).
+    /// </summary>
+    internal void RebuildLaneDerived()
+    {
+        Array.Fill(LaneGateNode, -1);
+        for (int l = 0; l < LaneCount; l++)
+        {
+            LaneLength[l] = Lanes[l].Length;
+            FillPieceHeadings(Lanes[l].FirstPoint, Lanes[l].PointCount);
+        }
+
+        for (int n = 0; n < NodeCount; n++)
+        {
+            if (Nodes[n].FirstArm >= 0)
+            {
+                RefreshLaneGateNode(n);
+            }
+        }
+    }
+
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
     public int Version { get; internal set; }
 

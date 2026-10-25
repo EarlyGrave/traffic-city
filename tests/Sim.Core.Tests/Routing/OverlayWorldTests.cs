@@ -78,8 +78,10 @@ public class OverlayWorldTests
         int cell = ov.CellBase[1] + 1; // x в [100, 200): пока без границ; каждая новая дорога даёт ей вход и выход
         Assert.Equal(0, ov.EntryCount[cell]);
         Assert.Equal(4, ov.EntryCap[cell]);
+        Assert.Equal(Overlay.CapFor(0), ov.EntryCap[cell]);
 
         int firstRebuild = -1;
+        int inSlack = 0;
         for (int k = 0; k < 8; k++)
         {
             int entriesBefore = ov.EntryCount[cell];
@@ -92,10 +94,14 @@ public class OverlayWorldTests
                 firstRebuild = firstRebuild < 0 ? k : firstRebuild;
                 Assert.False(ov.WaveActive); // перестройка синхронная: полная кастомизация внутри команды
                 Assert.True(ov.EntryCap[cell] >= ov.EntryCount[cell] + 4);
+                Assert.Equal(Overlay.CapFor(ov.EntryCount[cell]), ov.EntryCap[cell]); // канонический запас: функция числа входов
             }
             else
             {
+                inSlack++;
                 Assert.Equal(entriesBefore + 1, ov.EntryCount[cell]); // дописан в запас
+                Assert.True(ov.EntryCap[cell] >= ov.EntryCount[cell] + 4);
+                Assert.Equal(Overlay.CapFor(ov.EntryCount[cell]), ov.EntryCap[cell]); // и раскладка та же, что построила бы перестройка
                 Assert.True(ov.WaveActive); // бюджет 1: за тик одна строка, ячейки с новыми вершинами ещё грязные
                 Assert.Equal(1, ov.Dirty[cell]);
             }
@@ -105,8 +111,11 @@ public class OverlayWorldTests
             Assert.Equal(ov.Rebuilds, sim.Counters.OverlayRebuilds);
         }
 
-        Assert.Equal(4, firstRebuild); // четыре дороги влезают в запас (4 строки), пятая - перестройка
-        Assert.Equal(1, ov.Rebuilds);
+        // Запас канонический: Cap = лестница(count + 4), после каждой дороги Cap >= Count + 4. Дорога либо влезает в запас (дописана), либо - перестройка
+        // с новым запасом; те и другие встречаются, перестроек столько, сколько отмечено счётчиком.
+        Assert.True(firstRebuild >= 0);
+        Assert.True(inSlack > 0);
+        Assert.Equal(8, inSlack + (int)ov.Rebuilds);
         Assert.False(ov.Disabled);
         Assert.Equal(0, sim.Counters.OverlayDisabled);
         Assert.Equal(g.DirSegCount, sim.World.Net.SegmentCount * 2);
@@ -121,11 +130,21 @@ public class OverlayWorldTests
         using Simulation sim = Simulation.Create(in d);
         Overlay ov = sim.World.Overlay!;
         RouteGraph g = sim.World.Router.Graph;
+
+        // Прелюдия: пустые ячейки не принимают вход без запаса (канонический запас Cap = лестница(count + 4)) - первая дорога перестраивает оверлей,
+        // дальше в ячейках есть запас и следующая дорога идёт путём «дописать вход/выход + волна».
+        Road(sim, 60f, 0);
+        sim.Step(1);
+        Assert.Equal(1, (int)sim.Counters.CommandsApplied);
+        Settle(sim, ov);
+        long applied = sim.Counters.CommandsApplied;
         int segs = sim.World.Net.SegmentCount;
         for (int s = 0; s < segs; s++)
         {
             sim.World.SegmentLoads[s].SpeedRatio = 0.4f;
         }
+
+        sim.World.SegmentLoadsTick = sim.World.Tick - 1;   // нагрузка «конца прошлого тика» валидна: EnsureSegmentLoads её не пересчитывает
 
         // Оверлей уже считан по весам загрузки (как после обычного пересчёта).
         g.RecalcCosts(sim.World.SegmentLoads, segs);
@@ -137,7 +156,7 @@ public class OverlayWorldTests
         long rowsBefore = ov.CustomizeRows;
         Road(sim, 30f, 1);
         sim.Step(1);
-        Assert.Equal(1, (int)sim.Counters.CommandsApplied);
+        Assert.Equal(applied + 1, sim.Counters.CommandsApplied);
         Assert.Equal(segs + 1, sim.World.Net.SegmentCount);
         Assert.True(g.WeightsVersion > versionBefore);
         for (int s = 0; s < segs; s++)
