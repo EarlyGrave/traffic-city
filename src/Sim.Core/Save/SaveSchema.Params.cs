@@ -109,6 +109,11 @@ internal static partial class SaveSchema
         Col.Scalar<int>(80, "RulesSignalArrowMinTicks", w => w.Rules.SignalArrowMinTicks, (c, v) => c.Rules.SignalArrowMinTicks = v, "60"),
         Col.Scalar<int>(81, "RulesSignalArrowMaxTicks", w => w.Rules.SignalArrowMaxTicks, (c, v) => c.Rules.SignalArrowMaxTicks = v, "120"),
         Col.Scalar<int>(82, "RulesSignalArrowGapTicks", w => w.Rules.SignalArrowGapTicks, (c, v) => c.Rules.SignalArrowGapTicks = v, "40"),
+
+        // Удержание автобусов (ADR-0008), добавлено в 2.5
+        Col.Scalar<float>(83, "TransitHoldAlpha", w => w.TransitCfg.HoldAlpha, (c, v) => c.Desc.Transit.HoldAlpha = v),
+        Col.Scalar<int>(84, "TransitHoldMaxTicks", w => w.TransitCfg.HoldMaxTicks, (c, v) => c.Desc.Transit.HoldMaxTicks = v),
+        Col.Scalar<int>(85, "TransitHoldEveryN", w => w.TransitCfg.HoldEveryN, (c, v) => c.Desc.Transit.HoldEveryN = v),
     })
     {
         PreWorld = true,

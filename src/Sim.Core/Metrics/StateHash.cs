@@ -149,6 +149,10 @@ internal static class StateHash
         {
             h.Add((int)w.Net.BusStops[s].Waiting);
             h.Add(w.Net.BusStops[s].LastArrivalTick);
+            if (w.TransitCfg.HoldAlpha > 0f)
+            {
+                h.Add(w.Net.BusStops[s].LastDepartTick);   // только при включённом удержании: выключенное хэшируется как раньше
+            }
         }
 
         for (int r = 0; r < w.Net.BusRouteCount; r++)

@@ -85,6 +85,9 @@
     "dwell_base_s": number,             // стоянка без пассажиров. Дефолт 8
     "dwell_per_passenger_s": number,    // дефолт 1.5
     "passenger_rate_per_min": number,   // прибытие ожидающих на остановку, чел/мин. Дефолт 2
+    "hold_alpha": number,               // удержание по интервалу (ADR-0008): доля headway между отправлениями с остановки, 0..1; 0 - выключено. Дефолт 0
+    "hold_max_s": number,               // верхний предел добавки к стоянке, с. Дефолт 60
+    "hold_every_n": int,                // контрольные остановки: каждая N-я остановка маршрута (конечная не удерживает). Дефолт 1
     "routes_explicit": [ { "stops": [ { "lane": int, "s": number, "kind": "curb|bay" } ], "headway_s": number } ]
   },
 

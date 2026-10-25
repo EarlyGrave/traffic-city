@@ -247,5 +247,14 @@ public struct TransitDesc
     public int DwellBaseTicks;
     public float DwellPerPassengerTicks;
     public float PassengerRatePerMin;
+
+    /// <summary>Удержание по интервалу (ADR-0008): доля планового интервала между отправлениями; 0 - выключено.</summary>
+    public float HoldAlpha;
+
+    /// <summary>Верхний предел удержания, тиков (сверх обычной стоянки).</summary>
+    public int HoldMaxTicks;
+
+    /// <summary>Контрольные остановки: каждая N-я остановка маршрута (1 - все, конечная не удерживает).</summary>
+    public int HoldEveryN;
     public BusRouteDesc[] RoutesExplicit;  // необязательные явные маршруты
 }

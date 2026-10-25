@@ -60,7 +60,7 @@ internal static class SaveValidator
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||
-            !Fin(tr.DwellPerPassengerTicks) || !Fin(tr.PassengerRatePerMin) || tr.Routes < 0 || tr.DwellBaseTicks < 0)
+            !Fin(tr.DwellPerPassengerTicks) || !Fin(tr.PassengerRatePerMin) || !Fin(tr.HoldAlpha) || tr.HoldAlpha < 0f || tr.HoldMaxTicks < 0 || tr.HoldEveryN < 0 || tr.Routes < 0 || tr.DwellBaseTicks < 0)
         {
             return LoadStatus.InvalidValue;
         }
@@ -393,7 +393,7 @@ internal static class SaveValidator
 
         for (int i = 0; i < stops; i++)
         {
-            if (n.BusStops[i].LastArrivalTick < -1)
+            if (n.BusStops[i].LastArrivalTick < -1 || n.BusStops[i].LastDepartTick < -1)
             {
                 return Bad(c, i, 24);
             }

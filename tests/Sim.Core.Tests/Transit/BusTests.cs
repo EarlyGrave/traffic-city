@@ -29,6 +29,49 @@ public class BusTests
     }
 
     [Fact]
+    public void Holding_KeepsDeparturesApart()
+    {
+        foreach (float alpha in new[] { 0f, 0.8f })
+        {
+            ScenarioDesc d = Scenario(0);
+            d.Transit.HoldAlpha = alpha;
+            d.Transit.HoldMaxTicks = 1200;
+            d.Transit.HoldEveryN = 1;
+            using Simulation sim = Simulation.Create(in d);
+            NetworkStore net = sim.World.Net;
+            var last = new long[net.BusStopCount];
+            long minGap = long.MaxValue;
+            for (int t = 0; t < 12 * Headway; t++)
+            {
+                sim.Step(1);
+                for (int s = 0; s < net.BusStopCount; s++)
+                {
+                    long ld = net.BusStops[s].LastDepartTick;
+                    if (ld != last[s])
+                    {
+                        if (last[s] > 0 && ld > 0)
+                        {
+                            minGap = Math.Min(minGap, ld - last[s]);
+                        }
+
+                        last[s] = ld;
+                    }
+                }
+            }
+
+            if (alpha == 0f)
+            {
+                Assert.True(minGap == long.MaxValue || minGap >= 0);
+            }
+            else
+            {
+                Assert.NotEqual(long.MaxValue, minGap);
+                Assert.True(minGap >= (long)(alpha * Headway) - 1, $"min departure gap {minGap} < {alpha * Headway}");
+            }
+        }
+    }
+
+    [Fact]
     public void Buses_AreDispatched_WithConfiguredHeadway()
     {
         ScenarioDesc d = Scenario(0);

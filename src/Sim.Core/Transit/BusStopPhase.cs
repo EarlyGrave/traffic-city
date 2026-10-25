@@ -129,7 +129,9 @@ internal static class BusStopPhase
         v.Flags[i] |= (byte)VehicleFlags.AtStop;
         TransitDesc cfg = w.TransitCfg;
         int dwell = cfg.DwellBaseTicks + (int)(cfg.DwellPerPassengerTicks * (alight + board));
-        v.DwellTicks[i] = (ushort)(dwell < 1 ? 1 : dwell > MaxDwellTicks ? MaxDwellTicks : dwell);
+        dwell = dwell < 1 ? 1 : dwell > MaxDwellTicks ? MaxDwellTicks : dwell;
+        dwell += HoldTicks(cfg, in stop, in br, v.BusNextStop[i], terminal, w.Tick + dwell);
+        v.DwellTicks[i] = (ushort)(dwell > ushort.MaxValue ? ushort.MaxValue : dwell);
 
         ref SimCounters c = ref w.Counters;
         ref BusRouteStats rs = ref w.BusRouteStats[r];
@@ -151,6 +153,27 @@ internal static class BusStopPhase
 
         stop.LastArrivalTick = w.Tick;
         w.Emit(SimEventKind.BusStopArrived, 0, r, si);
+    }
+
+    /// <summary>
+    /// Удержание по интервалу (ADR-0008): автобус на контрольной остановке не уходит раньше <c>LastDepartTick + HoldAlpha * Headway</c>
+    /// (<paramref name="departAt"/> - тик отправления без удержания); добавка не больше <c>HoldMaxTicks</c>. 0 - без удержания.
+    /// </summary>
+    private static int HoldTicks(TransitDesc cfg, in BusStopData stop, in BusRouteData br, int k, bool terminal, long departAt)
+    {
+        if (!(cfg.HoldAlpha > 0f) || terminal || stop.LastDepartTick < 0 || cfg.HoldEveryN < 1 || k % cfg.HoldEveryN != 0)
+        {
+            return 0;
+        }
+
+        long earliest = stop.LastDepartTick + (long)(cfg.HoldAlpha * br.HeadwayTicks);
+        long extra = earliest - departAt;
+        if (extra <= 0)
+        {
+            return 0;
+        }
+
+        return (int)(extra > cfg.HoldMaxTicks ? cfg.HoldMaxTicks : extra);
     }
 
     private static void Dwell(World w, int i)
@@ -197,6 +220,11 @@ internal static class BusStopPhase
             v.NextConn[i] = -1;
             v.DestLane[i] = next.Lane;
             v.DestS[i] = next.S;
+            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
+            {
+                net.BusStops[br.FirstStop + v.BusNextStop[i]].LastDepartTick = w.Tick;
+            }
+
             v.BusNextStop[i] = k;
             v.DwellTicks[i] = 0;
             v.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.AtStop);
