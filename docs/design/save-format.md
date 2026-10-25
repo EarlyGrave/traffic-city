@@ -92,6 +92,14 @@ column_count × 24 Б, по возрастанию column_id:
 Канон: блоки ядра в порядке таблицы §3, затем блоки хоста в порядке передачи, затем `kept`; столбцы по возрастанию id;
 все reserved и паддинги — нули. Выравнивание 8 даёт Rust-читателю `bytemuck`-срезы без копии (и mmap).
 
+Раскладка плотная (реализация S1): первый блок начинается сразу за оглавлением, каждый следующий — сразу за предыдущим
+(`offset = конец предыдущего`), подвал — сразу за последним; столбцы внутри блока тоже без дыр. Дыра, перекрытие, повтор id
+блока → `InvalidReference` (оглавление) / `BadColumn` (каталог); смещение или длина за концом файла → `Truncated`; неизвестные
+биты `flags`, `kept`+`critical`, ненулевые reserved/паддинги, неизвестный `writer` → `InvalidValue` (паддинги столбцов → `BadColumn`).
+Байты за `total_length` читатель игнорирует. Блоки `host`/`kept` непрозрачны; неизвестный блок без `critical` читатель
+превращает в `kept` (флаг ставится сам), поэтому `Load → Save` переписывает его побайтно. `SaveSource` читается целиком в
+буфер (растёт по мере поступления байт, не по заявленной `total_length`), предел одного массива .NET (~2 ГБ) → `CapacityExceeded`.
+
 Проверки при чтении (до любой аллокации по данным файла): magic, версии, `header_size`, `total_length ≤` длины входа
 (иначе `Truncated`), xxh64 заголовка+оглавления, смещения кратны 8 / внутри файла / по возрастанию / без перекрытий,
 xxh64 каждого блока и подвала, каталог столбцов (тип, `elem_size`, `offset + count·elem_size ≤ length`, id по возрастанию).
@@ -201,7 +209,7 @@ public abstract class SaveSource { public abstract int Read(Span<byte> buffer); 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct HostBlock { public uint Id; public ushort Flags; public ushort Reserved; public int Offset, Length; } // срез hostData
 
-public enum SaveStatus : int { Ok = 0, BufferTooSmall = 1, Disposed = 2, InvalidHostBlock = 3 }
+public enum SaveStatus : int { Ok = 0, BufferTooSmall = 1, Disposed = 2, InvalidHostBlock = 3, InvalidTables = 4 /* описание блоков/столбцов источника противоречиво */ }
 public enum LoadStatus : int
 {
     Ok = 0, NotASave = 1, Truncated = 2, ChecksumMismatch = 3, UnsupportedContainer = 4, TooNew = 5,
