@@ -66,6 +66,12 @@ internal static class StateHash
                 {
                     h.Add(v.MesoAllow[i]);
                 }
+
+                if (w.Queue != null && (lod & Lod.LodBits.Queue) != 0)
+                {
+                    h.Add(w.Queue.QEnter[i]);   // Q-meso (sim-lod.md §13.5): время въезда и готовности - состояние очереди
+                    h.Add(w.Queue.QReady[i]);
+                }
             }
         }
 

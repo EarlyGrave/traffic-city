@@ -131,9 +131,15 @@ internal static class GatePhase
         GateScratch g = w.Gate;
         ulong[] occMask = occ.OccMask;
         ulong[] signal = g.SignalMask;
+        ulong[]? kin = w.Queue?.KinMask;   // Q-meso: допущенные - только кинематические машины
         for (int wi = 0; wi < occMask.Length; wi++)
         {
             ulong active = occMask[wi] & signal[wi];
+            if (kin != null)
+            {
+                active &= kin[wi];
+            }
+
             while (active != 0UL)
             {
                 int bit = BitOperations.TrailingZeroCount(active);
@@ -258,9 +264,17 @@ internal static class GatePhase
         ulong[] occMask = occ.OccMask;
         ulong[] gated = g.GatedMask;
         ulong[] conn = g.ConnMask;
+        Lod.QueueMeso? q = w.Queue;
+        ulong[]? qKin = q?.KinMask;                   // Q-meso: полосы с кинематическими машинами (connector'ы, допущенные)
+        ulong[]? qHead = q?.HeadMask[mesoBeat];       // и с головой очереди цвета такта; полосы только с очередью не обходятся
         for (int wi = 0; wi < occMask.Length; wi++)
         {
             ulong active = occMask[wi] & (gated[wi] | conn[wi]);
+            if (qKin != null)
+            {
+                active &= qKin[wi] | qHead![wi];
+            }
+
             while (active != 0UL)
             {
                 int bit = BitOperations.TrailingZeroCount(active);
@@ -414,6 +428,11 @@ internal static class GatePhase
                 continue;
             }
 
+            if (lodBits.Length != 0 && (lodBits[x] & (Lod.LodBits.Queue | Lod.LodBits.Head)) == Lod.LodBits.Queue)
+            {
+                return 0;   // Q-meso: машина очереди (не материализована) - не кандидат и меток не получает (как в ScanAll)
+            }
+
             float speed = v.Speed[x];
             if (signalNode && speed < 1f)
             {
@@ -513,6 +532,11 @@ internal static class GatePhase
                 }
 
                 continue;
+            }
+
+            if (lodBits.Length != 0 && (lodBits[i] & (Lod.LodBits.Queue | Lod.LodBits.Head)) == Lod.LodBits.Queue)
+            {
+                continue;   // Q-meso: машина очереди (не материализована) фазой 4 не трогается (WaitTicks = 0, допуска нет)
             }
 
             int node = GateRules.GateNodeOfNormal(net, lane);
@@ -883,7 +907,7 @@ internal static class GatePhase
         {
             float need = li + t.MinGap;
             int tail = occ.LaneTail[outLane];
-            if (tail != -1 && v.S[tail] - v.Length[tail] - net.OutReserved[outLane] < need)
+            if (tail != -1 && (w.Queue != null ? w.Queue.TailS(outLane) : v.S[tail]) - v.Length[tail] - net.OutReserved[outLane] < need)
             {
                 return GateDeny.Exit;
             }
@@ -994,8 +1018,9 @@ internal static class GatePhase
                     bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop;
                     if (dy == (byte)GateDeny.Exit)
                     {
-                        int exitTail = occ.LaneTail[cs.OutLane[gOther]];
-                        excused = exitTail != -1 && v.Speed[exitTail] < GateRules.CreepSpeed;
+                        int exitLane = cs.OutLane[gOther];
+                        int exitTail = occ.LaneTail[exitLane];
+                        excused = exitTail != -1 && (w.Queue != null ? w.Queue.TailSpeed(exitLane) : v.Speed[exitTail]) < GateRules.CreepSpeed;
                     }
 
                     if (!excused)
@@ -1011,6 +1036,12 @@ internal static class GatePhase
                 }
 
                 float vy = v.Speed[y];
+                float posY = v.S[y];
+                if (w.Queue != null && w.Queue.IsQueued(y))
+                {
+                    w.Queue.SynthFirst(y, inLane, out posY, out vy);   // Q-meso: подъезжающая машина очереди - синтез «сейчас», а не позиция въезда
+                }
+
                 bool stationary = vy < GateRules.CreepSpeed;
                 bool senior = v.WaitTicks[i] > v.WaitTicks[y] || (v.WaitTicks[i] == v.WaitTicks[y] && i < y);
                 if (stationary && senior)
@@ -1024,7 +1055,7 @@ internal static class GatePhase
                 }
 
                 ref readonly VehicleTypeDesc ty = ref w.Types[v.Type[y]];
-                float tY = GateRules.Eta(sOther + cs.InLength[gOther] - v.S[y], vy, ty.Accel, v.DesiredSpeed[y]);
+                float tY = GateRules.Eta(sOther + cs.InLength[gOther] - posY, vy, ty.Accel, v.DesiredSpeed[y]);
                 if (rel == ConflictRel.Yield)
                 {
                     if (tY >= tMeClear + yieldGap)
@@ -1072,6 +1103,7 @@ internal static class GatePhase
             w.Counters.PriorityInversions++;
         }
 
+        w.Queue?.OnGranted(i);   // Q-meso: голова -> кинематика, ведомый очереди освобождается через h
         return GateDeny.None;
     }
 

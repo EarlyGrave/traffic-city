@@ -30,8 +30,16 @@ internal static class LeaderSearch
     /// </summary>
     public static LeaderInfo Find(in RuleEnv e, float[] s, int self, int lane, float sSelf, int firstAhead, bool useRoute)
     {
+        Lod.QueueMeso? q = e.Occ.Queue;
         if (firstAhead != -1)
         {
+            if (q != null && q.IsQueued(firstAhead))
+            {
+                // Q-meso: лидер - машина очереди (автобус за ней); её S - позиция въезда, позиция «сейчас» - синтез очереди от головы.
+                q.SynthMember(firstAhead, lane, (float)q.TickNow, out float sq, out float vq);
+                return new LeaderInfo { Vehicle = firstAhead, Gap = sq - e.V.Length[firstAhead] - sSelf, Speed = vq, Virtual = false };
+            }
+
             return new LeaderInfo
             {
                 Vehicle = firstAhead,
@@ -57,6 +65,12 @@ internal static class LeaderSearch
                 if (tail == self)
                 {
                     return new LeaderInfo { Vehicle = -1, Gap = Idm.FreeGap, Speed = 0f, Virtual = false, Hops = hop };
+                }
+
+                if (q != null && q.IsQueued(tail))
+                {
+                    // Q-meso: хвост следующей полосы - машина очереди: оценка хвоста за O(1).
+                    return new LeaderInfo { Vehicle = tail, Gap = dist + q.TailS(next) - e.V.Length[tail], Speed = q.TailSpeed(next), Virtual = false, Hops = hop };
                 }
 
                 return new LeaderInfo

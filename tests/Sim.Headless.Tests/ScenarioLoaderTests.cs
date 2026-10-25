@@ -492,6 +492,19 @@ public class ScenarioLoaderTests
 
         Assert.Equal(LodMode.AllMeso, Load(Minimal("\"lod\": { \"mode\": \"all_meso\" }")).Lod.Mode);
         Assert.Equal(LodMode.Off, Load(Minimal("\"lod\": { \"mode\": \"off\", \"cell_m\": 250 }")).Lod.Mode);
+        Assert.Equal(MesoModel.Kinematic, Load(Minimal("\"lod\": { \"mode\": \"all_meso\" }")).Lod.MesoModel);
+        LodDesc q = Load(Minimal("\"lod\": { \"mode\": \"all_meso\", \"meso_model\": \"queue\", \"queue_headway_scale\": 0.7 }")).Lod;
+        Assert.Equal(MesoModel.Queue, q.MesoModel);
+        Assert.Equal(0.7f, q.QueueHeadwayScale);
+    }
+
+    [Fact]
+    public void LodQueueModel_ErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"lod\": { \"mode\": \"all_meso\", \"meso_model\": \"cells\" }"));
+        Assert.Contains("$.lod.meso_model", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"mode\": \"auto\", \"meso_model\": \"queue\" }"));
+        Assert.Contains("$.lod.meso_model", e.Message, StringComparison.Ordinal);
     }
 
     [Fact]

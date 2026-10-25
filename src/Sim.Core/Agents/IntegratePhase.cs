@@ -34,6 +34,7 @@ internal static class IntegratePhase
     {
         IntegrateJob job = w.Integrate;
         w.Masks.Begin(w.Vehicles.HighWater, w.Rules.StuckSpeedThreshold, w.Rules.StuckThresholdTicks);
+        w.Queue?.AddTallies(w.Masks);   // Q-meso: машины очереди фаза 6 не обходит
         job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), w.Gate.SignalMask, w.Masks);
         return job;
     }
@@ -109,9 +110,39 @@ internal sealed partial class IntegrateJob : IRangeJob
         long clamps = 0;
         long mesoClamps = 0;
         var tally = default(Tally);
-        for (int i = begin; i < end; i++)
+        ulong[] queue = _v.QueueBits;
+        if (queue.Length == 0)
         {
-            clamps += Vehicle(i, ref mesoClamps, ref tally);
+            for (int i = begin; i < end; i++)
+            {
+                clamps += Vehicle(i, ref mesoClamps, ref tally);
+            }
+        }
+        else
+        {
+            // Q-meso: машины очереди не двигаются и не учитываются здесь (их вклад в метрики - QueueMeso.AddTallies).
+            for (int k = begin >> 6; k << 6 < end; k++)
+            {
+                ulong m = ~queue[k];
+                int hi = end - (k << 6);
+                if (hi < 64)
+                {
+                    m &= (1UL << hi) - 1UL;
+                }
+
+                int lo = begin - (k << 6);
+                if (lo > 0)
+                {
+                    m &= ulong.MaxValue << lo;
+                }
+
+                while (m != 0UL)
+                {
+                    int i = (k << 6) + System.Numerics.BitOperations.TrailingZeroCount(m);
+                    m &= m - 1UL;
+                    clamps += Vehicle(i, ref mesoClamps, ref tally);
+                }
+            }
         }
 
         int o = worker * Stride;

@@ -24,6 +24,7 @@ internal static class PhaseList
         RoutePhase.Run(w);                        // 3. маршруты: перемаршрутизация и поездки без маршрута
         probe?.Invoke(3);
         SignalPhase.Run(w);                       // 4a. сигналы: таймеры, LaneSignals, SignalStates
+        w.Queue?.Run();                           // 4a'. Q-meso: синтез голов такта, события колеса (ADR-0019, sim-lod.md §13.9)
         GatePhase.Run(w);                         // 4b. ворота перекрёстков: допуски, билеты, OutReserved
         probe?.Invoke(4);
         BehaviourPhase.Run(w);                    // 5. поведение: IDM/MOBIL

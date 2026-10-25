@@ -15,6 +15,7 @@ internal sealed class CorridorResult
     public double MeanTravelS;         // среднее время проезда (источник -> сток) выехавших за последние 10 мин
     public double P85TravelS;
     public int MaxQueue;               // макс. число стоящих (v < 1 м/с) на подходе к первому светофору
+    public int MaxOnEntry;             // макс. число машин на полосах подхода к первому светофору (диагностика)
     public int Stuck;
     public int Gridlock;
     public long StuckEvents;
@@ -24,7 +25,7 @@ internal sealed class CorridorResult
     public string? Violation;
 
     public override string ToString() =>
-        $"thr {ThroughputPerHour:F0}/h, mean {MeanTravelS:F1} s, p85 {P85TravelS:F1} s, maxQ {MaxQueue}, stuck {Stuck}/{StuckEvents}, gridlock {Gridlock}, spawned {Spawned}, exits {Exits}, alive {AliveAtEnd}";
+        $"thr {ThroughputPerHour:F0}/h, mean {MeanTravelS:F1} s, p85 {P85TravelS:F1} s, maxQ {MaxQueue}/{MaxOnEntry}, stuck {Stuck}/{StuckEvents}, gridlock {Gridlock}, spawned {Spawned}, exits {Exits}, alive {AliveAtEnd}";
 }
 
 /// <summary>
@@ -134,6 +135,7 @@ internal static class Corridor
         };
 
         int maxQueue = 0;
+        int maxOnEntry = 0;
         VehicleStore v = w.Vehicles;
         drv.OnTick = _ =>
         {
@@ -142,7 +144,7 @@ internal static class Corridor
             {
                 for (int x = w.Occupancy.LaneHead[entry[l]]; x != -1; x = v.Behind[x])
                 {
-                    if (v.Speed[x] < 1.0f && v.Lane[x] == entry[l])
+                    if (drv.SpeedOf(x) < 1.0f && v.Lane[x] == entry[l])
                     {
                         q++;
                     }
@@ -150,6 +152,7 @@ internal static class Corridor
             }
 
             maxQueue = Math.Max(maxQueue, q);
+            maxOnEntry = Math.Max(maxOnEntry, w.Occupancy.LaneCount[entry[0]] + w.Occupancy.LaneCount[entry[1]]);
         };
 
         drv.Run(ticks);
@@ -158,6 +161,7 @@ internal static class Corridor
         {
             ThroughputPerHour = mainExits * 6.0,
             MaxQueue = maxQueue,
+            MaxOnEntry = maxOnEntry,
             Stuck = cnt.StuckVehicles,
             StuckEvents = cnt.StuckEventsTotal,
             Gridlock = cnt.GridlockFlag,

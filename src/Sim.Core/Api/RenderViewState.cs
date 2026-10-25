@@ -157,6 +157,8 @@ internal sealed class RenderViewState
                         continue;
                     }
 
+                    w.Queue?.ViewLane(lane, w.Tick + 1);   // Q-meso: синтез позиций очереди полосы на начало следующего тика
+
                     // От головы к хвосту; ghost-член чужой полосы пропускаем (его пишет основная полоса), цепочку ведём по роли в этой полосе.
                     for (int i = head[lane]; i != -1;)
                     {

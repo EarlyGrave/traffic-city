@@ -174,9 +174,9 @@ internal sealed partial class BehaviourJob
         VehicleStore v = e.V;
         int lane = v.Lane[i];
         ref readonly LaneData ld = ref e.Net.Lanes[lane];
-        if (ld.Kind != LaneKind.Normal || v.GhostLane[i] != -1)
+        if (ld.Kind != LaneKind.Normal || v.GhostLane[i] != -1 || v.QueueBits.Length != 0)
         {
-            return 0;
+            return 0;   // Q-meso: смены полосы на полосе нет, выбор полосы - при въезде (sim-lod.md §13.5 п. 3)
         }
 
         // Как у MOBIL (intersections.md §7.1): после допуска и в зоне перед концом полосы порядок не меняется.

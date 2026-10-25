@@ -261,9 +261,21 @@ internal static class WorldBuilder
             return CreateStatus.Ok;
         }
 
+        if (w.LodCfg.MesoModel == MesoModel.Queue && w.LodCfg.Mode != LodMode.AllMeso)
+        {
+            return CreateStatus.NotSupported;   // Q0: очередь полосы только в all_meso (смена уровня Q <-> micro - задача Q1)
+        }
+
         CreateStatus st = LodCells.TryCreate(w.Net, in w.LodCfg, out LodCells? cells);
         w.Lod = cells;
         w.Occupancy.LodCells = cells;
+        if (st == CreateStatus.Ok && cells != null && w.LodCfg.MesoModel == MesoModel.Queue)
+        {
+            w.Queue = new QueueMeso(w, cells);
+            w.Occupancy.Queue = w.Queue;
+            w.Vehicles.QueueBits = w.Queue.QBits;
+        }
+
         return st;
     }
 
@@ -271,7 +283,8 @@ internal static class WorldBuilder
     {
         if (l.Mode < LodMode.Off || l.Mode > LodMode.AllMeso || !NonNegative(l.CellM) || l.MicroBudget < 0 || l.EvalTicks < 0 ||
             l.HoldTicks < 0 || l.FocusMarginCells < 0 || !NonNegative(l.CongestionShare) || l.CongestionMin < 0 ||
-            !NonNegative(l.MesoHeadwayScale) || !NonNegative(l.MesoAccelScale) ||
+            !NonNegative(l.MesoHeadwayScale) || !NonNegative(l.MesoAccelScale) || !NonNegative(l.QueueHeadwayScale) ||
+            l.MesoModel < MesoModel.Kinematic || l.MesoModel > MesoModel.Queue ||
             (l.Focus?.Length ?? 0) > LodCells.FocusSlots || (l.Pinned?.Length ?? 0) > LodCells.PinSlots)
         {
             return CreateStatus.InvalidCapacity;
@@ -296,6 +309,9 @@ internal static class WorldBuilder
     /// <summary>Нулевые поля (desc, собранный вручную) заменяются дефолтами спеки; булевы без дефолта остаются как заданы (загрузчик ставит true).</summary>
     /// <summary>Калибровка эквивалентности коридору (sim-lod.md §9, итог L2): множитель времени интервала T в meso.</summary>
     internal const float DefaultMesoHeadwayScale = 0.8f;
+
+    /// <summary>Калибровка насыщенного интервала очереди Q-meso по <c>SaturationProbe</c> (sim-lod.md §13.9): множитель T в <c>h</c>.</summary>
+    internal const float DefaultQueueHeadwayScale = 0.6f;
 
     internal static LodDesc WithDefaults(LodDesc l)
     {
@@ -337,6 +353,11 @@ internal static class WorldBuilder
         if (!(l.MesoAccelScale > 0f))
         {
             l.MesoAccelScale = 1f;
+        }
+
+        if (!(l.QueueHeadwayScale > 0f))
+        {
+            l.QueueHeadwayScale = DefaultQueueHeadwayScale;
         }
 
         return l;

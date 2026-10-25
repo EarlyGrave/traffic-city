@@ -256,9 +256,12 @@ internal static class TransitionPhase
         // перекрытие в списке (инвариант зазора >= MinPhysicalGap); если места нет вовсе - ждём в конце полосы.
         float sNew = v.S[i] - ld.Length;
         int tail = e.Occ.LaneTail[next];
+        Lod.QueueMeso? q = e.Occ.Queue;
         if (tail != -1 && tail != i)
         {
-            float sMax = v.S[tail] - v.Length[tail] - p.MinPhysicalGap;
+            // Q-meso: хвост-машина очереди стоит на позиции въезда - берём оценку хвоста «сейчас» (O(1)).
+            float tailS = q != null ? q.TailS(next) : v.S[tail];
+            float sMax = tailS - v.Length[tail] - p.MinPhysicalGap;
             if (sNew > sMax)
             {
                 if (sMax < 0f)
@@ -267,9 +270,10 @@ internal static class TransitionPhase
                 }
 
                 sNew = sMax;
-                if (v.Speed[tail] < v.Speed[i])
+                float tailSpeed = q != null ? q.TailSpeed(next) : v.Speed[tail];
+                if (tailSpeed < v.Speed[i])
                 {
-                    v.Speed[i] = v.Speed[tail];
+                    v.Speed[i] = tailSpeed;
                 }
 
                 c.HardClamps++;
@@ -308,7 +312,63 @@ internal static class TransitionPhase
 
         v.DesiredSpeed[i] = Idm.DesiredSpeed(types[v.Type[i]], e.Net.Lanes[next].SpeedLimit);
         v.PointHint[i] = 0;
+        if (q != null && e.Net.Lanes[next].Kind == LaneKind.Normal)
+        {
+            EnterLaneChoice(e, types, p, i, next, ref c);
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Q-meso (sim-lod.md §13.5 п. 3): смены полосы на полосе нет, выбор - при въезде. Если маршрут хочет параллельную полосу того же направленного сегмента
+    /// и в ней есть место (<c>Σ(L + s0) + L + s0 &lt;= Length - 25 м</c>, за оценкой хвоста), машина ставится в её хвост; иначе остаётся.
+    /// </summary>
+    private static void EnterLaneChoice(in RuleEnv e, ReadOnlySpan<VehicleTypeDesc> types, in PhysicsParams p, int i, int lane, ref SimCounters c)
+    {
+        VehicleStore v = e.V;
+        Lod.QueueMeso q = e.Occ.Queue!;
+        int desired = e.RouteDesiredLane(i);
+        if (desired < 0 || desired == lane || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0)
+        {
+            return;
+        }
+
+        ref readonly LaneData ld = ref e.Net.Lanes[lane];
+        ref readonly LaneData dl = ref e.Net.Lanes[desired];
+        if (dl.Kind != LaneKind.Normal || dl.Segment != ld.Segment || dl.Direction != ld.Direction || (dl.Flags & 1) != 0)
+        {
+            return;
+        }
+
+        ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
+        float span = v.Length[i] + t.MinGap;
+        if ((q.LaneSpanCm[desired] * 0.01f) + span > dl.Length - Lod.QueueMeso.EntryChoiceReserveM)
+        {
+            return;
+        }
+
+        float s = v.S[i];
+        int tail = e.Occ.LaneTail[desired];
+        if (tail != -1)
+        {
+            float sMax = q.TailS(desired) - v.Length[tail] - p.MinPhysicalGap;
+            if (sMax < 0f)
+            {
+                return;
+            }
+
+            if (s > sMax)
+            {
+                s = sMax;
+            }
+        }
+
+        e.Occ.Unlink(i);
+        v.S[i] = s;
+        e.Occ.PushTail(desired, i);
+        v.DesiredSpeed[i] = Idm.DesiredSpeed(t, dl.SpeedLimit);
+        c.MesoLaneChanges++;
     }
 
     /// <summary>

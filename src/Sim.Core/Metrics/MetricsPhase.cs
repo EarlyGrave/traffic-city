@@ -69,6 +69,8 @@ internal static class MetricsPhase
             }
         }
 
+        w.Queue?.StuckPass();   // Q-meso: stuck машин очереди - по полосе (sim-lod.md §13.9)
+
         int active = (int)m.Active;
         int stuck = (int)m.Stuck;
         long distMm = m.DistMm;
@@ -120,6 +122,7 @@ internal static class MetricsPhase
         }
 
         int hw = v.HighWater;
+        Lod.QueueMeso? q = w.Queue;
         for (int i = 0; i < hw; i++)
         {
             if (!v.Pool.IsAlive(i))
@@ -134,7 +137,7 @@ internal static class MetricsPhase
                 if ((uint)seg < (uint)segCount)
                 {
                     loads[seg].Count++;
-                    loads[seg].SpeedRatio += v.Speed[i];
+                    loads[seg].SpeedRatio += q != null && q.IsQ(i) ? q.SpeedFor(i) : v.Speed[i];   // Q-meso: S/Speed очереди - на момент въезда
                 }
             }
         }
@@ -171,6 +174,13 @@ internal static class MetricsPhase
         long mesoDist = 0;
         long stuck = 0;
         int hw = v.HighWater;
+        if (w.Queue != null)
+        {
+            // Q-meso: накопители - сумма прохода фазы 6 по кинематическим и агрегатов очереди (QueueMeso.AddTallies); машины, вставшие в очередь
+            // в фазе 7, учтены фазой 6 - полный проход по состоянию конца тика с ними не сопоставим. Сверка - тесты QueueMesoTests (метрики, I6).
+            return;
+        }
+
         for (int i = 0; i < hw; i++)
         {
             if (!v.Pool.IsAlive(i))

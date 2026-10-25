@@ -137,9 +137,39 @@ internal sealed partial class BehaviourJob : IRangeJob
         int vehicles = 0;
         int hops = 0;
         int obstacleCalls = 0;
-        for (int i = begin; i < end; i++)
+        ulong[] queue = _e.V.QueueBits;
+        if (queue.Length == 0)
         {
-            Vehicle(i, ref cw, ref vehicles, ref hops, ref obstacleCalls);
+            for (int i = begin; i < end; i++)
+            {
+                Vehicle(i, ref cw, ref vehicles, ref hops, ref obstacleCalls);
+            }
+        }
+        else
+        {
+            // Q-meso: машины очереди фаза 5 не трогает - обход по маске «не очередь» (чанки кратны 64 по началу, конец - отсекается).
+            for (int k = begin >> 6; k << 6 < end; k++)
+            {
+                ulong m = ~queue[k];
+                int hi = end - (k << 6);
+                if (hi < 64)
+                {
+                    m &= (1UL << hi) - 1UL;
+                }
+
+                int lo = begin - (k << 6);
+                if (lo > 0)
+                {
+                    m &= ulong.MaxValue << lo;
+                }
+
+                while (m != 0UL)
+                {
+                    int i = (k << 6) + System.Numerics.BitOperations.TrailingZeroCount(m);
+                    m &= m - 1UL;
+                    Vehicle(i, ref cw, ref vehicles, ref hops, ref obstacleCalls);
+                }
+            }
         }
 
         cw.BehaviourVehicles += vehicles;

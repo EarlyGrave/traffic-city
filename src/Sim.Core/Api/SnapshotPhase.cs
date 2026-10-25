@@ -23,6 +23,7 @@ internal static class SnapshotPhase
         RenderViewState rv = w.RenderView;
         if (rv.All)
         {
+            w.Queue?.SynthesizeAll(snapTick);   // Q-meso: позиции очереди - синтез на начало следующего тика (главный поток)
             SnapshotJob job = w.SnapshotJob;
             job.Prepare(w, buf, null);
             if (w.Pool != null)
@@ -148,7 +149,16 @@ internal sealed class SnapshotJob : IRangeJob
             return;
         }
 
-        float centerS = v.S[i] - (v.Length[i] * 0.5f);
+        float s = v.S[i];
+        float speed = v.Speed[i];
+        Lod.QueueMeso? q = w.Queue;
+        if (q != null && q.IsQueued(i))
+        {
+            s = q.ViewS[i];         // синтез очереди (RenderViewState.Gather / SynthesizeAll на главном потоке перед записью)
+            speed = q.ViewSpeed[i];
+        }
+
+        float centerS = s - (v.Length[i] * 0.5f);
         LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out int piece);
         float lateral = v.Lateral[i];
         float heading = net.LanePieceHeading[piece];
@@ -169,7 +179,7 @@ internal sealed class SnapshotJob : IRangeJob
         r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
         r.Z = z;
         r.Heading = heading;
-        r.Speed = v.Speed[i];
+        r.Speed = speed;
         r.Index = i;
         r.Generation = (ushort)v.Pool.GenerationOf(i);
         r.Type = v.Type[i];

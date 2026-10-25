@@ -760,6 +760,19 @@ public static class ScenarioLoader
         d.CongestionMin = r.Int("congestion_min", 10, min: 0);
         d.MesoHeadwayScale = (float)r.Num("meso_headway_scale", 0.8, min: 0.1, max: 10);
         d.MesoAccelScale = (float)r.Num("meso_accel_scale", 1.0, min: 0.1, max: 10);
+        string model = r.Str("meso_model", "kinematic");
+        d.MesoModel = model switch
+        {
+            "kinematic" => MesoModel.Kinematic,
+            "queue" => MesoModel.Queue,
+            _ => throw new ScenarioException($"{r.ChildPath("meso_model")}: expected \"kinematic\" or \"queue\""),
+        };
+        if (d.MesoModel == MesoModel.Queue && d.Mode != LodMode.AllMeso)
+        {
+            throw new ScenarioException($"{r.ChildPath("meso_model")}: \"queue\" requires mode \"all_meso\" (prototype Q0)");
+        }
+
+        d.QueueHeadwayScale = (float)r.Num("queue_headway_scale", 0, min: 0, max: 10);
         d.Focus = ParseLodPlaces(r, "focus");
         d.Pinned = ParseLodPlaces(r, "pinned");
 

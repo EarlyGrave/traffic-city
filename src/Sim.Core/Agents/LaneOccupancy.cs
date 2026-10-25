@@ -79,11 +79,18 @@ internal sealed class LaneOccupancy
     /// </summary>
     public LodCells? LodCells { get; set; }
 
+    /// <summary>
+    /// Q-meso (ADR-0019, <c>Lod/QueueMeso.cs</c>); не null только при <c>lod.meso_model = "queue"</c>. Получает каждое добавление/снятие члена списка
+    /// (счётчики полосы, освобождение ведомого очереди) и въезд на обычную полосу (переход в очередь). У машин очереди <c>S</c> - позиция въезда, поэтому
+    /// порядок <c>S</c> в списке не проверяется (FIFO держит сам список).
+    /// </summary>
+    public QueueMeso? Queue { get; set; }
+
     /// <summary>Добавляет машину в хвост полосы (въезд с начала; S должен быть не больше S хвоста). Lane[i] = lane.</summary>
     public void PushTail(int lane, int i)
     {
         Debug.Assert(_v.Lane[i] == -1, "PushTail: машина уже на полосе");
-        Debug.Assert(LaneTail[lane] == -1 || _v.S[i] <= _v.S[LaneTail[lane]], "PushTail: нарушен порядок S");
+        Debug.Assert(LaneTail[lane] == -1 || _v.S[i] <= _v.S[LaneTail[lane]] || Queue != null, "PushTail: нарушен порядок S");
         _v.Lane[i] = lane;
         _v.MarkRouteDirty(i);
         Insert(lane, i, ahead: LaneTail[lane], behind: -1);
@@ -94,7 +101,7 @@ internal sealed class LaneOccupancy
     public void PushHead(int lane, int i)
     {
         Debug.Assert(_v.Lane[i] == -1, "PushHead: машина уже на полосе");
-        Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]], "PushHead: нарушен порядок S");
+        Debug.Assert(LaneHead[lane] == -1 || _v.S[i] >= _v.S[LaneHead[lane]] || Queue != null, "PushHead: нарушен порядок S");
         _v.Lane[i] = lane;
         _v.MarkRouteDirty(i);
         MarkFollower(LaneHead[lane]);
@@ -227,6 +234,8 @@ internal sealed class LaneOccupancy
                 // кончиться до такта новой ячейки (до 7 тиков) и обнулить скорость. Пересчёт в ближайшей фазе 5 гарантирует решение не позже чем за 4 тика до такта.
                 _v.Lod[i] |= LodBits.Fresh;
             }
+
+            Queue?.OnEnterLane(lane, i);
         }
     }
 
@@ -282,6 +291,7 @@ internal sealed class LaneOccupancy
         }
 
         MarkLinked(i);
+        Queue?.OnInsert(lane, i);
     }
 
     /// <summary>Заносит машину в <see cref="Linked"/> (без повторов): её класс в фазе 4 изменился не движением по списку (вставка, снятие допуска).</summary>
@@ -323,5 +333,7 @@ internal sealed class LaneOccupancy
         {
             OccMask[lane >> 6] &= ~(1UL << (lane & 63));
         }
+
+        Queue?.OnRemove(lane, i, b);
     }
 }

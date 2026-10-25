@@ -7,6 +7,13 @@ public enum LodMode : int
     AllMeso = 2,   // все ячейки meso (диагностика цены meso, тест эквивалентности)
 }
 
+/// <summary>Модель meso-машин (ADR-0019, sim-lod.md §13.5): кинематика 1-го порядка (L2, M2) или очередь полосы (Q-meso, прототип Q0 - только <see cref="LodMode.AllMeso"/>).</summary>
+public enum MesoModel : int
+{
+    Kinematic = 0, // sim-lod.md §2 (L2): решения раз в 4 тика, движение каждый тик
+    Queue = 1,     // sim-lod.md §13.5, §13.9 (Q0): очередь полосы по событиям; кинематика только на connector'ах и у допущенных
+}
+
 public enum LodFocusKind : byte
 {
     Clear = 0,
@@ -50,4 +57,6 @@ public struct LodDesc
     public LodPlaceDesc[]? Focus;          // начальные слоты фокуса 0..3 (<= 4)
     public LodPlaceDesc[]? Pinned;         // начальные закрепления 4..7 (<= 4)
     public LodTourDesc Tour;               // только хост
+    public MesoModel MesoModel;            // Kinematic (по умолчанию) или Queue (только AllMeso, Q0)
+    public float QueueHeadwayScale;        // Q-meso: множитель T в насыщенном интервале h очереди (0 = дефолт калибровки, sim-lod.md §13.9)
 }

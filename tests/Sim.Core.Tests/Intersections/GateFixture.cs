@@ -278,6 +278,7 @@ internal sealed class FlowDriver
         }
 
         Sim.Step(1);
+        W.Queue?.SynthesizeAll(W.Tick);   // Q-meso: позиции машин очереди - синтез (ViewS), проверки и стоки смотрят на них
 
         // Проверки.
         hw = v.HighWater;
@@ -298,7 +299,7 @@ internal sealed class FlowDriver
 
             if (ld.Kind == LaneKind.Normal)
             {
-                if (v.Speed[i] < 0.1f && ld.Length - v.S[i] <= 3.5f)
+                if (SpeedOf(i) < 0.1f && ld.Length - PosOf(i) <= 3.5f)
                 {
                     StoppedNearLine[i] = true;
                 }
@@ -333,7 +334,7 @@ internal sealed class FlowDriver
             }
         }
 
-        GapViolation ??= Step2.CheckGaps(W);
+        GapViolation ??= W.Queue == null ? Step2.CheckGaps(W) : CheckGapsSynth();
         ConflictViolation ??= Step3Gates.CheckConnectorConflicts(W);
         OnTick?.Invoke(this);
 
@@ -357,7 +358,7 @@ internal sealed class FlowDriver
                 LastTicketOnLane[lane] = t;
             }
 
-            if (!IsSink(lane) || v.S[i] < SinkS)
+            if (!IsSink(lane) || PosOf(i) < SinkS)
             {
                 continue;
             }
@@ -386,6 +387,33 @@ internal sealed class FlowDriver
 
     public int Alive => W.Vehicles.AliveCount;
 
+    /// <summary>Позиция машины: обычно <c>S</c>; у машины очереди Q-meso - синтез (<c>QueueMeso.ViewS</c>, обновляется после каждого тика драйвера).</summary>
+    public float PosOf(int i) => W.Queue != null && W.Queue.IsQueued(i) ? W.Queue.ViewS[i] : W.Vehicles.S[i];
+
+    /// <summary>Скорость машины (у машины очереди - синтез).</summary>
+    public float SpeedOf(int i) => W.Queue != null && W.Queue.IsQueued(i) ? W.Queue.ViewSpeed[i] : W.Vehicles.Speed[i];
+
+    // I6 по синтезированным позициям (Q-meso): S[Ahead] - L[Ahead] >= S.
+    private string? CheckGapsSynth()
+    {
+        VehicleStore v = W.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+            {
+                continue;
+            }
+
+            int a = v.Ahead[i];
+            if (a != -1 && PosOf(a) - v.Length[a] - PosOf(i) < -1e-3f)
+            {
+                return $"tick {W.Tick}: lane {v.Lane[i]}: vehicle {i} (s={PosOf(i):F3}) overlaps leader {a} (s={PosOf(a):F3})";
+            }
+        }
+
+        return null;
+    }
+
     public float MeanTravelS => Exits == 0 ? 0f : (float)(TravelTicksTotal * 0.05 / Exits);
 
     private bool IsSink(int lane)
@@ -410,14 +438,14 @@ internal sealed class FlowDriver
         float speed = Idm.DesiredSpeed(t, W.Net.Lanes[src.Lane].SpeedLimit);
         if (tail != -1)
         {
-            float gap = v.S[tail] - v.Length[tail] - s;
+            float gap = PosOf(tail) - v.Length[tail] - s;
             if (gap < t.MinGap + 4f)
             {
                 return false;
             }
 
             float vSafe = MathF.Sqrt(2f * t.ComfortDecel * (gap - t.MinGap));
-            speed = MathF.Min(speed, MathF.Min(v.Speed[tail] + 2f, vSafe));
+            speed = MathF.Min(speed, MathF.Min(SpeedOf(tail) + 2f, vSafe));
         }
 
         int conn = src.Connector;

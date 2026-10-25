@@ -73,6 +73,9 @@ internal sealed class VehicleStore
     public readonly float[] MesoAllow;     // путь, который meso-машина может проехать до следующего пересчёта, м
     public readonly float[] MesoNext;      // скорость, назначенная фазой 5 meso-машине на этот тик (применяет фаза 6; < 0 - нет); в границах тика, вне хэша
 
+    /// <summary>Q-meso (<c>Lod/QueueMeso.cs</c>): бит i = машина очереди полосы, фазы 5-6 её пропускают. Пустой - модели очереди нет (обход по всем слотам).</summary>
+    public ulong[] QueueBits = Array.Empty<ulong>();
+
     public VehicleStore(int maxVehicles, bool lod = false)
     {
         Debug.Assert(maxVehicles >= 0);

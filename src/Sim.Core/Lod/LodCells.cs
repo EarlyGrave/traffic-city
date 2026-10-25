@@ -18,6 +18,11 @@ internal static class LodBits
 {
     public const byte Meso = 1;
     public const byte Fresh = 2;
+
+    // Q-meso (lod.meso_model = "queue", Lod/QueueMeso.cs; только при World.Queue != null):
+    public const byte Queue = 4;    // машина очереди полосы: фазы 5-6 её не трогают, S/Speed - на момент въезда (или синтез головы)
+    public const byte Head = 8;     // голова очереди, материализованная у стоп-линии (кандидат ворот в такт цвета)
+    public const byte Parked = 16;  // событие «готова» наступило, но впереди недопущенная машина: ждёт освобождения
 }
 
 /// <summary>Смена уровня машины (sim-lod.md §2.5): общая для въезда на полосу и для смены уровня ячейки (L3).</summary>
