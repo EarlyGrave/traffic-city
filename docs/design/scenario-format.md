@@ -361,11 +361,13 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 `transit.passenger_model`: `"counter"` (ADR-0008, счётчик и `passenger_rate_per_min`) | `"agents"` (пассажиры — пешеходы). Дефолт:
 `"agents"`, если секция `peds` включена, иначе `"counter"`. `"agents"` без `peds` — ошибка загрузчика.
 `transit.bidirectional` (bool, дефолт false): к каждому маршруту генератор добавляет обратный по тем же рёбрам. Это открытый вопрос владельцу
-(`pedestrians.md` §17 п. 3, владелец принял 2026-10-25: включать только в `*-peds`). P1: загрузчик читает ключ в `TransitDesc.Bidirectional`, генератор его ещё не использует.
+(`pedestrians.md` §17 п. 3, владелец принял 2026-10-25: включать только в `*-peds`). P1: загрузчик читает ключ в `TransitDesc.Bidirectional`, генератор его ещё не использует (P2 тоже: реализация — P4; ключ уже стоит в `*-peds.json`).
 
 Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64). Без включённой секции эти ключи — ошибка загрузчика.
 Загрузчик переводит скорости в мм/тик (`round(kmh / 3.6 · 50)`), секунды — в тики, метры — в мм для `PedDesc`, где ядро ждёт целые.
-Сценарии: `s1k-peds.json` (s1k + `count` 2 000), `s10k-peds.json` (s10k + `count` 20 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`).
+Сценарии: `s1k-peds.json` (s1k + `count` 2 000, `residents` 4 000), `s10k-peds.json` (s10k + `count` 20 000, `residents` 40 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`). Оба: `transit.bidirectional = true`,
+`activity_s = [30, 120]` (пешие поездки короче 20 минут, а при стандартных 10–30 мин покоя готовых жителей не хватает, чтобы держать `count` активных; с автобусными ногами P4 баланс можно вернуть к дефолту), `max_peds`
+= `1.3 · count`, `max_residents` = `residents`, `max_ped_path_steps` = 64; остальное — как у `s1k.json`/`s10k.json`.
 
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 

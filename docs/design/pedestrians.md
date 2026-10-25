@@ -201,6 +201,41 @@ SoA по индексу `0..Residents−1`. Все поля — состояни
 | конец ноги у назначения | прибытие: метрики, жителю — `Where`/`ReadyTick` (§3), `Free` |
 | `ReadyTick` жителя | житель — в конец FIFO готовых |
 
+### 4.6 Уточнения реализации P2 (код `Peds/*`)
+Отличия от текста §3–§4, найденные при реализации; код — источник истины.
+- **Состав.** Всё состояние живёт в `PedWorld` (`World.Peds`, `null` без `peds`): `PedStore`, `ResidentStore`, `CrossingState`, колесо `TimerWheel`, очередь путей `RingBuffer<PathRequest>`,
+  очереди остановок `StopQHead/StopQTail/StopQCount`, `PaxHead` (по машинам), гистограммы ожидания `CrossWaitHist/StopWaitHist` (256 корзин по 1 с), `PedRouter`, `PedSnapshot`.
+  Фазы: `PedSpawn.Run` (2d), `PedPhase.Route` (3b), `PedPhase.Run` → `PedWorld.RunEvents` (4p). Метка `World.Peds != null` — единственная ветка в `PhaseList`.
+- **Кодирование ребра/шага** одним `int`: `id | StepCross (бит 31) | StepBwd (бит 30)`; расстояние `d = S0Mm + VMmT·(t − T0)` считается **вдоль хода** от узла входа (при `StepBwd` от `B`).
+  `EndMm` — длина ребра либо точка цели на последнем шаге ноги. `EvTick = T0 + max(1, ceil((EndMm − S0Mm) / VMmT))`, событие в тик `EvTick` (тест: точный тик `ceil`).
+  У `PendingPath` в `Edge` лежит ребро стартовой точки без битов (тротуар), в `S0Mm` — смещение от `A`; `AtCrossing` хранит в `Edge` шаг-переход (с битами), `EvTick = −1`,
+  в списки рёбер не входит. Списки рёбер (`EdgeHead/EdgePrev/EdgeNext`, `EdgeCount`) ведут только `Walking`/`Crossing`.
+- **Поля.** `PathSlot` не хранится: арена — фиксированный блок `p · MaxSteps`. Добавлено поле `Leg` (`PedLeg`: `Direct`, `ToStop`, `FromStop`) — конец ноги `ToStop` вызывает `Stops.OnArrive`,
+  остальные — прибытие. `Resident.Where`: `0` дома, `1` на работе, `2` идёт на работу, `3` идёт домой (спека: «2 в пути»; два кода нужны, чтобы после сброса при `BuildRoad`
+  житель вернулся туда, откуда вышел). `ReadyNext`: `−2` — жителя нет в FIFO готовых, `−1` — хвост, иначе следующий.
+- **Колесо** — общее `Util/TimerWheel.cs` (`W = 4096`, ключи: пешеходы `0..MaxPeds−1`, жители `MaxPeds + r`), Q-meso на него не переведено (отдельная задача). Корзины содержат только события
+  своего тика (`when − now < W`), остальное — список переполнения, который переносится в корзины на тиках, кратных `W`. Порядок внутри тика — по ключу (пешеходы раньше жителей).
+  `Collect` обязан вызываться на каждом тике подряд. После `Load` колесо строится из `EvTick`/`ReadyTick` (`PedWorld.RestoreDerived`).
+- **Жители (P2).** `Create` выбирает дом в зоне пропорционально `Weight` (внутренние зоны с полосами появления; если таких нет — случайный сегмент), работу — гравитацией `Weight / max(d, 100 м)^α`
+  среди зон в радиусе `walk_only_m` той же компоненты связности; нет кандидата или недостижима — работа в зоне дома. Точка — полоса зоны → сегмент, сторона, ось `s ∈ [5, Len − 5]` → ребро и смещение
+  (`PedNetwork.PointOnSide`). **Автобусные ноги и пара остановок не выбираются** (`ModeOut = ModeBack = 0`, маршруты и остановки `−1`) — это P4 (`ResidentStore.Create`). Начальный `ReadyTick` — равномерно
+  в `[0, activity_max)`; спавнер: цель `TargetPeds · min(1, Tick / spawn_ramp)`, не больше 64 за тик. Число активных ограничено ещё и числом готовых жителей: при коротких пеших поездках и
+  `activity_s` по умолчанию (10–30 мин) активных будет меньше `peds.count`, поэтому `s1k-peds`/`s10k-peds` задают `activity_s = [30, 120]`; с автобусными ногами (P4) поездка ≈ 20 мин и баланс сменится.
+- **Нет пути** (`NoPath`, норма 0): поездка отменяется, житель остаётся там, откуда вышел, получает новое время занятий; работа в зоне дома **не** переназначается (в P2 путей без пути нет по построению).
+- **`BuildRoad`.** Индексы рёбер сети пешеходов не стабильны (сеть пересобирается целиком), поэтому `PedWorld.OnNetworkGrown` сбрасывает всех пешеходов, очереди и состояние переходов
+  (`PedNetResets++`), жители возвращаются в точку выхода и получают новое время занятий, дома и работы переносятся по анкерам (сегмент, сторона, ось `s`). Плавный перенос пешеходов на новые рёбра — отдельная задача.
+- **Снапшот.** `PedSnapshot` (двойной буфер, длина `HighWater`), вид — тот же `SetRenderView`: «всё» пишет все слоты параллельным заданием, прямоугольник — пешеходов рёбер, чьи ограничивающие
+  прямоугольники пересекают вид (сетка рёбер, списки рёбер, очереди переходов и остановок), слоты прошлой записи обнуляются. Очередь у бордюра: 3 в ряд, 0.6 м на ряд. Позиция `AtStop` — цель ноги (`GoalEdge`, `GoalSMm`), то есть точка доступа остановки на тротуаре; очередь остановки в виде отбирается по ребру цели головы очереди. `PedEdgeCounts`, `CrossingStates`, `BusStopWaiting` — живые массивы ядра (читать между `Step`).
+- **Зонд фаз.** Сверх 1..10 ядро шлёт `11` (2d), `12` (3b), `13` (4p) и метку `14` («время 4a отнести к gate»); без пешеходов этих вызовов нет. `bench --phases` пишет в `phase_ms` ещё
+  `ped_spawn`, `ped_route`, `ped_events`.
+- **Метрики.** Счётчики §9 — поля `SimCounters` (сейв `CNTR` 96–117, в хэше только при `peds`), `ped_events_per_tick` — `SimWork.PedEvents`. Бенч пишет блок `peds` (`ped_active_mean`, `ped_trips_*`, ожидания и p95
+  из гистограмм, `car_cross_delay_s_per_veh_h`, `crossing_closed_share`, пассажиры, пути, `ped_events_per_tick`); `compare` его не гейтит. Команда `run` (ранее не реализована) печатает счётчики.
+- **Команда** `SetPedTarget` — `CommandKind 12` (11 закреплён за `SetLodFocus`, `core-api.md` §4); без `peds` отклоняется (`NotSupported`).
+- **Сейв** (§11) — блоки `PEDS/PPTH/RESI/XING/PQUE` и столбцы `PARM` 86–112, `WRLD` 11–13, `CNTR` 96–117, `SIGS` 39–41 объявлены целиком (список в приложении A `save-format.md`). Индекс перехода `x` в `XING` —
+  слот рукава, переход на перегоне `m` — `NodeArmCount + m`; длина столбцов `NodeArmCount + BusStopCount` (при `midblock_at_stops`). `hash_version` 2. Загрузка строит структуры (`WorldBuilder.BuildPeds(w, create: false)`)
+  до блоков, сеть пешеходов пересобирается в `WorldLoader.Finish`, затем `SaveValidator.ValidatePeds` и `PedWorld.RestoreDerived`. Поток `Peds` при миграции остаётся свежим (в файле `0/0`).
+- **`transit.bidirectional`** в `TransitGenerator` в P2 **не сделан** (спека относит его к пассажирам): остаётся P4. Ключ уже стоит в `s1k-peds.json`/`s10k-peds.json` и пока не действует.
+
 ## 5. Переходы (`Peds/Crossings.cs` + правки `Rules/Intersections/`)
 
 ### 5.1 Состояние перехода `x` (SoA, индекс §2.1)
@@ -512,6 +547,22 @@ public struct PedestrianRenderData
 - **Заморозка для P3 ∥ P4**: все поля `PedDesc`, счётчики §9, столбцы §11 (с дефолтами) и `PedState` объявлены здесь.
 - **Приёмка:** §3, §4, §10, §11 (кроме пассажиров); §15 «Агенты»; PD2–PD4, PD8.
 - **Проверки:** build, тесты `~Peds`, `~Save`, `~Determinism`, format.
+
+**Результат P2 (агент 98).** Реализовано целиком по спеке с отклонениями §4.6. Файлы: `Peds/{PedStore,ResidentStore,CrossingState,PedWorld,PedRouter,PedSpawn,PedPhase,PedHash,PedSnapshot,Crossings,Stops}.cs`,
+`Peds/PedNetwork.Query.cs` (запросы поверх сети P1), `Util/TimerWheel.cs`, `Api/{PedInfo,Simulation.Peds}.cs`, `Save/{SaveSchema.Peds,SaveValidator.Peds,MigrationV2}.cs`, `scenarios/{s1k,s10k}-peds.json`,
+`Sim.Headless` (`run`, блок `peds` бенча). `Stops.OnArrive` вынесен в отдельный файл `Peds/Stops.cs` (в списке P4 был `PedPhase.cs`), чтобы P3 и P4 не правили один файл.
+
+**Замороженная общая поверхность (P3 ∥ P4 её не меняют; меняются только тела методов и логика в своих файлах):**
+- *Типы и поля.* `PedDesc` (все поля P1), `PedState` (6 значений), `PedLeg`, `PedStore` (все поля §4.1 + `Leg`), `ResidentStore` (все поля §3 + `Where` 0–3), `CrossingState` (все столбцы §5.1 + производные),
+  `PedWorld.StopQHead/StopQTail/StopQCount/PaxHead/StopWaiting`, `CrossWaitHist/StopWaitHist`, `SignalStore.XWalkLeft/XClearLeft/XServed` (+ `XSlots = 8`), `World.TargetPeds`, `World.RngPeds`.
+- *Счётчики* `SimCounters` (группа «пешеходы», 21 поле, см. `SimCounters.cs`) и `SimWork.PedEvents`; **столбцы сейва** (список выше) — все объявлены и сохраняются, `world_version` 2 не меняется до конца волны.
+- *Точки расширения* (сигнатуры не менять): `Crossings.OnArrive(w, p, step)` (сейчас выпускает сразу), `Crossings.OnLeave(w, p, x)`, `Crossings.Step(w)` (конец 4p), `Crossings.RestoreDerived(w)` (после `Load`),
+  `Stops.OnArrive(w, p)`, `Stops.RestoreDerived(w)`; хелперы `PedWorld.StartEdge/OnEdgeEnd/Arrive/EnqueuePath/ScheduleResident`, `PedNetwork.XOfEdge/EdgeOfX/MidXBase`.
+- *Хэш и валидатор.* `PedHash` уже включает все поля состояния выше; `SaveValidator.ValidatePeds` проверяет очереди переходов и остановок, списки пассажиров — **строго**: P3/P4 обязаны держать эти инварианты
+  (AtCrossing — в очереди своего перехода, `EvTick = −1`, `Edge` = шаг-переход; AtStop — в очереди остановки; OnBus — в `PaxHead[Bus]`, иначе загрузка отказывает) либо расширять валидатор в своих правках.
+- *Что делает каждая задача.* P3: тела `Crossings.*`, `Rules/Intersections/*`, `Rules/{BehaviourPhase,MesoBehaviour}`, `Agents/IntegratePhase.cs` (аккумулятор), `Rules/Intersections/SignalStore/SignalPhase` (логика `X*Left`), хэш `X*Left` в
+  `StateHash` (секция сигналов; сейчас они не входят в хэш, т.к. всегда 0); `Q-meso + peds → NotSupported` (CreateStatus). P4: тела `Stops.*`, `Transit/Bus*`, `ResidentStore.Create` (выбор способа и пары остановок;
+  поля уже в `RESI`; нога `ToStop` ведёт к точке доступа остановки на тротуаре), `TransitGenerator.Bidirectional`, запасной режим. Корпус w2 (`w2-s1k-peds-t2400`) перегенерирует последняя слитая из P3/P4.
 
 ### P3. Переходы × машины и пешеходная фаза (sonnet, после P2; два коммита: нерегулируемые, затем светофор)
 - **Файлы:**
