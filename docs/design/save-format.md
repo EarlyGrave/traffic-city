@@ -207,7 +207,7 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 индекс типа ТС в `VTYP`, нулевые резервные поля) и возвращает false без изменений при противоречии. Каталог «что есть сейчас» хост передаёт в `LoadOptions.AvailableAssets/AvailableIds` (тот же формат,
 `Sim.Scenarios/AssetManifestBuilder`: `vehicle:<имя>`, `ContentHash` = xxh64 параметров типа); ядро сверяет вид + id побайтно и отдаёт `LoadReport.AssetsInManifest/AssetsMissing/AssetsChanged` и
 `Simulation.AssetStates` (`AssetState` на запись, в сейв не пишется) вместе с `Simulation.VehicleTypes` (габариты заглушки). Каталога нет - ничего не сверяется. Параметры отсутствующего и обновлённого ассета
-всегда из сейва (продолжение побитовое). Опция `AssetParams = UseCurrentForNewSpawns` (новые параметры только новым спавнам - решение владельца) **не реализована**: нужны версионные параметры типа в состоянии; поле `LoadOptions.AssetParams` зарезервировано.
+всегда из сейва (продолжение побитовое). Опция `AssetParams = UseCurrentForNewSpawns` (новые параметры только новым спавнам - решение владельца) **не реализована**: нужны версионные параметры типа в состоянии; поле `LoadOptions.AssetParams` зарезервировано. План: дописываемые строки типов, `modding.md` §6.3 (M5).
 
 ## 6. API ядра
 
