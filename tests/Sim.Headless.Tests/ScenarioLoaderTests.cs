@@ -29,6 +29,8 @@ public class ScenarioLoaderTests
           "max_plan_steps": 2048, "max_pending_trips": 64, "max_signalized_nodes": 1 }
         """;
 
+    private static readonly float[] _tourX = { 0f, 100f };
+    private static readonly float[] _tourZ = { 0f, 200f };
     private static readonly float[] _onlyCar = { 1f, 0f };
     private static readonly float[] _carThreeBusOne = { 3f, 1f };
 
@@ -416,5 +418,106 @@ public class ScenarioLoaderTests
 
         code = ValidateCommand.Run(["validate"], ok, err);
         Assert.Equal(2, code);
+    }
+
+    [Fact]
+    public void LodDefaultsWhenSectionAbsent_ModeOff()
+    {
+        LodDesc l = Load(Minimal()).Lod;
+        Assert.Equal(LodMode.Off, l.Mode);
+        Assert.Equal(1000f, l.CellM);
+        Assert.Equal(15000, l.MicroBudget);
+        Assert.Equal(100, l.EvalTicks);
+        Assert.Equal(600, l.HoldTicks);
+        Assert.Equal(1, l.FocusMarginCells);
+        Assert.True(l.FollowSelected);
+        Assert.True(l.FocusCommands);
+        Assert.Equal(0.1f, l.CongestionShare);
+        Assert.Equal(10, l.CongestionMin);
+        Assert.Equal(1f, l.MesoHeadwayScale);
+        Assert.Equal(1f, l.MesoAccelScale);
+        Assert.Null(l.Focus);
+        Assert.Null(l.Pinned);
+        Assert.Equal(0, l.Tour.PeriodTicks);
+
+        // Пустая секция - те же дефолты, режим off.
+        Assert.Equal(LodMode.Off, Load(Minimal("\"lod\": { }")).Lod.Mode);
+    }
+
+    [Fact]
+    public void LodKeysAreReadWithUnits()
+    {
+        LodDesc l = Load(Minimal(
+            "\"lod\": { \"mode\": \"auto\", \"cell_m\": 500, \"micro_budget\": 3000, \"eval_s\": 2, \"hold_s\": 10, "
+            + "\"focus_margin_cells\": 2, \"follow_selected\": false, \"focus_commands\": false, \"congestion_share\": 0.2, "
+            + "\"congestion_min\": 7, \"meso_headway_scale\": 1.1, \"meso_accel_scale\": 0.9, "
+            + "\"focus\": [ { \"x\": 10, \"z\": 20, \"radius_m\": 1500 } ], "
+            + "\"pinned\": [ { \"x\": 1, \"z\": 2, \"radius_m\": 0 }, { \"x\": 3, \"z\": 4, \"radius_m\": 5 } ], "
+            + "\"tour\": { \"period_s\": 10, \"radius_m\": 1500, \"path\": [[0, 0], [100, 200]] } }")).Lod;
+        Assert.Equal(LodMode.Auto, l.Mode);
+        Assert.Equal(500f, l.CellM);
+        Assert.Equal(3000, l.MicroBudget);
+        Assert.Equal(40, l.EvalTicks);
+        Assert.Equal(200, l.HoldTicks);
+        Assert.Equal(2, l.FocusMarginCells);
+        Assert.False(l.FollowSelected);
+        Assert.False(l.FocusCommands);
+        Assert.Equal(0.2f, l.CongestionShare);
+        Assert.Equal(7, l.CongestionMin);
+        Assert.Equal(1.1f, l.MesoHeadwayScale);
+        Assert.Equal(0.9f, l.MesoAccelScale);
+        Assert.Single(l.Focus!);
+        Assert.Equal(10f, l.Focus![0].X);
+        Assert.Equal(20f, l.Focus[0].Z);
+        Assert.Equal(1500f, l.Focus[0].RadiusM);
+        Assert.Equal(2, l.Pinned!.Length);
+        Assert.Equal(4f, l.Pinned[1].Z);
+        Assert.Equal(200, l.Tour.PeriodTicks);
+        Assert.Equal(1500f, l.Tour.RadiusM);
+        Assert.Equal(_tourX, l.Tour.PathX);
+        Assert.Equal(_tourZ, l.Tour.PathZ);
+
+        Assert.Equal(LodMode.AllMeso, Load(Minimal("\"lod\": { \"mode\": \"all_meso\" }")).Lod.Mode);
+        Assert.Equal(LodMode.Off, Load(Minimal("\"lod\": { \"mode\": \"off\", \"cell_m\": 250 }")).Lod.Mode);
+    }
+
+    [Fact]
+    public void LodErrorsReportPath()
+    {
+        ScenarioException e = Fails(Minimal("\"lod\": { \"mode\": \"fast\" }"));
+        Assert.Contains("$.lod.mode", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"cell_m\": 0 }"));
+        Assert.Contains("$.lod.cell_m", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"micro_budget\": -1 }"));
+        Assert.Contains("$.lod.micro_budget", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"congestion_share\": 1.5 }"));
+        Assert.Contains("$.lod.congestion_share", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"follow_selected\": 1 }"));
+        Assert.Contains("$.lod.follow_selected", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"cell_mm\": 1 }"));
+        Assert.Contains("$.lod.cell_mm", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"focus\": [ { \"x\": 1, \"z\": 2 } ] }"));
+        Assert.Contains("$.lod.focus[0].radius_m", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"focus\": [ { \"x\": 1, \"z\": 2, \"radius_m\": 3, \"y\": 0 } ] }"));
+        Assert.Contains("$.lod.focus[0].y", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"pinned\": [ {\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1}, "
+            + "{\"x\":0,\"z\":0,\"radius_m\":1}, {\"x\":0,\"z\":0,\"radius_m\":1} ] }"));
+        Assert.Contains("$.lod.pinned", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"period_s\": 5, \"radius_m\": 100, \"path\": [] } }"));
+        Assert.Contains("$.lod.tour.path", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"period_s\": 5, \"radius_m\": 100, \"path\": [[1]] } }"));
+        Assert.Contains("$.lod.tour.path[0]", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"lod\": { \"tour\": { \"radius_m\": 100, \"path\": [[1, 2]] } }"));
+        Assert.Contains("$.lod.tour.period_s", e.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("s1k")]
+    [InlineData("s10k")]
+    public void LadderScenariosWithoutLodSection_AreModeOff(string name)
+    {
+        // До шага L5 лестница без секции lod: поведение и хэш прежние.
+        LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
+        Assert.Equal(LodMode.Off, sc.Desc.Lod.Mode);
     }
 }
