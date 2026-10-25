@@ -83,4 +83,4 @@
 | 71 | signals-s1 (worktree) | sonnet | 2.5 S1: метрики светофоров и замер «до» | done, merged (левые ждут 21–22 с, max 70 с) |
 | 72 | saves-sv1 (worktree) | sonnet | 2.6b SV1: контейнер сейва (XXH64, блоки, столбцы) | done, merged (27 тестов, fuzz) |
 | 79 | signals-s2 (worktree) | sonnet | 2.5 S2: Adaptive со стрелкой | wip |
-| 80 | saves-sv2 (worktree) | sonnet | 2.6b SV2: состояние мира в сейве + канонический порядок сети | wip |
+| 80 | saves-sv2 (worktree) | sonnet | 2.6b SV2: состояние мира в сейве + канонический порядок сети | done, merged (29 блоков, round-trip/продолжение/потоки/fuzz) |
