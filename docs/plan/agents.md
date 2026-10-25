@@ -79,6 +79,6 @@
 | 75 | active-a2 (worktree) | sonnet | 2.6 A2: ворота по маскам | done, merged (фаза 4 −17…−21%, цель не взята; инкрементальные OutReserved/NodeBusy — отложено) |
 | 76 | active-a34 (worktree) | sonnet | 2.6 A3+A4: переходы/прибытие/AssignConnectors по маскам, метрики в фазе 6 | done, merged (s100k фазы 6–9: 4.25 → 1.93 мс, хэши равны) |
 | 77 | revoke-r1 (worktree) | sonnet | 2.6 R1: снятие допуска на красном | done, merged (stuck off 18→6, meso 255→59; поездки off −1.1% — принято) |
-| 78 | qmeso-q0 (worktree) | opus | 2.6 Q0: прототип Q-meso (ворота решения) | wip |
+| 78 | qmeso-q0 (worktree) | opus | 2.6 Q0: прототип Q-meso (ворота решения) | done, merged под флагом; ворота НЕ пройдены (0.150 мкс vs 0.03; stuck 4.4× micro) |
 | 71 | signals-s1 (worktree) | sonnet | 2.5 S1: метрики светофоров и замер «до» | done, merged (левые ждут 21–22 с, max 70 с) |
 | 72 | saves-sv1 (worktree) | sonnet | 2.6b SV1: контейнер сейва (XXH64, блоки, столбцы) | done, merged (27 тестов, fuzz) |
