@@ -183,7 +183,7 @@ public sealed class BenchCommandTests : IDisposable
 
     [Theory]
     [InlineData("--signal-mode", "bogus", "expected")]
-    [InlineData("--signal-coordination", "alternate", "not implemented")]
+    [InlineData("--signal-coordination", "bogus", "expected")]
     [InlineData("--seed", "-1", "unsigned")]
     public void Bench_UnsupportedSignalOptions_AreClearErrors(string opt, string value, string text)
     {

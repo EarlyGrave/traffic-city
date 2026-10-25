@@ -15,6 +15,7 @@ internal struct SignalPlanSeed
     public ushort YellowTicks, AllRedTicks;
     public ushort OffsetTicks;    // сдвиг цикла (зелёная волна)
     public bool Adaptive;         // 2.5 (ADR-0018): city.signal_mode = adaptive; Green0/Green1 тогда - MaxGreen осей
+    public ushort CycleTicks;     // 2.5 S3: > 0 - координация (общий цикл C, окна осей C/2); только Adaptive с 2 осями
 }
 
 internal struct CityGenResult
@@ -394,6 +395,15 @@ internal static class CityGenerator
             }
         }
 
+        // 2.5 S3 (intersections.md 6.7): общий цикл координации и опорная точка офсетов (минимум координат светофорных узлов).
+        bool coordinated = city.SignalCoordination == CitySignalCoordination.Alternate;
+        float vp = city.ArterialSpeed * (city.ProgressionSpeedFactor > 0f ? city.ProgressionSpeedFactor : 1f);
+        float tProg = city.ArterialEvery * bx / vp;   // проезд между соседними светофорами артерии, с
+        int coordCycle = RoundI((tProg * 2f >= 50f && tProg * 2f <= 90f ? tProg * 2f : tProg >= 50f && tProg <= 90f ? tProg : 72f) * 20f);
+        coordCycle += coordCycle & 1;
+        float x0 = float.MaxValue;
+        float z0 = float.MaxValue;
+
         // проход 1: класс и счёт светофоров
         int signalCount = 0;
         for (int pass = 0; pass < 2; pass++)
@@ -453,6 +463,8 @@ internal static class CityGenerator
                 if (pass == 0)
                 {
                     signalCount++;
+                    x0 = Math.Min(x0, store.Nodes[n].Position.X);
+                    z0 = Math.Min(z0, store.Nodes[n].Position.Z);
                     continue;
                 }
 
@@ -482,8 +494,45 @@ internal static class CityGenerator
                 int yellow = rules.DefaultYellowTicks;
                 int allRed = rules.DefaultAllRedTicks;
                 int cycle = g0 + g1 + (2 * (yellow + allRed));
-                float offF = colOrd[i] * (float)city.ArterialEvery * bx / city.ArterialSpeed * 20f;
-                int offset = RoundI(offF) % cycle;
+                int offset;
+                int seedCycle = 0;
+                if (city.SignalCoordination == CitySignalCoordination.Legacy)
+                {
+                    float offF = colOrd[i] * (float)city.ArterialEvery * bx / city.ArterialSpeed * 20f;
+                    offset = RoundI(offF) % cycle;
+                }
+                else if (!coordinated)
+                {
+                    offset = 0;   // none
+                }
+                else
+                {
+                    // Волна: начало окна оси 0 позже на d / v_p по мере удаления от (x0, z0) (знак: часы узла = тик + Offset, поэтому Offset = -d/v_p mod C).
+                    // Ось 1 сдвинута на C/2 внутри цикла; на регулярной сетке (C = 2T) волна двусторонняя по обеим осям.
+                    Vec2 pos = store.Nodes[n].Position;
+                    float d = (pos.X - x0) + (pos.Z - z0);
+                    offset = ((-RoundI(d / vp * 20f) % coordCycle) + coordCycle) % coordCycle;
+                    if (sc == 0)
+                    {
+                        if (city.SignalMode == CitySignalMode.Adaptive)
+                        {
+                            // MaxGreen оси остаётся 24 с (замер s10k: MaxGreen = всё окно давало больше stuck и ожидания левых); окна задаёт CycleTicks.
+                            seedCycle = coordCycle;
+                            g0 = DefaultGreenTicks;
+                            g1 = DefaultGreenTicks;
+                        }
+                        else
+                        {
+                            g0 = (ushort)((coordCycle / 2) - yellow - allRed);
+                            g1 = g0;
+                        }
+                    }
+                    else
+                    {
+                        offset %= cycle;
+                    }
+                }
+
                 result.SignalPlans[written++] = new SignalPlanSeed
                 {
                     Node = n,
@@ -494,6 +543,7 @@ internal static class CityGenerator
                     AllRedTicks = (ushort)allRed,
                     OffsetTicks = (ushort)offset,
                     Adaptive = city.SignalMode == CitySignalMode.Adaptive,
+                    CycleTicks = (ushort)seedCycle,
                 };
             }
 

@@ -127,7 +127,7 @@ public enum CitySignalMode : int
     Adaptive = 1,
 }
 
-/// <summary>Офсеты светофоров генератора (2.5, ADR-0018). До S3 ядро умеет только <see cref="Legacy"/> (формула этапа 1).</summary>
+/// <summary>Офсеты светофоров генератора (2.5, ADR-0018, intersections.md 6.7): формула этапа 1, чередующаяся волна или без офсетов.</summary>
 public enum CitySignalCoordination : int
 {
     Legacy = 0,
@@ -152,7 +152,8 @@ public struct CityGenDesc
     public CitySignals Signals;
     public MinorControl MinorControl;
     public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
-    public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (пока единственное поддержанное)
+    public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (формула этапа 1, дефолт), 1 = alternate, 2 = none
+    public float ProgressionSpeedFactor;               // city.progression_speed_factor: v_p = ArterialSpeed * factor (0 = 1.0), калибровка волны alternate
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----

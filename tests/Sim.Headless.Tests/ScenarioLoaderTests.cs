@@ -323,12 +323,15 @@ public class ScenarioLoaderTests
     {
         CityGenDesc c = Load(Minimal("\"city\": { \"scale\": 1.0 }")).City;
         Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);   // 2.5 S2: дефолт спеки
-        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);
+        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);   // 2.5 S3: alternate - опция, дефолт legacy
         c = Load(Minimal("\"city\": { \"signal_mode\": \"fixed\", \"signal_coordination\": \"legacy\" }")).City;
         Assert.Equal(CitySignalMode.Fixed, c.SignalMode);
+        Assert.Equal(CitySignalCoordination.Legacy, c.SignalCoordination);
+        Assert.Equal(CitySignalCoordination.Alternate, Load(Minimal("\"city\": { \"signal_coordination\": \"alternate\" }")).City.SignalCoordination);
+        Assert.Equal(CitySignalCoordination.None, Load(Minimal("\"city\": { \"signal_coordination\": \"none\" }")).City.SignalCoordination);
         c = Load(Minimal("\"city\": { \"signal_mode\": \"adaptive\" }")).City;
         Assert.Equal(CitySignalMode.Adaptive, c.SignalMode);
-        Assert.Contains("$.city.signal_coordination", Fails(Minimal("\"city\": { \"signal_coordination\": \"alternate\" }")).Message, StringComparison.Ordinal);
+        Assert.Contains("$.city.signal_coordination", Fails(Minimal("\"city\": { \"signal_coordination\": \"x\" }")).Message, StringComparison.Ordinal);
         Assert.Contains("expected", Fails(Minimal("\"city\": { \"signal_mode\": \"x\" }")).Message, StringComparison.Ordinal);
     }
 

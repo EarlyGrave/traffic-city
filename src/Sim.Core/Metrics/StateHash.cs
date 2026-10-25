@@ -123,6 +123,11 @@ internal static class StateHash
             h.Add((int)sg.TicksLeft[s]);
             h.Add((int)sg.GreenElapsed[s]);
             h.Add((int)sg.GapLeft[s]);
+            if (sg.CycleTicks[s] > 0)   // 2.5 S3: только координация - хэш прежних режимов не меняется
+            {
+                h.Add((int)sg.SpillTicks[s]);
+            }
+
             for (int a = 0; a < sg.ArmCountOf[s]; a++)
             {
                 h.Add((int)sg.ArmLeftYield[(s * SignalStore.ArmCap) + a]);

@@ -293,7 +293,8 @@ public static class ScenarioLoader
             Signals = CitySignals.ArterialXArterial,
             MinorControl = MinorControl.Yield,
             SignalMode = CitySignalMode.Adaptive,                 // 2.5 S2: дефолт спеки (ADR-0018); "fixed" - явно в сценарии
-            SignalCoordination = CitySignalCoordination.Legacy,   // 2.5 S1: дефолт спеки ("alternate") включится в S3
+            SignalCoordination = CitySignalCoordination.Legacy,   // 2.5 S3: alternate - опция, дефолт остаётся legacy (замер s10k, ADR-0018)
+            ProgressionSpeedFactor = 1f,
         };
         if (r == null)
         {
@@ -353,6 +354,7 @@ public static class ScenarioLoader
 
         c.SignalMode = ParseSignalMode(r.Str("signal_mode", "adaptive"), r.ChildPath("signal_mode"));
         c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
+        c.ProgressionSpeedFactor = (float)r.Num("progression_speed_factor", 1.0, min: 0.5, max: 1.5);
 
         r.Finish();
         return c;
@@ -370,12 +372,13 @@ public static class ScenarioLoader
     };
 
     /// <summary>
-    /// <c>city.signal_coordination</c>: ядро пока умеет только "legacy" (формула офсетов этапа 1); "alternate"/"none" - шаг S3.
+    /// <c>city.signal_coordination</c> (2.5 S3): "alternate" (чередующаяся волна, опция), "legacy" (дефолт, формула офсетов этапа 1), "none" (без офсетов).
     /// </summary>
     public static CitySignalCoordination ParseSignalCoordination(string value, string where) => value switch
     {
         "legacy" => CitySignalCoordination.Legacy,
-        "alternate" or "none" => throw new ScenarioException($"{where}: \"{value}\" is not implemented yet (ADR-0018, step 2.5 S3); only \"legacy\" is supported"),
+        "alternate" => CitySignalCoordination.Alternate,
+        "none" => CitySignalCoordination.None,
         _ => throw new ScenarioException($"{where}: expected \"alternate\", \"legacy\" or \"none\""),
     };
 

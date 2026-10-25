@@ -24,7 +24,7 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode fixed] [--signal-coordination legacy] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>]\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
@@ -32,7 +32,7 @@ public static class BenchCommand
         "                       x0,z0,x1,z1 in metres; JSON gets view, compare refuses to mix values\n" +
         "  --seed S             override the scenario seed (unsigned 64-bit); JSON gets seed\n" +
         "  --signal-mode M      override city.signal_mode (adaptive|fixed; the core supports only fixed until step 2.5 S2); JSON gets signal_mode\n" +
-        "  --signal-coordination K  override city.signal_coordination (alternate|legacy|none; only legacy until S3); JSON gets signal_coordination\n" +
+        "  --signal-coordination K  override city.signal_coordination (alternate|legacy|none); JSON gets signal_coordination\n" +
         "  --warmup-until-full  after --warmup-ticks keep warming up (in chunks of 20 ticks) until active vehicles >= 98% of the scenario target,\n" +
         "                       but not beyond --warmup-max-ticks in total (default 30000); JSON gets ramp_complete/active_*/target_vehicles.\n";
 

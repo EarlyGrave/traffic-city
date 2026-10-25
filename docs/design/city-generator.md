@@ -264,7 +264,8 @@ internal struct SignalPlanSeed
 - **2.5 (ADR-0018):** `SignalPlanSeed` дополняется `Mode` (`city.signal_mode`: `adaptive` — дефолт, `fixed`) и `CycleTicks`.
   Офсеты по `city.signal_coordination`: `alternate` (дефолт) — `intersections.md` §6.7 (`C = 2T`, `Offset = ((x−x₀)+(z−z₀))/v_p mod C`,
   `Fixed`: `Green = C/2 − Yellow − AllRed`); `legacy` — правило выше (golden-хэши этапа 1/2.4); `none` — `Offset = 0`, без цикла.
-  PRNG не трогается (§3.9 не меняется).
+  PRNG не трогается (§3.9 не меняется). Реализация S3 (подробности и замеры - `intersections.md` §6.5/§14.0): дефолт сценария пока `legacy`; `SignalPlanSeed.CycleTicks` (координация только у `Adaptive` артерия x артерия),
+  `city.progression_speed_factor`, знак офсета `-d/v_p`.
 - Состав фаз (какие connector'ы зелёные, разрешённые левые) — спека перекрёстков (`SignalStore`,
   core-api §6.7); `WorldBuilder` передаёт `SignalPlans` туда. До появления шага 3 `SignalPlans`
   просто хранится в результате, а `NodeData.Signal = -1`.

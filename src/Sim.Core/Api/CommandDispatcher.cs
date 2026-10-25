@@ -210,7 +210,7 @@ internal static class CommandDispatcher
             return;
         }
 
-        w.Signals.ApplyPlan(nd.Signal, in resolved);
+        w.Signals.ApplyPlan(nd.Signal, in resolved, w.Tick);
         w.Vehicles.MarkAllRouteDirty();
         Applied(w, in cmd);
     }
