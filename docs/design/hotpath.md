@@ -240,7 +240,8 @@ p95 > 4 мс — резерв (обход по полосам, затем 2 по
 `compare` печатает `work.*` и `phase_ms.*.p50/p95` справочно (не влияет на exit code). Команда `hash` и golden-тест
 (`tests/Sim.Headless.Tests/HotPathGoldenHashTests.cs`): хэши сняты на `274dc1b` до правок и совпали после H1, в том числе
 при полной загрузке s10k (`hash --scenario s10k --warmup-until-full --ticks 400 --every 200`: tick=6100 `861672e99fa95a39`,
-tick=6300 `c73832373fb67bd3`).
+tick=6300 `c73832373fb67bd3`). **С 2.6r R1** (снятие допуска на красном) эталон полной загрузки s10k другой: tick=6100 `930f16b7951f5fd7`,
+tick=6300 `abdc420cf70ba05b` (1, 2 и 3 потока); значения `861672e99fa95a39`/`c73832373fb67bd3` ниже в записях H1–P6 - приёмка тех шагов, исторические.
 
 «До» для H2–H5: `bench --scenario s10k --warmup-until-full --ticks 2000 --repeat 1 --phases` (активных 9 818 -> 9 997,
 рампа 5 900 тиков, 0 B/тик, stuck 0, tick p50/p95 5.12/7.96 мс — общий 4-vCPU контейнер, load ~3), мс на тик:

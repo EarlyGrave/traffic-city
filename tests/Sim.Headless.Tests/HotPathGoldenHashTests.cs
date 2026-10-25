@@ -16,6 +16,9 @@ namespace Sim.Headless.Tests;
 /// с объяснением, как baseline. Полную загрузку s10k проверяют командой
 /// <c>hash --scenario s10k --warmup-until-full --ticks 400 --every 200</c> (на 274dc1b и после H1:
 /// tick=6100 861672e99fa95a39, tick=6300 c73832373fb67bd3).
+/// 2.6r R1 (снятие допуска на красном, intersections.md 5.4 п. 6): первые отзывы допусков случаются на s1k между тиками 3000 и 4000,
+/// поэтому хэши до тика 3000 и s10k до тика 600 не изменились, а тик 4000 s1k - новый (был 546ef7677165a0b6), полная загрузка s10k:
+/// tick=6100 930f16b7951f5fd7, tick=6300 abdc420cf70ba05b (при 1, 2 и 3 потоках).
 /// </summary>
 public sealed class HotPathGoldenHashTests : IDisposable
 {
@@ -41,14 +44,14 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S1k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "b938c1c516383c49", "47392c93d47b0a68", "ebb7ba91cca224be" };
+        string[] expected = { "b938c1c516383c49", "47392c93d47b0a68", "ebb7ba91cca224be", "7f669aa4e5bcb782" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
             Assert.Equal(expected[k], Hex(sim.ComputeStateHash()));
         }
 
-        Assert.Equal(3000, sim.Tick);
+        Assert.Equal(4000, sim.Tick);
     }
 
     [Theory]
