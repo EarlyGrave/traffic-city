@@ -47,7 +47,7 @@ internal sealed class VehicleStore
     public readonly int[] DestLane;
     public readonly float[] DestS;
     public readonly int[] NextConn;        // кэш NextConnector: connector ближайшей развилки по маршруту (-1 = не выбран); пересчитывает конец фазы 7
-    public readonly byte[] RouteDirty;     // 1 = у машины изменился вход AssignConnectors (полоса, маршрут, окно, флаги); вне хэша (ADR-0016, D7)
+    public readonly ulong[] RouteDirtyBits; // бит i = у машины изменился вход AssignConnectors (полоса, маршрут, окно, флаги); вне хэша (ADR-0016, D7; ADR-0019, A3: обход по маске)
 
     // --- ворота перекрёстка (intersections.md §4, §5; биты GateState - Rules.Intersections.GateRules) ---
     public readonly byte[] GateState;      // бит0 Granted (допуск выдан), бит1 StoppedAtLine
@@ -103,8 +103,8 @@ internal sealed class VehicleStore
         DestLane = new int[maxVehicles];
         DestS = new float[maxVehicles];
         NextConn = new int[maxVehicles];
-        RouteDirty = new byte[maxVehicles];
-        Array.Fill(RouteDirty, (byte)1);
+        RouteDirtyBits = new ulong[(maxVehicles + 63) >> 6];
+        Array.Fill(RouteDirtyBits, ulong.MaxValue);
         GateState = new byte[maxVehicles];
         GrantConnector = new int[maxVehicles];
         Ticket = new uint[maxVehicles];
@@ -175,7 +175,14 @@ internal sealed class VehicleStore
     }
 
     /// <summary>Помечает все машины для пересчёта в <c>AssignConnectors</c> (изменилась сеть/узлы; ADR-0016, D7).</summary>
-    public void MarkAllRouteDirty() => Array.Fill(RouteDirty, (byte)1);
+    public void MarkAllRouteDirty() => Array.Fill(RouteDirtyBits, ulong.MaxValue);
+
+    /// <summary>Помечает машину для пересчёта в <c>AssignConnectors</c>.</summary>
+    public void MarkRouteDirty(int i) => RouteDirtyBits[i >> 6] |= 1UL << (i & 63);
+
+    public bool IsRouteDirty(int i) => ((RouteDirtyBits[i >> 6] >> (i & 63)) & 1UL) != 0UL;
+
+    public void ClearRouteDirty(int i) => RouteDirtyBits[i >> 6] &= ~(1UL << (i & 63));
 
     private void ResetSlot(int i)
     {
@@ -204,7 +211,7 @@ internal sealed class VehicleStore
         DestLane[i] = -1;
         DestS[i] = 0f;
         NextConn[i] = -1;
-        RouteDirty[i] = 1;
+        MarkRouteDirty(i);
         GateState[i] = 0;
         GrantConnector[i] = -1;
         Ticket[i] = 0;

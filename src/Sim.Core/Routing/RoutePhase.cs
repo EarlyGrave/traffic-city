@@ -94,7 +94,7 @@ internal static class RoutePhase
             }
 
             v.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.RefillQueued);
-            v.RouteDirty[i] = 1;
+            v.MarkRouteDirty(i);
             if (v.Route[i] < 0 || (v.Flags[i] & (byte)VehicleFlags.RouteMissed) != 0)
             {
                 continue;
@@ -103,7 +103,7 @@ internal static class RoutePhase
             if (!w.Router.Refill(i))
             {
                 v.Flags[i] |= (byte)VehicleFlags.RouteMissed;
-                v.RouteDirty[i] = 1;
+                v.MarkRouteDirty(i);
             }
         }
     }
@@ -273,7 +273,7 @@ internal static class RoutePhase
                 v.Route[i] = h.Index;
                 v.RouteGen[i] = h.Generation;
                 v.RouteCursor[i] = cursor;
-                v.RouteDirty[i] = 1;
+                v.MarkRouteDirty(i);
                 v.NextConn[i] = -1; // пересчитает AssignConnectors в конце фазы 7
             }
             else
@@ -355,7 +355,7 @@ internal static class RoutePhase
             v.Route[i] = h.Index;
             v.RouteGen[i] = h.Generation;
             v.RouteCursor[i] = 0;
-            v.RouteDirty[i] = 1;
+            v.MarkRouteDirty(i);
             v.NextConn[i] = -1;
             w.Counters.TimedReroutes++;
         }

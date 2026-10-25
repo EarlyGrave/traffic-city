@@ -68,7 +68,7 @@ internal static class RouteNav
         if (e.Net.Lanes[fromLane].Kind == LaneKind.Connector)
         {
             v.RouteCursor[i]++;
-            v.RouteDirty[i] = 1;
+            v.MarkRouteDirty(i);
             return;
         }
 
@@ -78,7 +78,7 @@ internal static class RouteNav
             if (e.Routes.Steps![idx1].Lane == toLane)
             {
                 v.RouteCursor[i]++;
-                v.RouteDirty[i] = 1;
+                v.MarkRouteDirty(i);
                 return;
             }
 
@@ -87,19 +87,20 @@ internal static class RouteNav
                 RuleEnv.DirSegOf(e.Net, e.Net.Lanes[toLane].ToLane) == RuleEnv.DirSegOf(e.Net, e.Routes.Steps[idx2].Lane))
             {
                 v.RouteCursor[i]++;
-                v.RouteDirty[i] = 1;
+                v.MarkRouteDirty(i);
                 return;
             }
         }
 
         v.Flags[i] |= (byte)VehicleFlags.RouteMissed;
-        v.RouteDirty[i] = 1;
+        v.MarkRouteDirty(i);
     }
 
     /// <summary>
-    /// Конец фазы 7. Для каждой живой машины с флагом <see cref="VehicleStore.RouteDirty"/> (ADR-0016, D7): промах -> маршрут освобождается, <c>Route = -1</c>, машина в очередь перемаршрутизации
+    /// Конец фазы 7. Для каждой живой машины с флагом <see cref="VehicleStore.RouteDirtyBits"/> (ADR-0016, D7): промах -> маршрут освобождается, <c>Route = -1</c>, машина в очередь перемаршрутизации
     /// (<c>Reroutes++</c>); затем <c>NextConn</c> пересчитывается, если он не от текущей полосы (въезд на новую полосу, смена полосы).
-    /// Обход по возрастанию индекса - детерминирован.
+    /// Обход по маске грязных машин по возрастанию индекса (ADR-0019, A3) - тот же порядок, что у прежнего прохода по всем; слово маски
+    /// перечитывается после каждой машины, поэтому бит, выставленный по ходу обработки у большего индекса, не теряется.
     /// </summary>
     public static void AssignConnectors(World w)
     {
@@ -108,41 +109,70 @@ internal static class RouteNav
         int hw = v.HighWater;
         int refillChecks = 0;
         int recomputes = 0;
+        ulong[] bits = v.RouteDirtyBits;
+        int words = (hw + 63) >> 6;
+#if DEBUG
         for (int i = 0; i < hw; i++)
         {
-            int lane = v.Lane[i];
-            if (lane < 0 || !v.Pool.IsAlive(i))
+            // Debug-сверка D7: для машины без флага полный расчёт ничего бы не изменил (мёртвые и без полосы не считаются).
+            if (!v.IsRouteDirty(i) && v.Lane[i] >= 0 && v.Pool.IsAlive(i))
             {
-                continue;
+                Debug.Assert(UnchangedByFullRecalc(w, i, v.Lane[i]), "RouteDirty flag missed: AssignConnectors result differs");
             }
-
-            if (v.RouteDirty[i] == 0)
+        }
+#endif
+        for (int k = 0; k < words; k++)
+        {
+            int pos = 0;
+            while (pos < 64)
             {
-                // Вход расчёта не менялся с прошлой фазы 7: результат прежний (ADR-0016, D7). В Debug - сверка с полным расчётом.
-                Debug.Assert(UnchangedByFullRecalc(w, i, lane), "RouteDirty flag missed: AssignConnectors result differs");
-                continue;
-            }
+                ulong m = bits[k] & (ulong.MaxValue << pos);   // слово перечитывается: бит, выставленный по ходу обработки, не теряется
+                if (m == 0UL)
+                {
+                    break;
+                }
 
-            v.RouteDirty[i] = 0;
-            if ((v.Flags[i] & (byte)VehicleFlags.RouteMissed) != 0)
-            {
-                ProcessMiss(w, i);
-            }
+                int b = System.Numerics.BitOperations.TrailingZeroCount(m);
+                int i = (k << 6) + b;
+                pos = b + 1;
+                if (i >= hw)
+                {
+                    break;
+                }
 
-            refillChecks++;
-            if (!QueueRefill(w, i))
-            {
-                v.RouteDirty[i] = 1; // очередь дозаполнения полна: повторить на следующем тике
-            }
+                if (!v.Pool.IsAlive(i))
+                {
+                    v.ClearRouteDirty(i);   // слот свободен: Reset при спавне выставит бит заново
+                    continue;
+                }
 
-            int cur = v.NextConn[i];
-            if (cur >= 0 && net.Lanes[cur].FromLane == lane && net.Lanes[lane].Kind == LaneKind.Normal)
-            {
-                continue;
-            }
+                int lane = v.Lane[i];
+                if (lane < 0)
+                {
+                    continue;
+                }
 
-            recomputes++;
-            v.NextConn[i] = NextConnector(w, i, lane);
+                v.ClearRouteDirty(i);
+                if ((v.Flags[i] & (byte)VehicleFlags.RouteMissed) != 0)
+                {
+                    ProcessMiss(w, i);
+                }
+
+                refillChecks++;
+                if (!QueueRefill(w, i))
+                {
+                    v.MarkRouteDirty(i); // очередь дозаполнения полна: повторить на следующем тике
+                }
+
+                int cur = v.NextConn[i];
+                if (cur >= 0 && net.Lanes[cur].FromLane == lane && net.Lanes[lane].Kind == LaneKind.Normal)
+                {
+                    continue;
+                }
+
+                recomputes++;
+                v.NextConn[i] = NextConnector(w, i, lane);
+            }
         }
 
         w.Work.RouteRefillChecks += refillChecks;

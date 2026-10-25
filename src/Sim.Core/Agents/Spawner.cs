@@ -506,7 +506,7 @@ internal static class Spawner
         v.Route[i] = trip.Route;
         v.RouteGen[i] = trip.RouteGen;
         v.RouteCursor[i] = 0;
-        v.RouteDirty[i] = 1;
+        v.MarkRouteDirty(i);
         w.Occupancy.InsertBetween(lane, i, ahead, behind);
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;

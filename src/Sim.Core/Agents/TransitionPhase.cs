@@ -27,10 +27,15 @@ internal static class TransitionPhase
 
     public static void Run(World w)
     {
-        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters);
+        Run(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.NodeThroughput, ref w.Counters, w.Masks);
         AssignConnectors(w);
     }
 
+    /// <summary>
+    /// Фаза 7. Без <paramref name="masks"/> - проход по всем слотам (тесты, микробенчмарки); с масками (ADR-0019, A3) - по маске
+    /// <see cref="TickMasks.Trans"/> фазы 6 по возрастанию индекса: остальным машинам цикл ничего бы не сделал (нет смены полосы,
+    /// нет намерения, <c>S &lt; Length</c>), а чужие машины эта фаза для условия машины не меняет. Debug-сверка маски с полным проходом.
+    /// </summary>
     public static void Run(
         NetworkStore net,
         VehicleStore v,
@@ -39,52 +44,99 @@ internal static class TransitionPhase
         ReadOnlySpan<VehicleTypeDesc> types,
         in PhysicsParams p,
         Span<uint> nodeThroughput,
-        ref SimCounters c)
+        ref SimCounters c,
+        TickMasks? masks = null)
     {
         var e = new RuleEnv(net, v, occ, routes);
         int hw = v.HighWater;
+        if (masks == null)
+        {
+            for (int i = 0; i < hw; i++)
+            {
+                Vehicle(e, types, p, nodeThroughput, i, ref c, null);
+            }
+
+            return;
+        }
+
+#if DEBUG
+        DebugCheckMask(net, v, hw, masks);
+#endif
+        ulong[] trans = masks.Trans;
+        int words = TickMasks.WordsFor(hw);
+        for (int k = 0; k < words; k++)
+        {
+            ulong m = trans[k];
+            while (m != 0UL)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(m);
+                m &= m - 1;
+                Vehicle(e, types, p, nodeThroughput, (k << 6) + b, ref c, masks);
+            }
+        }
+    }
+
+#if DEBUG
+    // Эталон маски фазы 7: предикат прежнего прохода по всем слотам.
+    private static void DebugCheckMask(NetworkStore net, VehicleStore v, int hw, TickMasks masks)
+    {
         for (int i = 0; i < hw; i++)
         {
-            if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
-            {
-                continue;
-            }
+            bool expected = v.Pool.IsAlive(i) && v.Lane[i] >= 0
+                && (v.GhostLane[i] != -1 || v.LaneChangeDir[i] != 0 || v.S[i] >= net.Lanes[v.Lane[i]].Length);
+            System.Diagnostics.Debug.Assert(TickMasks.Test(masks.Trans, i) == expected, "Trans mask differs from full scan");
+        }
+    }
+#endif
 
-            ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
-            if (v.GhostLane[i] != -1)
-            {
-                AdvanceLaneChange(e, t, p, i);
-            }
+    private static void Vehicle(in RuleEnv e, ReadOnlySpan<VehicleTypeDesc> types, in PhysicsParams p, Span<uint> nodeThroughput, int i, ref SimCounters c, TickMasks? masks)
+    {
+        VehicleStore v = e.V;
+        if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
+        {
+            return;
+        }
 
-            int dir = v.LaneChangeDir[i];
-            if (dir != 0)
+        ref readonly VehicleTypeDesc t = ref types[v.Type[i]];
+        if (v.GhostLane[i] != -1)
+        {
+            AdvanceLaneChange(e, t, p, i);
+        }
+
+        int dir = v.LaneChangeDir[i];
+        if (dir != 0)
+        {
+            v.LaneChangeDir[i] = 0;
+            if (v.GhostLane[i] == -1)
             {
-                v.LaneChangeDir[i] = 0;
-                if (v.GhostLane[i] == -1)
+                if (TryBeginLaneChange(e, t, p, i, dir))
                 {
-                    if (TryBeginLaneChange(e, t, p, i, dir))
+                    c.LaneChanges++;
+                    if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
                     {
-                        c.LaneChanges++;
-                        if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
-                        {
-                            v.Lod[i] |= Lod.LodBits.Fresh; // новый лидер/ведомый: поведение пересчитывается в ближайшей фазе 5 (sim-lod.md §2.5)
-                            c.MesoLaneChanges++;
-                        }
-                    }
-                    else
-                    {
-                        c.LaneChangesAborted++;
+                        v.Lod[i] |= Lod.LodBits.Fresh; // новый лидер/ведомый: поведение пересчитывается в ближайшей фазе 5 (sim-lod.md §2.5)
+                        c.MesoLaneChanges++;
                     }
                 }
-            }
-
-            for (int hop = 0; hop < MaxHopsPerTick; hop++)
-            {
-                if (!TryAdvanceLane(e, types, p, nodeThroughput, i, ref c))
+                else
                 {
-                    break;
+                    c.LaneChangesAborted++;
                 }
             }
+        }
+
+        for (int hop = 0; hop < MaxHopsPerTick; hop++)
+        {
+            if (!TryAdvanceLane(e, types, p, nodeThroughput, i, ref c))
+            {
+                break;
+            }
+        }
+
+        if (masks != null)
+        {
+            // Полоса могла смениться (переход, смена полосы): бит прибытия - по состоянию после фазы 7.
+            TickMasks.Set(masks.Arrive, i, v.DestLane[i] == v.Lane[i] && v.S[i] >= v.DestS[i] && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0);
         }
     }
 

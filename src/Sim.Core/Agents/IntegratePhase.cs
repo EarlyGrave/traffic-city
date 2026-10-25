@@ -33,7 +33,7 @@ internal static class IntegratePhase
     public static IntegrateJob Prepare(World w)
     {
         IntegrateJob job = w.Integrate;
-        job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), w.Gate.SignalMask);
+        job.Prepare(w.Net, w.Vehicles, w.Types, PhysicsParams.From(w), w.Gate.SignalMask, w.Masks);
         return job;
     }
 
@@ -83,15 +83,20 @@ internal sealed partial class IntegrateJob : IRangeJob
     private PhysicsParams _p;
     private byte[] _lod = Array.Empty<byte>();   // VehicleStore.Lod; длина 0 - LOD выключен
     private ulong[] _signalMask = Array.Empty<ulong>();   // GateScratch.SignalMask; длина 0 - метка StoppedBeforeSignal не ведётся
+    private TickMasks? _masks;                            // маски фаз 7-8; null - не ведутся (перегрузка без World)
+    private float[] _laneLength = Array.Empty<float>();    // NetworkStore.LaneLength
 
     public IntegrateJob(int workers)
     {
         _clamps = new long[Stride * Math.Max(1, workers)];
     }
 
-    public void Prepare(NetworkStore net, VehicleStore v, VehicleTypeDesc[] types, in PhysicsParams p, ulong[]? signalMask = null)
+    public void Prepare(NetworkStore net, VehicleStore v, VehicleTypeDesc[] types, in PhysicsParams p, ulong[]? signalMask = null, TickMasks? masks = null)
     {
         _signalMask = signalMask ?? Array.Empty<ulong>();
+        _masks = masks;
+        masks?.Begin(v.HighWater);
+        _laneLength = net.LaneLength;
         _net = net;
         _v = v;
         _types = types;
@@ -150,13 +155,49 @@ internal sealed partial class IntegrateJob : IRangeJob
     private int Vehicle(int i, ref long mesoClamps)
     {
         VehicleStore v = _v;
-        PhysicsParams p = _p;
-        int clamps = 0;
-        float dt = p.Dt;
         if (!v.Pool.IsAlive(i) || v.Lane[i] < 0)
         {
             return 0;
         }
+
+        int clamps = Move(i, ref mesoClamps);
+        TickMasks? m = _masks;
+        if (m != null)
+        {
+            MarkCandidates(m, i);
+        }
+
+        return clamps;
+    }
+
+    /// <summary>
+    /// Маски фаз 7 и 8 (ADR-0019, A3) по состоянию конца фазы 6: фаза 7 нужна машине со сменой полосы в процессе, с намерением смены или у конца полосы
+    /// (<c>S &gt;= LaneLength</c>) - остальным она ничего не делает; фаза 8 - прибывшей на полосу назначения и не автобусу. Пишет только слово маски своего чанка.
+    /// </summary>
+    private void MarkCandidates(TickMasks m, int i)
+    {
+        VehicleStore v = _v;
+        int lane = v.Lane[i];
+        float s = v.S[i];
+        if (v.GhostLane[i] != -1 || v.LaneChangeDir[i] != 0 || s >= _laneLength[lane])
+        {
+            m.Trans[i >> 6] |= 1UL << (i & 63);
+        }
+
+        int dest = v.DestLane[i];
+        if (dest == lane && s >= v.DestS[i] && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0)
+        {
+            m.Arrive[i >> 6] |= 1UL << (i & 63);
+        }
+    }
+
+    /// <summary>Интегрирует машину <paramref name="i"/>, живую и на полосе; возвращает число сработавших клэмпов I6 (0..2).</summary>
+    private int Move(int i, ref long mesoClamps)
+    {
+        VehicleStore v = _v;
+        PhysicsParams p = _p;
+        int clamps = 0;
+        float dt = p.Dt;
 
         if (_lod.Length != 0 && (_lod[i] & Lod.LodBits.Meso) != 0)
         {
