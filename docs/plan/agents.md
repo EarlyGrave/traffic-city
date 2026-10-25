@@ -85,4 +85,4 @@
 | 79 | signals-s2 (worktree) | sonnet | 2.5 S2: Adaptive со стрелкой | done, merged (через агента 81) |
 | 80 | saves-sv2 (worktree) | sonnet | 2.6b SV2: состояние мира в сейве + канонический порядок сети | done, merged (29 блоков, round-trip/продолжение/потоки/fuzz) |
 | 81 | merge-s2-saves (worktree) | sonnet | слияние S2 + схема сейва для Adaptive | done, merged (merge-коммит с --no-verify — нарушение) |
-| 82 | verify-wave (worktree) | sonnet | общий верификатор волны 2.5 S2 + 2.6 (A1–A4, R1, Q0) + 2.6b SV1–SV2 | wip |
+| 82 | verify-wave (worktree) | sonnet | общий верификатор волны 2.5 S2 + 2.6 (A1–A4, R1, Q0) + 2.6b SV1–SV2 | done (всё зелёное) |
