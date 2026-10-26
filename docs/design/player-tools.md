@@ -116,7 +116,7 @@ public struct PaintZoneCmd      { public float X0, Z0, X1, Z1; public byte ZoneK
    `RouteGraph` (CSR), пешеходная сеть (§4.6). Локальное обновление после правки обязано дать то же, что полная перестройка
    (debug-сверка `World.VerifyDerived()` в тестах после каждой команды фаззера). Это закрывает save-format §13 п. 6.
 5. **Клиент**: `NetworkView` отдаёт те же массивы до `HighWater`; мёртвые слоты (`Alive = 0`) и `Closing` клиент обязан учитывать.
-   Добавить `ReadOnlySpan<byte> NodeAlive/SegmentAlive` или флаг в `*Data` (решает T2; одно из двух, в `core-api.md` §5.6).
+   Живость - поле `Generation` в `*Data` (нечётное = занят), хелперы `NetworkView.Is*Alive/*Ref` (решено в T2, `core-api.md` §5.6, ADR-0023 «Реализация T2»).
 
 ## 4. Механизмы правки
 
@@ -350,8 +350,8 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 - **Хэш** (core-api §9): при `World.ToolsTouched = 1` (первая структурная правка) — `ToolOps`, free-list'ы пулов и арен, `Alive`,
   флаги `Closing/Closed/Draining/Quiesce`, `Cx/Cz`, поколения остановок/маршрутов, `TurnBan`. Без правок хэш прежний (TL1).
 - **Сейв**: блок `TOOL` (операции, `ToolsTouched`), столбцы флагов/кривых/поколений/`TurnBan`, free-list'ы (`NETW`/арены), дыры —
-  каноническими нулями. `world_version` — следующая после пешеходов (ожидаемо 3), миграция: всё живо, free-list'ы пусты, операций нет.
-  Корпус: `w3-small-edited` (после фаззера правок, с активной операцией дренажа).
+  каноническими нулями. `world_version` — 4 (T2; следующая после города), миграция `MigrationV4`: всё живо, free-list'ы пусты, операций нет.
+  Корпус: `w4-small-edited-t600` (T2: дыры в пулах и аренах); после T3 — ещё с активной операцией дренажа после фаззера правок.
 - **Потоки**: scratch инструментов (`LaneMap`, маски закрытых DirSeg, кэш компонент, A*-объезд) — один экземпляр, вне воркеров.
 
 ## 11. Стоимость и точки расширения
@@ -440,7 +440,7 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 | T9 | Автобусные инструменты: реализовать `CreateBusRoute/AppendBusStop`, `InsertBusStop`, `RemoveBusStop`, `RemoveBusRoute`, `SetBusRouteParams`, `Unreachable`, `Suspended`, поколения остановок/маршрутов | `Transit/*`, `Api/CommandDispatcher.cs`, `Network/NetworkStore.cs` | тесты маршрутов: вставка/удаление на ходу, автобус на удалённой остановке не застревает, TL2 | T8 |
 | T10 | Журнал и реплей: `ReplayLog` (`RPLH`/`CMDL`), `Sim.Headless replay` (контрольные хэши, поиск расхождения), `bugreport` | `src/Sim.Scenarios/Tools/ReplayLog.cs`, `src/Sim.Headless/*` | `Replay_Golden`; ручной прогон `replay` на s1k с 50 командами (вывод — в отчёт) | T1 (**можно параллельно** с T2–T9: только хост) |
 | T11 | Пешеходы под правки (§4.6): закрытие тротуаров/переходов, условие финала, локальная перестройка сети и таблица `oldEdge → newEdge`, `PedAccessLost`; правка `pedestrians.md` §2 | `src/Sim.Core/Peds/*` | PD1–PD8 с правками, `EditFuzz` с `s1k-peds` | T4 (+3.1) |
-| T12 | Фаззер и сводные тесты: `EditFuzz_*` полный (все команды), `Tools_ZeroAlloc`, корпус `w3-small-edited` | `tests/Sim.Core.Tests/Tools/*`, `tests/SaveCorpus/` | TL4, TL5, TL9 | T9, T11 |
+| T12 | Фаззер и сводные тесты: `EditFuzz_*` полный (все команды), `Tools_ZeroAlloc`, корпус `w4-small-edited-t600` (T2: дыры; расширить дренажом) | `tests/Sim.Core.Tests/Tools/*`, `tests/SaveCorpus/` | TL4, TL5, TL9 | T9, T11 |
 | T13 | Клиент: адаптер протокола без UI-дизайна — постановка команд, превью на движении курсора, коды → текст-заглушка, призрак по `axis`, индикатор `ToolOps`, undo/redo через `UndoStack`, журнал; мёртвые слоты и `Closing` в мешах | `game/Scripts/Tools/*` | `dotnet build game/TrafficCity.csproj`; скриншот `scripts/godot-shot.sh` (снос с дренажом) | T8 (T9 для автобусов) |
 | T14 | (haiku) Верификатор: полный `dotnet test`, `bench-gate.sh` s1k, замеры §12.2 на s100k (фаза 1 одной правки и пачки 20, превью тёплый/холодный), `RemoveBusyRoad` — тики до финала; цифры — в отчёт этапа | — | реальные числа, без округления | T12 |
 

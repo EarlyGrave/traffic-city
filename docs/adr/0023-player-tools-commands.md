@@ -81,3 +81,34 @@
 - `EntityRef` (8 Б); в полях `Restore*` `Generation == 0` значит «не задано» (нулевая инициализация безопасна, `EntityRef.None` = {-1, 0}).
 - `BuildRoadCmd` 56 Б, `SetSignalPlanCmd` 50 Б, `SetNodeControlCmd` 12 Б, `CreateBusRouteCmd` 20 Б; `Command` = 64 Б. Новые виды и биты
   `AutoSplit`/`Curve`/`RestoreOf` до T3..T5 дают `NotSupported`; `NodeGen` пока не проверяется (проверка - T2).
+
+## Реализация T2 (4.3): пулы, арены, хэш, сейв (`world_version = 4`)
+- **Пулы.** `NetworkStore.NodePool/SegmentPool/BusStopPool/BusRoutePool` - `HandlePool` (LIFO free-list, `HighWater`). Поколение слота хранится в `*Data.Generation` (источник правды при загрузке) и
+  синхронно в пуле: **нечётное = занят, чётное = свободен**; отдельного массива `Alive` нет (решение пункта «`NetworkView` (`Alive`)»): `NetworkAlive.IsAlive(gen)`, `NetworkView.Is*Alive(i)` и
+  `NetworkView.NodeRef/SegmentRef/BusStopRef/BusRouteRef(i)` (индекс + текущее поколение - то, что хосту нужно после `*Remapped`). `NodeCount/SegmentCount/BusStopCount/BusRouteCount` = `HighWater`,
+  `AliveNodes/AliveSegments/AliveBusStops/AliveBusRoutes` - живые. `BusStopData.Generation` добавлено в конец структуры (поля не сдвинуты). Полоса: живая `Generation = 1`, мёртвая и запасная - `0`.
+- **Мёртвые слоты** хранят канонические значения (ссылки -1, остальное 0): `NetworkStore.DeadNode/DeadSegment/DeadLane/DeadBusStop/DeadBusRoute`; валидатор сейва и `VerifyDerived` требуют именно их.
+- **Арены** (`Util/BlockArena.cs`): `Lanes`, `LanePoints`, `SegmentPoints`, `NodeArms` (+`ArmFlags/ArmDir`), `LaneNext`, `ZoneLanes`, `BusRouteStops` в `NetworkStore` и строки/конфликты connector'ов в
+  `ConnectorStore` (`RowArena/ConflictArena`; хвосты - `Count/ConflictsUsed`). Арена не владеет массивом, а ведёт хвост, лестницу, LIFO-free-list по классам и битовую карту «блок по лестнице».
+  **Отклонение от спеки §3 п. 2:** лестница не `Overlay.CapFor` (там запас `MinSlack` и шаг по 4), а `BlockArena.CapFor`: 1..8 точно, дальше четыре ступеньки на октаву - малые блоки (полосы направления,
+  рукава) без лишнего запаса, любое число раскладывается на ступеньки. Ёмкость блока по лестнице - функция числа элементов; блок, записанный генератором или сетью без правок, ёмкости сверх `n` не имеет
+  (отсюда битовая карта: она говорит, какая из двух). Освобождаемый блок без запаса раскладывается жадно на ступеньки, поэтому все дыры - ровно ступеньки. Записей free-list `min(длина, max(256, длина/16))`;
+  не хватило - дыра теряется (`LeakedElements`, в хэше и сейве), освобождение не проваливается.
+- **Выделение** (`NetworkStore.AllocBlock/AllocLaneBlock`): при `ToolsTouched = 0` - подряд в хвосте без запаса (раскладка генератора и `BuildRoad` прежняя, TL1); после первой правки - по лестнице
+  (LIFO-дыра класса либо хвост с запасом). `NetworkBuilder.AddNode/AddSegment/BuildConnectorsEx` выделяют слоты и блоки так; запас блока полос получает вид мёртвых полос.
+- **Производные «по возрастанию индекса живых»:** `IncHead/IncNext` и `CellNext/Cells` ведутся вставкой/удалением в порядке убывания индекса (`NetworkBuilder.LinkNode/LinkSegment/Unlink*`) = полной
+  перестройке; `RebuildIndexes`, `RebuildLaneDerived`, `RouteGraph.Rebuild/RecalcCosts` (мёртвый DirSeg: вершин и дуг нет, вес +inf), `PedNetwork` (`Built` проверяет живость узла), `LodCells.OnNetworkGrown`
+  (после правок - полная перепривязка живых, мёртвые -1), индекс `RenderViewState` (по версии сети), `LotBuilder`/`CityGrid` пропускают мёртвые слоты. Оверлей маршрутизации дыр не знает (T3, §12.1).
+- **Новые поля и биты** (в хэше и сейве только при `ToolsTouched = 1`, валидатор требует нули при 0): `NodeData.Flags` (`NodeFlags.Quiesce`), `NodeData.TurnBan` (бит `FromArm * 8 + ToArm`, слоты рукавов 0..7),
+  `SegmentData.Flags` (`SegmentFlags.Closing/Curve`; бывший `Reserved`, `NetworkHash` читает то же значение), `Cx/Cz`, `LaneFlags.Closed/Draining`. **Кто пишет эти поля, обязан сначала поставить `Net.ToolsTouched = 1`.**
+- **Хэш:** раздел 13 `StateHash` (core-api §9) - `ToolsTouched`, пулы, арены, поколения, новые поля; без правок раздела нет. Доказательство TL1: `.json` корпуса `w4-{small,s1k,s1k-peds,s1k-res}` совпали с `w3-*`
+  в `state_hash` и `hash_after_continue`; файлы w1-w3 мигрируют и продолжаются прежними хэшами; golden s1k/s10k, `*-peds`, `*-res`, Rust-pilot не менялись.
+- **Сейв v4:** `NETW` 13-49, `CONN` 18-25, `NNOD` 13-14, `NSEG` 13-15, `NBUS` 11; `MigrationV4`; корпус `w4-*` + `w4-small-edited-t600`; проверки - `SaveValidator.Tools.cs` (пулы, дыры арен, канон, ToolsTouched).
+- **`RefKind`** (`SaveSchema.Refs`, `Save/SaveSchema.Refs.cs`): `Lane, Connector (строка ConnectorStore), Segment, DirSeg, Node, Stop` на столбцах-ссылках; `SaveValidator.ValidateRefs` проверяет диапазон
+  (`InvalidReference`); тест `RefKindTests` ловит столбец, похожий на ссылку, без тега и без записи «не ссылка» с причиной. `NextConn/GrantConnector` хранят **полосу** connector'а (`Lane`). Обработчик
+  переноса для каждого тега - `Relocate` (T3, `Relocate_Complete`); пешеходные рёбра (`Edge`, `HomeEdge`...) - T11.
+- **Структурные примитивы** `Network/NetworkEdit.cs` (`ReleaseSegment/ReleaseNode/ReleaseBusStop/ReleaseBusRoute`, `RefreshDerived`): освобождают слот и блоки с каноническими значениями и ставят `ToolsTouched`;
+  условие «пусто, можно» (дренаж), перестройка узлов и перенос - T3. `ReleaseSegment` принимает только сегменты, чьи концы не построены (`NoConnectors`); `World.VerifyDerived()` - сверка производных с полной
+  перестройкой (пулы, мёртвые слоты, `Inc/Cells`, `LaneLength/Heading/GateNode`, топология `RouteGraph`, `OccMask`, LOD-привязки, строки connector'ов); оверлей, пешеходы и город - T3/T11.
+- **Handle'ы в командах:** `SetSignalPlan`/`SetNodeControl` отклоняются `InvalidHandle` (+`InvalidHandleOps`), если слот узла мёртв или `NodeGen != 0` не равна поколению; индекс вне `[0, HighWater)` -
+  `InvalidArgument`, как раньше. `BuildRoad` шлёт `NodeCreated` по порядку создания (`Builder.CreatedNodes`): индекс нового узла может быть меньше старых (дыры).

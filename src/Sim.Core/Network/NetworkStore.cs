@@ -9,7 +9,7 @@ namespace Sim.Core.Network;
 /// Хранилище сети (core-api §6.1, §6.2). Все массивы выделяются один раз по <see cref="SimCapacities"/>;
 /// после построения аллокаций нет. Данные — AoS-структуры <c>*Data</c> и плоские массивы геометрии.
 /// </summary>
-internal sealed class NetworkStore
+internal sealed partial class NetworkStore
 {
     public const int MaxArms = 16;
 
@@ -39,6 +39,20 @@ internal sealed class NetworkStore
     internal readonly int[] IncNext;         // [2*MaxSegments]
     internal readonly int[] CellNext;        // [MaxNodes] цепочка узлов в ячейке сетки
     internal readonly FixedHashMap Cells;    // ключ ячейки -> первый узел
+
+    // ---- сеть с дырами (4.3, T2; player-tools.md §3, ADR-0023) ----
+
+    /// <summary>Пулы слотов с поколениями и LIFO-free-list (как у машин). Поколение слота = <c>Generation</c> в <c>*Data</c> (нечётное = занят).</summary>
+    internal readonly HandlePool NodePool, SegmentPool, BusStopPool, BusRoutePool;
+
+    /// <summary>Арены блоков (диапазоны): <see cref="Lanes"/> (блоки полос сегмента и connector'ов узла), точки, рукава, <see cref="LaneNext"/>, <see cref="ZoneLanes"/>, <see cref="BusRouteStops"/>.</summary>
+    internal readonly BlockArena LaneArena, LanePointArena, SegmentPointArena, ArmArena, LaneNextArena, ZoneLaneArena, BusRouteStopArena;
+
+    /// <summary>
+    /// 1 после первой структурной правки (освобождение слота или блока): с этого момента раскладка, free-list'ы и новые поля входят в хэш и сейв
+    /// (player-tools.md §10). У сети без правок всегда 0 - хэш и поведение прежние (TL1). Поля, не покрытые хэшем, пока 0, меняют только после установки флага.
+    /// </summary>
+    public byte ToolsTouched { get; internal set; }
 
     /// <summary>Курс отрезка a->b: тем же выражением, что <see cref="LaneGeometry"/> (нормировка + atan2).</summary>
     internal static float PieceHeading(Vec2 a, Vec2 b)
@@ -112,31 +126,53 @@ internal sealed class NetworkStore
         IncNext = new int[2 * segs];
         CellNext = new int[nodes];
         Cells = new FixedHashMap(Math.Max(1, nodes));
+        NodePool = new HandlePool(nodes);
+        SegmentPool = new HandlePool(segs);
+        BusStopPool = new HandlePool(BusStops.Length);
+        BusRoutePool = new HandlePool(BusRoutes.Length);
+        LaneArena = new BlockArena(lanes);
+        LanePointArena = new BlockArena(pts);
+        SegmentPointArena = new BlockArena(SegmentPoints.Length);
+        ArmArena = new BlockArena(NodeArms.Length);
+        LaneNextArena = new BlockArena(LaneNext.Length);
+        ZoneLaneArena = new BlockArena(ZoneLanes.Length);
+        BusRouteStopArena = new BlockArena(BusRouteStops.Length);
     }
 
-    public int NodeCount { get; internal set; }
+    /// <summary>Верхняя граница слотов узлов (<c>HighWater</c> пула): обходы «по всем слотам» идут до неё и пропускают мёртвые (<see cref="NodeAlive"/>).</summary>
+    public int NodeCount { get => NodePool.HighWater; internal set => NodePool.RestoreCounts(value, 0); }
 
-    public int SegmentCount { get; internal set; }
+    public int SegmentCount { get => SegmentPool.HighWater; internal set => SegmentPool.RestoreCounts(value, 0); }
 
-    public int LaneCount { get; internal set; }
+    /// <summary>Занятая часть массива полос (хвост арены): живые блоки и дыры.</summary>
+    public int LaneCount { get => LaneArena.Tail; internal set => LaneArena.Tail = value; }
 
-    public int LanePointCount { get; internal set; }
+    public int LanePointCount { get => LanePointArena.Tail; internal set => LanePointArena.Tail = value; }
 
-    public int SegmentPointCount { get; internal set; }
+    public int SegmentPointCount { get => SegmentPointArena.Tail; internal set => SegmentPointArena.Tail = value; }
 
-    public int NodeArmCount { get; internal set; }
+    public int NodeArmCount { get => ArmArena.Tail; internal set => ArmArena.Tail = value; }
 
-    public int LaneNextCount { get; internal set; }
+    public int LaneNextCount { get => LaneNextArena.Tail; internal set => LaneNextArena.Tail = value; }
 
     public int ZoneCount { get; internal set; }
 
-    public int ZoneLaneCount { get; internal set; }
+    public int ZoneLaneCount { get => ZoneLaneArena.Tail; internal set => ZoneLaneArena.Tail = value; }
 
-    public int BusStopCount { get; internal set; }
+    public int BusStopCount { get => BusStopPool.HighWater; internal set => BusStopPool.RestoreCounts(value, 0); }
 
-    public int BusRouteCount { get; internal set; }
+    public int BusRouteCount { get => BusRoutePool.HighWater; internal set => BusRoutePool.RestoreCounts(value, 0); }
 
-    public int BusRouteStopCount { get; internal set; }
+    public int BusRouteStopCount { get => BusRouteStopArena.Tail; internal set => BusRouteStopArena.Tail = value; }
+
+    /// <summary>Живых узлов / сегментов / остановок / маршрутов (<c>HighWater</c> минус дыры).</summary>
+    public int AliveNodes => NodePool.AliveCount;
+
+    public int AliveSegments => SegmentPool.AliveCount;
+
+    public int AliveBusStops => BusStopPool.AliveCount;
+
+    public int AliveBusRoutes => BusRoutePool.AliveCount;
 
     /// <summary>
     /// Наибольший индекс узла с построенными рукавами/connector'ами (<c>FirstArm &gt;= 0</c>) или -1. Канонический порядок раскладки
@@ -165,6 +201,12 @@ internal sealed class NetworkStore
         Array.Fill(LaneGateNode, -1);
         for (int l = 0; l < LaneCount; l++)
         {
+            if (!LaneAlive(l))
+            {
+                LaneLength[l] = 0f;
+                continue;
+            }
+
             LaneLength[l] = Lanes[l].Length;
             FillPieceHeadings(Lanes[l].FirstPoint, Lanes[l].PointCount);
         }
@@ -210,8 +252,42 @@ internal sealed class NetworkStore
         h.Add(SegmentCount);
         h.Add(LaneCount);
         h.Add(LanePointCount);
-        h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<NodeData>(Nodes, 0, NodeCount)));
-        h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<SegmentData>(Segments, 0, SegmentCount)));
+        // Узлы и сегменты - полями в раскладке до 4.3 (T2): новые поля (Flags, TurnBan, Cx, Cz, Generation остановок) в этот хэш не входят, пока ToolsTouched = 0.
+        for (int i = 0; i < NodeCount; i++)
+        {
+            ref readonly NodeData n = ref Nodes[i];
+            h.Add(n.Position.X);
+            h.Add(n.Position.Z);
+            h.Add(n.Elevation);
+            h.Add(n.Radius);
+            h.Add((int)n.Control);
+            h.Add(n.FirstArm);
+            h.Add(n.ArmCount);
+            h.Add(n.FirstConnector);
+            h.Add(n.ConnectorCount);
+            h.Add(n.Signal);
+            h.Add(n.Zone);
+            h.Add(n.Generation);
+        }
+
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            ref readonly SegmentData sg = ref Segments[i];
+            h.Add(sg.NodeA);
+            h.Add(sg.NodeB);
+            h.Add(sg.Length);
+            h.Add(sg.SpeedLimit);
+            h.Add((byte)sg.Kind);
+            h.Add(sg.LanesAB);
+            h.Add(sg.LanesBA);
+            h.Add(sg.Flags);
+            h.Add(sg.FirstLaneAB);
+            h.Add(sg.FirstLaneBA);
+            h.Add(sg.FirstPoint);
+            h.Add(sg.PointCount);
+            h.Add(sg.Generation);
+        }
+
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<LaneData>(Lanes, 0, LaneCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount)));
         h.Add(new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount));
@@ -220,6 +296,11 @@ internal sealed class NetworkStore
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(SegmentPoints, 0, SegmentPointCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(LanePoints, 0, LanePointCount)));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<float>(LanePointS, 0, LanePointCount)));
+        if (ToolsTouched != 0)
+        {
+            AddToolStateToHash(ref h);
+        }
+
         return h.Value;
     }
 }

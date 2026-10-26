@@ -20,7 +20,7 @@ internal sealed partial class NetworkBuilder
     {
         for (int n = 0; n < _s.NodeCount; n++)
         {
-            if (_s.Nodes[n].FirstArm >= 0)
+            if (_s.Nodes[n].FirstArm >= 0 || !_s.NodeAlive(n))
             {
                 continue;
             }
@@ -44,7 +44,7 @@ internal sealed partial class NetworkBuilder
     /// </summary>
     public NetworkStatus BuildConnectorsEx(int node)
     {
-        if ((uint)node >= (uint)_s.NodeCount)
+        if (!_s.NodeAlive(node))
         {
             return NetworkStatus.InvalidArgument;
         }
@@ -61,7 +61,7 @@ internal sealed partial class NetworkBuilder
             return NetworkStatus.TooManyArms;
         }
 
-        if (_s.NodeArmCount + arms > _s.NodeArms.Length)
+        if (!_s.CanAllocBlock(_s.ArmArena, arms))
         {
             return NetworkStatus.PointsFull;
         }
@@ -73,27 +73,26 @@ internal sealed partial class NetworkBuilder
         }
 
         int samples = _o.ConnectorSamples;
-        if (_s.LaneCount + plan > _s.Lanes.Length)
+        if (!_s.CanAllocBlock(_s.LaneArena, plan))
         {
             return NetworkStatus.LanesFull;
         }
 
-        if (_s.LanePointCount + (plan * samples) > _s.LanePoints.Length || _s.LaneNextCount + (2 * plan) > _s.LaneNext.Length)
+        if (!_s.CanAllocBlock(_s.LanePointArena, plan * samples) || !_s.CanAllocBlock(_s.LaneNextArena, 2 * plan))
         {
             return NetworkStatus.PointsFull;
         }
 
-        // ---- запись (ошибок дальше нет) ----
-        int firstArm = _s.NodeArmCount;
+        // ---- запись (ошибок дальше нет): блоки из арен (у сети без правок подряд в хвосте, как раньше) ----
+        int firstArm = _s.AllocBlock(_s.ArmArena, arms);
         for (int a = 0; a < arms; a++)
         {
             _s.NodeArms[firstArm + a] = _armSeg[a];
         }
 
-        _s.NodeArmCount += arms;
-
-        int baseLane = _s.LaneCount;
-        int blockIn = _s.LaneNextCount;
+        int baseLane = _s.AllocLaneBlock(plan);
+        int basePoint = _s.AllocBlock(_s.LanePointArena, plan * samples);
+        int blockIn = _s.AllocBlock(_s.LaneNextArena, 2 * plan);
         int blockOwn = blockIn + plan;
         for (int p = 0; p < plan; p++)
         {
@@ -112,7 +111,7 @@ internal sealed partial class NetworkBuilder
             _s.LaneNext[blockIn + p] = laneIdx;
             _s.LaneNext[blockOwn + p] = outLane;
 
-            int first = _s.LanePointCount + (p * samples);
+            int first = basePoint + (p * samples);
             float length = EmitBezier(li, lo, first, samples, _planMan[p] == Maneuver.UTurn, out float speed);
             _s.LaneLength[laneIdx] = length;
             _s.Lanes[laneIdx] = new LaneData
@@ -137,10 +136,6 @@ internal sealed partial class NetworkBuilder
                 Generation = 1,
             };
         }
-
-        _s.LaneNextCount += 2 * plan;
-        _s.LaneCount += plan;
-        _s.LanePointCount += plan * samples;
 
         for (int a = 0; a < arms; a++)
         {

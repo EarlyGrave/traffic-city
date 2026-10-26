@@ -33,6 +33,7 @@ internal sealed class RenderViewState
 
     // ---- сетка полос (производное сети, вне хэша) ----
     private int _lanesIndexed = -1;
+    private int _indexVersion = -1;   // версия сети индекса: после правок (дыры) число полос не показывает изменения
     private float _cellM, _originX, _originZ;
     private int _cellsX, _cellsZ;
     private int[] _cellStart = Array.Empty<int>();   // [cells + 1] CSR
@@ -187,10 +188,12 @@ internal sealed class RenderViewState
 
     private void EnsureIndex(NetworkStore net)
     {
-        if (net.LaneCount == _lanesIndexed)
+        if (net.LaneCount == _lanesIndexed && (net.ToolsTouched == 0 || net.Version == _indexVersion))
         {
             return;
         }
+
+        _indexVersion = net.Version;
 
         int lanes = net.LaneCount;
         if (_bx0.Length < lanes)

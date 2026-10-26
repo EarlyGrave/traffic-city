@@ -112,6 +112,29 @@ public readonly ref struct NetworkView
     public readonly float SidewalkWidthM;
     public readonly float CrosswalkWidthM;
 
+    // ---- живость и handle'ы (4.3, T2; player-tools.md §3 п. 5): Nodes/Segments/... идут до HighWater пула, мёртвые слоты (Generation чётное) клиент пропускает ----
+
+    /// <summary>Узел <paramref name="i"/> существует (<c>Generation</c> нечётное). Индекс вне диапазона - false.</summary>
+    public bool IsNodeAlive(int i) => (uint)i < (uint)Nodes.Length && NetworkAlive.IsAlive(Nodes[i].Generation);
+
+    public bool IsSegmentAlive(int i) => (uint)i < (uint)Segments.Length && NetworkAlive.IsAlive(Segments[i].Generation);
+
+    /// <summary>Полоса живая (мёртвая и запасная полоса блока имеет <c>Generation == 0</c>).</summary>
+    public bool IsLaneAlive(int i) => (uint)i < (uint)Lanes.Length && NetworkAlive.IsAlive(Lanes[i].Generation);
+
+    public bool IsBusStopAlive(int i) => (uint)i < (uint)BusStops.Length && NetworkAlive.IsAlive(BusStops[i].Generation);
+
+    public bool IsBusRouteAlive(int i) => (uint)i < (uint)BusRoutes.Length && NetworkAlive.IsAlive(BusRoutes[i].Generation);
+
+    /// <summary>Handle узла для команд и после <c>NodeRemapped</c>: индекс + текущее поколение. Вне диапазона - <see cref="EntityRef.None"/>.</summary>
+    public EntityRef NodeRef(int i) => (uint)i < (uint)Nodes.Length ? new EntityRef(i, Nodes[i].Generation) : EntityRef.None;
+
+    public EntityRef SegmentRef(int i) => (uint)i < (uint)Segments.Length ? new EntityRef(i, Segments[i].Generation) : EntityRef.None;
+
+    public EntityRef BusStopRef(int i) => (uint)i < (uint)BusStops.Length ? new EntityRef(i, BusStops[i].Generation) : EntityRef.None;
+
+    public EntityRef BusRouteRef(int i) => (uint)i < (uint)BusRoutes.Length ? new EntityRef(i, BusRoutes[i].Generation) : EntityRef.None;
+
     public NetworkView(
         int version,
         ReadOnlySpan<NodeData> nodes,
