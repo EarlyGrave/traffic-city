@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| 4.3 T7 валидатор/превью (агент 146) | cloud | worktree-агент → dev | `src/Sim.Core/Tools/*`, `Api/Simulation.Tools.cs`, `ScenarioLoader.cs`, `docs/design/core-api.md` §12 | 2026-10-26 |
