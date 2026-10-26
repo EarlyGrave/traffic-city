@@ -214,8 +214,8 @@ internal static class WorldBuilder
         Array.Copy(transit.Routes, net.BusRoutes, transit.RouteCount);
         Array.Copy(transit.Stops, net.BusStops, transit.StopCount);
         Array.Copy(transit.RouteStops, net.BusRouteStops, transit.StopCount);
-        net.BusRouteCount = transit.RouteCount;
-        net.BusStopCount = transit.StopCount;
+        net.AdoptBusRoutes(transit.RouteCount);
+        net.AdoptBusStops(transit.StopCount);
         net.BusRouteStopCount = transit.StopCount;
         w.Transit = transit;
         return CreateStatus.Ok;

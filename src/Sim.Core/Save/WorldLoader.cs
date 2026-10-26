@@ -336,7 +336,11 @@ internal static class WorldLoader
         LoadStatus st = SaveValidator.ValidateRest(c);
         if (st != LoadStatus.Ok)
         {
-            c.FailBlock = SaveFormat.FourCc("WRLD"u8);
+            if (c.FailBlock == 0)
+            {
+                c.FailBlock = SaveFormat.FourCc("WRLD"u8);
+            }
+
             return st;
         }
 

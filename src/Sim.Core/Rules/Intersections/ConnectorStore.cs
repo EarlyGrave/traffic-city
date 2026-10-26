@@ -69,8 +69,14 @@ internal sealed class ConnectorStore
     public readonly int[]? CrossInX;
     public readonly int[]? CrossOutX;
 
-    public int Count;
-    public int ConflictsUsed;
+    /// <summary>Арены строк connector'ов (<see cref="Lane"/> и параллельные массивы) и записей конфликтов (4.3, T2): хвосты - <see cref="Count"/> и <see cref="ConflictsUsed"/>.</summary>
+    internal readonly BlockArena RowArena;
+    internal readonly BlockArena ConflictArena;
+
+    /// <summary>Занятая часть строк connector'ов (хвост арены строк): живые блоки узлов и дыры.</summary>
+    public int Count { get => RowArena.Tail; set => RowArena.Tail = value; }
+
+    public int ConflictsUsed { get => ConflictArena.Tail; set => ConflictArena.Tail = value; }
 
     // Рабочие буферы BuildConflicts (выделены один раз).
     private readonly byte[] _kind = new byte[MaxLocal * MaxLocal];
@@ -94,6 +100,8 @@ internal sealed class ConnectorStore
         ConflictCount = new int[c];
         ConflictMask = new ulong[c];
         Conflicts = new ConflictEntry[Math.Max(0, maxConflicts)];
+        RowArena = new BlockArena(c);
+        ConflictArena = new BlockArena(Conflicts.Length);
         if (peds)
         {
             CrossInX = new int[c];
@@ -109,6 +117,8 @@ internal sealed class ConnectorStore
 
     public void Reset()
     {
+        RowArena.ClearState();
+        ConflictArena.ClearState();
         Count = 0;
         ConflictsUsed = 0;
     }

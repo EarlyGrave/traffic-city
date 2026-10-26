@@ -378,7 +378,7 @@ internal sealed class ResidentStore
         }
 
         int side = (int)rng.NextBelow(2);
-        if ((uint)seg >= (uint)net.SegmentCount)
+        if (!net.SegmentAlive(seg))   // вне диапазона или мёртвый слот сети с дырами (4.3, T2)
         {
             return false;
         }

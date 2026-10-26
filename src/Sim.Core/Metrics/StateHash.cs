@@ -306,6 +306,16 @@ internal static class StateHash
             City.CityHash.Add(ref h, w);
         }
 
+        // 13. Состояние инструментов (player-tools.md §10): пулы, арены, новые поля сети - только после первой структурной правки (ToolsTouched = 1);
+        // у сети без правок раздела нет - хэш прежний (TL1).
+        if (w.Net.ToolsTouched != 0)
+        {
+            h.Add(w.Net.ToolsTouched);
+            w.Net.AddToolStateToHash(ref h);
+            w.Connectors.RowArena.AddToHash(ref h);
+            w.Connectors.ConflictArena.AddToHash(ref h);
+        }
+
         return h.Value;
     }
 

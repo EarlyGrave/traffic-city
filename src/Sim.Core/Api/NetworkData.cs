@@ -40,7 +40,49 @@ public struct NodeData
     public int FirstConnector, ConnectorCount; // диапазон полос-connector'ов узла (подряд в Lanes)
     public int Signal;              // индекс в SignalStates или -1
     public int Zone;                // ближайшая зона или -1
-    public int Generation;          // копия из пула, для NodeHandle
+    public int Generation;          // поколение слота пула: нечётное = занят, чётное = свободен (player-tools.md §3; <see cref="NetworkAlive.IsAlive(int)"/>)
+
+    /// <summary>Биты <see cref="NodeFlags"/> (4.3, T2): бит0 Quiesce - тишина узла перед переносом/слиянием. 0 у сети без правок.</summary>
+    public uint Flags;
+
+    /// <summary>Запреты манёвров рукав -> рукав (4.3, T2): бит <c>FromArm * 8 + ToArm</c> (слоты рукавов 0..7); 0 - запретов нет. Применяет перестройка узла (T3).</summary>
+    public ulong TurnBan;
+}
+
+/// <summary>Биты <see cref="NodeData.Flags"/>.</summary>
+public static class NodeFlags
+{
+    /// <summary>Тишина узла: connector'ы закрыты, ждём опустения (слияние, перестройка).</summary>
+    public const uint Quiesce = 1;
+}
+
+/// <summary>Биты <see cref="SegmentData.Flags"/>.</summary>
+public static class SegmentFlags
+{
+    /// <summary>Сегмент закрывается (дренаж): клиент рисует «перекрыто».</summary>
+    public const byte Closing = 1;
+
+    /// <summary>Ось - квадратичная Безье с контрольной точкой <see cref="SegmentData.Cx"/>, <see cref="SegmentData.Cz"/>.</summary>
+    public const byte Curve = 2;
+}
+
+/// <summary>Биты <see cref="LaneData.Flags"/>.</summary>
+public static class LaneFlags
+{
+    public const byte BusOnly = 1;
+    public const byte NoLaneChangeOut = 2;
+
+    /// <summary>Въезд запрещён (закрытие дренажем).</summary>
+    public const byte Closed = 4;
+
+    /// <summary>MOBIL уводит машины с полосы (убираемая полоса).</summary>
+    public const byte Draining = 8;
+}
+
+/// <summary>Живость слота пула по полю <c>Generation</c> (нечётное = занят): чтение без обращения к пулу, для клиента и обходов «по живым».</summary>
+public static class NetworkAlive
+{
+    public static bool IsAlive(int generation) => (generation & 1) == 1;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -51,11 +93,14 @@ public struct SegmentData
     public float SpeedLimit;        // м/с
     public RoadKind Kind;
     public byte LanesAB, LanesBA;   // число полос; 0 допустимо для односторонней
-    public byte Reserved;
+    public byte Flags;              // <see cref="SegmentFlags"/>: бит0 Closing, бит1 Curve (4.3, T2; бывший Reserved, у сети без правок 0)
     public int FirstLaneAB;         // полосы A→B: FirstLaneAB .. +LanesAB-1, LaneNo 0 = правая
     public int FirstLaneBA;
     public int FirstPoint, PointCount; // осевая полилиния (SegmentPoints)
-    public int Generation;
+    public int Generation;          // поколение слота пула: нечётное = занят, чётное = свободен
+
+    /// <summary>Контрольная точка квадратичной Безье (<see cref="SegmentFlags.Curve"/>), иначе 0 (4.3, T2): нужна обратной команде и превью.</summary>
+    public float Cx, Cz;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -64,7 +109,7 @@ public struct LaneData
     public LaneKind Kind;
     public byte LaneNo;             // 0 = крайняя правая (по ходу движения)
     public byte Direction;          // 0 = A→B, 1 = B→A (у connector'а — 0)
-    public byte Flags;              // бит0 BusOnly, бит1 NoLaneChangeOut
+    public byte Flags;              // <see cref="LaneFlags"/>: бит0 BusOnly, бит1 NoLaneChangeOut, бит2 Closed, бит3 Draining
     public int Segment;             // владелец (Normal/BusBay) или -1
     public int Node;                // владелец (Connector) или -1
     public int FromLane, ToLane;    // только Connector; иначе -1
@@ -101,6 +146,9 @@ public struct BusStopData
 
     /// <summary>Тик последнего отправления автобуса с остановки (удержание, ADR-0008); -1 - не было.</summary>
     public long LastDepartTick;
+
+    /// <summary>Поколение слота пула остановок (нечётное = занят); 4.3, T2. Поля выше не сдвинуты.</summary>
+    public int Generation;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

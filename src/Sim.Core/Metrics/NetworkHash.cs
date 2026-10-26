@@ -58,7 +58,7 @@ internal static class NetworkHash
             h.Add((byte)s.Kind);
             h.Add(s.LanesAB);
             h.Add(s.LanesBA);
-            h.Add(s.Reserved);
+            h.Add(s.Flags);
             h.Add(s.FirstLaneAB);
             h.Add(s.FirstLaneBA);
             h.Add(s.FirstPoint);

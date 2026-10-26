@@ -22,13 +22,13 @@ public sealed class CityMigrationTests
     [InlineData("w2-small-t600.tcsave")]
     [InlineData("w2-s1k-t2400.tcsave")]
     [InlineData("w2-s1k-peds-t2400.tcsave")]
-    public void W2Tables_AfterStep_HaveExactlyTheV3ColumnsOfOldBlocks(string file)
+    public void W2Tables_AfterMigration_HaveExactlyTheCurrentColumnsOfOldBlocks(string file)
     {
         SaveTables t = ReadCorpus(file);
         Assert.Equal(2, t.Header.WorldVersion);
-        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 2, 3, Migrations.Steps, out int applied));
-        Assert.Equal(1, applied);
-        Assert.Equal(3, t.Header.WorldVersion);
+        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 2, SaveSchema.WorldVersion, Migrations.Steps, out int applied));
+        Assert.Equal(SaveSchema.WorldVersion - 2, applied);
+        Assert.Equal(SaveSchema.WorldVersion, t.Header.WorldVersion);
         foreach (BlockDef b in SaveSchema.Blocks)
         {
             int idx = t.FindBlock(b.Id);
@@ -55,7 +55,7 @@ public sealed class CityMigrationTests
     public void MigratedColumns_HaveTheDefaults()
     {
         SaveTables t = ReadCorpus("w2-s1k-t2400.tcsave");
-        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 2, 3, Migrations.Steps, out _));
+        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 2, SaveSchema.WorldVersion, Migrations.Steps, out _));
         int parm = t.FindBlock(SaveFormat.FourCc("PARM"u8));
         int veh = t.FindBlock(SaveFormat.FourCc("VEHC"u8));
         for (uint id = 113; id <= 184; id++)
@@ -108,7 +108,7 @@ public sealed class CityMigrationTests
         using (sim!)
         {
             Assert.Equal(2, rep.FileWorldVersion);
-            Assert.Equal(1, rep.MigrationsApplied);
+            Assert.Equal(Simulation.CurrentWorldVersion - 2, rep.MigrationsApplied);
             Assert.True(sim!.HasPeds);
             Assert.False(sim.HasCity);
             Assert.Equal(PedSource.Preform, sim.World.PedCfg.Source);

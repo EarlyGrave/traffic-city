@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
@@ -22,7 +23,28 @@ internal static partial class SaveSchema
             return LoadStatus.Ok;
         });
 
-    private static BlockDef NetworkCounts() => new("NETW", "счётчики занятых частей NetworkStore", new[]
+    /// <summary>Склейка столбцов (блок с группами столбцов арен).</summary>
+    private static ColumnDef[] Join(ColumnDef[] first, params ColumnDef[][] more)
+    {
+        int n = first.Length;
+        foreach (ColumnDef[] m in more)
+        {
+            n += m.Length;
+        }
+
+        var all = new ColumnDef[n];
+        first.CopyTo(all, 0);
+        int at = first.Length;
+        foreach (ColumnDef[] m in more)
+        {
+            m.CopyTo(all, at);
+            at += m.Length;
+        }
+
+        return all;
+    }
+
+    private static BlockDef NetworkCounts() => new("NETW", "счётчики занятых частей NetworkStore, free-list'ы пулов, арены блоков", Join(new[]
     {
         Cnt(1, "NodeCount", w => w.Net.NodeCount, (w, v) => w.Net.NodeCount = v, w => w.Net.Nodes.Length),
         Cnt(2, "SegmentCount", w => w.Net.SegmentCount, (w, v) => w.Net.SegmentCount = v, w => w.Net.Segments.Length),
@@ -36,7 +58,77 @@ internal static partial class SaveSchema
         Cnt(10, "BusStopCount", w => w.Net.BusStopCount, (w, v) => w.Net.BusStopCount = v, w => w.Net.BusStops.Length),
         Cnt(11, "BusRouteCount", w => w.Net.BusRouteCount, (w, v) => w.Net.BusRouteCount = v, w => w.Net.BusRoutes.Length),
         Cnt(12, "BusRouteStopCount", w => w.Net.BusRouteStopCount, (w, v) => w.Net.BusRouteStopCount = v, w => w.Net.BusRouteStops.Length),
-    });
+
+        // 4.3 (T2, world_version 4): сеть с дырами. ToolsTouched, free-list'ы пулов (LIFO снизу вверх), арены блоков. Поколения слотов - столбцы Generation блоков N*.
+        Col.Flag(13, "ToolsTouched", w => w.Net.ToolsTouched != 0, (c, v) => c.W.Net.ToolsTouched = v ? (byte)1 : (byte)0),
+        Cnt(14, "NodeFreeCount", w => w.Net.NodePool.FreeCount, (w, v) => w.Net.NodePool.RestoreCounts(w.Net.NodePool.HighWater, v), w => w.Net.NodePool.HighWater),
+        Cnt(15, "SegmentFreeCount", w => w.Net.SegmentPool.FreeCount, (w, v) => w.Net.SegmentPool.RestoreCounts(w.Net.SegmentPool.HighWater, v), w => w.Net.SegmentPool.HighWater),
+        Cnt(16, "BusStopFreeCount", w => w.Net.BusStopPool.FreeCount, (w, v) => w.Net.BusStopPool.RestoreCounts(w.Net.BusStopPool.HighWater, v), w => w.Net.BusStopPool.HighWater),
+        Cnt(17, "BusRouteFreeCount", w => w.Net.BusRoutePool.FreeCount, (w, v) => w.Net.BusRoutePool.RestoreCounts(w.Net.BusRoutePool.HighWater, v), w => w.Net.BusRoutePool.HighWater),
+        Col.Array<int>(18, "NodeFree", w => w.Net.NodePool.FreeListArray, w => w.Net.NodePool.FreeCount, "NodeFreeCount"),
+        Col.Array<int>(19, "SegmentFree", w => w.Net.SegmentPool.FreeListArray, w => w.Net.SegmentPool.FreeCount, "SegmentFreeCount"),
+        Col.Array<int>(20, "BusStopFree", w => w.Net.BusStopPool.FreeListArray, w => w.Net.BusStopPool.FreeCount, "BusStopFreeCount"),
+        Col.Array<int>(21, "BusRouteFree", w => w.Net.BusRoutePool.FreeListArray, w => w.Net.BusRoutePool.FreeCount, "BusRouteFreeCount"),
+    },
+        ArenaColumns(22, "Lane", w => w.Net.LaneArena),
+        ArenaColumns(26, "LanePoint", w => w.Net.LanePointArena),
+        ArenaColumns(30, "SegmentPoint", w => w.Net.SegmentPointArena),
+        ArenaColumns(34, "Arm", w => w.Net.ArmArena),
+        ArenaColumns(38, "LaneNext", w => w.Net.LaneNextArena),
+        ArenaColumns(42, "ZoneLane", w => w.Net.ZoneLaneArena),
+        ArenaColumns(46, "BusRouteStop", w => w.Net.BusRouteStopArena)));
+
+    /// <summary>
+    /// Состояние арены блоков (4 столбца с <paramref name="firstId"/>): число дыр, потерянные элементы, дыры (<c>класс &lt;&lt; 32 | первый элемент</c>, класс по возрастанию,
+    /// внутри класса сверху вниз) и битовая карта «блок выделен по лестнице» по <c>Tail</c>. Хвост арены - столбец-счётчик той же структуры (читается раньше).
+    /// </summary>
+    internal static ColumnDef[] ArenaColumns(uint firstId, string prefix, Func<World, BlockArena> arena) => new[]
+    {
+        Col.Scalar<int>(firstId, prefix + "FreeCount", w => arena(w).FreeBlockCount, (c, v) =>
+        {
+            BlockArena a = arena(c.W);
+            if (v < 0 || v > a.EntryCapacity)
+            {
+                return LoadStatus.CapacityExceeded;
+            }
+
+            a.ClearState();
+            a.SetPendingFreeCount(v);
+            return LoadStatus.Ok;
+        }),
+        Col.Scalar<long>(firstId + 1, prefix + "Leaked", w => arena(w).LeakedElements, (c, v) =>
+        {
+            if (v < 0)
+            {
+                return LoadStatus.InvalidValue;
+            }
+
+            arena(c.W).LeakedElements = v;
+            return LoadStatus.Ok;
+        }),
+        Col.Custom(
+            firstId + 2,
+            prefix + "Free",
+            ColumnType.U64,
+            8,
+            prefix + "FreeCount",
+            "0",
+            w => arena(w).FreeBlockCount,
+            (w, first, n, dst) =>
+            {
+                BlockArena a = arena(w);
+                var all = new ulong[a.FreeBlockCount];
+                a.CopyFree(all);
+                MemoryMarshal.AsBytes(new ReadOnlySpan<ulong>(all, (int)first, n)).CopyTo(dst);
+            },
+            (c, n, src) =>
+            {
+                var packed = new ulong[n];
+                src.CopyTo(MemoryMarshal.AsBytes(packed.AsSpan()));
+                return arena(c.W).RestoreFree(packed) ? LoadStatus.Ok : LoadStatus.InvalidValue;
+            }),
+        Col.Array<ulong>(firstId + 3, prefix + "Ladder", w => arena(w).LadderBits, w => arena(w).LadderWordCount, "ceil(Tail / 64)"),
+    };
 
     private static BlockDef Nodes() => new("NNOD", "узлы", new[]
     {
@@ -52,6 +144,8 @@ internal static partial class SaveSchema
         Col.Field<NodeData>(10, "Signal", w => w.Net.Nodes, _nodeN, "NodeCount", nameof(NodeData.Signal), def: "-1"),
         Col.Field<NodeData>(11, "Zone", w => w.Net.Nodes, _nodeN, "NodeCount", nameof(NodeData.Zone), def: "-1"),
         Col.Field<NodeData>(12, "Generation", w => w.Net.Nodes, _nodeN, "NodeCount", nameof(NodeData.Generation)),
+        Col.Field<NodeData>(13, "Flags", w => w.Net.Nodes, _nodeN, "NodeCount", nameof(NodeData.Flags)),
+        Col.Field<NodeData>(14, "TurnBan", w => w.Net.Nodes, _nodeN, "NodeCount", nameof(NodeData.TurnBan)),
     });
 
     private static BlockDef Segments() => new("NSEG", "сегменты", new[]
@@ -68,6 +162,9 @@ internal static partial class SaveSchema
         Col.Field<SegmentData>(10, "FirstPoint", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.FirstPoint)),
         Col.Field<SegmentData>(11, "PointCount", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.PointCount)),
         Col.Field<SegmentData>(12, "Generation", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Generation)),
+        Col.Field<SegmentData>(13, "Flags", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Flags)),
+        Col.Field<SegmentData>(14, "Cx", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Cx)),
+        Col.Field<SegmentData>(15, "Cz", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Cz)),
     });
 
     private static BlockDef Lanes() => new("NLAN", "полосы", new[]
@@ -138,9 +235,10 @@ internal static partial class SaveSchema
         Col.Field<BusRouteData>(8, "RouteVehicleType", w => w.Net.BusRoutes, _busRouteN, "BusRouteCount", nameof(BusRouteData.VehicleType)),
         Col.Field<BusRouteData>(9, "RouteGeneration", w => w.Net.BusRoutes, _busRouteN, "BusRouteCount", nameof(BusRouteData.Generation)),
         Col.Array<int>(10, "BusRouteStops", w => w.Net.BusRouteStops, _busRouteStopN, "BusRouteStopCount"),
+        Col.Field<BusStopData>(11, "StopGeneration", w => w.Net.BusStops, _stopN, "BusStopCount", nameof(BusStopData.Generation)),
     });
 
-    private static BlockDef Connectors() => new("CONN", "connector'ы и конфликтные пары (раскладка - по узлам в порядке индекса)", new[]
+    private static BlockDef Connectors() => new("CONN", "connector'ы и конфликтные пары (раскладка - по узлам в порядке индекса), арены строк и конфликтов", Join(new[]
     {
         Col.Scalar<int>(1, "Count", w => w.Connectors.Count, (c, v) =>
         {
@@ -177,7 +275,9 @@ internal static partial class SaveSchema
         Col.Field<ConflictEntry>(15, "ConflictFlags", w => w.Connectors.Conflicts, _conflictN, "ConflictsUsed", nameof(ConflictEntry.Flags)),
         Col.Field<ConflictEntry>(16, "SMineCm", w => w.Connectors.Conflicts, _conflictN, "ConflictsUsed", nameof(ConflictEntry.SMineCm)),
         Col.Field<ConflictEntry>(17, "SOtherCm", w => w.Connectors.Conflicts, _conflictN, "ConflictsUsed", nameof(ConflictEntry.SOtherCm)),
-    });
+    },
+        ArenaColumns(18, "Row", w => w.Connectors.RowArena),
+        ArenaColumns(22, "Conflict", w => w.Connectors.ConflictArena)));
 
     private static BlockDef Signals() => new("SIGS", "светофоры: планы, фазы, выходы фазы 4", new[]
     {

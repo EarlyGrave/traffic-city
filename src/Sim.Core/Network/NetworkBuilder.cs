@@ -35,6 +35,13 @@ internal sealed partial class NetworkBuilder
     private readonly int[] _planOut = new int[MaxConnectorsPerNode];
     private readonly Maneuver[] _planMan = new Maneuver[MaxConnectorsPerNode];
 
+    /// <summary>Узлы, созданные последними вызовами <c>AddNode</c> с момента <see cref="ResetCreated"/> (по порядку создания; не больше двух - концы одного сегмента): индексы слотов не обязаны расти (дыры).</summary>
+    internal readonly int[] CreatedNodes = new int[2];
+
+    internal int CreatedNodeCount;
+
+    internal void ResetCreated() => CreatedNodeCount = 0;
+
     public NetworkBuilder(NetworkStore store)
         : this(store, NetworkOptions.Default, DefaultConnectorRules.Instance)
     {
@@ -89,7 +96,7 @@ internal sealed partial class NetworkBuilder
 
     public void SetNodeControl(int node, NodeControl control)
     {
-        if ((uint)node < (uint)_s.NodeCount)
+        if (_s.NodeAlive(node))
         {
             _s.Nodes[node].Control = control;
             if (_s.Nodes[node].FirstArm >= 0)
@@ -146,29 +153,162 @@ internal sealed partial class NetworkBuilder
     {
         for (int n = 0; n < _s.NodeCount; n++)
         {
-            Vec2 p = _s.Nodes[n].Position;
-            long key = CellKey(Cell(p.X), Cell(p.Z));
-            int head = _s.Cells.TryGet(key, out int h) ? h : -1;
-            if (!_s.Cells.TrySet(key, n))
+            _s.IncHead[n] = -1;
+            _s.CellNext[n] = -1;
+        }
+
+        for (int n = 0; n < _s.NodeCount; n++)
+        {
+            if (!_s.NodeAlive(n))
+            {
+                continue;
+            }
+
+            if (!LinkNode(n))
             {
                 return NetworkStatus.NodesFull;
             }
-
-            _s.CellNext[n] = head;
-            _s.IncHead[n] = -1;
         }
 
         for (int seg = 0; seg < _s.SegmentCount; seg++)
         {
-            int a = _s.Segments[seg].NodeA;
-            int b = _s.Segments[seg].NodeB;
-            _s.IncNext[2 * seg] = _s.IncHead[a];
-            _s.IncHead[a] = 2 * seg;
-            _s.IncNext[(2 * seg) + 1] = _s.IncHead[b];
-            _s.IncHead[b] = (2 * seg) + 1;
+            if (_s.SegmentAlive(seg))
+            {
+                LinkSegment(seg);
+            }
         }
 
         return NetworkStatus.Ok;
+    }
+
+    // ---- служебные индексы: вставка и удаление в порядке «по убыванию индекса» (равно полной перестройке по возрастанию индекса живых слотов) ----
+
+    /// <summary>Узел <paramref name="idx"/> в цепочку своей ячейки сетки прилипания (цепочка идёт по убыванию индекса). false - таблица ячеек полна.</summary>
+    internal bool LinkNode(int idx)
+    {
+        Vec2 p = _s.Nodes[idx].Position;
+        long key = CellKey(Cell(p.X), Cell(p.Z));
+        bool has = _s.Cells.TryGet(key, out int head);
+        if (!has)
+        {
+            head = -1;
+        }
+
+        if (head < 0 || idx > head)
+        {
+            if (!_s.Cells.TrySet(key, idx))
+            {
+                return false;
+            }
+
+            _s.CellNext[idx] = head;
+            return true;
+        }
+
+        int prev = head;
+        while (_s.CellNext[prev] > idx)
+        {
+            prev = _s.CellNext[prev];
+        }
+
+        _s.CellNext[idx] = _s.CellNext[prev];
+        _s.CellNext[prev] = idx;
+        return true;
+    }
+
+    /// <summary>Убирает узел из цепочки ячейки; опустевшая ячейка уходит из таблицы (как после полной перестройки, и ёмкость таблицы не утекает).</summary>
+    internal void UnlinkNode(int idx)
+    {
+        Vec2 p = _s.Nodes[idx].Position;
+        long key = CellKey(Cell(p.X), Cell(p.Z));
+        if (!_s.Cells.TryGet(key, out int head))
+        {
+            return;
+        }
+
+        if (head == idx)
+        {
+            if (_s.CellNext[idx] < 0)
+            {
+                _s.Cells.Remove(key);
+            }
+            else
+            {
+                _s.Cells.TrySet(key, _s.CellNext[idx]);
+            }
+        }
+        else
+        {
+            int prev = head;
+            while (prev >= 0 && _s.CellNext[prev] != idx)
+            {
+                prev = _s.CellNext[prev];
+            }
+
+            if (prev >= 0)
+            {
+                _s.CellNext[prev] = _s.CellNext[idx];
+            }
+        }
+
+        _s.CellNext[idx] = -1;
+    }
+
+    /// <summary>Концы сегмента в списки инцидентности своих узлов (по убыванию кода <c>2*seg+end</c>).</summary>
+    internal void LinkSegment(int seg)
+    {
+        LinkInc(_s.Segments[seg].NodeA, 2 * seg);
+        LinkInc(_s.Segments[seg].NodeB, (2 * seg) + 1);
+    }
+
+    internal void UnlinkSegment(int seg)
+    {
+        UnlinkInc(_s.Segments[seg].NodeA, 2 * seg);
+        UnlinkInc(_s.Segments[seg].NodeB, (2 * seg) + 1);
+    }
+
+    private void LinkInc(int node, int code)
+    {
+        int head = _s.IncHead[node];
+        if (head < 0 || code > head)
+        {
+            _s.IncNext[code] = head;
+            _s.IncHead[node] = code;
+            return;
+        }
+
+        int prev = head;
+        while (_s.IncNext[prev] > code)
+        {
+            prev = _s.IncNext[prev];
+        }
+
+        _s.IncNext[code] = _s.IncNext[prev];
+        _s.IncNext[prev] = code;
+    }
+
+    private void UnlinkInc(int node, int code)
+    {
+        int head = _s.IncHead[node];
+        if (head == code)
+        {
+            _s.IncHead[node] = _s.IncNext[code];
+        }
+        else
+        {
+            int prev = head;
+            while (prev >= 0 && _s.IncNext[prev] != code)
+            {
+                prev = _s.IncNext[prev];
+            }
+
+            if (prev >= 0)
+            {
+                _s.IncNext[prev] = _s.IncNext[code];
+            }
+        }
+
+        _s.IncNext[code] = -1;
     }
 
     // ---- узлы ----
@@ -224,22 +364,22 @@ internal sealed partial class NetworkBuilder
             return NetworkStatus.Ok;
         }
 
-        if (_s.NodeCount >= _s.Nodes.Length)
+        int idx = _s.NodePool.PeekIndex();
+        if (idx < 0)
         {
             node = -1;
             return NetworkStatus.NodesFull;
         }
 
-        int idx = _s.NodeCount;
-        long key = CellKey(Cell(position.X), Cell(position.Z));
-        int head = _s.Cells.TryGet(key, out int h) ? h : -1;
-        if (!_s.Cells.TrySet(key, idx))
+        _s.Nodes[idx] = new NodeData { Position = position };   // позиция нужна LinkNode (ячейка); остальное - ниже
+        if (!LinkNode(idx))
         {
+            _s.Nodes[idx] = NetworkStore.DeadNode(_s.NodePool.GenerationOf(idx));
             node = -1;
             return NetworkStatus.NodesFull;
         }
 
-        _s.CellNext[idx] = head;
+        _s.NodePool.TryAllocate(out idx, out int gen);
         _s.IncHead[idx] = -1;
         _s.Nodes[idx] = new NodeData
         {
@@ -253,10 +393,14 @@ internal sealed partial class NetworkBuilder
             Signal = -1,
             Zone = -1,
             Radius = _o.NodeSetback,
-            Generation = 1,
+            Generation = gen,
         };
-        _s.NodeCount = idx + 1;
         _s.Version++;
+        if (CreatedNodeCount < CreatedNodes.Length)
+        {
+            CreatedNodes[CreatedNodeCount++] = idx;
+        }
+
         node = idx;
         return NetworkStatus.Ok;
     }
@@ -300,7 +444,7 @@ internal sealed partial class NetworkBuilder
         out int segment)
     {
         segment = -1;
-        if ((uint)nodeA >= (uint)_s.NodeCount || (uint)nodeB >= (uint)_s.NodeCount || nodeA == nodeB ||
+        if (!_s.NodeAlive(nodeA) || !_s.NodeAlive(nodeB) || nodeA == nodeB ||
             lanesAB < 0 || lanesBA < 0 || lanesAB > MaxLanesPerDirection || lanesBA > MaxLanesPerDirection ||
             lanesAB + lanesBA == 0 || !(speedLimit > 0f) || float.IsInfinity(speedLimit) || via.Length > MaxVia)
         {
@@ -361,17 +505,17 @@ internal sealed partial class NetworkBuilder
 
         int laneTotal = lanesAB + lanesBA;
         int pointTotal = laneTotal * m;
-        if (_s.SegmentCount >= _s.Segments.Length)
+        if (_s.SegmentPool.PeekIndex() < 0)
         {
             return NetworkStatus.SegmentsFull;
         }
 
-        if (_s.LaneCount + laneTotal > _s.Lanes.Length)
+        if (!_s.CanAllocBlock(_s.LaneArena, laneTotal))
         {
             return NetworkStatus.LanesFull;
         }
 
-        if (_s.LanePointCount + pointTotal > _s.LanePoints.Length || _s.SegmentPointCount + m > _s.SegmentPoints.Length)
+        if (!_s.CanAllocBlock(_s.LanePointArena, pointTotal) || !_s.CanAllocBlock(_s.SegmentPointArena, m))
         {
             return NetworkStatus.PointsFull;
         }
@@ -379,27 +523,27 @@ internal sealed partial class NetworkBuilder
         // Miter-векторы оси: смещение вправо (по ходу A→B) на 1 м.
         ComputeMiters(m);
 
-        int seg = _s.SegmentCount;
-        int firstLane = _s.LaneCount;
-        int firstSegPoint = _s.SegmentPointCount;
+        // Запись (ошибок дальше нет): слот сегмента из пула, блоки - из арен (у сети без правок подряд в хвосте, как раньше).
+        _s.SegmentPool.TryAllocate(out int seg, out int gen);
+        int firstLane = _s.AllocLaneBlock(laneTotal);
+        int firstPoint = _s.AllocBlock(_s.LanePointArena, pointTotal);
+        int firstSegPoint = _s.AllocBlock(_s.SegmentPointArena, m);
         for (int i = 0; i < m; i++)
         {
             _s.SegmentPoints[firstSegPoint + i] = _axis[i];
         }
 
-        _s.SegmentPointCount += m;
-
         float halfWidth = laneTotal * _o.LaneWidth * 0.5f;
         for (int k = 0; k < lanesAB; k++)
         {
             float x = halfWidth - ((k + 0.5f) * _o.LaneWidth); // вправо от оси в системе A→B
-            EmitLane(firstLane + k, seg, k, 0, lanesAB, x, m, length, speedLimit);
+            EmitLane(firstLane + k, firstPoint + (k * m), seg, k, 0, lanesAB, x, m, length, speedLimit);
         }
 
         for (int k = 0; k < lanesBA; k++)
         {
             float x = -(halfWidth - ((k + 0.5f) * _o.LaneWidth));
-            EmitLane(firstLane + lanesAB + k, seg, k, 1, lanesBA, x, m, length, speedLimit);
+            EmitLane(firstLane + lanesAB + k, firstPoint + ((lanesAB + k) * m), seg, k, 1, lanesBA, x, m, length, speedLimit);
         }
 
         _s.Segments[seg] = new SegmentData
@@ -415,26 +559,18 @@ internal sealed partial class NetworkBuilder
             FirstLaneBA = lanesBA > 0 ? firstLane + lanesAB : -1,
             FirstPoint = firstSegPoint,
             PointCount = m,
-            Generation = 1,
+            Generation = gen,
         };
 
         // Инцидентность (для BuildConnectors).
-        _s.IncNext[2 * seg] = _s.IncHead[nodeA];
-        _s.IncHead[nodeA] = 2 * seg;
-        _s.IncNext[(2 * seg) + 1] = _s.IncHead[nodeB];
-        _s.IncHead[nodeB] = (2 * seg) + 1;
-
-        _s.SegmentCount = seg + 1;
-        _s.LaneCount += laneTotal;
-        _s.LanePointCount += pointTotal;
+        LinkSegment(seg);
         _s.Version++;
         segment = seg;
         return NetworkStatus.Ok;
     }
 
-    private void EmitLane(int laneIdx, int seg, int laneNo, int direction, int laneCountInDir, float x, int m, float length, float limit)
+    private void EmitLane(int laneIdx, int first, int seg, int laneNo, int direction, int laneCountInDir, float x, int m, float length, float limit)
     {
-        int first = _s.LanePointCount + ((laneIdx - _s.LaneCount) * m);
         for (int i = 0; i < m; i++)
         {
             // Направление B→A: те же точки в обратном порядке, s = Length - s_оси.
@@ -526,6 +662,9 @@ internal sealed partial class NetworkBuilder
     }
 
     private static bool IsFinite(Vec2 p) => float.IsFinite(p.X) && float.IsFinite(p.Z);
+
+    /// <summary>Ключ ячейки сетки прилипания для точки (для сверки производных: <c>World.VerifyDerived</c>).</summary>
+    internal long CellKeyOf(Vec2 p) => CellKey(Cell(p.X), Cell(p.Z));
 
     private int Cell(float v) => DetMath.ToIntSat(MathF.Floor(v / _o.SnapRadius));
 
