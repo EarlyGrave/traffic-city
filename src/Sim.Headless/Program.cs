@@ -1,5 +1,6 @@
 using System;
 using Sim.Headless.Bench;
+using Sim.Headless.Golden;
 using Sim.Headless.Render;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
@@ -20,6 +21,7 @@ public static class Program
         "  hash             print the state hash every K ticks (--scenario <name|path> --ticks N [--every K]; see hash --help)\n" +
         "  save             run a scenario and write a save container (--scenario <name|path> --ticks N --out <file>; see save --help)\n" +
         "  load             load a save and continue (--in <file> [--ticks N] [--every K]; see load --help)\n" +
+        "  golden           write cross-language golden files for the Rust pilot (--out <dir>; see golden --help)\n" +
         "  compare          compare a result with the baseline\n" +
         "  update-baseline  replace perf/baseline.json with a result\n" +
         "  render           render a scenario to mp4 (--scenario <name|path> --seconds <s> --out <file.mp4>; see render --help)\n" +
@@ -77,6 +79,8 @@ public static class Program
                 return HasHelp(args)
                     ? Help(UpdateBaselineCommand.Usage)
                     : UpdateBaselineCommand.Run(args, Console.Out, Console.Error);
+            case "golden":
+                return HasHelp(args) ? Help(GoldenCommand.Usage) : GoldenCommand.Run(args, Console.Out, Console.Error);
             case "run":
                 return HasHelp(args) ? Help(RunCommand.Usage) : RunCommand.Run(args, Console.Out, Console.Error);
             default:
