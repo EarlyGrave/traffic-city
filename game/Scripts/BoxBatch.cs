@@ -19,12 +19,17 @@ public sealed class BoxBatch
     private int _count;
 
     public BoxBatch(string name, Vector3 size, bool unshaded)
+        : this(name, new BoxMesh { Size = size }, unshaded)
+    {
+    }
+
+    public BoxBatch(string name, Mesh mesh, bool unshaded)
     {
         _mm = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
             UseColors = true,
-            Mesh = new BoxMesh { Size = size },
+            Mesh = mesh,
             CustomAabb = new Aabb(new Vector3(-100000f, -50f, -100000f), new Vector3(200000f, 200f, 200000f)),
         };
         Node = new MultiMeshInstance3D
@@ -56,11 +61,11 @@ public sealed class BoxBatch
         _count = 0;
     }
 
-    /// <summary>Добавить инстанс: центр (x, y, z), курс <paramref name="heading"/> (atan2(dz, dx), рад), цвет.</summary>
-    public void Add(float x, float y, float z, float heading, Color color)
+    /// <summary>Добавить инстанс: центр (x, y, z), курс <paramref name="heading"/> (atan2(dz, dx), рад), цвет, равномерный масштаб (дальний план).</summary>
+    public void Add(float x, float y, float z, float heading, Color color, float scale = 1f)
     {
-        float c = MathF.Cos(heading);
-        float s = MathF.Sin(heading);
+        float c = MathF.Cos(heading) * scale;
+        float s = MathF.Sin(heading) * scale;
         int o = _count * Stride;
         float[] b = _buf;
         // вращение вокруг Y на -heading: локальная +X смотрит вдоль (cos h, 0, sin h)
@@ -69,7 +74,7 @@ public sealed class BoxBatch
         b[o + 2] = -s;
         b[o + 3] = x;
         b[o + 4] = 0f;
-        b[o + 5] = 1f;
+        b[o + 5] = scale;
         b[o + 6] = 0f;
         b[o + 7] = y;
         b[o + 8] = s;

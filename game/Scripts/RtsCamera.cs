@@ -38,6 +38,20 @@ public partial class RtsCamera : Node3D
 
     public Camera3D Camera => _camera;
 
+    /// <summary>Текущее расстояние камеры до точки на земле, м.</summary>
+    public float Distance => _distance;
+
+    /// <summary>Поставить камеру точно (аргумент запуска <c>--cam</c>): точка на земле, расстояние, наклон и поворот в градусах.</summary>
+    public void SetPose(Vector3 center, float distance, float pitchDeg, float yawDeg)
+    {
+        _targetPos = center;
+        _targetDistance = Math.Clamp(distance, MinDistance, MaxDistance);
+        _distance = _targetDistance;
+        _pitch = Mathf.DegToRad(Math.Clamp(pitchDeg, 15f, 89f));
+        _yaw = Mathf.DegToRad(yawDeg);
+        Apply();
+    }
+
     public override void _Ready()
     {
         _camera = GetNode<Camera3D>("Camera3D");
