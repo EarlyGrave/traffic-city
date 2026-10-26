@@ -49,7 +49,7 @@
     "passenger_rate_per_min": 2
   },
   "peds": {
-    "count": 20000,
+    "count": 12000,
     "activity_s": [30, 120]
   },
   "rules": {
@@ -96,8 +96,8 @@
     "max_signalized_nodes": 160,
     "max_connectors": 44800,
     "max_conflicts": 268800,
-    "max_peds": 26000,
-    "max_residents": 40000,
+    "max_peds": 15600,
+    "max_residents": 24000,
     "max_ped_path_steps": 64
   }
 }

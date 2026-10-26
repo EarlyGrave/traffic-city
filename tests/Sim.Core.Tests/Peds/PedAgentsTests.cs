@@ -547,7 +547,7 @@ public sealed class PedAgentsTests
 
     [Theory]
     [InlineData("s1k-peds", 2000, 4000, 2600)]
-    [InlineData("s10k-peds", 20000, 40000, 26000)]
+    [InlineData("s10k-peds", 12000, 24000, 15600)]
     public void PedsScenarioFiles_LoadWithSpecParameters(string name, int count, int residents, int maxPeds)
     {
         Sim.Scenarios.LoadedScenario sc = Sim.Scenarios.ScenarioLoader.LoadInfo(System.IO.Path.Combine(Gen.GenFixture.RepoRoot(), "scenarios", name + ".json"));

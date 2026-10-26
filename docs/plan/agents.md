@@ -124,4 +124,4 @@
 | 118 | zoning-z2 (worktree) | sonnet | 3.2 Z2: календарь, автомат жителя, ноги в micro, s1k-res | wip |
 | 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | wip |
 | 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | wip |
-| 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | wip |
+| 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | done: Walk продлевается при заявке; N = 12 000 (90.4–92.1%) |

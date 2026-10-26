@@ -367,7 +367,7 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 
 Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64). Без включённой секции эти ключи — ошибка загрузчика.
 Загрузчик переводит скорости в мм/тик (`round(kmh / 3.6 · 50)`), секунды — в тики, метры — в мм для `PedDesc`, где ядро ждёт целые.
-Сценарии: `s1k-peds.json` (s1k + `count` 2 000, `residents` 4 000), `s10k-peds.json` (s10k + `count` 20 000, `residents` 40 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`). Оба: `transit.bidirectional = true`,
+Сценарии: `s1k-peds.json` (s1k + `count` 2 000, `residents` 4 000), `s10k-peds.json` (s10k + `count` 12 000 (3.1f, подбор по Парето: pedestrians.md §5.10), `residents` 24 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`). Оба: `transit.bidirectional = true`,
 `activity_s = [30, 120]` (пешие поездки короче 20 минут, а при стандартных 10–30 мин покоя готовых жителей не хватает, чтобы держать `count` активных; с автобусными ногами P4 баланс можно вернуть к дефолту), `max_peds`
 = `1.3 · count`, `max_residents` = `residents`, `max_ped_path_steps` = 64; остальное — как у `s1k.json`/`s10k.json`.
 
