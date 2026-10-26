@@ -197,6 +197,16 @@ internal static class CityHash
             h.Add(s.K[i]);
         }
 
+        for (int i = 0; i < s.LsC.Length; i++)
+        {
+            h.Add(s.LsC[i]);
+        }
+
+        for (int i = 0; i < s.LsJobs.Length; i++)
+        {
+            h.Add(s.LsJobs[i]);
+        }
+
         for (int i = 0; i < s.FrozenN; i++)
         {
             h.Add(s.FrozenKey[i]);
