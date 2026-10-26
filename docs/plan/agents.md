@@ -150,3 +150,4 @@
 | 144 | tools-t10 (worktree) | sonnet | 4.3 T10: журнал команд и реплей, replay/bugreport в Headless | done, merged (ReplayTests 9/9; s1k 2000 тиков 50 команд exit 0; контейнер TCRP; точный тик — через --interval 1) |
 | 145 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью, стоимость, кэш компонент | killed (без коммитов), перезапуск |
 | 146 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью (перезапуск 145) | running |
+| L1 | local/windows-tests (локал) | opus | Локальная среда на Windows: golden Rust-пилота, грабли в lessons | done, merged (build/format чисто; тесты 1423 ок, 2 skip; headings_hash строго только при TC_STRICT_HEADINGS=1) |
