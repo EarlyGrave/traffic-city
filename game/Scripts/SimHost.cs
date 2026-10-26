@@ -19,7 +19,6 @@ public partial class SimHost : Node3D
     private const double TickSeconds = 1.0 / Simulation.TicksPerSecond;
     private const int MaxStepsPerFrame = 5;
     private const float RoutePickMinRadius = 4f;
-    private const float PedFarDistance = 900f;       // дальше - вместо капсул heatmap по PedEdgeCounts (режим Auto)
     private const float MarkerNearDistance = 450f;   // маркеры Walk/Clear и очереди на остановках только вблизи
     private const float PedScaleDistance = 70f;
     private const float MaxViewRange = 6000f;
@@ -41,7 +40,9 @@ public partial class SimHost : Node3D
     private LodConfig _lod = LodConfig.Load(string.Empty, "high");
     private string _renderPreset = "high";
     private bool _logStepAlloc;
-    private RoadMesh? _roads;
+    private RoadChunks? _roads;
+    private HeatTexture? _roadHeat;
+    private PedChunks? _pedStatic;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -308,13 +309,14 @@ public partial class SimHost : Node3D
             UpdateSignals(_sim);
         }
 
-        if (_roads != null && _roads.Heat)
+        if (_roadHeat != null)
         {
+            // heatmap дорог в шейдере: раз в 0.5 с обновляется только текстура данных, мешей не трогаем (render.md §3.5)
             _heatTimer -= delta;
             if (_heatTimer <= 0)
             {
-                _heatTimer = 0.5;
-                _roads.Refresh(_sim);
+                _heatTimer = HeatTexture.UpdateIntervalS;
+                _roadHeat.UpdateRoads(_sim.SegmentLoads);
             }
         }
 
@@ -357,7 +359,8 @@ public partial class SimHost : Node3D
                 case Key.F1:
                     if (_roads != null)
                     {
-                        _roads.SetHeat(!_roads.Heat, _sim);
+                        _roads.SetHeat(!_roads.Heat);
+                        _heatTimer = 0;
                     }
 
                     break;
@@ -512,8 +515,10 @@ public partial class SimHost : Node3D
             },
         });
 
-        _roads = new RoadMesh(sim);
-        AddChild(_roads.Instance);
+        _roadHeat = new HeatTexture(sim.Network.Segments.Length);
+        _roadHeat.UpdateRoads(sim.SegmentLoads);
+        _roads = new RoadChunks(sim, _roadHeat, _lod);
+        AddChild(_roads.Root);
 
         _vehicles = new VehicleLayer(this, _types, _lod);
 
@@ -521,9 +526,9 @@ public partial class SimHost : Node3D
         {
             _cross = new CrosswalkMesh(sim);
             _peds = new PedMesh();
-            AddChild(_cross.Sidewalks);
-            AddChild(_cross.Zebras);
-            AddChild(_cross.Heat);
+            _pedStatic = new PedChunks(sim, _lod);
+            _pedStatic.RefreshHeat(sim);
+            AddChild(_pedStatic.Root);
             AddChild(_cross.Markers);
             AddChild(_cross.Queues);
             AddChild(_peds.Node);
@@ -726,7 +731,7 @@ public partial class SimHost : Node3D
         }
     }
 
-    private bool PedsAsAgents(float dist) => _pedMode == PedMode.Agents || (_pedMode == PedMode.Auto && dist <= PedFarDistance);
+    private bool PedsAsAgents(float dist) => _pedMode == PedMode.Agents || (_pedMode == PedMode.Auto && dist <= _lod.PedPointRange);
 
     private void UpdatePeds(Simulation sim, float alpha, float dist, double delta)
     {
@@ -737,9 +742,8 @@ public partial class SimHost : Node3D
 
         bool agents = PedsAsAgents(dist);
         _peds.Node.Visible = agents;
-        _cross.Sidewalks.Visible = agents;
-        _cross.Zebras.Visible = agents;
-        _cross.Heat.Visible = !agents;
+        // тротуары/зебры - чанки с visibility_range; режим пешеходов - только uniform шейдера (heatmap в шейдере, меши не трогаем)
+        _pedStatic?.SetForce(_pedMode switch { PedMode.Heat => 1f, PedMode.Agents => -1f, _ => 0f });
         bool near = agents && dist <= MarkerNearDistance;
         _cross.Markers.Visible = near;
         _cross.Queues.Visible = agents;
@@ -753,14 +757,12 @@ public partial class SimHost : Node3D
                 _cross.UpdateMarkers(sim, _viewX0, _viewZ0, _viewX1, _viewZ1);
             }
         }
-        else
+
+        _pedHeatTimer -= delta;
+        if (_pedHeatTimer <= 0)
         {
-            _pedHeatTimer -= delta;
-            if (_pedHeatTimer <= 0)
-            {
-                _pedHeatTimer = 0.5;
-                _cross.RefreshHeat(sim);
-            }
+            _pedHeatTimer = HeatTexture.UpdateIntervalS;
+            _pedStatic?.RefreshHeat(sim);
         }
 
         _pedHeatShown = !agents;
