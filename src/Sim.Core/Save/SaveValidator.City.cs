@@ -199,12 +199,31 @@ internal static partial class SaveValidator
                     return Bad(c, i, 27);
                 }
 
-                // Машина: жива, поколение совпало, обратная ссылка указывает на того же жителя. Пешеходы: индексы заготовок/пешеходов связывает Z2 (проверка расширяется там же).
+                // Машина: жива, поколение совпало, обратная ссылка указывает на того же жителя. Пешеход (peds.source = city): жив, поколение совпало, PedStore.Resident - этот житель.
                 if (r.LegMode[i] == (byte)TravelMode.Car &&
                     (!veh.IsAlive(r.Agent[i], r.AgentGen[i]) || veh.ResidentOf(r.Agent[i]) != i))
                 {
                     return Bad(c, i, 28);
                 }
+
+                if (r.LegMode[i] != (byte)TravelMode.Car &&
+                    (w.Peds == null || !w.Peds.CitySource || !w.Peds.P.Pool.IsAlive(r.Agent[i], r.AgentGen[i]) || w.Peds.P.Resident[r.Agent[i]] != i))
+                {
+                    return Bad(c, i, 29);
+                }
+
+                if (r.EvTick[i] != -1)
+                {
+                    return Bad(c, i, 30);   // в пути события нет: ногу закрывает прибытие агента
+                }
+            }
+
+            int stops = w.Net.BusStopCount;
+            if ((r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
+                r.LegDest[i] < -1 || (r.LegDest[i] != -1 && !b.Pool.IsAlive(r.LegDest[i])) || r.LegStopA[i] < -1 || r.LegStopA[i] >= stops || r.LegStopB[i] < -1 || r.LegStopB[i] >= stops ||
+                (r.State[i] == (byte)ResidentState.WaitDepart && r.LegDest[i] == -1) || (r.State[i] == (byte)ResidentState.AtHome && r.Agent[i] != -1))
+            {
+                return Bad(c, i, 31);
             }
         }
 

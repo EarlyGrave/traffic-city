@@ -705,7 +705,7 @@ internal static partial class SaveValidator
             ref readonly PendingTrip t = ref w.Trips.At(i);
             if (t.FromZone < -1 || t.FromZone >= n.ZoneCount || t.ToZone < -1 || t.ToZone >= n.ZoneCount || t.FromLane < -1 || t.FromLane >= n.LaneCount ||
                 t.Type >= w.Types.Length || t.DestLane < -1 || t.DestLane >= n.LaneCount || !Fin(t.FromS) || !Fin(t.DestS) || t.Route < -1 ||
-                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0)
+                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || t.ResidentRef < 0 || (t.ResidentRef != 0 && (w.City == null || t.ResidentRef > w.City.Residents.Capacity)))
             {
                 return Bad(c, i, 50);
             }

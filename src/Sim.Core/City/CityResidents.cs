@@ -74,8 +74,11 @@ internal sealed class CityResidents
     public readonly int[] LegWalk;         // накопители, тики
     public readonly int[] LegWait;
     public readonly int[] LegRide;
+    public readonly int[] LegDest;         // здание-цель текущей ноги (дом на обратной ноге) или -1 (Z2)
+    public readonly int[] LegStopA;        // автобусная нога: остановка посадки и высадки (глобальные индексы) или -1 (Z2)
+    public readonly int[] LegStopB;
 
-    public readonly int[] Agent;           // индекс машины или пешехода (-1)
+    public readonly int[] Agent;          // индекс машины или пешехода (-1)
     public readonly int[] AgentGen;
     public readonly long[] Account;
     public readonly long[] IncomeEwma;
@@ -114,6 +117,9 @@ internal sealed class CityResidents
         LegWalk = new int[capacity];
         LegWait = new int[capacity];
         LegRide = new int[capacity];
+        LegDest = new int[capacity];
+        LegStopA = new int[capacity];
+        LegStopB = new int[capacity];
         Agent = new int[capacity];
         AgentGen = new int[capacity];
         Account = new long[capacity];
@@ -190,6 +196,9 @@ internal sealed class CityResidents
         LegWalk[i] = 0;
         LegWait[i] = 0;
         LegRide[i] = 0;
+        LegDest[i] = -1;
+        LegStopA[i] = -1;
+        LegStopB[i] = -1;
         Agent[i] = -1;
         AgentGen[i] = 0;
         Account[i] = 0;

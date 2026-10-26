@@ -28,6 +28,7 @@ internal static class CityInit
         }
 
         c.Lots.Version++;
+        c.RebuildWheel(-1);   // колесо жителей: начальные события Plan (Z2)
         Accessibility.Init(w);   // производные скимов, поле доступности и LS_ref (zoning-demand.md §6.7)
         return CreateStatus.Ok;
     }

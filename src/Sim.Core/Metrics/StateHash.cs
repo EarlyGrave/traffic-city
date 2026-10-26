@@ -216,6 +216,10 @@ internal static class StateHash
             h.Add(t.DestS);
             h.Add(t.Route);
             h.Add(t.RouteGen);
+            if (w.City != null)
+            {
+                h.Add(t.ResidentRef);   // только в режиме жителей: хэш прочих миров не меняется (CZ1)
+            }
         }
 
         // 8a. Очередь перемаршрутизации в порядке очереди.

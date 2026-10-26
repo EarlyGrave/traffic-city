@@ -145,6 +145,9 @@ internal static partial class SaveSchema
         RingCount<SeekEntry>(35, "SeekCount", w => w.City!.Residents.SeekQueue),
         Col.RingField<SeekEntry>(36, "SeekIndex", w => w.City!.Residents.SeekQueue, "SeekCount", nameof(SeekEntry.Index)),
         Col.RingField<SeekEntry>(37, "SeekGeneration", w => w.City!.Residents.SeekQueue, "SeekCount", nameof(SeekEntry.Generation)),
+        Col.Array<int>(38, "LegDest", w => w.City!.Residents.LegDest, _resdHw, "HighWater", "-1", _resdPool, -1),
+        Col.Array<int>(39, "LegStopA", w => w.City!.Residents.LegStopA, _resdHw, "HighWater", "-1", _resdPool, -1),
+        Col.Array<int>(40, "LegStopB", w => w.City!.Residents.LegStopB, _resdHw, "HighWater", "-1", _resdPool, -1),
     })
     {
         After = c =>

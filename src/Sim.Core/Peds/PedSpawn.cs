@@ -16,6 +16,12 @@ internal static class PedSpawn
     public static void Run(World w)
     {
         PedWorld pw = w.Peds!;
+        if (pw.CitySource)
+        {
+            pw.SpawnCityLegs(w);   // peds.source = "city": ноги жителей города из FIFO заявок (zoning-demand.md §4.1)
+            return;
+        }
+
         ResidentStore rs = pw.R;
         if (rs.ReadyHead < 0)
         {

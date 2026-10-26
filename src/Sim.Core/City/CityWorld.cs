@@ -1,5 +1,7 @@
+using System;
 using Sim.Core.Api;
 using Sim.Core.Demand;
+using Sim.Core.Util;
 
 namespace Sim.Core.City;
 
@@ -25,6 +27,11 @@ internal sealed class CityWorld
     public readonly Skims Skims;
     public readonly CellLoads Loads;
     public readonly LotBuilder LotGen;
+
+    // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
+    public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
+    public readonly ArrivalRing Arrivals;
+    public readonly int[] DueScratch;          // ключи колеса текущего тика
 
     // ---- состояние суток и исполнения (WRLD) ----
     public int Day;                            // номер суток (= Tick / DayTicks на границе; хранится явно: агрегат прыгает по тикам)
@@ -61,6 +68,9 @@ internal sealed class CityWorld
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
         LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm);
+        Wheel = new TimerWheel(caps.MaxCityResidents);
+        Arrivals = new ArrivalRing(caps.MaxCityResidents);
+        DueScratch = new int[Math.Max(1, caps.MaxCityResidents)];
     }
 
     /// <summary>Период скимов тика (0..P-1).</summary>
@@ -72,6 +82,26 @@ internal sealed class CityWorld
     /// <summary>Тик начала слота суток <paramref name="day"/>.</summary>
     public long TickOfSlot(int day, int slot) => ((long)day * DayTicks) + ((long)slot * SlotTicks);
 
-    /// <summary>Производные после загрузки сейва (геометрия участков, сетка занятости); колесо жителей добавляет Z2 здесь же.</summary>
-    public void RestoreDerived(World w) => LotGen.RestoreDerived(w);
+    /// <summary>Производные после загрузки сейва: геометрия участков, сетка занятости, колесо жителей из <c>EvTick/EvKind</c>, очередь заявок ног пешеходов.</summary>
+    public void RestoreDerived(World w)
+    {
+        LotGen.RestoreDerived(w);
+        RebuildWheel(w.Tick - 1);
+        TripLegs.RestoreDerived(w);
+    }
+
+    /// <summary>Колесо жителей из <c>EvTick</c> (события не раньше <paramref name="now"/> + 1): в <c>Create</c> now = -1, после <c>Load</c> now = Tick - 1.</summary>
+    public void RebuildWheel(long now)
+    {
+        Wheel.Clear();
+        Arrivals.Clear();
+        CityResidents r = Residents;
+        for (int i = 0; i < r.HighWater; i++)
+        {
+            if (r.Pool.IsAlive(i) && r.EvTick[i] >= 0)
+            {
+                Wheel.Schedule(i, r.EvTick[i], Math.Min(now, r.EvTick[i] - 1));   // честный сейв: EvTick > now; прыжок Tick в тесте не должен ронять Schedule
+            }
+        }
+    }
 }

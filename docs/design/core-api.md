@@ -1000,6 +1000,11 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 2d / 3b / 4p | **Пешеходы** (3.1, `pedestrians.md` §8; только при `peds`): `PedSpawn` (после 2b: очередь готовых жителей → пешеходы `PendingPath`), `PedPhase.Route` (после 3: пути в бюджете), `PedPhase.Run` (после 4a, до 4b: события колеса таймеров, автоматы переходов); зонд шлёт номера 11, 12, 13 и метку 14 (время 4a отнести к gate) | Residents, Peds, Crossings | Peds, Residents, Crossings, TimerWheel, Counters | `Peds/Ped{Spawn,Phase,Router}.cs` |
 | 10 | **Снапшот** (§5.2): заполнить `Render[(tick+1) & 1][..HighWater]` и `SnapshotSlots` (позиция по полилинии с `PointHint` + `Lateral`, курс из `LanePieceHeading`), `SelectedRoute` | S, Lane, Lateral, флаги | RenderBuffers | `Api/SnapshotPhase.cs` |
 
+**Город (3.2, `zoning-demand.md` §12; только при `demand.model = residents`).** Фаза **2r** `CityPhase.Events` — сразу после команд, до спавна: события колеса жителей
+текущего тика по возрастанию индекса (план дня, выезд, конец занятия, дедлайн `WaitDepart`), заявки ног (машина — `PendingTrip.ResidentRef` в `PendingTrips`, пешком/автобус — `PedWorld.RequestLeg`);
+2a (OD-генератор) выключена. Фаза **9r** `CityPhase.Periodic` — после метрик: `ArrivalRing` по порядку (кладут 4p — пешеход, 8 — машина; наблюдение в скимы, состояние жителя, следующее событие плана),
+граница суток. Без `residents` обе фазы не исполняются.
+
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
 
 **LOD (ADR-0013, `sim-lod.md` §2–3), при `Lod.Mode != Off`.** Машины meso-ячеек: фаза 4 — кандидаты и решения ворот их узлов только

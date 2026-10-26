@@ -431,6 +431,11 @@ internal static class RoutePhase
             {
                 trips.RemoveAt(k); // не на дороге: поездка отбрасывается (RouteFailed считает роутер)
                 w.Counters.TripsDropped++;
+                if (t.ResidentRef != 0)
+                {
+                    City.TripLegs.OnTripDropped(w, t.ResidentRef - 1);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
+                }
+
                 continue;
             }
 

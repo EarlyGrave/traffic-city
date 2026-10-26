@@ -45,6 +45,11 @@ internal static class ArrivalPhase
                 w.Counters.TripsCompleted++;
                 w.Counters.TripTimeTicksTotal += w.Tick - v.SpawnTick[i];
                 w.Emit(SimEventKind.TripCompleted, 0, h.Index, h.Generation);
+                if (v.Resident[i] >= 0)
+                {
+                    City.TripLegs.OnVehicleArrived(w, i);   // машина жителя: в кольцо прибытий до деспауна (фаза 9r закроет ногу)
+                }
+
                 w.Occupancy.UnlinkAll(i);
                 if (v.Route[i] >= 0)
                 {

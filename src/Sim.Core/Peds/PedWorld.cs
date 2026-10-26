@@ -1,5 +1,6 @@
 using System;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Network;
 using Sim.Core.Util;
 
@@ -68,6 +69,7 @@ internal sealed partial class PedWorld
         StopWaiting = new ushort[stops];
         PaxHead = new int[c.MaxVehicles];
         _due = new int[c.MaxPeds + c.MaxResidents];
+        LegRequests = new RingBuffer<LegRequest>(w.PedCfg.Source == PedSource.City ? Math.Max(1, c.MaxCityResidents) : 1);
         Array.Fill(StopQHead, -1);
         Array.Fill(StopQTail, -1);
         Array.Fill(PaxHead, -1);
@@ -79,6 +81,12 @@ internal sealed partial class PedWorld
     /// <summary>Создание мира: жители, колесо, цель пешеходов. PRNG <c>Peds</c> - только здесь и в тике.</summary>
     public void Init(World w)
     {
+        if (CitySource)
+        {
+            w.TargetPeds = 0;   // источник - жители города (zoning-demand.md §4.1): заготовок нет, цели peds.count нет, предел - max_peds
+            return;
+        }
+
         R.Create(w);
         w.TargetPeds = Cfg.Count;
         Wheel.Clear();
@@ -175,7 +183,11 @@ internal sealed partial class PedWorld
         int r = P.Resident[p];
         w.Counters.PedTripsCompleted++;
         w.Counters.PedTripTicksTotal += tick - P.TripTick[p];
-        if ((uint)r < (uint)R.Count)
+        if (CitySource)
+        {
+            TripLegs.OnPedLegEnd(w, p);
+        }
+        else if ((uint)r < (uint)R.Count)
         {
             R.Where[r] = R.Where[r] == ResidentStore.ToWork ? ResidentStore.AtWork : ResidentStore.AtHome;
             ScheduleResident(w, r);
@@ -208,7 +220,11 @@ internal sealed partial class PedWorld
     {
         w.Counters.PedNoPath++;
         int r = P.Resident[p];
-        if ((uint)r < (uint)R.Count)
+        if (CitySource)
+        {
+            TripLegs.OnPedNoPath(w, p);
+        }
+        else if ((uint)r < (uint)R.Count)
         {
             R.Where[r] = R.Where[r] == ResidentStore.ToWork ? ResidentStore.AtHome : ResidentStore.AtWork;
             ScheduleResident(w, r);
@@ -291,6 +307,12 @@ internal sealed partial class PedWorld
         Array.Fill(PaxHead, -1);
         Wheel.Clear();
         long tick = w.Tick;
+        if (CitySource)
+        {
+            LegRequests.Clear();
+            TripLegs.OnPedsReset(w);   // жители в пути пешком/на автобусе возвращаются в точку выхода (zoning-demand.md §4.1)
+        }
+
         for (int r = 0; r < R.Count; r++)
         {
             if (R.Where[r] >= ResidentStore.ToWork)
@@ -387,6 +409,11 @@ internal sealed partial class PedWorld
     /// <summary>Debug-сверка PD2: жители и пешеходы согласованы (раз в 100 тиков).</summary>
     public void CheckInvariants(World w)
     {
+        if (CitySource)
+        {
+            return;   // жители города: сверка в CityPhase.CheckInvariants
+        }
+
         int idle = 0;
         for (int r = 0; r < R.Count; r++)
         {

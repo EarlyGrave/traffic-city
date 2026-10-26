@@ -30,7 +30,7 @@ public sealed class SaveCorpusTests
         new("small", 600, Small),
         new("s1k", 2400, S1k),
         new("s1k-peds", 2400, S1kPeds),
-        new("s1k-res", 1200, S1kRes),
+        new("s1k-res", 24000, S1kRes),
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -195,7 +195,12 @@ public sealed class SaveCorpusTests
         return (sc.Desc, sc.TypeNames);
     }
 
-    private static (ScenarioDesc, string[]) S1kRes() => (City.CityFixtures.S1kRes(), new[] { "car", "bus" });
+    private static (ScenarioDesc, string[]) S1kRes()
+    {
+        // Z2: сценарий s1k-res (жители, peds.source = city); тик 24000 - ночь позади, в пути машины и пешеходы, часть жителей в WaitDepart.
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res.json"));
+        return (sc.Desc, sc.TypeNames);
+    }
 
     private static (ScenarioDesc, string[]) S1kPeds()
     {
