@@ -121,3 +121,5 @@
 | 115 | render-v3 (worktree) | sonnet | 3.3 V3: машины — батчи по LOD, точки, вид = прямоугольник точек | done, merged (agents overview prims 303k → 75k; alloc при смене вида — только 2 первых тика, ленивый init) |
 | 116 | half-crossings (worktree) | sonnet | 3.1e: «половины» перехода — раздельные BusyUntil для XIn/XOut | wip |
 | 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | wip |
+| 118 | zoning-z2 (worktree) | sonnet | 3.2 Z2: календарь, автомат жителя, ноги в micro, s1k-res | wip |
+| 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | wip |
