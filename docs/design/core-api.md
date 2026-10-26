@@ -224,6 +224,7 @@ public sealed class Simulation : IDisposable
 
     // ---- детерминизм ----
     public ulong ComputeStateHash();                                 // §9, O(N), не вызывать каждый тик в проде
+    public ulong ComputeNetworkHash();                               // §9: FNV-1a 64 статики сети (кросс-языковой golden Rust-пилота, rust-pilot.md §5.2); в хэш состояния не входит
 
     // ---- запросы (read-only, O(1)) ----
     public bool IsAlive(VehicleHandle h);
@@ -1164,7 +1165,7 @@ public struct Fnv1a64
     нарезки - производные, не хэшируются.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
-seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
+seed'ом; отдельный `ComputeNetworkHash()` (4.6, R2) — состав и порядок в `rust-pilot.md` §5.2, в хэш состояния не входит).
 Требование: `float`-арифметика в ядре без `MathF.FusedMultiplyAdd` и без зависимости от
 вектора SIMD (JIT может менять порядок) — только скалярные операции в фиксированном порядке;
 результат должен совпадать x64 ↔ arm64 на .NET (IEEE-754, без x87). Тест детерминизма:

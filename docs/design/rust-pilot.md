@@ -140,6 +140,14 @@ FNV-1a 64 (`core-api` §9: `Add` little-endian, float — битовый обр�
 `conflicts_hash` — отдельно: по connector'ам `FirstConflict, ConflictCount, ConflictMask`, затем `Conflicts[0..ConflictsUsed)` по полям `ConflictEntry`.
 `desc_hash` — по разобранному JSON до `Create`: `Seed`, `SimCapacities` (все поля по порядку), число узлов и по узлу `X, Z, Control`, число сегментов и по сегменту
 `A, B, LanesAB, LanesBA, SpeedLimit, Kind`, затем параметры построителя (§2).
+**Уточнения R2 (реализация `Metrics/NetworkHash.cs`, обязательны для порта).** Элементы массивов хэшируются поэлементно (все поля элемента, затем следующий элемент):
+`Lanes[i]` → поля `LaneData`, `LaneLength[i]`, `LaneGateNode[i]`; рукава `i` → `NodeArms[i]` (int), `ArmFlags[i]` (byte), `ArmDir[i].X`, `.Z`; `SegmentPoints[i]` → `X, Z`; `LanePoints[i]` → `X, Z, LanePointS[i]`;
+connector `i` → поля раздела 7 в перечисленном порядке; `LaneNext[i]` — int. Целые ширины: `byte`-поля — `Add(byte)`, enum `NodeControl` — `Add(int)`, `RoadKind/LaneKind` — `Add(byte)`, `ulong` — 8 байт LE, `ushort` — 2 байта LE (младший первым; в `Fnv1a64` перегрузки нет).
+Для явной сети `NodeData.Signal` и `NodeData.Zone` на момент хэша равны `-1` (тесты проверяют), `Elevation = 0`. `Version = 1` — первое `Add(int)` каждого из четырёх хэшей.
+`headings_hash`: `Add(1)`, `Add(LanePointCount)`, затем `Add(float)` для `LanePieceHeading[0..LanePointCount)`. `conflicts_hash`: `Add(1)`, `Add(Connectors.Count)`, `Add(ConflictsUsed)`, по connector'ам `FirstConflict, ConflictCount` (int), `ConflictMask` (ulong), затем по записям `OtherLocal, Flags` (byte), `SMineCm, SOtherCm, Reserved` (ushort).
+`desc_hash`: `Add(1)`, `Seed` (ulong), `SimCapacities` — 24 int-поля в порядке объявления (`MaxVehicles … SkimObsCapacity`, значения как в разобранном desc, до дефолтов `Create`), число узлов (int), по узлу `X, Z` (float), `Control` (int); число сегментов, по сегменту `A, B, LanesAB, LanesBA` (int), `SpeedLimit` (float), `Kind` (byte); затем `NetworkOptions.Default`: `LaneWidth, SnapRadius, NodeSetback` (float), `ConnectorSamples` (int), `MinLaneLength` (float).
+Файл сценария при `create_status != 0` содержит `load_ok`, `create_status`, `desc_hash` (без `network_hash`/`conflicts_hash`/`headings_hash`/`counts`). `util.json`: PCG32 (16 комбинаций, `NextInt(-5, 100)`), `fnv1a64`, `xxh64`, `minmax`, `float_int`, `denormal`; u64 — hex-строки.
+
 Изменение порядка/состава — правка этого раздела, `golden_version++`, перегенерация golden.
 
 ### 5.3 Как сверяется

@@ -1,0 +1,11 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/net-star5.json",
+  "load_ok": true,
+  "create_status": 0,
+  "desc_hash": "fed6c1e1cd6b9d60",
+  "network_hash": "557d1564dc6c9684",
+  "conflicts_hash": "0f0e5c8d9071de4a",
+  "headings_hash": "7bab7c9937e2ad9a",
+  "counts": { "nodes": 6, "segments": 5, "lanes": 57, "lane_points": 330, "segment_points": 10, "arms": 10, "lane_next": 72, "connectors": 36, "conflicts": 200 }
+}

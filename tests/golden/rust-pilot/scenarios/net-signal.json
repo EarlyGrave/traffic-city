@@ -1,0 +1,219 @@
+{
+  "format_version": 2,
+  "name": "net-signal",
+  "seed": 1,
+  "duration_s": 10,
+  "vehicle_types_file": "../../../../scenarios/vehicle-types.json",
+  "city": {
+    "enabled": false
+  },
+  "network": {
+    "nodes": [
+      {
+        "id": "n0",
+        "x": 0,
+        "z": 0,
+        "control": "signal"
+      },
+      {
+        "id": "n1",
+        "x": 150,
+        "z": 0,
+        "control": "stop"
+      },
+      {
+        "id": "n2",
+        "x": 300,
+        "z": 0,
+        "control": "yield"
+      },
+      {
+        "id": "n3",
+        "x": 450,
+        "z": 0,
+        "control": "right_hand"
+      },
+      {
+        "id": "n4",
+        "x": 0,
+        "z": 150,
+        "control": "none"
+      },
+      {
+        "id": "n5",
+        "x": 0,
+        "z": -150,
+        "control": "none"
+      },
+      {
+        "id": "n6",
+        "x": 150,
+        "z": 150,
+        "control": "none"
+      },
+      {
+        "id": "n7",
+        "x": 150,
+        "z": -150,
+        "control": "none"
+      },
+      {
+        "id": "n8",
+        "x": 300,
+        "z": 150,
+        "control": "none"
+      },
+      {
+        "id": "n9",
+        "x": 300,
+        "z": -150,
+        "control": "none"
+      },
+      {
+        "id": "n10",
+        "x": 450,
+        "z": 150,
+        "control": "none"
+      },
+      {
+        "id": "n11",
+        "x": 450,
+        "z": -150,
+        "control": "none"
+      },
+      {
+        "id": "n12",
+        "x": -150,
+        "z": 0,
+        "control": "none"
+      }
+    ],
+    "segments": [
+      {
+        "a": "n0",
+        "b": "n1",
+        "lanes_ab": 2,
+        "lanes_ba": 2,
+        "speed_kmh": 60,
+        "kind": "arterial"
+      },
+      {
+        "a": "n1",
+        "b": "n2",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n3",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n0",
+        "b": "n4",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n0",
+        "b": "n5",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n6",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n7",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n8",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n9",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n3",
+        "b": "n10",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n3",
+        "b": "n11",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n12",
+        "b": "n0",
+        "lanes_ab": 2,
+        "lanes_ba": 2,
+        "speed_kmh": 60,
+        "kind": "arterial"
+      }
+    ]
+  },
+  "vehicles": {
+    "count": 0,
+    "spawn_ramp_s": 1
+  },
+  "demand": {
+    "zone_m": 200,
+    "model": "uniform",
+    "external_share": 0,
+    "min_trip_m": 0
+  },
+  "routing": {
+    "levels": 1,
+    "cell_m": 250,
+    "pathfind_budget_per_tick": 8
+  },
+  "capacities": {
+    "max_vehicles": 64,
+    "max_nodes": 16,
+    "max_segments": 32,
+    "max_lanes": 512,
+    "max_lane_points": 4096,
+    "max_zones": 16,
+    "max_bus_routes": 1,
+    "max_bus_stops": 1,
+    "max_routes": 256,
+    "max_plan_steps": 8192,
+    "max_pending_trips": 64,
+    "max_signalized_nodes": 4
+  }
+}

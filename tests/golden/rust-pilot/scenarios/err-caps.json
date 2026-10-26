@@ -1,0 +1,79 @@
+{
+  "format_version": 2,
+  "name": "err-caps",
+  "seed": 1,
+  "duration_s": 10,
+  "vehicle_types_file": "../../../../scenarios/vehicle-types.json",
+  "city": {
+    "enabled": false
+  },
+  "network": {
+    "nodes": [
+      {
+        "id": "n0",
+        "x": 0,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n1",
+        "x": 100,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n2",
+        "x": 200,
+        "z": 0,
+        "control": "none"
+      }
+    ],
+    "segments": [
+      {
+        "a": "n0",
+        "b": "n1",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n2",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      }
+    ]
+  },
+  "vehicles": {
+    "count": 0,
+    "spawn_ramp_s": 1
+  },
+  "demand": {
+    "zone_m": 200,
+    "model": "uniform",
+    "external_share": 0,
+    "min_trip_m": 0
+  },
+  "routing": {
+    "levels": 1,
+    "cell_m": 250,
+    "pathfind_budget_per_tick": 8
+  },
+  "capacities": {
+    "max_vehicles": 64,
+    "max_nodes": 16,
+    "max_segments": 32,
+    "max_lanes": 512,
+    "max_lane_points": 6,
+    "max_zones": 16,
+    "max_bus_routes": 1,
+    "max_bus_stops": 1,
+    "max_routes": 256,
+    "max_plan_steps": 8192,
+    "max_pending_trips": 64,
+    "max_signalized_nodes": 4
+  }
+}

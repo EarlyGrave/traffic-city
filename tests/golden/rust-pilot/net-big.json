@@ -1,0 +1,11 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/net-big.json",
+  "load_ok": true,
+  "create_status": 0,
+  "desc_hash": "c34f591b7c0a59f9",
+  "network_hash": "53deec4a5174cff5",
+  "conflicts_hash": "4f93dbca3bc8e8fd",
+  "headings_hash": "370263790dddd36e",
+  "counts": { "nodes": 144, "segments": 264, "lanes": 1976, "lane_points": 12640, "segment_points": 528, "arms": 528, "lane_next": 2896, "connectors": 1448, "conflicts": 6080 }
+}
