@@ -59,6 +59,8 @@ internal sealed class World : IDisposable
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
     public readonly TickMasks Masks;             // маски кандидатов фаз 7-8 из фазы 6 (ADR-0019, A3); производное, вне хэша
+    public readonly Rules.Intersections.GateScanJob GateScan = new();
+    public readonly Rules.Intersections.GateResolveJob GateResolve = new();
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
@@ -165,6 +167,7 @@ internal sealed class World : IDisposable
         Pool = new WorkerPool(threads);
         Behaviour = new BehaviourJob(threads);
         Integrate = new IntegrateJob(threads);
+        Gate.EnsureWorkers(threads);
     }
 
     public void Dispose()
