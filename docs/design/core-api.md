@@ -1372,7 +1372,14 @@ int32_t  tc_sim_save(tc_sim*, uint8_t* dst, int64_t cap, int64_t* written, const
 int32_t  tc_sim_save_stream(tc_sim*, int32_t (*write)(void* user, const uint8_t* data, int64_t len), void* user);
 int32_t  tc_sim_load(const uint8_t* src, int64_t len, const tc_load_options*, const tc_runtime_options*, tc_sim** out, tc_load_report*);  // LoadStatus
 int32_t  tc_sim_inspect_save(const uint8_t* head64, tc_save_header_info* out);
+// Превью инструментов игрока (player-tools.md §7, 4.3 T7). Между tc_sim_step, тот же поток; состояние не меняет; ничего не выделяет (кроме scratch связности при первом вызове).
+int32_t  tc_sim_preview(tc_sim*, const tc_command* cmd, tc_preview_result* out, tc_preview_issue* issues, int32_t issues_cap,
+                        tc_vec2* axis, int32_t axis_cap, uint32_t flags);   // возврат = RejectReason вердикта (0 - применится); flags: бит0 Detail (RoutesThrough)
+void     tc_sim_set_tools_config(tc_sim*, const tc_tools_desc*);          // стоимости и границы; конфигурация хоста, вне сейва и хэша (после tc_sim_load задать заново)
 ```
+
+`tc_preview_result`, `tc_preview_issue`, `tc_tools_desc` - раскладка C# `PreviewResult` (Pack 8), `PreviewIssue` (Pack 4) и `ToolsDesc` (`Api/ToolTypes.cs`, `Api/ToolsDesc.cs`);
+`issues_cap`/`axis_cap` - ёмкость буферов хоста: ядро считает все предупреждения (`IssueCount`), пишет `IssuesWritten = min(cap, IssueCount)`; `axis` - `AxisPointCount` точек.
 
 `tc_scenario_desc` — та же структура, где `T[]` заменены на `(const T*, int32_t)`; строк нет.
 Указатели из `tc_sim_*` валидны до следующего `tc_sim_step`/`tc_sim_destroy`. В C#-версии

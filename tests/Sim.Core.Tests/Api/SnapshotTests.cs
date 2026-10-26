@@ -80,6 +80,7 @@ public class SnapshotTests
     {
         ScenarioDesc d = CityWorldTests.Desc("s1k");
         using Simulation sim = Simulation.Create(in d);
+        sim.SetToolsConfig(Tools.ToolsFixture.Unbounded);
         CheckHeadings(sim.World.Net);
 
         var r = new BuildRoadCmd { Ax = 5000, Az = 5000, Bx = 5150, Bz = 5080, SpeedLimit = 13.9f, LanesAB = 1, LanesBA = 1, Kind = RoadKind.Street };

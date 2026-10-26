@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Tools;
 using Sim.Core.Util;
 
 namespace Sim.Core.Api;
@@ -128,6 +129,22 @@ internal static partial class CommandDispatcher
         w.Emit(SimEventKind.CommandApplied, cmd.Tag, (int)cmd.Kind);
     }
 
+    /// <summary>Отказ валидатора инструментов: счётчик неверных handle, событие исчерпанной ёмкости (если валидатор её назвал), затем <c>CommandRejected</c>.</summary>
+    private static void RejectTool(World w, in Command cmd, RejectReason reason, CapacityKind cap = 0)
+    {
+        if (reason == RejectReason.InvalidHandle)
+        {
+            w.Counters.InvalidHandleOps++;
+        }
+
+        if (reason == RejectReason.Capacity && cap != 0)
+        {
+            w.Emit(SimEventKind.CapacityExhausted, cmd.Tag, (int)cap, 1);
+        }
+
+        Rejected(w, in cmd, reason);
+    }
+
     private static void Rejected(World w, in Command cmd, RejectReason reason)
     {
         w.Counters.CommandsRejected++;
@@ -136,41 +153,30 @@ internal static partial class CommandDispatcher
 
     private static void BuildRoad(World w, in Command cmd)
     {
+        // Общий валидатор превью и применения (player-tools.md §7.1): аргументы, привязка, границы, длина, рукава, ловушка, ёмкости - до первой мутации.
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        if (chk.Reopen)
+        {
+            ReopenRoad(w, in cmd, chk.Seg);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
+            return;
+        }
+
         BuildRoadCmd b = cmd.BuildRoad;
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
-        if ((b.Flags & ~BuildRoadFlags.Supported) == 0 && b.RestoreOf.Generation != 0 && b.RestoreNodeA.Generation == 0 && b.RestoreNodeB.Generation == 0 &&
-            w.Net.ResolveSegment(in b.RestoreOf) && w.Ops.FindSegment(b.RestoreOf.Index) >= 0)
-        {
-            ReopenRoad(w, in cmd, b.RestoreOf.Index);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
-            return;
-        }
-
-        if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || b.RestoreOf.Generation != 0 || b.RestoreNodeA.Generation != 0 || b.RestoreNodeB.Generation != 0)
-        {
-            // AutoSplit / Curve (T5), пересоздание по RestoreOf (T8).
-            Rejected(w, in cmd, RejectReason.NotSupported);
-            return;
-        }
-
-        if (!float.IsFinite(b.Ax) || !float.IsFinite(b.Az) || !float.IsFinite(b.Bx) || !float.IsFinite(b.Bz) ||
-            !float.IsFinite(b.SpeedLimit) || b.SpeedLimit <= 0f || b.LanesAB + b.LanesBA == 0)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
         var a = new Vec2(b.Ax, b.Az);
         var z = new Vec2(b.Bx, b.Bz);
         if (!noConnectors)
         {
-            // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла; в Q-meso перестройка не поддерживается (состояние очередей по полосам).
-            int na = w.Builder.FindNode(a);
-            int nb = w.Builder.FindNode(z);
-            if (w.Queue != null && ((na >= 0 && w.Net.Nodes[na].FirstArm >= 0) || (nb >= 0 && w.Net.Nodes[nb].FirstArm >= 0)))
-            {
-                Rejected(w, in cmd, RejectReason.NotSupported);
-                return;
-            }
+            // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла.
+            int na = chk.NodeA;
+            int nb = chk.NodeB;
 
             // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла, пока сеть не правили.
             // Построить ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных - уже правка раскладки: ToolsTouched (раскладка - состояние).
@@ -288,14 +294,7 @@ internal static partial class CommandDispatcher
         return false;
     }
 
-    private static RejectReason RejectOf(NetworkStatus st) => st switch
-    {
-        NetworkStatus.Busy => RejectReason.Busy,
-        NetworkStatus.Trap => RejectReason.CreatesTrap,
-        NetworkStatus.TooManyArms or NetworkStatus.TooManyConnectors => RejectReason.NodeLimit,
-        _ when st.IsCapacity() => RejectReason.Capacity,
-        _ => RejectReason.InvalidArgument,
-    };
+    private static RejectReason RejectOf(NetworkStatus st) => ToolValidator.RejectOf(st);
 
     // Сеть выросла (routing.md 9.3 "BuildRoad"): граф пересобирается сразу, оверлей дописывает новые узлы/входы/выходы,
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
@@ -335,32 +334,17 @@ internal static partial class CommandDispatcher
     private static void SetSignalPlan(World w, in Command cmd)
     {
         SetSignalPlanCmd p = cmd.SetSignalPlan;
-        if ((uint)p.Node >= (uint)w.Net.NodeCount)
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        if (!CheckNodeHandle(w, in cmd, p.Node, p.NodeGen))
-        {
+            RejectTool(w, in cmd, why);
             return;
         }
 
         ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
-        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        // 2.5: нулевые параметры Adaptive/стрелки -> дефолты RulesDesc; затем проверка (для Adaptive - с инвариантом красного, intersections.md 5.6).
         int axes = w.Signals.PhaseCount[nd.Signal];
         SetSignalPlanCmd resolved = SignalStore.Resolve(in p, axes, in w.Rules);
-        if (!SignalStore.IsValid(in resolved, axes, enforceRed: true, pedGreenTicks: Sim.Core.Peds.PedSignals.CoordMinGreenTicks(w, p.Node)))
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
 
         w.Signals.ApplyPlan(nd.Signal, in resolved, w.Tick);
         w.Vehicles.MarkAllRouteDirty();
@@ -374,14 +358,11 @@ internal static partial class CommandDispatcher
     private static void SetNodeControl(World w, in Command cmd)
     {
         SetNodeControlCmd c = cmd.SetNodeControl;
-        if ((uint)c.Node >= (uint)w.Net.NodeCount || (uint)c.Control > (uint)NodeControl.RightHandRule)
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        if (!CheckNodeHandle(w, in cmd, c.Node, c.NodeGen))
-        {
+            RejectTool(w, in cmd, why);
             return;
         }
 
@@ -390,12 +371,6 @@ internal static partial class CommandDispatcher
         {
             if (nd.Signal < 0)
             {
-                if (w.Signals.Count >= w.Signals.Capacity)
-                {
-                    Rejected(w, in cmd, RejectReason.Capacity);
-                    return;
-                }
-
                 int axes = SignalStore.AxesOf(w, c.Node);
                 SetSignalPlanCmd plan = SignalStore.DefaultPlan(axes, in w.Rules);
                 if (axes < 1 || !w.Signals.TryAdd(w, c.Node, in plan, out _))

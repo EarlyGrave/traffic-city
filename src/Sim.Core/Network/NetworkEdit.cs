@@ -44,7 +44,7 @@ internal static class NetworkEdit
 
         if (w.City != null)
         {
-            // Z6: участки сегмента - Lost, здания заброшены (до освобождения слота). TODO(T7): IssueCode.ZoneLotsLost в превью RemoveRoad - число зданий на этих участках.
+            // Z6: участки сегмента - Lost, здания заброшены (до освобождения слота). Превью RemoveRoad (ToolPreview) заранее выдаёт IssueCode.ZoneLotsLost с числом зданий.
             int lostLots = City.LotBuilder.OnSegmentRemoved(w, w.City, seg, sd.Generation);
             if (lostLots > 0)
             {

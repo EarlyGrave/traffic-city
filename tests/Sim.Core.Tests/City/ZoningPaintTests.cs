@@ -230,6 +230,50 @@ public sealed class ZoningPaintTests
     // ------------------------------------------------------------ RemoveRoad -> Lost
 
     [Fact]
+    public void Preview_RemoveRoad_ReportsZoneLotsLost_WithBuildingCount()
+    {
+        using Simulation sim = Make();
+        CityWorld c = City(sim);
+        LotStore l = c.Lots;
+        World w = sim.World;
+        ulong hash = sim.ComputeStateHash();
+        var issues = new PreviewIssue[16];
+        int seg = -1;
+        PreviewResult r = default;
+        for (int skip = 0; skip < 40; skip++)
+        {
+            seg = l.Seg[LotWithBuilding(c, skip)];
+            Command rm = Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = ToolsFixture.Segment(sim, seg) }, 1);
+            if (sim.Preview(in rm, out r, issues) == RejectReason.None)
+            {
+                break;
+            }
+        }
+
+        int buildings = 0;
+        for (int i = 0; i < l.Count; i++)
+        {
+            buildings += l.Seg[i] == seg && l.SegGen[i] == w.Net.Segments[seg].Generation && (l.Flags[i] & LotFlags.Lost) == 0 && l.Building[i] >= 0 ? 1 : 0;
+        }
+
+        Assert.True(buildings > 0);
+        bool found = false;
+        for (int i = 0; i < r.IssuesWritten; i++)
+        {
+            if (issues[i].Code == IssueCode.ZoneLotsLost)
+            {
+                found = true;
+                Assert.Equal(buildings, issues[i].Value);
+                Assert.Equal(seg, issues[i].Obj.Index);
+            }
+        }
+
+        Assert.True(found, "нет предупреждения ZoneLotsLost");
+        Assert.Equal(hash, sim.ComputeStateHash());   // превью не меняет участки
+    }
+
+
+    [Fact]
     public void RemoveRoad_Final_MarksLotsLost_AbandonsBuildings_AndSurvivesSave()
     {
         using Simulation sim = Make();

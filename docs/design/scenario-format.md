@@ -158,6 +158,7 @@
   },
 
   "peds": { ... },                      // необязательно: пешеходы и жители (ADR-0020), §2.4; нет секции — выключено
+  "tools": { ... },                     // необязательно: стоимости инструментов игрока и границы мира (4.3 T7), §2.8
   "calendar": {}, "zoning": {}, "residents": {}, "economy": {}, "choice": {}   // необязательно и только при demand.model = "residents" (ADR-0011, §2.6)
 }
 ```
@@ -421,6 +422,25 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 - `build_road.road` (только v3) разворачивается хостом в вид/полосы/скорость каталога; явные поля команды перекрывают. `vehicle_type` - имя типа (v2) или id (v3).
 - Команды, которых ядро ещё не умеет (инструменты T3+, флаги `auto_split`/`curve`), не ломают прогон: ядро отвечает `CommandRejected(NotSupported)`,
   `TimelineRunner.Rejects` и итоговая строка `timeline: N/M commands enqueued, R rejected, D dropped` в `run`/`hash` их перечисляют.
+
+### 2.8 Секция `tools` (этап 4.3, T7, `docs/design/player-tools.md` §7, §11)
+
+Необязательна; значения - заглушки до баланса экономики 4.2. Все деньги - целые единицы бюджета. В сейв и хэш не входит: хост ставит заново после `Load` (`Simulation.SetToolsConfig`).
+
+```jsonc
+"tools": {
+  "costs": {
+    "road_per_m_lane": { "street": 10, "arterial": 20 },  // за метр длины на полосу (обе стороны считаются)
+    "curve_factor_pct": 120,        // кривая = прямая x pct/100 (1..1000)
+    "node_signal": 500, "arm_sign": 50, "turn_ban": 100, "bus_stop": 200, "bus_route": 1000,
+    "demolish_refund_pct": 50,      // снос: возврат % стоимости постройки (0..100); Cost превью < 0
+    "upgrade_refund_pct": 50
+  },
+  "world_bounds": { "min_x": -3000, "min_z": -3000, "max_x": 3000, "max_z": 3000 }   // нет - bounding box сети + 2 км (OutOfBounds)
+}
+```
+Нет секции - те же значения по умолчанию, что в примере (кроме `world_bounds`). Нулевой `ToolsDesc` ядра (тесты) - всё бесплатно. `tools.preview_detour_work` (спека §7.3) пока не используется:
+связность в превью считается Tarjan'ом без ограниченного A*-объезда.
 
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 

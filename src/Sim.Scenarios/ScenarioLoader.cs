@@ -191,6 +191,7 @@ public static partial class ScenarioLoader
         }
 
         CityDesc town = ParseTown(root, residents, catalog);
+        ToolsDesc tools = ParseTools(root.OptObject("tools"));
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
         {
@@ -208,6 +209,7 @@ public static partial class ScenarioLoader
             Lod = lod,
             Peds = peds,
             Town = town,
+            Tools = tools,
             City = city,
             Network = network,
             Demand = demand,
@@ -1171,6 +1173,74 @@ public static partial class ScenarioLoader
         r.Finish();
         return d;
     }
+
+    // player-tools.md §11, scenario-format.md 2.1 "tools": стоимости (заглушки до баланса 4.2) и границы мира; секция необязательна.
+    private static ToolsDesc ParseTools(JsonObjectReader? r)
+    {
+        var d = new ToolsDesc
+        {
+            Costs = new ToolCostsDesc
+            {
+                RoadPerMLaneStreet = 10,
+                RoadPerMLaneArterial = 20,
+                CurveFactorPct = 120,
+                NodeSignal = 500,
+                ArmSign = 50,
+                TurnBan = 100,
+                BusStop = 200,
+                BusRoute = 1000,
+                DemolishRefundPct = 50,
+                UpgradeRefundPct = 50,
+            },
+        };
+        if (r == null)
+        {
+            return d;
+        }
+
+        JsonObjectReader? c = r.OptObject("costs");
+        if (c != null)
+        {
+            JsonObjectReader? perM = c.OptObject("road_per_m_lane");
+            if (perM != null)
+            {
+                d.Costs.RoadPerMLaneStreet = (long)perM.Num("street", d.Costs.RoadPerMLaneStreet, min: 0, max: MaxCostValue);
+                d.Costs.RoadPerMLaneArterial = (long)perM.Num("arterial", d.Costs.RoadPerMLaneArterial, min: 0, max: MaxCostValue);
+                perM.Finish();
+            }
+
+            d.Costs.CurveFactorPct = c.Int("curve_factor_pct", d.Costs.CurveFactorPct, min: 1, max: 1000);
+            d.Costs.NodeSignal = (long)c.Num("node_signal", d.Costs.NodeSignal, min: 0, max: MaxCostValue);
+            d.Costs.ArmSign = (long)c.Num("arm_sign", d.Costs.ArmSign, min: 0, max: MaxCostValue);
+            d.Costs.TurnBan = (long)c.Num("turn_ban", d.Costs.TurnBan, min: 0, max: MaxCostValue);
+            d.Costs.BusStop = (long)c.Num("bus_stop", d.Costs.BusStop, min: 0, max: MaxCostValue);
+            d.Costs.BusRoute = (long)c.Num("bus_route", d.Costs.BusRoute, min: 0, max: MaxCostValue);
+            d.Costs.DemolishRefundPct = c.Int("demolish_refund_pct", d.Costs.DemolishRefundPct, min: 0, max: 100);
+            d.Costs.UpgradeRefundPct = c.Int("upgrade_refund_pct", d.Costs.UpgradeRefundPct, min: 0, max: 100);
+            c.Finish();
+        }
+
+        JsonObjectReader? b = r.OptObject("world_bounds");
+        if (b != null)
+        {
+            d.HasWorldBounds = true;
+            d.BoundsMinX = (float)b.Num("min_x", min: -1e7, max: 1e7);
+            d.BoundsMinZ = (float)b.Num("min_z", min: -1e7, max: 1e7);
+            d.BoundsMaxX = (float)b.Num("max_x", min: -1e7, max: 1e7);
+            d.BoundsMaxZ = (float)b.Num("max_z", min: -1e7, max: 1e7);
+            if (d.BoundsMaxX <= d.BoundsMinX || d.BoundsMaxZ <= d.BoundsMinZ)
+            {
+                throw new ScenarioException($"{b.Path}: expected min_x < max_x and min_z < max_z");
+            }
+
+            b.Finish();
+        }
+
+        r.Finish();
+        return d;
+    }
+
+    private const double MaxCostValue = 1e12;
 
     // sim-lod.md, scenario-format.md 2.1 "lod": секция необязательна, без неё (и при mode = off) LOD нет.
     private static LodDesc ParseLod(JsonObjectReader? r)
