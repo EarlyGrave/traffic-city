@@ -407,3 +407,8 @@
 - **`bash` из PowerShell - это WSL (`C:\Windows\system32\bash.exe`, дистрибутив docker-desktop), а не Git Bash.** Скрипты (`bench-gate.sh`, `rust-check.sh`, `test-hooks.sh`) запускать через `& "C:\Program Files\Git\bin\bash.exe" ...` или из Git Bash; хукам Claude и git это не мешает (идут через шебанг/Git).
 - **Rust локально: rustup через `winget install Rustlang.Rustup`** (MSVC Build Tools 2022 уже есть), тулчейн 1.97.0 ставится сам по `rust/rust-toolchain.toml`. `~/.cargo/bin` попадает в PATH только в новых терминалах/сессиях.
 - **`python3` в Git Bash на Windows - заглушка Microsoft Store (exit 49)**, настоящий интерпретатор - `python`. `rust-check.sh` без `jq` пробует `python3`, затем `python`; в новых скриптах делать так же. `rust-check.sh` на Windows - exit 0.
+
+## Параллельная фаза 4 (S1)
+- **`ChunkSize` пула - 256 элементов:** задание по узлам с < 256 активных узлов исполняется на одном воркере (s1k) - тесты «хэш при 1-4 потоках» осмысленны на s10k и крупнее.
+- **Общие структуры фазы 4 не для воркеров:** `KinMask` (биты соседних полос в одном слове), колесо Q, `Linked`, `SignalWait` - только через буфер воркера и слияние на главном потоке; `OnGranted` откладывается после задания (чтений его эффектов в `TryGrant` нет).
+- **Float-суммы `OutReserved` зависят от порядка слагаемых:** CSR узла держит полосы по возрастанию индекса, как обход по маске, - поэтому golden побитово прежние.
