@@ -440,6 +440,11 @@ internal static class Spawner
         {
             w.Counters.TripsDropped++;
             w.Routes.Free(new RouteHandle(trip.Route, trip.RouteGen));
+            if (trip.ResidentRef != 0)
+            {
+                City.TripLegs.OnTripDropped(w, trip.ResidentRef - 1);
+            }
+
             return true;
         }
 
@@ -543,6 +548,11 @@ internal static class Spawner
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;
         w.Emit(SimEventKind.VehicleSpawned, 0, h.Index, h.Generation);
+        if (trip.ResidentRef != 0)
+        {
+            City.TripLegs.OnVehiclePlaced(w, trip.ResidentRef - 1, i);   // машина жителя: ссылка, InLeg, дедлайн WaitDepart снят
+        }
+
         return true;
     }
 }

@@ -74,6 +74,17 @@ internal sealed class LotStore
         Array.Fill(PedComp, -1);
     }
 
+    /// <summary>Манхэттенское расстояние между центрами участков, целые метры (геометрия: оценка времени ноги без скима).</summary>
+    public int ManhattanM(int a, int b) => (int)(MathF.Abs(X[a] - X[b]) + MathF.Abs(Z[a] - Z[b]));
+
+    /// <summary>Евклидово расстояние между центрами участков, целые метры (геометрия: порог пешей доступности).</summary>
+    public int EuclidM(int a, int b)
+    {
+        float dx = X[a] - X[b];
+        float dz = Z[a] - Z[b];
+        return (int)MathF.Sqrt((dx * dx) + (dz * dz));
+    }
+
     /// <summary>Резервирует следующий слот; false - ёмкость исчерпана.</summary>
     public bool TryAdd(int seg, int segGen, byte side, int s0Mm, int s1Mm, out int index)
     {

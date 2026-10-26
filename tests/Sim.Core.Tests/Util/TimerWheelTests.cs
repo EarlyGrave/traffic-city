@@ -77,6 +77,60 @@ public sealed class TimerWheelTests
     }
 
     [Fact]
+    public void Cancel_RemovesFromBucketAndOverflow_AndKeyCanBeRescheduled()
+    {
+        var w = new TimerWheel(32);
+        // 1, 2, 3 - одна корзина (в порядке постановки 1 внизу списка), 4, 5, 6 - переполнение (далеко).
+        foreach (int k in new[] { 1, 2, 3 })
+        {
+            w.Schedule(k, 10, 0);
+        }
+
+        foreach (int k in new[] { 4, 5, 6 })
+        {
+            w.Schedule(k, 9000, 0);
+        }
+
+        Assert.Equal(6, w.Count);
+        w.Cancel(2);   // середина списка корзины
+        w.Cancel(3);   // голова списка корзины
+        w.Cancel(6);   // голова переполнения
+        w.Cancel(4);   // конец списка переполнения
+        w.Cancel(30);  // ключа нет - без последствий
+        Assert.Equal(2, w.Count);
+        Assert.False(w.Contains(2) || w.Contains(3) || w.Contains(4) || w.Contains(6));
+        w.Schedule(3, 12, 0);   // снятый ключ ставится заново
+        var buf = new int[32];
+        int total = 0;
+        for (long t = 1; t <= 9000; t++)
+        {
+            int n = w.Collect(t, buf);
+            if (n == 0)
+            {
+                continue;
+            }
+
+            total += n;
+            if (t == 10)
+            {
+                Assert.Equal(new[] { 1 }, buf[..n]);
+            }
+            else if (t == 12)
+            {
+                Assert.Equal(new[] { 3 }, buf[..n]);
+            }
+            else
+            {
+                Assert.Equal(9000, t);
+                Assert.Equal(new[] { 5 }, buf[..n]);
+            }
+        }
+
+        Assert.Equal(3, total);
+        Assert.Equal(0, w.Count);
+    }
+
+    [Fact]
     public void Clear_EmptiesEverything()
     {
         var w = new TimerWheel(8);

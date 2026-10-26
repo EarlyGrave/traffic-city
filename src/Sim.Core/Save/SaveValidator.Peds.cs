@@ -36,6 +36,22 @@ internal static partial class SaveValidator
         return ok && WorldBuilder.ValidatePeds(in c.Desc) == CreateStatus.Ok ? LoadStatus.Ok : LoadStatus.InvalidValue;
     }
 
+    /// <summary>
+    /// Владелец пешехода <paramref name="p"/>: житель-заготовка в пути (<c>peds.source = preform</c>) либо житель города в <c>InLeg</c> с этим пешеходом (<c>city</c>, zoning-demand.md §4.1).
+    /// </summary>
+    private static bool PedOwnerOk(World w, PedWorld pw, int p, int r)
+    {
+        if (!pw.CitySource)
+        {
+            ResidentStore rs = pw.R;
+            return (uint)r < (uint)rs.Count && rs.Ped[r] == p && rs.Where[r] >= ResidentStore.ToWork;
+        }
+
+        City.CityWorld? city = w.City;
+        return city != null && (uint)r < (uint)city.Residents.HighWater && city.Residents.Pool.IsAlive(r) && city.Residents.State[r] == (byte)Api.ResidentState.InLeg &&
+               city.Residents.Agent[r] == p && city.Residents.AgentGen[r] == pw.P.Pool.GenerationOf(p) && city.Residents.LegMode[r] != (byte)Api.TravelMode.Car;
+    }
+
     /// <summary>Пешеходы, жители, переходы, очереди; после пересборки сети пешеходов (индексы рёбер известны).</summary>
     public static LoadStatus ValidatePeds(LoadContext c)
     {
@@ -105,7 +121,7 @@ internal static partial class SaveValidator
             }
         }
 
-        if (active != ps.AliveCount)
+        if (!pw.CitySource && active != ps.AliveCount)
         {
             return Bad(c, active, 125);
         }
@@ -156,7 +172,7 @@ internal static partial class SaveValidator
             int cursor = ps.PathCursor[p];
             int ge = ps.GoalEdge[p];
             byte state = ps.State[p];
-            if (state > (byte)PedState.OnBus || ps.Leg[p] > (byte)PedLeg.FromStop || (uint)r >= (uint)rs.Count || rs.Ped[r] != p || rs.Where[r] < ResidentStore.ToWork ||
+            if (state > (byte)PedState.OnBus || ps.Leg[p] > (byte)PedLeg.FromStop || !PedOwnerOk(w, pw, p, r) ||
                 ps.VMmT[p] < 1 || ps.VMmT[p] > MaxPedSpeedMmPerTick || count < 0 || count > ps.MaxSteps || cursor < 0 || (count > 0 && cursor >= count) || (count == 0 && cursor != 0) ||
                 (uint)ge >= (uint)walkways || (uint)ps.GoalSMm[p] > (uint)net.Edges[ge].LenMm || ps.T0[p] < 0 || ps.T0[p] > tick || ps.TripTick[p] < 0 || ps.TripTick[p] > tick)
             {

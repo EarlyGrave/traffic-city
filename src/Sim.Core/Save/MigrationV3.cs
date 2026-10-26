@@ -24,6 +24,15 @@ internal static class MigrationV3
         int vehicles = highWater[0];
         bool ok = true;
 
+        // TRIP: ResidentRef (11) = 0 у каждой отложенной поездки (поездок жителей в старых мирах нет).
+        int trip = t.FindBlock(SaveFormat.FourCc("TRIP"u8));
+        if (trip < 0 || !t.TryGetColumn(trip, 1, out System.ReadOnlySpan<int> tripCount) || tripCount.Length != 1 || tripCount[0] < 0)
+        {
+            return LoadStatus.MigrationFailed;
+        }
+
+        ok &= t.SetColumn(trip, 11, new int[tripCount[0]]);
+
         // PARM 113-184: флаги (118 Growth, 120 ZoningAuto) - u8, сетка (181, 182) - f32, остальное - i32; всё нули.
         for (uint id = 113; id <= 184; id++)
         {

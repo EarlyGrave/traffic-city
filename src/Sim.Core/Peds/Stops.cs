@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Network;
 
 namespace Sim.Core.Peds;
@@ -56,7 +57,11 @@ internal static class Stops
         ResidentStore rs = pw.R;
         int r = ps.Resident[p];
         int stop = -1;
-        if ((uint)r < (uint)rs.Count)
+        if (pw.CitySource)
+        {
+            stop = TripLegs.StopA(w, r);
+        }
+        else if ((uint)r < (uint)rs.Count)
         {
             stop = rs.Where[r] == ResidentStore.ToWork ? rs.StopAOut[r] : rs.StopABack[r];
         }
@@ -136,6 +141,26 @@ internal static class Stops
         PedStore ps = pw.P;
         ResidentStore rs = pw.R;
         int r = ps.Resident[p];
+        if (pw.CitySource)
+        {
+            TripLegs.OnAlighted(w, r, w.Tick - ps.T0[p]);
+            if (!access || !TripLegs.DestPoint(w, r, out int destEdge, out int destSMm))
+            {
+                pw.Arrive(w, p);
+                return;
+            }
+
+            ps.State[p] = (byte)PedState.PendingPath;
+            ps.Leg[p] = (byte)PedLeg.FromStop;
+            ps.Edge[p] = edge;
+            ps.S0Mm[p] = sMm;
+            ps.T0[p] = w.Tick;
+            ps.GoalEdge[p] = destEdge;
+            ps.GoalSMm[p] = destSMm;
+            pw.EnqueuePath(p);
+            return;
+        }
+
         if (!access || (uint)r >= (uint)rs.Count)
         {
             pw.Arrive(w, p);
@@ -189,7 +214,16 @@ internal static class Stops
             int r = ps.Resident[p];
             ps.State[p] = (byte)PedState.OnBus;
             ps.Bus[p] = bus;
-            ps.AlightStop[p] = rs.Where[r] == ResidentStore.ToWork ? rs.StopBOut[r] : rs.StopBBack[r];
+            if (pw.CitySource)
+            {
+                ps.AlightStop[p] = TripLegs.StopB(w, r);
+                TripLegs.OnBoarded(w, r, wait);
+            }
+            else
+            {
+                ps.AlightStop[p] = rs.Where[r] == ResidentStore.ToWork ? rs.StopBOut[r] : rs.StopBBack[r];
+            }
+
             ps.T0[p] = w.Tick;
             LinkPassenger(pw, bus, p);
             n++;

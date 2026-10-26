@@ -1,5 +1,6 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Metrics;
 using Sim.Core.Peds;
 using Sim.Core.Routing;
@@ -30,6 +31,11 @@ internal static class PhaseList
         PhaseProbe? probe = w.PhaseProbe;
         CommandDispatcher.Run(w);                 // 1. команды
         probe?.Invoke(1);
+        if (w.City != null)
+        {
+            CityPhase.Events(w);                  // 2r. события жителей: план дня, выезды, концы занятий, дедлайны (zoning-demand.md §12)
+        }
+
         Spawner.Run(w);                           // 2. спавн
         BusDispatch.Run(w);                       // 2b. автобусы: выпуск по интервалу
         probe?.Invoke(2);
@@ -69,6 +75,11 @@ internal static class PhaseList
         probe?.Invoke(8);
         MetricsPhase.Run(w);                      // 9. метрики
         probe?.Invoke(9);
+        if (w.City != null)
+        {
+            CityPhase.Periodic(w);                // 9r. прибытия жителей по ArrivalRing, граница суток
+        }
+
         SnapshotPhase.Run(w);                     // 10. снапшот (SnapshotTick = Tick + 1)
         probe?.Invoke(10);
 

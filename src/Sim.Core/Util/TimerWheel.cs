@@ -16,12 +16,14 @@ internal sealed class TimerWheel
 
     private readonly int[] _head = new int[W];
     private readonly int[] _next;
+    private readonly int[] _prev;
     private readonly long[] _when;
     private int _overflow = -1;
 
     public TimerWheel(int keys)
     {
         _next = new int[Math.Max(1, keys)];
+        _prev = new int[_next.Length];
         _when = new long[_next.Length];
         Clear();
     }
@@ -35,6 +37,7 @@ internal sealed class TimerWheel
     {
         Array.Fill(_head, -1);
         Array.Fill(_next, -2);   // -2: ключа в колесе нет
+        Array.Fill(_prev, -1);
         Array.Fill(_when, -1L);
         _overflow = -1;
         Count = 0;
@@ -52,14 +55,64 @@ internal sealed class TimerWheel
         if (when - now < W)
         {
             int b = (int)(when & (W - 1));
-            _next[key] = _head[b];
-            _head[b] = key;
+            Link(key, ref _head[b]);
         }
         else
         {
-            _next[key] = _overflow;
-            _overflow = key;
+            Link(key, ref _overflow);
         }
+    }
+
+    /// <summary>Снимает <paramref name="key"/> с колеса (событие не наступит); ключа нет - ничего. O(1): списки двусвязные.</summary>
+    public void Cancel(int key)
+    {
+        int next = _next[key];
+        if (next == -2)
+        {
+            return;
+        }
+
+        int prev = _prev[key];
+        if (prev >= 0)
+        {
+            _next[prev] = next;
+        }
+        else
+        {
+            int b = (int)(_when[key] & (W - 1));
+            if (_head[b] == key)
+            {
+                _head[b] = next;
+            }
+            else
+            {
+                Debug.Assert(_overflow == key, "head of an unknown list");
+                _overflow = next;
+            }
+        }
+
+        if (next >= 0)
+        {
+            _prev[next] = prev;
+        }
+
+        _next[key] = -2;
+        _prev[key] = -1;
+        _when[key] = -1;
+        Count--;
+    }
+
+    private void Link(int key, ref int head)
+    {
+        int h = head;
+        _next[key] = h;
+        _prev[key] = -1;
+        if (h >= 0)
+        {
+            _prev[h] = key;
+        }
+
+        head = key;
     }
 
     /// <summary>Кладёт в <paramref name="dst"/> ключи, наступившие в тик <paramref name="tick"/>, по возрастанию; возвращает их число (<c>dst</c> не короче числа ключей).</summary>
@@ -78,6 +131,7 @@ internal sealed class TimerWheel
             Debug.Assert(_when[k] == tick, "stale timer in bucket");
             dst[n++] = k;
             _next[k] = -2;
+            _prev[k] = -1;
             _when[k] = -1;
             k = next;
         }
@@ -103,13 +157,11 @@ internal sealed class TimerWheel
             if (when - tick < W)
             {
                 int b = (int)(when & (W - 1));
-                _next[k] = _head[b];
-                _head[b] = k;
+                Link(k, ref _head[b]);
             }
             else
             {
-                _next[k] = _overflow;
-                _overflow = k;
+                Link(k, ref _overflow);
             }
 
             k = next;

@@ -27,6 +27,7 @@ internal static class CityInit
         }
 
         c.Lots.Version++;
+        c.RebuildWheel(-1);   // колесо жителей: начальные события Plan (Z2)
         return CreateStatus.Ok;
     }
 

@@ -161,6 +161,9 @@ internal static class CityHash
             h.Add(r.LegWalk[i]);
             h.Add(r.LegWait[i]);
             h.Add(r.LegRide[i]);
+            h.Add(r.LegDest[i]);
+            h.Add(r.LegStopA[i]);
+            h.Add(r.LegStopB[i]);
             h.Add(r.Agent[i]);
             h.Add(r.AgentGen[i]);
             h.Add(r.Account[i]);

@@ -113,6 +113,7 @@ internal static partial class SaveSchema
         Col.RingField<PendingTrip>(8, "DestS", w => w.Trips.Ring, "Count", nameof(PendingTrip.DestS)),
         Col.RingField<PendingTrip>(9, "Route", w => w.Trips.Ring, "Count", nameof(PendingTrip.Route)),
         Col.RingField<PendingTrip>(10, "RouteGen", w => w.Trips.Ring, "Count", nameof(PendingTrip.RouteGen)),
+        Col.RingField<PendingTrip>(11, "ResidentRef", w => w.Trips.Ring, "Count", nameof(PendingTrip.ResidentRef)),
     })
     {
         After = c =>
