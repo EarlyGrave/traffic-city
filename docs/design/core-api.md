@@ -572,6 +572,11 @@ FFI (будущий Rust): `void tc_sim_vehicles(const TcSim*, const VehicleRend
 const VehicleRenderData** prev, int32_t* prev_len, int64_t* snapshot_tick)` — указатели в память ядра,
 только чтение, валидны до `tc_sim_step`/`tc_sim_destroy`. В Rust-API: `fn vehicles(&self) -> &[VehicleRenderData]`.
 
+Копия видимого (**[4.1 S8]**, ADR-0024 п. 3, `Api/Simulation.Copy.cs`): `bool CopyVisibleVehicles(Span<VehicleRenderData> cur, Span<VehicleRenderData> prev, out int count)` и
+`CopyVisiblePeds` - компактно, только слоты с `Flags != 0` текущего снапшота, в порядке слотов; `prev[k]` - тот же слот тиком раньше (нули, если слота нет в прошлом
+буфере); `Index`/`Generation` сохраняются. Ёмкость = `min(cur.Length, prev.Length)`; не хватило - `false`, скопированы первые, `count` = сколько нужно. 0 B, на хэш
+не влияет, вызывать на потоке `Step` между тиками. `ViewVersion` растёт при каждом `SetRenderView*`. FFI: `tc_sim_copy_visible(sim, cur, prev, cap, *count, *snapshot_tick)`.
+
 Потребители: Godot `game/Scripts/SimHost.UpdateVehicles` и `Sim.Headless` `FrameRenderer.DrawVehicles` уже
 обходят `cur.Length` с проверкой `i < prev.Length` — правка кода не нужна. Снапшот пишется всегда, в том числе в
 headless; режим `SnapshotEnabled = false` (ленивый/выключенный снапшот для headless) — отложен (ADR-0010 «F»).

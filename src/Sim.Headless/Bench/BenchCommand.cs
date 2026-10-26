@@ -25,7 +25,7 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--warmup-days D] [--window am_peak]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>] [--warmup-days D] [--window am_peak]\n" +
         "  --warmup-days D      residents scenarios: warm up D whole game days (then up to the window start, if any) instead of --warmup-ticks; JSON gets warmup_days\n" +
         "  --window am_peak     residents scenarios: measure the morning peak, 6000 ticks (the default of --ticks here) from 6 slots before the earliest shift start; JSON gets window,\n" +
         "                       compare refuses to mix values\n" +
@@ -52,7 +52,7 @@ public static class BenchCommand
     /// <summary>Прогрев городом: целые сутки и окно (<see cref="AmPeak"/> или null). Без жителей игнорируется.</summary>
     internal readonly record struct CityWindow(int WarmupDays, string? Window);
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--warmup-days", "--window" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--warmup-days", "--window", "--packages-dir" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -91,7 +91,7 @@ public static class BenchCommand
         try
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
-            LoadedScenario sc = ScenarioLoader.LoadInfo(path);
+            LoadedScenario sc = PackageDirs.Load(path, a);
             sc = ApplyOverrides(sc, a);
             string view = a.Get("--view") ?? "all";
             if (!ViewSpec.TryParse(view, out ViewSpec viewSpec))
@@ -196,6 +196,7 @@ public static class BenchCommand
         var r = new BenchResult
         {
             Scenario = sc.Name,
+            ContentFingerprint = Sim.Scenarios.Mods.ContentFingerprint.Hex(Sim.Scenarios.Mods.ContentFingerprint.For(sc)),
             Ticks = ticks,
             WarmupTicks = warmup,
             WarmupDays = cityWindow.WarmupDays,
@@ -445,6 +446,7 @@ public static class BenchCommand
         {
             w.WriteStartObject();
             w.WriteString("scenario", r.Scenario);
+            w.WriteString("content_fingerprint", r.ContentFingerprint);
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
             if (r.WarmupDays > 0)
@@ -711,6 +713,7 @@ public static class BenchCommand
 internal sealed class BenchResult
 {
     public string Scenario = "";
+    public string ContentFingerprint = "";
     public int Ticks;
     public int WarmupTicks;
     public int WarmupDays;

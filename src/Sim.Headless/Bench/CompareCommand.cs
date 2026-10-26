@@ -8,7 +8,7 @@ namespace Sim.Headless.Bench;
 
 /// <summary>
 /// <c>compare --result f --baseline perf/baseline.json [--tolerance 0.10]</c>: exit 1 при регрессии tick p95
-/// сверх допуска или любых аллокациях в результате; 2 — ошибка ввода (в т.ч. нет baseline).
+/// сверх допуска или любых аллокациях в результате; 2 — ошибка ввода (в т.ч. нет baseline и разный <c>content_fingerprint</c>: <c>FingerprintMismatch</c>).
 /// Без baseline: <c>compare --result f --budget-p95-ms 1.0</c> — exit 1 при alloc &gt; 0 или p95 &gt; бюджета.
 /// </summary>
 public static class CompareCommand
@@ -95,6 +95,14 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        string? rFp = ReadFingerprint(resultPath);
+        string? bFp = ReadFingerprint(basePath);
+        if (rFp != null && bFp != null && rFp != bFp)
+        {
+            error.WriteLine($"compare: FingerprintMismatch: content fingerprint differs (baseline {bFp}, result {rFp}): the runs use different packages or package versions, the comparison would be meaningless");
+            return ExitUsage;
+        }
+
         RampInfo rRamp = ReadRamp(resultPath);
         RampInfo bRamp = ReadRamp(basePath);
         bool rampMismatch = false;
@@ -128,6 +136,20 @@ public static class CompareCommand
         bool fail = slow || alloc || rampMismatch;
         output.WriteLine(fail ? "FAIL" : "OK");
         return fail ? ExitRegression : ExitOk;
+    }
+
+    /// <summary>Отпечаток контента (<c>content_fingerprint</c>, modding.md §5.3); нет поля (старые файлы, baseline без него) - <c>null</c>: не сверять.</summary>
+    internal static string? ReadFingerprint(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("content_fingerprint", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Вид снапшота из JSON (поле <c>view</c>; старые файлы и нечитаемый JSON - <c>all</c>).</summary>

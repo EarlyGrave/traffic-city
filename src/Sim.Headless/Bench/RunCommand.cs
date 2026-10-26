@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
@@ -18,17 +19,18 @@ public static class RunCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless run --scenario <name|path> --ticks N [--every K] [--threads N] [--seed S] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless run --scenario <name|path> --ticks N [--every K] [--threads N] [--seed S] [--scenarios-dir <dir>] [--packages-dir <dir>] [--json]\n" +
         "  prints vehicle and pedestrian counters every K ticks (default: only after the last one)\n" +
         "Usage: Sim.Headless run --scenario <name|path> (--days N | --years N) [--exec micro|aggregate] [--calibrate-days C] [--micro-sample-every-days K] [--save-every-days S] [--out <file.json>] [--threads N] [--seed S]\n" +
         "  city run by game days (residents scenarios): aggregate executes legs without agents after C micro days (default 1), every K days one micro day re-calibrates;\n" +
         "  prints a line per 30 days, writes the 'city' JSON block (series, day_hashes) to --out, saves <out>-day<N>.tcsave every S days\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed", "--days", "--years", "--exec", "--calibrate-days", "--micro-sample-every-days", "--save-every-days", "--out" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed", "--days", "--years", "--exec", "--calibrate-days", "--micro-sample-every-days", "--save-every-days", "--out", "--packages-dir" };
+    private static readonly string[] _flags = { "--json" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
-        if (!CliArgs.TryParse(args, _allowed, out CliArgs a)
+        if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
             || !a.TryGetInt("--ticks", 1, out int ticks, 1000)
             || !a.TryGetInt("--every", 1, out int every, 0)
             || !a.TryGetInt("--threads", 1, out int threads, 1))
@@ -54,7 +56,7 @@ public static class RunCommand
         LoadedScenario sc;
         try
         {
-            sc = BenchCommand.ApplyOverrides(ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"))), a);
+            sc = BenchCommand.ApplyOverrides(PackageDirs.Load(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir")), a), a);
         }
         catch (ScenarioException e)
         {
@@ -63,6 +65,7 @@ public static class RunCommand
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        bool json = a.Has("--json");
         var timeline = new TimelineRunner(sc.Timeline);
         int step = every > 0 ? every : ticks;
         int done = 0;
@@ -75,13 +78,49 @@ public static class RunCommand
             int n = System.Math.Min(step, ticks - done);
             timeline.Step(sim, n);
             done += n;
-            output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
+            if (!json)
+            {
+                output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
+            }
+
             prev = sim.Counters;
             (prevHist, curHist) = (curHist, prevHist);
         }
 
-        timeline.WriteSummary(output);
+        if (json)
+        {
+            output.WriteLine(ToJson(sc, sim, ticks));
+        }
+        else
+        {
+            timeline.WriteSummary(output);
+        }
+
         return ExitOk;
+    }
+
+    /// <summary>Итог прогона одним JSON-объектом (<c>--json</c>): сценарий, тик, хэш состояния, отпечаток контента (modding.md §5.3) и счётчики.</summary>
+    private static string ToJson(LoadedScenario sc, Simulation sim, int ticks)
+    {
+        SimCounters c = sim.Counters;
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms))
+        {
+            w.WriteStartObject();
+            w.WriteString("scenario", sc.Name);
+            w.WriteNumber("ticks", ticks);
+            w.WriteNumber("tick", sim.Tick);
+            w.WriteString("state_hash", sim.ComputeStateHash().ToString("x16", CultureInfo.InvariantCulture));
+            w.WriteString("content_fingerprint", ContentFingerprint.Hex(ContentFingerprint.For(sc)));
+            w.WriteNumber("vehicles", c.ActiveVehicles);
+            w.WriteNumber("stuck", c.StuckVehicles);
+            w.WriteNumber("stuck_events", c.StuckEventsTotal);
+            w.WriteNumber("trips", c.TripsCompleted);
+            w.WriteBoolean("gridlock", c.GridlockFlag != 0);
+            w.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
     }
 
     /// <summary>Хвост строки: метрики окна с прошлой строки (поездки, ожидание у переходов: среднее, p95 и максимум по корзинам 1 с). Только с пешеходами.</summary>
