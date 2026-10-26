@@ -17,3 +17,9 @@ config/features=PackedStringArray("4.7", "C#")
 [dotnet]
 
 project/assembly_name="TrafficCity"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+renderer/rendering_method.web="gl_compatibility"

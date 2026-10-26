@@ -39,6 +39,7 @@ public partial class SimHost : Node3D
     private VehicleLayer? _vehicles;
     private LodConfig _lod = LodConfig.Load(string.Empty, "high");
     private string _renderPreset = "high";
+    private string _contentDir = string.Empty;
     private bool _logStepAlloc;
     private RoadChunks? _roads;
     private HeatTexture? _roadHeat;
@@ -150,7 +151,7 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>,
-    /// <c>--pose overview|mid|close</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
+    /// <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
     private void ParseArgs(string[] args, ref string name)
     {
@@ -234,6 +235,7 @@ public partial class SimHost : Node3D
         {
             "mid" => Math.Clamp(extent * 0.12f, 300f, 1500f),
             "close" => Math.Clamp(extent * 0.02f, 60f, 120f),
+            "lod0" => 30f, // внутри LOD0-границы обоих пресетов (42/60 м): единственная поза, где работают тени ТС (V6)
             _ => extent * 1.1f,
         };
         if (_camera != null)
@@ -372,6 +374,13 @@ public partial class SimHost : Node3D
                     }
 
                     break;
+                case Key.F4:
+                    // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
+                    // для них перезапуск с --render-preset.
+                    _lod = LodConfig.Load(_contentDir, _lod.Preset == "low" ? "high" : "low");
+                    RenderPreset.Apply(GetParent(), _lod);
+                    GD.Print(RenderPreset.Describe(_lod) + " (F4: LOD/лимиты слоёв - после перезапуска)");
+                    break;
                 case Key.F3:
                     if (_hud != null)
                     {
@@ -449,10 +458,13 @@ public partial class SimHost : Node3D
         _sim = sim;
         _types = desc.VehicleTypes;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
+        _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
         GD.Print(string.Create(
             CultureInfo.InvariantCulture,
             $"[lod] preset {_lod.Preset}: bounds {_lod.Bounds[0]:0}/{_lod.Bounds[1]:0}/{_lod.Bounds[2]:0} m, points to {_lod.Bounds[3]:0} m, caps {_lod.Caps[0]}/{_lod.Caps[1]}/{_lod.Caps[2]}/{_lod.Caps[3]}, min point {_lod.PointMinPx:0.#} px ({_lod.Source})"));
+        RenderPreset.Apply(GetParent(), _lod);
+        GD.Print(RenderPreset.Describe(_lod));
         BuildScene(sim);
         sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
         if (_showHud)
@@ -511,7 +523,8 @@ public partial class SimHost : Node3D
             MaterialOverride = new StandardMaterial3D
             {
                 AlbedoColor = new Color(0.10f, 0.13f, 0.11f),
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                Roughness = 1f,
+                MetallicSpecular = 0f,
             },
         });
 
@@ -532,6 +545,10 @@ public partial class SimHost : Node3D
             AddChild(_cross.Markers);
             AddChild(_cross.Queues);
             AddChild(_peds.Node);
+            if (_lod.Preset != "low" && VisualPreset.PedestrianShadowsHigh)
+            {
+                _peds.Node.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
+            }
             _inspector = new Label
             {
                 Name = "PedInspector",

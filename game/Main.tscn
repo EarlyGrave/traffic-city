@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://Scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://Scripts/RtsCamera.cs" id="2_camera"]
@@ -6,21 +6,13 @@
 
 [ext_resource type="Script" path="res://Scripts/RenderStats.cs" id="4_stats"]
 
-[sub_resource type="Environment" id="Environment_main"]
-background_mode = 1
-background_color = Color(0.055, 0.065, 0.085, 1)
-ambient_light_source = 2
-ambient_light_color = Color(0.75, 0.8, 0.9, 1)
-ambient_light_energy = 0.7
-
 [node name="Main" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_main")
+; окружение строит RenderPreset/VisualPreset.cs (небо, ambient, SSAO по пресету)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-rotation = Vector3(-0.9599311, 0.5235988, 0)
-shadow_enabled = false
+; направление, цвет, тени - RenderPreset/VisualPreset.cs
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("2_camera")
