@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Консоль сверки C#-ядра и Rust cdylib в одном процессе (rust-pilot.md §5.3, §10 R6). Вне traffic-city.sln, в CI собирается job `rust`. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>FfiSmoke</RootNamespace>
+    <AssemblyName>FfiSmoke</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Sim.Core/Sim.Core.csproj" />
+    <ProjectReference Include="../../src/Sim.Scenarios/Sim.Scenarios.csproj" />
+  </ItemGroup>
+
+</Project>

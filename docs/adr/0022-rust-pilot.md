@@ -83,3 +83,11 @@
   (в golden таких нет).
 - Типы `ScenarioDesc`/`SimCapacities`/`NetworkDesc`/`NetworkOptions.DEFAULT` и `desc_hash` лежат в `tc-core::api::desc` (R4 дополняет, не переносит).
 - Результат: `desc_hash` и `load_ok` совпали с C#-golden на всех 10 сценариях (demo-grid + 9 фикстур) с первого прогона.
+
+## Реализация R5/R6 (`tc-core::intersections`, `tc-ffi`, `ffi-smoke`, 2026-10-26)
+- R5: порт `ComputePairs`/`WriteRows`/`ComputeRel`/`RecomputeRel` и `ConflictEntry` (8 Б, `reserved` = 0) в `connector_store.rs`; `min/max` — только `detmath::{min_net,max_net}`,
+  `ToCm` — `as i32` с насыщением (= `DetMath.ToIntSat`). `network_hash`, `conflicts_hash` и `counts.conflicts` совпали со всеми 10 golden с первого прогона.
+- R6: `tc-ffi` (`cdylib` + `rlib`) — единственный крейт с `unsafe`; `tc-core` остался `forbid(unsafe_code)`. Параметры построителя (`NetworkOptions.Default`) зашиты в обеих
+  реализациях и в `tc_scenario_desc` не передаются. Обёртки `guard`/`guard_mut`: NULL -> `catch_unwind` -> код; паника отравляет экземпляр (`AtomicBool`).
+  Пилотная очередь команд, `VehicleRenderData` и `PilotCounters` живут в `tc-core::api`/`sim`. `tc_sim_test_panic` экспортируется только с фичей `test-panic`.
+- `rust/ffi-smoke` — C#-консоль вне `traffic-city.sln` (net10.0, `[DllImport]`, `SafeHandle`, зеркальные struct): все сценарные golden, размеры struct, очередь, NULL-аргументы, паника.
