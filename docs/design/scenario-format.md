@@ -396,6 +396,32 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
   Сценарий v2 на встроенных типах поднимается чистой функцией `FormatUpgrades.ScenarioV2ToV3` (в загрузчик она не встроена).
 - Каталоги пакетов: `ScenarioLoader.LoadInfo(path, searchDirs)`; по умолчанию — `content/` от корня репозитория.
 
+### 2.7 `timeline` и `api_version` (этап 4.5, M9, `modding.md` §3.5)
+
+Необязательные ключи верхнего уровня, в v2 и v3 (в `ScenarioDesc` не входят: `LoadedScenario.Timeline`). Сценарий без них даёт прежний `ScenarioDesc`.
+```json
+"api_version": 1,
+"timeline": [
+  { "tick": 50,  "cmd": { "kind": "set_node_control", "node": 0, "control": "signal" } },
+  { "tick": 100, "cmd": { "kind": "set_signal_plan", "node": 0, "mode": "fixed", "green_ticks": [200, 200], "yellow_ticks": 40, "all_red_ticks": 20 } },
+  { "tick": 300, "cmd": { "kind": "build_road", "a": [2000, 2000], "b": [2000, 2400], "speed_mps": 13.5, "lanes_ab": 1, "lanes_ba": 1 } },
+  { "tick": 300, "cmd": { "kind": "build_road", "a": [0, 0], "b": [200, 0], "road": "base:road/street_2" } }
+]
+```
+- `api_version` (число или semver-строка; сравнивается MAJOR) должен равняться `CoreInfo.ApiVersion` (сейчас 1), иначе `ApiVersionMismatch`.
+  `timeline` без `api_version` - `MissingKey`. `tick` >= 0, не убывает (`TimelineUnsorted`); одинаковые `tick` идут в порядке файла.
+- Команда ставится в очередь, когда `sim.Tick == tick`, перед `Step`, первый тик которого - `tick` (хэш равен ручному `Enqueue` в те же тики).
+  Просроченные записи (после прогрева) ставятся при первой подаче. Подаёт `TimelineRunner` (`Sim.Scenarios`): `run`, `hash`, `bench` (в том числе в прогреве).
+- `cmd.kind` - snake_case имя `CommandKind` (`build_road`, `spawn_trip`, `set_signal_plan`, `create_bus_route`, `append_bus_stop`, `spawn_bus`,
+  `select_vehicle`, `clear_selection`, `set_target_vehicle_count`, `set_ped_target`, `set_node_control`, `paint_zone`, `set_trip_execution`,
+  `remove_road`, `upgrade_road`, `split_road`, `set_arm_control`, `set_turn_ban`, `set_lane_flags`, `insert_bus_stop`, `remove_bus_stop`,
+  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
+  неизвестный ключ - ошибка с путём (`$.timeline[3].cmd.bogus: unknown key`). Единицы - как в ядре (метры, м/с `speed_mps`, тики `*_ticks`); точки `[x, z]`.
+  Ссылка на сущность - `{ "index": i, "generation": g }` (`generation` 0 = без проверки). Тип дороги: `road_kind` (`street`/`arterial`), потому что `kind` занят видом команды.
+- `build_road.road` (только v3) разворачивается хостом в вид/полосы/скорость каталога; явные поля команды перекрывают. `vehicle_type` - имя типа (v2) или id (v3).
+- Команды, которых ядро ещё не умеет (инструменты T3+, флаги `auto_split`/`curve`), не ломают прогон: ядро отвечает `CommandRejected(NotSupported)`,
+  `TimelineRunner.Rejects` и итоговая строка `timeline: N/M commands enqueued, R rejected, D dropped` в `run`/`hash` их перечисляют.
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
 В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.

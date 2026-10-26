@@ -112,7 +112,7 @@
 - Сценарий из пакета ссылается на свой пакет неявно (`packages` дополняется им).
 - Подъём v2 → v3 для тестов **не нужен**: v2 остаётся отдельным путём (`vehicle_types_file`), и `scenarios/s*.json` не трогаем.
 
-### 3.5 Таймлайн команд (M9, после ADR-0023)
+### 3.5 Таймлайн команд (M9, готово; полная JSON-форма - `scenario-format.md` §2.7)
 ```jsonc
 "timeline": [ { "tick": 1200, "cmd": { "kind": "set_target_vehicle_count", "count": 500 } },
               { "tick": 2400, "cmd": { "kind": "build_road", "a": [0, 0], "b": [200, 0], "road": "base:road/street_2" } } ]
@@ -275,7 +275,7 @@
   не меняет (`scenario-format.md` §1).
 - **Фикстура совместимости** `tests/ModFixtures/compat-c1/` (пакет на `content_format 1`) замораживается при M8 и
   больше не меняется. При подъёме формата добавляется `compat-c2`, старые фикстуры остаются, CI грузит все.
-- Версия API команд (`CoreInfo.ApiVersion`, сейчас 0 → 1 при M9) проверяется только таймлайном (§3.5).
+- Версия API команд (`CoreInfo.ApiVersion` = 1 с M9) проверяется только таймлайном (§3.5).
 
 ## 9. Коды ошибок (`ModError`, хост)
 `UnknownKey, BadType, BadValue, OutOfRange, MissingKey, DuplicateId, DuplicatePackage, DirNameMismatch, UndeclaredDependency,

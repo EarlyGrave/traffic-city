@@ -138,6 +138,7 @@
 | 132 | tools-t2 (worktree) | sonnet | 4.3 T2: пулы и арены сети, сейв w4, RefKind | wip |
 | 133 | rust-r3 (worktree) | sonnet | 4.6 R3: JSON-ридер и загрузчик, desc_hash | done, merged (desc_hash совпал на 10/10 golden) |
 | 134 | render-v10 (worktree) | sonnet | 3.3 V10: панель узла по клику | done, merged (аналитический пик, 4 Гц, пресеты; ядро не менялось) |
-| 135 | mod-m9 (worktree) | sonnet | 4.5 M9: таймлайн команд в сценарии, CoreInfo.ApiVersion | wip |
+| 135 | mod-m9 (worktree) | sonnet | 4.5 M9: таймлайн команд в сценарии, CoreInfo.ApiVersion | done, merged (таймлайн = ручной Enqueue по хэшу при 1/2/3 потоках) |
 | 136 | rust-r4 (worktree) | sonnet | 4.6 R4: порт сети и connector-ов, network_hash | done, merged (network_hash и create_status совпали 9/9) |
 | 137 | rust-r5r6 (worktree) | sonnet | 4.6 R5+R6: конфликты, conflicts_hash; tc-ffi + C#-смоук | wip |
+| 138 | mod-m3 (worktree) | sonnet | 4.5 M3: MANI из каталога, отпечаток, AssetNotice, --packages-dir | wip |
