@@ -392,3 +392,11 @@
 ## Оркестрация в облаке (2026-10-26)
 - **Фоновые «ожидалки» плодятся:** агент (haiku) ставил в фон `until ! kill -0 <pid>; do sleep 30; done` каждый раунд заново → ~95 копий, 250+ задач в UI сессии. Ждать только одной foreground-командой с `timeout`; лишние убить: найти родителей `sleep` (`/proc/<ppid>/cmdline`). `pkill -f <шаблон>` из той же оболочки убивает и её саму (exit 144).
 - **Один поток — владельцу:** оркестратор не держит foreground минутами (pre-commit 5–7 мин) — коммит в фоне, ответ сразу.
+
+## Локальная среда: Windows (2026-10-26)
+- **Нужен .NET SDK 10** (`global.json`); Git Bash + `python` хватает хукам Claude (`jq` не обязателен), `test-hooks.sh` - 56/56 на Windows.
+- **`headings_hash` в golden Rust-пилота на Windows другой** (системный atan2 UCRT ≠ glibc, rust-pilot.md §6.3): C#-тест сравнивает его только при `TC_STRICT_HEADINGS=1`, как и Rust.
+- **Тесты симлинков модов (`PackageLoaderTests.Hostile_Symlink_*`) на Windows требуют режима разработчика** (иначе `CreateSymbolicLink` → «Клиент не обладает требуемыми правами») и красят pre-commit.
+- **Полный `dotnet test` на i7-13700K ≈ 3,5 мин** (Sim.Core.Tests 3 м 12 с) - pre-commit локально в разы быстрее облачного.
+- **`bash` из PowerShell - это WSL (`C:\Windows\system32\bash.exe`, дистрибутив docker-desktop), а не Git Bash.** Скрипты (`bench-gate.sh`, `rust-check.sh`, `test-hooks.sh`) запускать через `& "C:\Program Files\Git\bin\bash.exe" ...` или из Git Bash; хукам Claude и git это не мешает (идут через шебанг/Git).
+- **Rust-тулчейна (`cargo`) локально нет** - `post-rust.sh` и `rust-check.sh` работают только в облаке, пока не поставить rustup.
