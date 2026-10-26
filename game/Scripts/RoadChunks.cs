@@ -48,8 +48,12 @@ public sealed class RoadChunks
     private readonly List<int> _keep = new();
     private readonly Vec2[] _scratch = new Vec2[256];
 
+    /// <summary>Версия сети (<c>NetworkView.Version</c>), по которой построены меши; при расхождении <see cref="SimHost"/> пересобирает дороги целиком.</summary>
+    public int Version { get; }
+
     public RoadChunks(Simulation sim, HeatTexture heat, LodConfig lod)
     {
+        Version = sim.Network.Version;
         _material = HeatPalette.CreateMaterial(GD.Load<Shader>("res://Shaders/road.gdshader"), heat.Texture, false, lod.PointRange);
         Root = new Node3D { Name = "Roads" };
         Build(sim.Network, lod);
@@ -66,8 +70,18 @@ public sealed class RoadChunks
         _material.SetShaderParameter("heat_force", on ? 1f : 0f);
     }
 
-    private static Color KindColor(NetworkView net, int segment) =>
-        segment >= 0 && segment < net.Segments.Length && net.Segments[segment].Kind == RoadKind.Arterial ? _arterialColor : _streetColor;
+    private static Color KindColor(NetworkView net, int segment)
+    {
+        if ((uint)segment >= (uint)net.Segments.Length)
+        {
+            return _streetColor;
+        }
+
+        Color c = net.Segments[segment].Kind == RoadKind.Arterial ? _arterialColor : _streetColor;
+
+        // закрывающийся сегмент (4.3, T4: Closing, дренаж) - затемнён и сдвинут к красно-коричневому; меши пересобираются при смене Version сети
+        return (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? new Color(c.R * 0.45f + 0.10f, c.G * 0.35f, c.B * 0.35f) : c;
+    }
 
     private static float KindY(NetworkView net, int segment) =>
         segment >= 0 && segment < net.Segments.Length && net.Segments[segment].Kind == RoadKind.Arterial ? 0.02f : 0f;
@@ -86,6 +100,11 @@ public sealed class RoadChunks
         var segCz = new float[segCount];
         for (int s = 0; s < segCount; s++)
         {
+            if (!net.IsSegmentAlive(s))
+            {
+                continue;
+            }
+
             SegmentData sd = net.Segments[s];
             int lane = sd.LanesAB > 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
             Vec2 fb = (uint)lane < (uint)net.Lanes.Length && net.Lanes[lane].PointCount > 0 ? net.LanePoints[net.Lanes[lane].FirstPoint] : default;
@@ -99,7 +118,7 @@ public sealed class RoadChunks
         for (int li = 0; li < net.Lanes.Length; li++)
         {
             LaneData lane = net.Lanes[li];
-            if (lane.PointCount < 2)
+            if (!net.IsLaneAlive(li) || lane.PointCount < 2)
             {
                 continue;
             }
@@ -134,6 +153,11 @@ public sealed class RoadChunks
         // LOD1 и лента: по направлению сегмента; узлы - квадратом
         for (int s = 0; s < segCount; s++)
         {
+            if (!net.IsSegmentAlive(s))
+            {
+                continue;
+            }
+
             SegmentData sd = net.Segments[s];
             MeshBuilder b1 = ChunkGrid.Get(lod1, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 1);
             MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], FarCell), 1);
@@ -148,7 +172,7 @@ public sealed class RoadChunks
         for (int n = 0; n < net.Nodes.Length; n++)
         {
             NodeData nd = net.Nodes[n];
-            if (nd.ArmCount <= 0)
+            if (!net.IsNodeAlive(n) || nd.ArmCount <= 0)
             {
                 continue;
             }

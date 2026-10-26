@@ -105,7 +105,7 @@ public sealed partial class NodePanel : PanelContainer
 
         _timer = RefreshInterval;
         NetworkView net = sim.Network;
-        if (Node >= net.Nodes.Length)
+        if (!net.IsNodeAlive(Node))
         {
             Close();
             return;
@@ -375,6 +375,11 @@ public sealed partial class NodePanel : PanelContainer
         int n = 0;
         for (int s = 0; s < net.Segments.Length && n < MaxArms; s++)
         {
+            if (!net.IsSegmentAlive(s))
+            {
+                continue;
+            }
+
             ref readonly SegmentData sg = ref net.Segments[s];
             int other;
             if (sg.NodeA == node)

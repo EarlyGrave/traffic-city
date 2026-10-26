@@ -103,6 +103,11 @@ public sealed partial class NodePicker : Node3D
         float maxZ = float.MinValue;
         for (int i = 0; i < net.Nodes.Length; i++)
         {
+            if (!net.IsNodeAlive(i))
+            {
+                continue;
+            }
+
             minX = MathF.Min(minX, net.Nodes[i].Position.X);
             maxX = MathF.Max(maxX, net.Nodes[i].Position.X);
             minZ = MathF.Min(minZ, net.Nodes[i].Position.Z);
@@ -116,9 +121,14 @@ public sealed partial class NodePicker : Node3D
         int cells = _w * _h;
         _cellStart = new int[cells + 1];
         _cellNodes = new int[net.Nodes.Length];
-        int[] cellOf = new int[net.Nodes.Length];
+        int[] cellOf = new int[net.Nodes.Length]; // мёртвые слоты в сетку не попадают
         for (int i = 0; i < net.Nodes.Length; i++)
         {
+            if (!net.IsNodeAlive(i))
+            {
+                continue;
+            }
+
             int cx = Math.Clamp((int)((net.Nodes[i].Position.X - _x0) / CellSize), 0, _w - 1);
             int cz = Math.Clamp((int)((net.Nodes[i].Position.Z - _z0) / CellSize), 0, _h - 1);
             cellOf[i] = (cz * _w) + cx;
@@ -133,6 +143,11 @@ public sealed partial class NodePicker : Node3D
         int[] fill = new int[cells];
         for (int i = 0; i < net.Nodes.Length; i++)
         {
+            if (!net.IsNodeAlive(i))
+            {
+                continue;
+            }
+
             int c = cellOf[i];
             _cellNodes[_cellStart[c] + fill[c]++] = i;
         }
