@@ -13,8 +13,8 @@
     "main": {
       "source": "Viewport.GetRenderInfo(Visible)",
       "draw_calls": 29,
-      "primitives": 12136,
-      "objects": 36
+      "primitives": 12150,
+      "objects": 38
     },
     "shadow": {
       "source": "Viewport.GetRenderInfo(Shadow)",
@@ -25,14 +25,14 @@
     "total": {
       "source": "Performance.RenderTotal*InFrame",
       "draw_calls": 29,
-      "primitives": 12424,
-      "objects": 36
+      "primitives": 12438,
+      "objects": 38
     },
     "memory_bytes": {
       "source": "Performance.Render*MemUsed",
-      "video": 21628123,
+      "video": 21661759,
       "texture": 11800171,
-      "buffer": 9827952
+      "buffer": 9861588
     },
     "vehicle_layer": {
       "preset": "low",
@@ -96,6 +96,21 @@
         "triangles_per_instance": 2,
         "surfaces": 1
       },
+      "Pedestrians_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 108,
+        "surfaces": 1
+      },
+      "Pedestrians_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Pedestrians_points": {
+        "instances": 0,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
       "CrossSignals": {
         "instances": 8,
         "triangles_per_instance": 12,
@@ -104,11 +119,6 @@
       "StopQueues": {
         "instances": 16,
         "triangles_per_instance": 12,
-        "surfaces": 1
-      },
-      "Pedestrians": {
-        "instances": 0,
-        "triangles_per_instance": 108,
         "surfaces": 1
       },
       "total": 40
@@ -120,7 +130,7 @@
     "max_distance_m": 300,
     "scaling_3d": 0.75,
     "msaa_3d": "Disabled",
-    "geometry_nodes": 746,
+    "geometry_nodes": 748,
     "caster_nodes": 2,
     "casters": [
       "Vehicles_0_lod0",
@@ -144,9 +154,9 @@
   },
   "timing": {
     "note": "не детерминировано: llvmpipe, шум облака; GPU-время осмысленно только на реальном GPU",
-    "fps": 7,
-    "time_process_s": 0.105427,
-    "render_cpu_ms": 57.04999923706055,
-    "render_gpu_ms": 56.98699951171875
+    "fps": 6,
+    "time_process_s": 0.083075,
+    "render_cpu_ms": 55.790000915527344,
+    "render_gpu_ms": 55.78900146484375
   }
 }
