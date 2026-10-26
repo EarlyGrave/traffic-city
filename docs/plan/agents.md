@@ -129,8 +129,8 @@
 | 123 | render-v9 (worktree) | sonnet | 3.3 V9: бенч клиента, render-compare/update-baseline, CI job render | done, merged (гейт ловит регрессию exit 1; job render необязательный) |
 | 124 | zoning-z4 (worktree) | sonnet | 3.2 Z4: экономика, рынки, рост; вернуть res_stuck == 0 | wip |
 | 125 | float-int-audit (worktree) | sonnet | 3.1c: аудит приведений float→int (net8 ≠ net10), помощник насыщения | done, merged (54 места через DetMath.ToIntSat; хэши не изменились) |
-| 126 | scale-spec (worktree) | opus | 4.1: scale.md + ADR-0024 поток симуляции | wip |
-| 127 | economy-spec (worktree) | opus | 4.2: ADR-0025 экономика города + city-economy.md | wip |
-| 128 | parking-spec (worktree) | opus | 4.4: ADR-0026 парковка + parking.md | wip |
+| 126 | scale-spec (worktree) | opus | 4.1: scale.md + ADR-0024 поток симуляции | done, merged (S0–S13; K1 s100k auto ≤ 15 мс при 4 потоках) |
+| 127 | economy-spec (worktree) | opus | 4.2: ADR-0025 экономика города + city-economy.md | done, merged (E1–E8) |
+| 128 | parking-spec (worktree) | opus | 4.4: ADR-0026 парковка + parking.md | done, merged (K1–K9) |
 | 129 | rust-r2 (worktree) | sonnet | 4.6 R2: ComputeNetworkHash, команда golden, фикстуры | wip |
 | 130 | tools-t1 (worktree) | sonnet | 4.3 T1: Api-типы, коды, события (номера с 25) | wip |
