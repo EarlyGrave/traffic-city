@@ -24,7 +24,7 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>]\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
@@ -41,7 +41,7 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--packages-dir" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -71,7 +71,7 @@ public static class BenchCommand
         try
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
-            LoadedScenario sc = ScenarioLoader.LoadInfo(path);
+            LoadedScenario sc = PackageDirs.Load(path, a);
             sc = ApplyOverrides(sc, a);
             string view = a.Get("--view") ?? "all";
             if (!ViewSpec.TryParse(view, out ViewSpec viewSpec))
@@ -176,6 +176,7 @@ public static class BenchCommand
         var r = new BenchResult
         {
             Scenario = sc.Name,
+            ContentFingerprint = Sim.Scenarios.Mods.ContentFingerprint.Hex(Sim.Scenarios.Mods.ContentFingerprint.For(sc)),
             Ticks = ticks,
             WarmupTicks = warmup,
             Threads = threads,
@@ -398,6 +399,7 @@ public static class BenchCommand
         {
             w.WriteStartObject();
             w.WriteString("scenario", r.Scenario);
+            w.WriteString("content_fingerprint", r.ContentFingerprint);
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
             w.WriteNumber("threads", r.Threads);
@@ -654,6 +656,7 @@ public static class BenchCommand
 internal sealed class BenchResult
 {
     public string Scenario = "";
+    public string ContentFingerprint = "";
     public int Ticks;
     public int WarmupTicks;
     public int Threads = 1;

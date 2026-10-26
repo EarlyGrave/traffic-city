@@ -193,6 +193,11 @@
   ContentHash u64 LE)` в порядке `MANI`. Это функция манифеста, отдельно в сейве его не храним. Он печатается в
   результат bench (`"content_fingerprint": "hex"`), в `--json` команды `run` и в `RPLH`. Реплей и golden с другим
   отпечатком дают ошибку `FingerprintMismatch`, а не сравнение. Сценарии v2 получают отпечаток пустого списка.
+- **Реализация M3.** `AssetManifestBuilder.ForCatalog` (типы ТС + пакеты; дороги вида 5 добавит M4), `ContentFingerprint` (`Compute/For/Hex`),
+  `SaveAssets.Load` (двухпроходная загрузка: манифест → установленные пакеты → `AvailableAssets` с алиасами `vehicle:<имя>`) и `AssetNotice`
+  (`Missing/Changed/VersionChanged`, `Updated` — M5). `ContentHash` пакета включает и здания (кроме `VisualRow`). `content_fingerprint` пишут `bench`
+  и `run --json`; `compare` при разных значениях (оба есть) — exit 2 `FingerprintMismatch`, нет поля в baseline — не сверяет. `RPLH` в коде ещё нет
+  (реплей — ADR-0023), там отпечаток появится вместе с форматом. `--packages-dir <dir[:dir]>` у `run/bench/hash/save/load` → `searchDirs` после `content/` игры.
 
 ## 6. Сейв и ассеты
 

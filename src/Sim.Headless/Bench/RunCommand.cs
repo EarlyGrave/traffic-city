@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -17,14 +19,15 @@ public static class RunCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless run --scenario <name|path> --ticks N [--every K] [--threads N] [--seed S] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless run --scenario <name|path> --ticks N [--every K] [--threads N] [--seed S] [--scenarios-dir <dir>] [--packages-dir <dir>] [--json]\n" +
         "  prints vehicle and pedestrian counters every K ticks (default: only after the last one)\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed", "--packages-dir" };
+    private static readonly string[] _flags = { "--json" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
-        if (!CliArgs.TryParse(args, _allowed, out CliArgs a)
+        if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
             || !a.TryGetInt("--ticks", 1, out int ticks, 1000)
             || !a.TryGetInt("--every", 1, out int every, 0)
             || !a.TryGetInt("--threads", 1, out int threads, 1))
@@ -45,7 +48,7 @@ public static class RunCommand
         LoadedScenario sc;
         try
         {
-            sc = BenchCommand.ApplyOverrides(ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"))), a);
+            sc = BenchCommand.ApplyOverrides(PackageDirs.Load(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir")), a), a);
         }
         catch (ScenarioException e)
         {
@@ -54,6 +57,7 @@ public static class RunCommand
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        bool json = a.Has("--json");
         int step = every > 0 ? every : ticks;
         int done = 0;
         long[] prevHist = new long[Simulation.PedWaitBuckets];
@@ -65,12 +69,45 @@ public static class RunCommand
             int n = System.Math.Min(step, ticks - done);
             sim.Step(n);
             done += n;
-            output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
+            if (!json)
+            {
+                output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
+            }
+
             prev = sim.Counters;
             (prevHist, curHist) = (curHist, prevHist);
         }
 
+        if (json)
+        {
+            output.WriteLine(ToJson(sc, sim, ticks));
+        }
+
         return ExitOk;
+    }
+
+    /// <summary>Итог прогона одним JSON-объектом (<c>--json</c>): сценарий, тик, хэш состояния, отпечаток контента (modding.md §5.3) и счётчики.</summary>
+    private static string ToJson(LoadedScenario sc, Simulation sim, int ticks)
+    {
+        SimCounters c = sim.Counters;
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms))
+        {
+            w.WriteStartObject();
+            w.WriteString("scenario", sc.Name);
+            w.WriteNumber("ticks", ticks);
+            w.WriteNumber("tick", sim.Tick);
+            w.WriteString("state_hash", sim.ComputeStateHash().ToString("x16", CultureInfo.InvariantCulture));
+            w.WriteString("content_fingerprint", ContentFingerprint.Hex(ContentFingerprint.For(sc)));
+            w.WriteNumber("vehicles", c.ActiveVehicles);
+            w.WriteNumber("stuck", c.StuckVehicles);
+            w.WriteNumber("stuck_events", c.StuckEventsTotal);
+            w.WriteNumber("trips", c.TripsCompleted);
+            w.WriteBoolean("gridlock", c.GridlockFlag != 0);
+            w.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
     }
 
     /// <summary>Хвост строки: метрики окна с прошлой строки (поездки, ожидание у переходов: среднее, p95 и максимум по корзинам 1 с). Только с пешеходами.</summary>
