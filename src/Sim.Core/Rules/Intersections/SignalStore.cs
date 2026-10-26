@@ -700,6 +700,151 @@ internal sealed class SignalStore
         return true;
     }
 
+    /// <summary>Текущий план слота в виде команды (параметры, не состояние автомата): для перезапуска слота после перестройки узла (4.3, T3).</summary>
+    internal SetSignalPlanCmd ReadPlan(int slot)
+    {
+        var p = new SetSignalPlanCmd
+        {
+            Node = Node[slot],
+            Mode = Mode[slot],
+            OffsetTicks = OffsetTicks[slot],
+            PhaseCount = PhaseCount[slot],
+            YellowTicks = YellowTicks[slot],
+            AllRedTicks = AllRedTicks[slot],
+            MinGreenTicks = MinGreenTicks[slot],
+            GapTicks = GapTicks[slot],
+            ArrowTriggerTicks = ArrowTriggerTicks[slot],
+            ArrowMinTicks = ArrowMinTicks[slot],
+            ArrowMaxTicks = ArrowMaxTicks[slot],
+            CycleTicks = CycleTicks[slot],
+            Flags = Flags[slot],
+        };
+        for (int k = 0; k < MaxPhases; k++)
+        {
+            SetGreen(ref p, k, GreenTicks[(slot * MaxPhases) + k]);
+        }
+
+        return p;
+    }
+
+    /// <summary>Номера фаз рукавов слота: для каждого сегмента-рукава узла - фаза, чьей маске принадлежат его connector'ы (-1 - нет). Сравнение до и после перестройки узла.</summary>
+    internal void ArmPhases(World w, int slot, int node, Span<int> segs, Span<sbyte> phase, out int count)
+    {
+        NetworkStore net = w.Net;
+        ref readonly NodeData nd = ref net.Nodes[node];
+        count = 0;
+        int conns = Math.Min(nd.ConnectorCount, SignalMasks.MaxMaskedConnectors);
+        for (int c = 0; c < conns; c++)
+        {
+            int seg = net.Lanes[net.Lanes[nd.FirstConnector + c].FromLane].Segment;
+            int at = -1;
+            for (int k = 0; k < count; k++)
+            {
+                if (segs[k] == seg)
+                {
+                    at = k;
+                    break;
+                }
+            }
+
+            if (at < 0 && count < segs.Length)
+            {
+                at = count++;
+                segs[at] = seg;
+                phase[at] = -1;
+            }
+
+            if (at < 0)
+            {
+                continue;
+            }
+
+            for (int k = 0; k < PhaseCount[slot]; k++)
+            {
+                if ((PhaseMask[(slot * MaxPhases) + k] & (1UL << c)) != 0)
+                {
+                    phase[at] = (sbyte)k;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Слот узла после перестройки connector'ов (4.3, T3; player-tools.md §5 п. 4): маски фаз и статика заново; если оси узла те же (те же рукава в тех же фазах), план сохраняется
+    /// (<paramref name="oldSegs"/>/<paramref name="oldPhase"/> - <see cref="ArmPhases"/> до перестройки), иначе - план по умолчанию для новых осей с прежними режимом и временами.
+    /// Результат: 0 - план сохранён, 1 - сброшен (событие <c>SignalPlanReset</c> - у вызывающего), 2 - светофор снят (узел больше не может быть светофором).
+    /// </summary>
+    internal int Rebind(World w, int slot, int node, ReadOnlySpan<int> oldSegs, ReadOnlySpan<sbyte> oldPhase, int oldCount)
+    {
+        Span<ulong> masks = stackalloc ulong[MaxPhases];
+        if (!SignalMasks.Build(w.Net, node, masks, out int axes))
+        {
+            Remove(w, slot);
+            return 2;
+        }
+
+        SetSignalPlanCmd plan = ReadPlan(slot);
+        bool same = axes == PhaseCount[slot];
+        int result = 0;
+        PhaseCount[slot] = (byte)axes;
+        for (int k = 0; k < MaxPhases; k++)
+        {
+            PhaseMask[(slot * MaxPhases) + k] = masks[k];
+        }
+
+        if (same)
+        {
+            Span<int> segs = stackalloc int[NetworkStore.MaxArms];
+            Span<sbyte> phase = stackalloc sbyte[NetworkStore.MaxArms];
+            ArmPhases(w, slot, node, segs, phase, out int n);
+            same = n == oldCount;
+            for (int k = 0; k < n && same; k++)
+            {
+                int j = -1;
+                for (int q = 0; q < oldCount; q++)
+                {
+                    if (oldSegs[q] == segs[k])
+                    {
+                        j = q;
+                        break;
+                    }
+                }
+
+                same = j >= 0 && oldPhase[j] == phase[k];
+            }
+        }
+
+        if (!same)
+        {
+            SetSignalPlanCmd def = DefaultPlan(axes, in w.Rules, adaptive: plan.Mode == SignalMode.Adaptive);
+            def.Mode = plan.Mode;
+            def.YellowTicks = plan.YellowTicks;
+            def.AllRedTicks = plan.AllRedTicks;
+            def.OffsetTicks = plan.OffsetTicks;
+            if (plan.Mode == SignalMode.Off || plan.Mode == SignalMode.FlashYellow)
+            {
+                def.Flags = 0;
+            }
+
+            plan = def;
+            result = 1;
+        }
+
+        plan.PhaseCount = (byte)axes;
+        SetSignalPlanCmd resolved = Resolve(in plan, axes, in w.Rules);
+        if (!IsValid(in resolved, axes))
+        {
+            resolved = Resolve(DefaultPlan(axes, in w.Rules), axes, in w.Rules);
+            result = 1;
+        }
+
+        BuildStatics(w, slot, node);
+        ApplyPlan(slot, in resolved, w.Tick);
+        SigXVersion = -1;
+        return result;
+    }
+
     /// <summary>Загрузка сейва: статика (производное от сети и <c>PhaseMask</c>) всех слотов тем же кодом, что при <see cref="TryAdd"/>.</summary>
     internal void RebuildStatics(World w)
     {

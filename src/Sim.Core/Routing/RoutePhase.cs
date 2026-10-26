@@ -103,6 +103,7 @@ internal static class RoutePhase
             if (!w.Router.Refill(i))
             {
                 v.Flags[i] |= (byte)VehicleFlags.RouteMissed;
+                v.NextConn[i] = -1;   // маршрута больше нет: до конца фазы 7 первый ход - по умолчанию (кэш по маршруту разошёлся бы с NextLane; у сети без правок дозаполнение не срывается)
                 v.MarkRouteDirty(i);
             }
         }

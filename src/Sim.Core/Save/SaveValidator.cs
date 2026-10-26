@@ -158,6 +158,11 @@ internal static partial class SaveValidator
         ConnectorStore cs = w.Connectors;
         for (int g = 0; g < cs.Count; g++)
         {
+            if (cs.Lane[g] < 0)
+            {
+                continue;   // мёртвая строка (дыра или запас блока): производных нет
+            }
+
             cs.Length[g] = n.Lanes[cs.Lane[g]].Length;
             cs.InLength[g] = n.Lanes[cs.InLane[g]].Length;
         }
@@ -499,6 +504,16 @@ internal static partial class SaveValidator
         for (int g = 0; g < cs.Count; g++)
         {
             int ln = cs.Lane[g];
+            if (ln < 0)
+            {
+                if (!cs.DeadRowIsCanonical(g))
+                {
+                    return Bad(c, g, 18);
+                }
+
+                continue;
+            }
+
             if ((uint)ln >= (uint)lanes || n.Lanes[ln].Kind != LaneKind.Connector || (uint)cs.Node[g] >= (uint)nodes || (uint)cs.InLane[g] >= (uint)lanes ||
                 (uint)cs.OutLane[g] >= (uint)lanes || cs.LocalBit[g] >= NetworkBuilder.MaxConnectorsPerNode || cs.FirstConflict[g] < 0 ||
                 cs.ConflictCount[g] < 0 || (long)cs.FirstConflict[g] + cs.ConflictCount[g] > cs.ConflictsUsed || cs.Maneuver[g] > (byte)Maneuver.UTurn)

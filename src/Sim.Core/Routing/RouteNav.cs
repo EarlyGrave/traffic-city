@@ -252,6 +252,16 @@ internal static class RouteNav
         return cur == NextConnector(w, i, lane);
     }
 
+    /// <summary>
+    /// Правка сети (4.3, T3/T4): маршрут машины <paramref name="i"/> больше не годится - освобождается сразу (как при промахе), машина едет по умолчанию и встаёт в очередь
+    /// перемаршрутизации. Пересчёт <c>NextConn</c> - на конце ближайшей фазы 7 (бит грязи).
+    /// </summary>
+    internal static void ReleaseRoute(World w, int i)
+    {
+        ProcessMiss(w, i);
+        w.Vehicles.MarkRouteDirty(i);
+    }
+
     private static void ProcessMiss(World w, int i)
     {
         VehicleStore v = w.Vehicles;

@@ -986,7 +986,7 @@ internal static class GatePhase
         }
 
         // 2. STOP на второстепенном рукаве: полная остановка у линии.
-        if (nd.Control == NodeControl.Stop && g >= 0 && (cs.Flags[g] & 1) != 0 && (v.GateState[i] & GateRules.StoppedAtLine) == 0)
+        if (g >= 0 && ((nd.Control == NodeControl.Stop && (cs.Flags[g] & 1) != 0) || ((cs.Flags[g] & 2) != 0 && nd.Control != NodeControl.Signal)) && (v.GateState[i] & GateRules.StoppedAtLine) == 0)
         {
             return GateDeny.Stop;
         }
