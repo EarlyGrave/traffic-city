@@ -30,7 +30,7 @@
 > клиент: пропуск мёртвых слотов сети после сноса, верификатор волны, REPORT-stage4, PR в main.
 > **2026-10-27 (ночь):** T8 влита (агент 148). Новый баг (найден T8): `Debug.Fail "NextConn out of sync with NextLane"` в `RuleEnv.FirstHop`,
 > если в `Preview_VerdictMatchesApply_On10000RandomCommands` пустить `BuildRoad` с мёртвым `RestoreOf` в применение (seed 5); вероятно, сброс `NextConn`
-> после перестройки/дренажа (T3/T4) — разбор sonnet. Долги T8: `UndoUnavailable` в превью, обратные для `UpgradeRoad/Split/Merge` (T5) и автобусов (T9).
+> после перестройки/дренажа (T3/T4) — **исправлен (агент 150)**. Долги T8: `UndoUnavailable` в превью, обратные для `UpgradeRoad/Split/Merge` (T5) и автобусов (T9).
 > Черновик на утверждение владельцу. До утверждения — только спеки/ADR, не трогающие код этапа 3.
 > Источники: отложенное из `stage3-plan.md` («Позже»), реестр рисков `docs/design/cs2-lessons.md`, ТЗ (`brief-stage1.md`: s100k ≤ 15 мс, порт ядра на Rust).
 

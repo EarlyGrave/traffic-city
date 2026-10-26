@@ -406,17 +406,13 @@ internal sealed partial class NetworkBuilder
             }
 
             // Подходы к узлу (полоса - рукав) и подходы к подходам: connector по умолчанию зависит от того, есть ли выезды у полосы, в которую он ведёт.
-            int seg = _s.Lanes[lane].Segment;
-            int toSeg = _s.Lanes[_s.Lanes[nc].ToLane].Segment;
-            bool arm = false;
-            for (int a = 0; a < arms && !arm; a++)
+            // Классы остальных connector'ов полосы тоже зависят от выездов их приёмников (тупик/нет): проверяем приёмники всех connector'ов полосы, не только кэшированного.
+            ref readonly LaneData ld = ref _s.Lanes[lane];
+            bool arm = IsArmSeg(ld.Segment, arms, oldArms);
+            for (int n = 0; n < ld.NextCount && !arm; n++)
             {
-                arm = _armSeg[a] == seg || _armSeg[a] == toSeg;
-            }
-
-            for (int a = 0; a < oldArms && !arm; a++)
-            {
-                arm = _oldArmSeg[a] == seg || _oldArmSeg[a] == toSeg;
+                int to = _s.Lanes[_s.LaneNext[ld.FirstNext + n]].ToLane;
+                arm = to >= 0 && IsArmSeg(_s.Lanes[to].Segment, arms, oldArms);
             }
 
             if (arm)
@@ -424,6 +420,27 @@ internal sealed partial class NetworkBuilder
                 v.NextConn[i] = -1;
             }
         }
+    }
+
+    private bool IsArmSeg(int seg, int arms, int oldArms)
+    {
+        for (int a = 0; a < arms; a++)
+        {
+            if (_armSeg[a] == seg)
+            {
+                return true;
+            }
+        }
+
+        for (int a = 0; a < oldArms; a++)
+        {
+            if (_oldArmSeg[a] == seg)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int ArmSlotOfSegment(int seg, int arms)
