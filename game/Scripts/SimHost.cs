@@ -20,7 +20,6 @@ public partial class SimHost : Node3D
     private const int MaxStepsPerFrame = 5;
     private const float RoutePickMinRadius = 4f;
     private const float MarkerNearDistance = 450f;   // маркеры Walk/Clear и очереди на остановках только вблизи
-    private const float PedScaleDistance = 70f;
     private const float MaxViewRange = 6000f;
 
     private enum PedMode
@@ -525,13 +524,12 @@ public partial class SimHost : Node3D
         if (sim.HasPeds)
         {
             _cross = new CrosswalkMesh(sim);
-            _peds = new PedMesh();
+            _peds = new PedMesh(this, _lod);
             _pedStatic = new PedChunks(sim, _lod);
             _pedStatic.RefreshHeat(sim);
             AddChild(_pedStatic.Root);
             AddChild(_cross.Markers);
             AddChild(_cross.Queues);
-            AddChild(_peds.Node);
             _inspector = new Label
             {
                 Name = "PedInspector",
@@ -701,8 +699,10 @@ public partial class SimHost : Node3D
 
         // render.md §3.4: след фрустума на земле, обрезанный дистанцией точек (круг вокруг проекции камеры; радиус на земле
         // из дистанции по прямой). Машин за ним ядро не пишет, клиент не рисует.
+        // --ped-mode agents: пешеходы-точки на всём виде (render.md §10 V5), поэтому обрезка дистанцией точек ТС отключена;
+        // ТС дальше своей дистанции слой всё равно не рисует.
         Vector3 cp = cam.GlobalPosition;
-        float range = _lod.PointRange;
+        float range = _pedMode == PedMode.Agents && _peds != null ? 1e6f : _lod.PointRange;
         float ground2 = (range * range) - (cp.Y * cp.Y);
         float rg = ground2 > 0f ? MathF.Sqrt(ground2) + 20f : 0f;
         x0 = MathF.Max(x0, cp.X - rg);
@@ -741,7 +741,7 @@ public partial class SimHost : Node3D
         }
 
         bool agents = PedsAsAgents(dist);
-        _peds.Node.Visible = agents;
+        _peds.Visible = agents;
         // тротуары/зебры - чанки с visibility_range; режим пешеходов - только uniform шейдера (heatmap в шейдере, меши не трогаем)
         _pedStatic?.SetForce(_pedMode switch { PedMode.Heat => 1f, PedMode.Agents => -1f, _ => 0f });
         bool near = agents && dist <= MarkerNearDistance;
@@ -750,7 +750,7 @@ public partial class SimHost : Node3D
 
         if (agents)
         {
-            _peds.Update(sim, alpha, MathF.Max(1f, dist / PedScaleDistance), _selPed.IsNull ? -1 : _selPed.Index, (ushort)_selPed.Generation);
+            _peds.Update(sim, alpha, _camera!.Camera.GlobalPosition, _pedMode == PedMode.Agents, _selPed.IsNull ? -1 : _selPed.Index, (ushort)_selPed.Generation);
             _cross.UpdateQueues(sim);
             if (near)
             {

@@ -123,5 +123,6 @@
 | 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | done, merged (FPS llvmpipe s1k 18.8 → 63, s1k-peds 19 → 46; prims ×10–35 меньше) |
 | 118 | zoning-z2 (worktree) | sonnet | 3.2 Z2: календарь, автомат жителя, ноги в micro, s1k-res | wip |
 | 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | wip |
-| 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | wip |
+| 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | done, merged (пешеходы 1 draw call; agents mid prims 38.5k → 9k) |
 | 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | wip |
+| 122 | render-v6 (worktree) | sonnet | 3.3 V6: тени, свет, пресеты low/high (визуал — плейсхолдеры) | wip |
