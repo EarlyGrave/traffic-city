@@ -113,7 +113,7 @@
 | 107 | zoning-demand-spec (worktree) | opus | 3.2: ADR-0011 жители/экономика + ADR-0021 эластичный спрос + zoning-demand.md | done, merged (Z1–Z9; целочисленный логит; агрегат «10 лет») |
 | 108 | render-spec (worktree) | opus | 3.3: ADR-0014 бюджет рендера и LOD + render.md | done, merged (V1–V10; FPS «до» s1k-peds agents 9.7 — раздувание по дистанции) |
 | 109 | merge-p3-p4 (worktree) | sonnet | слияние P3 + P4, регенерация корпуса w2-s1k-peds | done, merged (661+359 тестов; изменён только w2-s1k-peds) |
-| 110 | render-v1 (worktree) | sonnet | 3.3 V1: замеры клиента (RenderStats, --pose, stats) | wip |
+| 110 | render-v1 (worktree) | sonnet | 3.3 V1: замеры клиента (RenderStats, --pose, stats) | done, merged (детерминированные draw/prims/память; «до»: s1k-peds agents overview 302k prims) |
 | 111 | render-v2 (worktree) | sonnet | 3.3 V2: render-budgets формат 2 + валидатор | wip |
 | 112 | ped-phase-tune (worktree) | sonnet | 3.1d: настройка пешеходной фазы (s10k-peds поездки ≥ 90% s10k) | wip |
 | 113 | zoning-z1 (worktree) | sonnet | 3.2 Z1: поверхность — desc, хранилища, участки, автозонирование, сейв, kind 23/24 | wip |

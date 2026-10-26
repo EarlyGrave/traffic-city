@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "scenario": "s1k-peds",
+  "pose": "close",
+  "warmup_ticks": 2400,
+  "stats_frame": 10,
+  "process_frame": 10,
+  "args": "--scenario s1k-peds --warmup-ticks 2400 --pose close --stats-frame 10",
+  "driver": "opengl3",
+  "method": "gl_compatibility",
+  "resolution": "1280x720",
+  "deterministic": {
+    "main": {
+      "source": "Viewport.GetRenderInfo(Visible)",
+      "draw_calls": 7,
+      "primitives": 75470,
+      "objects": 9
+    },
+    "shadow": {
+      "source": "Viewport.GetRenderInfo(Shadow)",
+      "draw_calls": 0,
+      "primitives": 0,
+      "objects": 0
+    },
+    "total": {
+      "source": "Performance.RenderTotal*InFrame",
+      "draw_calls": 7,
+      "primitives": 75470,
+      "objects": 9
+    },
+    "memory_bytes": {
+      "source": "Performance.Render*MemUsed",
+      "video": 17730871,
+      "texture": 7576515,
+      "buffer": 10154356
+    },
+    "instances": {
+      "Vehicles_0": {
+        "instances": 16,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "CrossSignals": {
+        "instances": 8,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "StopQueues": {
+        "instances": 16,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Pedestrians": {
+        "instances": 0,
+        "triangles_per_instance": 108,
+        "surfaces": 1
+      },
+      "total": 40
+    }
+  },
+  "timing": {
+    "note": "не детерминировано: llvmpipe, шум облака; GPU-время осмысленно только на реальном GPU",
+    "fps": 4,
+    "time_process_s": 0.052351,
+    "render_cpu_ms": 12.3100004196167,
+    "render_gpu_ms": 26.895999908447266
+  }
+}

@@ -1,8 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://Scripts/SimHost.cs" id="1_simhost"]
 [ext_resource type="Script" path="res://Scripts/RtsCamera.cs" id="2_camera"]
 [ext_resource type="Script" path="res://Scripts/PerfHud.cs" id="3_hud"]
+
+[ext_resource type="Script" path="res://Scripts/RenderStats.cs" id="4_stats"]
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
@@ -31,6 +33,9 @@ far = 40000.0
 [node name="SimHost" type="Node3D" parent="."]
 script = ExtResource("1_simhost")
 Scenario = "s1k"
+
+[node name="RenderStats" type="Node" parent="."]
+script = ExtResource("4_stats")
 
 [node name="Hud" type="CanvasLayer" parent="."]
 

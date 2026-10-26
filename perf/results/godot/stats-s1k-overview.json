@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "scenario": "s1k",
+  "pose": "overview",
+  "warmup_ticks": 2400,
+  "stats_frame": 10,
+  "process_frame": 10,
+  "args": "--scenario s1k --warmup-ticks 2400 --pose overview --stats-frame 10",
+  "driver": "opengl3",
+  "method": "gl_compatibility",
+  "resolution": "1280x720",
+  "deterministic": {
+    "main": {
+      "source": "Viewport.GetRenderInfo(Visible)",
+      "draw_calls": 4,
+      "primitives": 76454,
+      "objects": 4
+    },
+    "shadow": {
+      "source": "Viewport.GetRenderInfo(Shadow)",
+      "draw_calls": 0,
+      "primitives": 0,
+      "objects": 0
+    },
+    "total": {
+      "source": "Performance.RenderTotal*InFrame",
+      "draw_calls": 4,
+      "primitives": 76454,
+      "objects": 4
+    },
+    "memory_bytes": {
+      "source": "Performance.Render*MemUsed",
+      "video": 16721807,
+      "texture": 7576515,
+      "buffer": 9145292
+    },
+    "instances": {
+      "Vehicles_0": {
+        "instances": 996,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_1": {
+        "instances": 5,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "total": 1001
+    }
+  },
+  "timing": {
+    "note": "не детерминировано: llvmpipe, шум облака; GPU-время осмысленно только на реальном GPU",
+    "fps": 1,
+    "time_process_s": 0.131725,
+    "render_cpu_ms": 35.82600021362305,
+    "render_gpu_ms": 42.242000579833984
+  }
+}

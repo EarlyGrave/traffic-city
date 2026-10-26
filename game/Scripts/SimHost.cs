@@ -52,6 +52,8 @@ public partial class SimHost : Node3D
     private ImmediateMesh? _routeMesh;
     private RtsCamera? _camera;
     private PerfHud? _hud;
+    private RenderStats? _renderStats;
+    private string _pose = string.Empty;
     private Label? _status;
     private Label? _inspector;
     private PedMesh? _peds;
@@ -93,6 +95,7 @@ public partial class SimHost : Node3D
         _camera = GetNodeOrNull<RtsCamera>("../CameraRig");
         _hud = GetNodeOrNull<PerfHud>("../Hud/PerfHud");
         _status = GetNodeOrNull<Label>("../Hud/Status");
+        _renderStats = GetNodeOrNull<RenderStats>("../RenderStats");
 
         string name = Scenario;
         string[] args = OS.GetCmdlineUserArgs();
@@ -105,9 +108,21 @@ public partial class SimHost : Node3D
             return;
         }
 
-        if (_hasCamArgs)
+        if (_pose.Length > 0)
+        {
+            ApplyNamedPose(_pose);
+        }
+        else if (_hasCamArgs)
         {
             _camera?.SetPose(_camCenter, _camDistance, _camPitch, _camYaw);
+        }
+
+        if (_renderStats != null)
+        {
+            _renderStats.Scenario = name;
+            _renderStats.Pose = _pose.Length > 0 ? _pose : (_hasCamArgs ? "cam" : "default");
+            _renderStats.WarmupTicks = _warmupTicks;
+            _renderStats.ExtraArgs = ArgsWithoutPaths(args);
         }
 
         if (_showHud)
@@ -116,9 +131,29 @@ public partial class SimHost : Node3D
         }
     }
 
+    /// <summary>Аргументы запуска для JSON замера без путей вывода (JSON не зависит от места checkout).</summary>
+    private static string ArgsWithoutPaths(string[] args)
+    {
+        var parts = new System.Collections.Generic.List<string>(args.Length);
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--render-stats" && i + 1 < args.Length)
+            {
+                i++;
+            }
+            else
+            {
+                parts.Add(args[i]);
+            }
+        }
+
+        return string.Join(' ', parts);
+    }
+
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
-    /// <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>.
+    /// <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>,
+    /// <c>--pose overview|mid|close</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
     private void ParseArgs(string[] args, ref string name)
     {
@@ -129,6 +164,14 @@ public partial class SimHost : Node3D
             if (a == "--hud")
             {
                 _showHud = true;
+            }
+            else if (a == "--pose" && i + 1 < args.Length)
+            {
+                _pose = args[++i];
+            }
+            else if (_renderStats != null && _renderStats.TryParseArg(args, i, out int used))
+            {
+                i += used;
             }
             else if (a == "--select-ped")
             {
@@ -172,6 +215,29 @@ public partial class SimHost : Node3D
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Фиксированные позы замера (docs/design/render.md §8.2), от размера карты <c>E = max(w, h)</c>, центр карты, наклон 55°, поворот 0:
+    /// overview - как стартовый <c>Focus</c> (1.1·E); mid - 0.12·E в [300, 1 500] м; close - 0.02·E в [60, 120] м.
+    /// </summary>
+    private void ApplyNamedPose(string pose)
+    {
+        float extent = MathF.Max(_mapX1 - _mapX0, _mapZ1 - _mapZ0);
+        var center = new Vector3((_mapX0 + _mapX1) * 0.5f, 0f, (_mapZ0 + _mapZ1) * 0.5f);
+        float dist = pose switch
+        {
+            "mid" => Math.Clamp(extent * 0.12f, 300f, 1500f),
+            "close" => Math.Clamp(extent * 0.02f, 60f, 120f),
+            _ => extent * 1.1f,
+        };
+        if (_camera != null)
+        {
+            _camera.SetPose(center, dist, 55f, 0f);
+            _camera.Locked = true;
+        }
+
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"[pose] {pose}: center ({center.X:0.0}, {center.Z:0.0}) dist {dist:0.0} extent {extent:0.0}"));
     }
 
     public override void _ExitTree()
@@ -250,10 +316,12 @@ public partial class SimHost : Node3D
                 _sim.GetStats(out _stats);
             }
 
+            _renderStats?.RefreshHud();
             _hud.Extra = string.Create(
                 CultureInfo.InvariantCulture,
                 $"sim tick {_sim.Tick}  x{_timeScale:0.##}{(_paused ? " PAUSED" : string.Empty)}\navg {_stats.AvgSpeedKmh:0.0} km/h  stuck {_stats.StuckVehicles}")
-                + PedHudText(_sim);
+                + PedHudText(_sim)
+                + (_renderStats != null && _renderStats.HudText.Length > 0 ? "\n" + _renderStats.HudText : string.Empty);
         }
     }
 
