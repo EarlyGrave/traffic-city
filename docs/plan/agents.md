@@ -153,5 +153,5 @@
 | L1 | local/windows-tests (локал) | opus | Локальная среда на Windows: golden Rust-пилота, грабли в lessons | done, merged (build/format чисто; тесты 1423 ок, 2 skip; headings_hash строго только при TC_STRICT_HEADINGS=1) |
 | L2 | local/rust-check-python (локал) | haiku | rust-check.sh: фолбэк python3 → python в шаге deps без jq | done, merged (rust-check.sh exit 0 на Windows; со 2-й попытки: выбор python перенесён в ветку без jq) |
 | 147 | finish-t7 (облако, оркестратор) | opus | Финиш 4.3 T7: merge origin/dev (L1, L2) в облачный dev, push | done (конфликты agents/lessons — обе стороны; build -warnaserror 0 предупр.; format чисто; тесты Core 948 ок/2 skip, Headless 471, Host 12; bench-gate s1k p95 0.2538 мс vs 0.29144, 0 B/тик, stuck 0, OK с 1-й попытки) |
-| 148 | undo-t8 (облако) | sonnet | 4.3 T8: InverseBuilder, RestoreOf/Remap, UndoStack, UndoFuzz_Equivalent | в работе (ветка claude/adoring-ritchie-cxzib8) |
+| 148 | undo-t8 (облако) | sonnet | 4.3 T8: InverseBuilder, RestoreOf/Remap, UndoStack, UndoFuzz_Equivalent | done, merged (13 тестов Undo, фаззер 8 seed с дренажом и без; Core 960 ок/2 skip; s1k p95 0.289 vs 0.29144, 0 B/тик, stuck 0; долги: UndoUnavailable в превью, обратные для T5/T9 — NoInverse) |
 | 149 | scale-s1 (облако) | sonnet | 4.1 S1: параллельная фаза 4 по узлам | в работе (ветка claude/adoring-ritchie-cxzib8-s1) |

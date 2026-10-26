@@ -154,3 +154,8 @@
   город: у `LotBuilder`/`Growth.Abandon` нет хука «участок потерял дорогу», участки на снесённом сегменте остаются со старым поколением `SegGen` (его ловит `LotStore`), решение - Z6.
 - **API:** `Simulation.ToolOps` (`ToolOpView`: `Id`, цель, `Remaining`, `StartTick`), метрики `SimWork` (`ToolOpsStarted/Finished`, `DrainStalls`, `DrainTicksMax`, `RouteReleasesOnClose`).
 - **Замеры (Debug, малый мир сохранения):** снос загруженного сегмента (5 машин) - 215 тиков до финала; тик с командой - 1 088 Б (первый вызов кода), наибольшая аллокация тика дренажа/финала - 24 Б; установившиеся тики с активной операцией - 0 Б (`ActiveDrain_StepsAllocateNothing`).
+- **T8 (undo/redo), отклонения от `player-tools.md` §8 (2026-10-27):** 1) финал `RemoveRoad` (`ToolOpsPhase.DegradeControl`) переводит выживший узел
+  с `RightHandRule` в `None`, если у него ≤ 2 рукавов — иначе `BuildRoad`→undo не возвращает узел (дренаж асинхронен, а `SetNodeControl(None)`
+  на узле с ≥ 3 рукавами нормализуется в `RightHandRule`); меняет поведение только миров с `ToolsTouched`, golden без команд прежние.
+  2) План светофора в обратной пишется, только если отличается от плана по умолчанию для осей узла (снимок привязан к числу осей).
+  3) `*Remapped` несут только индексы; старое поколение хост берёт из команды-источника по `Tag`. Подробности — `player-tools.md` §8.4.

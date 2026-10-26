@@ -407,3 +407,7 @@
 - **`bash` из PowerShell - это WSL (`C:\Windows\system32\bash.exe`, дистрибутив docker-desktop), а не Git Bash.** Скрипты (`bench-gate.sh`, `rust-check.sh`, `test-hooks.sh`) запускать через `& "C:\Program Files\Git\bin\bash.exe" ...` или из Git Bash; хукам Claude и git это не мешает (идут через шебанг/Git).
 - **Rust локально: rustup через `winget install Rustlang.Rustup`** (MSVC Build Tools 2022 уже есть), тулчейн 1.97.0 ставится сам по `rust/rust-toolchain.toml`. `~/.cargo/bin` попадает в PATH только в новых терминалах/сессиях.
 - **`python3` в Git Bash на Windows - заглушка Microsoft Store (exit 49)**, настоящий интерпретатор - `python`. `rust-check.sh` без `jq` пробует `python3`, затем `python`; в новых скриптах делать так же. `rust-check.sh` на Windows - exit 0.
+- **Оркестратор не делает `git checkout` в общей папке, пока там работает агент (2026-10-27).** Агенту — свой worktree с первой минуты
+  (`git worktree add /home/user/tc-<задача> <ветка>`), основная папка — только оркестратору для `docs/plan`.
+- **Старые worktree агентов копятся в `.claude/worktrees/` (57 шт., 4,4 ГБ к 2026-10-27).** После мержа волны: `git worktree unlock` +
+  `git worktree remove` (без `-f`) для чистых; грязные — разобрать вручную.
