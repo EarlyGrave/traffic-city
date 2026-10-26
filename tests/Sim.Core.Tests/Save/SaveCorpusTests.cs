@@ -31,6 +31,7 @@ public sealed class SaveCorpusTests
         new("s1k", 2400, S1k),
         new("s1k-peds", 2400, S1kPeds),
         new("s1k-res", 24000, S1kRes),
+        new("s1k-res-d3", 216000, S1kRes),   // Z8 (E4): s1k-res на границе 3-х суток, настоящий календарь; тест Demand/ResCorpusTests
         new("small-drain", 600, Small, EvolveDrain),   // 4.3 (T4): сохранение посреди дренажа (операция сноса, закрытые полосы), w5
         new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
     };
