@@ -153,10 +153,12 @@
     "max_signalized_nodes": int,
     "max_connectors": int,              // дефолт max_nodes * 16 (intersections.md §4)
     "max_conflicts": int,               // дефолт max_connectors * 6
-    "max_peds": int, "max_residents": int, "max_ped_path_steps": 64   // только при секции peds (§2.4)
+    "max_peds": int, "max_residents": int, "max_ped_path_steps": 64,  // только при секции peds (§2.4)
+    "max_lots": int, "max_buildings": int, "max_city_residents": int, "skim_obs_capacity": 65536   // только при demand.model = "residents" (§2.6)
   },
 
-  "peds": { ... }                       // необязательно: пешеходы и жители (ADR-0020), §2.4; нет секции — выключено
+  "peds": { ... },                      // необязательно: пешеходы и жители (ADR-0020), §2.4; нет секции — выключено
+  "calendar": {}, "zoning": {}, "residents": {}, "economy": {}, "choice": {}   // необязательно и только при demand.model = "residents" (ADR-0011, §2.6)
 }
 ```
 
@@ -368,6 +370,14 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 Сценарии: `s1k-peds.json` (s1k + `count` 2 000, `residents` 4 000), `s10k-peds.json` (s10k + `count` 20 000, `residents` 40 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`). Оба: `transit.bidirectional = true`,
 `activity_s = [30, 120]` (пешие поездки короче 20 минут, а при стандартных 10–30 мин покоя готовых жителей не хватает, чтобы держать `count` активных; с автобусными ногами P4 баланс можно вернуть к дефолту), `max_peds`
 = `1.3 · count`, `max_residents` = `residents`, `max_ped_path_steps` = 64; остальное — как у `s1k.json`/`s10k.json`.
+
+### 2.6 Режим жителей: `demand.model = "residents"` (этап 3.2, ADR-0011/0021, `docs/design/zoning-demand.md` §16)
+`demand.model` получает третье значение `"residents"`: OD-генератор выключен (`vehicles.count` не действует), поездки приходят от жителей города. Обязательны `lod.cell_m` (сетка ячеек скимов; считается и при `lod.mode = "off"`) и ёмкости
+`max_lots`, `max_buildings`, `max_city_residents` (ключ `max_residents` занят заготовками `peds`), `skim_obs_capacity` (дефолт 65 536). Секции `calendar`, `zoning`, `residents`, `economy`, `choice` необязательны (дефолты спеки,
+`CityDesc.Default()`), неизвестные ключи - ошибка; вне режима жителей их наличие - ошибка. Единицы: метры -> мм, секунды -> тики (20 Гц) или децисекунды, доли -> Q16 (`round(float(v) · 65536)`), множители -> Q8,
+`choice.theta_*_per_s` -> `θ64 = θ/10 · 64 · 2^16`. `calendar.day_s * 20` кратно 288 (слот = 1/288 суток; дефолт 3 600 с = 72 000 тиков). Ключи сверх первой редакции спеки: `zoning.max_paint_m2`, `residents.match_per_tick`,
+`residents.vacate_days`, `residents.switch_ratio`, `residents.r_bias`, `economy.c_target_pct`, `choice.asc_nonworker_s`; `zoning.auto` - объект долей, `true` (доли по умолчанию) или `false`. `peds.source` (`"preform"`, дефолт, или
+`"city"`) задаёт источник поездок пешеходов; `"city"` требует `residents` и `peds`. Таблица типов зданий - из `buildings.json` пакетов (`format_version: 3`) либо базовая (`format_version: 2`).
 
 ### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
 

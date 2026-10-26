@@ -423,8 +423,8 @@ S → B широкое, B → T узкое. Вариант «+» добавля�
 - Производные (не сохраняются): геометрия и точки доступа участков, компоненты, колесо жителей (из `EvTick`), `Cap`, таблицы
   `ExpNeg/BPR`, кумулятивные массивы выбора дня (пересчитываются: решения дня читают только их, а при `Load` их строят
   заново из сохранённых скимов и вчерашних накопителей).
-- `world_version`: следующий свободный (ожидаемо **w5**; w3 — T2, w4 — M4; **согласовать при мерже**), миграция добавляет
-  столбцы-дефолты, блоков не создаёт. Хэш: секции города только при `residents`, `hash_version` +1.
+- `world_version`: **3** (решение оркестратора 2026-10-26; запланированные T2 и M4 сдвигаются на w4 и w5), миграция `MigrationV3` добавляет
+  столбцы-дефолты, блоков не создаёт. Хэш: секции города только при `residents`, `hash_version` 3.
 - `SaveValidator.ValidateCity`: списки (дом, работа) совпадают с полями жителей; `Occupants` = длина списка; Σ счетов = 0;
   ссылки агентов жителей `InLeg` живы, а у агента обратная ссылка указывает на того же жителя.
 
@@ -445,15 +445,22 @@ S → B широкое, B → T узкое. Вариант «+» добавля�
               "w_wait": 2.0, "w_walk": 2.0, "asc_car_s": 0, "asc_bus_s": 120, "asc_walk_s": 0, "sde": 0.5, "sdl": 2.0,
               "time_step_slots": 2, "dest_candidates": 8, "max_walk_m": 1500,
               "skim_periods": 6, "skim_shift": 2, "skim_update_per_tick": 256 },
-"capacities": { "max_lots": 0, "max_buildings": 0, "max_residents": 0, "skim_obs_capacity": 0 }
+"capacities": { "max_lots": 0, "max_buildings": 0, "max_city_residents": 0, "skim_obs_capacity": 0 }
 ```
+**Уточнено в Z1:** ключ `capacities.max_residents` занят жителями-заготовками `peds` (`*-res` с `peds` нужны обе ёмкости), поэтому ёмкость жителей города - `max_city_residents`
+(`SimCapacities.MaxCityResidents`); `skim_obs_capacity` по умолчанию 65 536. Ключи `max_lots/max_buildings/max_city_residents/skim_obs_capacity` и секции
+`calendar/zoning/residents/economy/choice` разрешены только при `demand.model = "residents"`. `zoning.auto` - объект долей либо `true` (доли по умолчанию) либо `false`
+(нет автозонирования и начального населения). Ключи, нужные задачам Z4/Z6 и поэтому объявленные сразу (дефолты в `CityDesc.Default()`): `zoning.max_paint_m2` (250 000),
+`residents.match_per_tick` (4), `residents.vacate_days` (3), `residents.switch_ratio` (1.5), `residents.r_bias` (0), `economy.c_target_pct` (100), `choice.asc_nonworker_s` (0).
+`peds.source` - `"preform"` (дефолт) или `"city"` (требует `residents` и `peds`).
 Значения θ и β — стартовые, их подбирает калибровка §10.2. Загрузчик отклоняет неизвестные ключи и `residents` без `lod.cell_m`,
 переводит дробные значения в целые Q8/Q16 (одно место — `ScenarioLoader`, правило ADR-0022: `f64 → as f32`, затем округление
 к целому — тестом сверено с Rust). Новые сценарии: `s1k-res`, `s10k-res` (с `peds` и `transit.passenger_model = agents`),
 `s100k-res` (без `peds`: пешком и автобус — агрегатом). Фикстуры `OneMoreLane`, `Braess` — в тестах (`Fixtures/`).
 
 ## 17. Моды: здания (`modding.md` §3.3, M10)
-- `content/<pkg>/buildings.json` (`format_version: 1`): `id` (`building/<pkg>/<name>`), `rev`, `kind`, `density`, `capacity`,
+- `content/<pkg>/buildings.json` (`format_version: 1`, корень `{ "format_version": 1, "buildings": [...] }`): `name` (id `<pkg>:building/<name>`, как у `vehicles.json`/`roads.json`), `rev`, `kind`
+  (`residential|commercial|industrial`), `density` (`low|high`), `capacity`,
   `shop_capacity`, `shift_start_slot`, `shift_slots`, `construct_days`, `attract`, `visual`. Пределы — `ModLimits`
   (`capacity ≤ 2 000`, `≤ 512` типов). `MANI` вид 2 — тип здания.
 - Пакет `base` получает 6 типов: R/C/I × низкая/высокая плотность. Фикстура `bad_buildings` меняет смысл: непустой массив
@@ -505,6 +512,60 @@ Z2 ∥ Z3 — только если Z1 заморозил поверхность
 | Z8 | **Приёмка и сценарии**: `s10k-res.json`, `s100k-res.json` (подбор `N` под пик ≈ 10 тыс. машин — по формуле §11, без замеров бюджета), фикстура и тесты `OneMoreLane` (aggregate в CI, micro A/B — `Long`), DM1/DM2, корпус `wN-s1k-res-d3` и тест E4, калибровка §10.2 (≤ 2 итераций) | `scenarios/*-res.json`, `tests/Sim.Core.Tests/{City,Demand,Fixtures}/*`, `tests/SaveCorpus/` | §19 «Приёмка»; числа калибровки в отчёт | Z5 (+Z6 для корпуса) |
 | Z8a | **Брайес**: фикстура `Braess` (OD-генератор), тест `Long` | `tests/Sim.Core.Tests/Fixtures/Braess.cs`, `…/Routing/BraessTests.cs` | §10.3 | 3.1 (∥ всем) |
 | Z9 | (верификатор) Полный `dotnet test` (включая `Long`), `bench-gate.sh` s1k, `bench s10k-res --threads 2 --view focus --phases --warmup-days 1 --window am_peak` (бюджет §11), `s100k-res` справочно, `run --years 10` на s10k-res (с `--micro-sample-every-days 365`) и s100k-res, DM3/DM4, CZ2/CZ4 из JSON, время прогонов | — | реальные числа в отчёт этапа | Z8, Z8a |
+
+### 20.1 Результат Z1 (агент 113): уточнения реализации и замороженная поверхность
+
+Реализовано по спеке со следующими отличиями (код - источник истины):
+- **Дескриптор.** Параметры режима - `ScenarioDesc.Town` (`CityDesc`: `Calendar`, `Zoning`, `Residents`, `Economy`, `Choice`, `BuildingTypes`); поле `ScenarioDesc.City` занято генератором (`CityGenDesc`).
+  Режим включает `DemandDesc.Model = DemandModel.Residents` (значение 2). `CityDesc.Default()` даёт полный набор дефолтов §16 (нулевой `Town` в режиме - `CreateStatus.InvalidCity`).
+  Единицы уже целые: мм, тики, децисекунды, Q8/Q16, `θ64 = θ[1/дс] · 64 · 2^16`; перевод - `CityDesc.Q16/Q8/Theta64` (f64 -> f32 -> округление), одно место в `ScenarioLoader.City.cs`.
+- **Ёмкости.** `SimCapacities.MaxLots/MaxBuildings/MaxCityResidents/SkimObsCapacity` (JSON `max_lots`, `max_buildings`, `max_city_residents`, `skim_obs_capacity`). Нехватка `max_lots` при `Create` - `InvalidCity`.
+  `NC` (число ячеек `lod.cell_m`) и `NC² · 3 · P > 2^27` - `CreateStatus.NotSupported` (s1m-res до двухуровневого скима).
+- **Хранилища.** `LotStore` - только дописывается (`Count`, без `HandlePool`: участки не удаляются, устаревшую ссылку на сегмент ловит `SegGen`); `BuildingStore` и `CityResidents` - `HandlePool` (index + generation,
+  LIFO). Сверх §2.4: у жителя `EvKind` (`ResidentEvent`: `Plan/Depart/EndActivity/Deadline/Arrive` - что произойдёт в `EvTick`); `Building.Jobs` - число предлагаемых мест (вакансии = `Jobs - Occupants`);
+  план дня - плоские массивы `Plan*[i * 3 + k]` (вид тура, способ, цель, слот), нога - `Leg*` (способ, ячейки `o/d` как `ushort`, тик заявки, накопители `walk/wait/ride`).
+  Очередь ищущих работу - `CityResidents.SeekQueue` (кольцо `(index, generation)`, наполняет и разбирает Z4).
+- **Сетка ячеек.** `CityGrid` - bounding box узлов на `Create` (формула LOD-ячеек), считается и при `lod.mode = off`; параметры лежат в `PARM` (181-184). Скимы и загрузки клеток размером под неё выделяются в `Create`/`Load`.
+- **Нарезка** (`LotBuilder`): сторона 0 - полоса `FirstLaneAB` (`LaneNo 0`, правая по ходу), сторона 1 - `FirstLaneBA`; фасад отступает от оси на `max(LanesAB, LanesBA) · lane_width + тротуар` (тротуар - `peds.sidewalk_width_m` либо 3 м
+  без `peds`); сетка занятости 8 м, участок занимает ячейки, чьи центры внутри его прямоугольника (допустимое взаимное проникновение < 8 м; тест сжимает прямоугольники на полклетки). Дорожная компонента - слабая связность
+  сегментов, метка = наименьший индекс узла; `LotBuilder.RebuildComponents(w)` обязан вызвать хук `BuildRoad` (Z6), как и `AppendSegment(w, c, seg)` для новых сегментов. Пешеходные `PedEdge/PedSMm/PedComp` - только при `peds`.
+- **Автозонирование и население.** Ячейки `zone_m` ранжируются по расстоянию до центра сетки (ключ = квантованный d² и номер ячейки); `c_center_share`/`i_edge_share` берутся с округлением вверх, участок остаётся пустым с вероятностью
+  `unzoned_share` (одно обращение к PRNG на участок), высокая плотность - на артериях. Обращения к `Demand` фиксированы: по одному на участок (зона), по одному на зону-участок (тип здания), по три на жителя (машина, работа, слот плана).
+  Жители распределяются по жилым зданиям нарастающим итогом (целевое `initial_fill · Σ жилья`, без остатков). **Начальная работа назначается простым сопоставлением** (рабочие по индексу, фирмы по индексу, общая дорожная
+  компонента, указатель на компоненту идёт вперёд один раз); не нашедшие работу встают в `SeekQueue`. Это не рынок §8.1: Z4 заменяет правило, состояние (списки, `Occupants`, очередь) остаётся тем же.
+- **Деньги.** `Ledger` - состояние (`External`, `City`, суммы 13 видов потоков за сегодня/вчера/всё время) и единственная проводка `Transfer`; начальные балансы - потоки `Endowment`. Правила потоков §7.2-§7.4 - Z4.
+- **Заглушки** (сигнатуры финальные): `Choice.ChooseFrequency/ChooseDestination/ChooseMode/ChooseDepartSlot` - фиксированный выбор без PRNG (одна дискреционная поездка, первый C той же компоненты, car/walk, выезд за длительность ноги
+  до желаемого прибытия); `Skims.Observe/Get/KeyOf/PeriodOf` (наблюдение копится в `ObsTable`, `Get` отдаёт сохранённое значение или 0); `Zoning.Apply` и `AggregateExec.ApplySwitch` отвечают `NotSupported`.
+  Фаза 2a (`Spawner.Generate`) выключена при `World.City != null`; фаз города в `PhaseList` нет (событий нет - население и деньги в Z1 не меняются).
+- **API.** `Simulation`: `HasCity`, `CityPopulation`, `CityDay`, `GetCityStats`, `CopyFlowTotals`, `GetBuildings`/`BuildingsVersion`/`BuildingSlotCount`, `GetLots`/`LotsVersion`/`LotCount`, `TryGetResidentInfo`/`TryGetBuildingInfo`
+  (по паре `(index, generation)`: типа `EntityRef` ещё нет, его вводит волна инструментов T1), `GetResidentGeneration`/`GetBuildingGeneration`, `GetAccessibility` (Z1 - нули; поле считает Z3), `CityCellCount`. События хода
+  (`BuildingSpawned` и др.) не испускаются. `BuildingRenderData` = 24 Б, `LotRenderData` = 16 Б (тест на размеры).
+- **Команды.** `CommandKind.PaintZone = 23` (`PaintZoneCmd` - как в `player-tools.md` §2), `SetTripExecution = 24` (`SetTripExecutionCmd { byte Mode }`) проведены диспетчером в заглушки. В `player-tools.md` §1 указано `12 = RemoveRoad`, а в коде
+  `12 = SetPedTarget` (P2): конфликт номера решает оркестратор волны 4.3, номера 23 и 24 свободны и закреплены.
+- **Моды.** `content/base/buildings.json` (6 типов, значения = `CityDesc.BaseBuildingTypes()`, тест сверяет), `BuildingContent` (+ `ContentCatalog.Buildings`, `ModLimits.MaxBuildingTypes = 512`, `MaxBuildingCapacity = 2000`, `package.json`
+  `content.buildings` теперь список файлов). Фикстура `bad_buildings` имеет непустой манифест и `b.json` с тремя ошибками полей.
+  Манифест ассетов `MANI` вид 2 (здания) пока не пишется: ядро хранит копию параметров в `BTYP`, привязку визуала к строке ведёт хост (`VisualRow` = индекс в каталоге).
+- **Сейв.** `world_version` 3, блоки `BTYP/LOTS/BLDG/RESD/SKIM/LEDG`, столбцы `PARM` 113-184, `WRLD` 14-18, `CNTR` 118-149, `VEHC` 41; `MigrationV3`; корпус `w3-{small,s1k,s1k-peds,s1k-res}`, файлы w1/w2 остались и продолжаются прежним хэшем
+  (хэши `w3-small/s1k/s1k-peds` равны `w2-*` побитово). Корпус `s1k-res` собран в тесте (`CityFixtures.S1kRes`), а не из сценария: `scenarios/s1k-res.json` делает Z2 и перегенерирует `w3-*` вместе с поведением.
+
+**Замороженная общая поверхность** (Z2 ∥ Z3 и далее её не меняют; меняются тела методов и логика в своих файлах; добавление столбцов - только по правилу `save-format.md` §3 про открытую w3):
+- *Типы и поля.* `CityDesc` целиком (все секции и поля выше), `BuildingTypeDesc`, `LotZone`, `TripExecution`, `TravelMode`, `PedSource`, `BuildingState`, `ResidentState`, `FlowKind`, `AccessKind`; `LotStore`, `BuildingStore`, `CityResidents`
+  (все поля §2 + `EvKind`), `ResidentFlags`, `ResidentEvent`, `TourKind`, `Ledger`, `CityWorld` (`Day`, `Exec`, `ExecPending`, курсоры, `DemandR/C/I`, `ToursDay/LegsDay/LegCostDay`), `Skims` (данные, индексация `((o·NC+d)·3+m)·P+p`),
+  `CellLoads`, `CityGrid`, `VehicleStore.Resident`, `World.City`, `World.Town`, `World.RngDemand` (`RngStream.Demand = 8`).
+- *Счётчики* `SimCounters` (группа «город», 32 поля: `CityEvents` ... `AggregateLegs`) - все в `CNTR` и в хэше при `residents`.
+- *Точки расширения (сигнатуры не менять):* `Choice.ChooseFrequency/ChooseDestination/ChooseMode/ChooseDepartSlot`, `Skims.Observe/Get`, `Zoning.Apply(World, in Command)`, `AggregateExec.ApplySwitch(World, in Command)`, `Ledger.Transfer`,
+  `CityWorld.RestoreDerived` (сюда Z2 добавляет колесо жителей из `EvTick/EvKind`), `LotBuilder.AppendSegment/RebuildComponents/RestoreDerived`, `CityBuild.Build/Validate/IsValid`, `CityHash.Add`, `SaveValidator.ValidateCity` (Z2 расширяет проверку
+  пешеходов жителей), `CityInit.Run`.
+- *Хэш и валидатор.* `CityHash` включает все поля состояния (производное и сетка занятости не входят); `ValidateCity` строг: списки дома и работы, `Occupants`, `Σ счетов = 0`, агент `InLeg` (машина: жива, поколение, `Vehicle.Resident` указывает назад),
+  `State != InLeg` => `Agent = -1`. Z2-Z6 обязаны держать эти инварианты либо расширять валидатор.
+
+**Что знать Z2 и Z3.**
+- Z2: у жителей `EvTick` - тик события, `EvKind` - его вид; колесо (`Util/TimerWheel`, ключи жителей) строится из них в `CityWorld.RestoreDerived` и в `CityInit`. Начальные события - `Plan` в `plan_slot + U(0, 12)` слотов дня 0.
+  `VehicleStore.Resident` уже в сейве и хэше (-1 у OD и автобусов); пешеходы жителей: связь `PedStore.Resident` с индексом **жителя города** (не заготовки) вводит Z2 и расширяет `ValidateCity`/`ValidatePeds`. `PedDesc.Source` и столбец
+  `PedSource` есть, `PedSpawn` пока читает только заготовку. С `SeekQueue` и `Work = -1` у части жителей Z2 может не считаться: на `s1k` с дефолтами все рабочие трудоустроены.
+- Z3: `Skims.Skim` пуст (0 - «нет данных»), `K` - нули; `LsRef` не задан. `Skims.Current` (`ObsTable`) уже сохраняется отсортированным слепком, `FrozenKey/Sum/Count` - слепок прошлого периода (двойной буфер, порции по `skim_update_per_tick`).
+  `GetAccessibility` возвращает нули до Z3. На `s1k` с дефолтами 1 786 участков, 1 443 с зоной, 12 371 житель и 9 ячеек: порядок размера для калибровки (`initial_fill` и ёмкости типов - значения `base`, подбираются в Z8).
+- Реализация не трогает `PedSignals.cs`, `SignalPhase`, `Crossings.cs`.
 
 ## 21. Открытые вопросы
 

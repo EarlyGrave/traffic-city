@@ -39,7 +39,7 @@
   "content": {                          // всё опционально; порядок в массивах значим (§5.1)
     "vehicles": ["vehicles.json"],
     "roads": ["roads.json"],
-    "buildings": [],                    // резерв до ADR-0011: непустой массив → UnsupportedContent
+    "buildings": ["buildings.json"],    // 3.2, ADR-0011 (§3.3): типы зданий; ядру уходят симуляционные поля
     "props": [],                        // резерв
     "scenarios": ["scenarios/rush_hour.json"]
   }
@@ -93,11 +93,12 @@
 - `base` поставляет `street_2` (1+1, 40 км/ч, street) и `arterial_4` (2+2, 60 км/ч, arterial) — те, что строит генератор.
   Сверено при M2: скорость улицы 40 км/ч — дефолт `street_speed_kmh` сценариев (50 в первой редакции спеки была ошибкой).
 
-### 3.3 Здания и пропы — резерв
-`buildings` — после ADR-0011 (3.2 зонирование и спрос): симуляционные параметры (footprint, зона, вместимость, парковка
-по 4.4) задаёт ADR-0011, а этот документ даёт только каркас: id `building/…`, `rev`, `visual`, `MANI` вид 2. Пропы —
-только визуал, в симуляцию и сейв не попадают, пока ядро не размещает объекты. До этого непустые массивы дают
-`UnsupportedContent`.
+### 3.3 Здания и пропы
+**Здания (сделано в Z1/M10, 3.2).** `buildings.json` (`format_version: 1`, корень `{ "format_version": 1, "buildings": [...] }`): `name` (id `<пакет>:building/<имя>`), `rev`, `kind` (`residential|commercial|industrial`),
+`density` (`low|high`), `capacity` (1..2 000), `shop_capacity` (только `commercial`), `shift_start_slot` (0..287), `shift_slots` (1..288 у C/I), `construct_days`, `attract` (только `commercial`, дефолт 1.0), `visual.model`.
+Пределы - `ModLimits.MaxBuildingTypes = 512`, `MaxBuildingCapacity = 2000`. Ядру уходит `BuildingTypeDesc` (строки только дописываются, `VisualRow` = индекс в каталоге); сейв хранит копию в блоке `BTYP`.
+`base` поставляет 6 типов (R/C/I x low/high; значения = `CityDesc.BaseBuildingTypes()`). `MANI` вид 2 пока не пишется. Подробнее - `zoning-demand.md` §17.
+Пропы - только визуал, в симуляцию и сейв не попадают, пока ядро не размещает объекты; непустой `props` даёт `UnsupportedContent`.
 
 ### 3.4 Сценарии `format_version: 3`
 Отличия от v2 (`scenario-format.md` §2):
@@ -384,8 +385,8 @@ M9 — после ADR-0023 и M2. M4 и M5 трогают API ядра и сей
   `Step` вне ядра).
 - Зависимости: ADR-0023 (JSON-форма команд), M2.
 
-### M10 (позже) Здания
-После ADR-0011: формат `buildings.json`, `MANI` вид 2, таблица параметров зданий в ядре и сейве.
+### M10 Здания (сделано в Z1, 3.2)
+Формат `buildings.json`, таблица параметров зданий в ядре и сейве (`BTYP`), 6 типов `base`, фикстура `bad_buildings` (непустой манифест, три ошибки полей). Осталось: `MANI` вид 2 (хост пишет привязку визуала), hot-reload зданий.
 
 ## 12. Открытые вопросы
 1. (владелец) Переопределение базовых ассетов модом (`replaces`). Рекомендация: нет на этапе 4, только новые id.

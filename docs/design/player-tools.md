@@ -33,7 +33,8 @@
 
 ## 1. Набор команд этапа 4
 
-Номера 0–11 заняты (`core-api.md` §4.1; 11 = `SetLodFocus`). Новые — только добавлением.
+Номера 0–11 заняты (`core-api.md` §4.1; 11 = `SetLodFocus`). Новые — только добавлением. **Внимание (Z1, 2026-10-26):** в коде номер 12 уже занят `SetPedTarget` (P2, `Command.cs`), а таблица ниже отдаёт 12 команде `RemoveRoad`;
+оркестратор волны 4.3 сдвигает `RemoveRoad` на свободный номер (в коде свободны 13-22 и от 25; 23 и 24 заняты Z1).
 
 | Kind | Команда | Механизм (§4) | Обратная (§8) |
 |---|---|---|---|
@@ -53,7 +54,8 @@
 | 20 | `RemoveBusRoute` | на месте (автобусы доезжают до следующей остановки и завершают рейс) | `CreateBusRoute(RestoreOf)` + `InsertBusStop`×k |
 | 21 | `SetBusRouteParams` (интервал, тип ТС) | на месте | прежний |
 | 22 | `MergeAtNode` (узел степени 2 с одинаковыми сегментами) | перенос с тишиной узла | `SplitRoad(RestoreOf)` |
-| 23 | `PaintZone` — **резерв**, до ADR-0011 → `NotSupported` | — | — |
+| 23 | `PaintZone` — номер **закреплён** (3.2 Z1: перечисление и диспетчер есть, `Zoning.Apply` - заглушка `NotSupported`, тело - Z6); payload `PaintZoneCmd` ниже | — | — |
+| 24 | `SetTripExecution` (3.2 Z1: номер закреплён за ядром жителей; `NotSupported` до Z5) | на месте (граница суток) | прежний режим |
 
 Не инструменты (обратных нет, `InverseRecord.Flags.NoInverse`): `SpawnTrip`, `SpawnBus`, `SelectVehicle`, `ClearSelection`,
 `SetTargetVehicleCount`, `SetLodFocus`.
