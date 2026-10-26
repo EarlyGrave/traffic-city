@@ -13,9 +13,10 @@ public readonly record struct PackageRequire(string Id, VersionConstraint Versio
 public sealed record PackageContent(
     IReadOnlyList<string> Vehicles,
     IReadOnlyList<string> Roads,
-    IReadOnlyList<string> Scenarios)
+    IReadOnlyList<string> Scenarios,
+    IReadOnlyList<string> Buildings)
 {
-    public static PackageContent Empty { get; } = new([], [], []);
+    public static PackageContent Empty { get; } = new([], [], [], []);
 }
 
 /// <summary>Разобранный <c>package.json</c> (modding.md §1.2).</summary>
@@ -203,7 +204,7 @@ public sealed record PackageManifest(
             return PackageContent.Empty;
         }
 
-        List<string> vehicles = [], roads = [], scenarios = [];
+        List<string> vehicles = [], roads = [], scenarios = [], buildings = [];
         foreach (JsonProperty prop in c.EnumerateObject())
         {
             string path = "$.content." + prop.Name;
@@ -219,6 +220,8 @@ public sealed record PackageManifest(
                     ParsePaths(p, prop.Value, path, files, scenarios);
                     break;
                 case "buildings":
+                    ParsePaths(p, prop.Value, path, files, buildings);
+                    break;
                 case "props":
                     if (prop.Value.ValueKind != JsonValueKind.Array)
                     {
@@ -236,7 +239,7 @@ public sealed record PackageManifest(
             }
         }
 
-        return new PackageContent(vehicles, roads, scenarios);
+        return new PackageContent(vehicles, roads, scenarios, buildings);
     }
 
     private static void ParsePaths(Parser p, JsonElement arr, string path, ISet<string> files, List<string> result)

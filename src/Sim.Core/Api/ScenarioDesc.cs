@@ -19,6 +19,7 @@ public struct ScenarioDesc
     public RulesDesc Rules;
     public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
     public PedDesc Peds;                   // пешеходы и жители (ADR-0020, pedestrians.md); Enabled = false (по умолчанию) - ничего не выделяется и не меняется
+    public CityDesc Town;                  // режим жителей (ADR-0011, zoning-demand.md §16): читается только при Demand.Model = Residents; иначе нули и ничего не выделяется
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }
 
@@ -40,6 +41,10 @@ public struct SimCapacities
     public int MaxPeds;                    // только при Peds.Enabled (pedestrians.md §12): >= Peds.Count * 1.3
     public int MaxResidents;               // только при Peds.Enabled: >= Peds.Residents
     public int MaxPedPathSteps;            // только при Peds.Enabled: шагов пути пешехода (дефолт загрузчика 64)
+    public int MaxLots;                    // только при Demand.Model = Residents (zoning-demand.md §2, §16): участков (JSON max_lots)
+    public int MaxBuildings;               // зданий (max_buildings)
+    public int MaxCityResidents;           // жителей города (JSON max_city_residents: ключ max_residents занят заготовками peds)
+    public int SkimObsCapacity;            // записей накопителя наблюдений скимов (skim_obs_capacity)
 }
 
 /// <summary>
@@ -188,6 +193,7 @@ public enum DemandModel : int
 {
     Gravity = 0,
     Uniform = 1,
+    Residents = 2,                         // ADR-0011: поездки от жителей города (zoning-demand.md); OD-генератор выключен, секции CityDesc обязательны
 }
 
 public struct ZoneDesc
@@ -314,4 +320,5 @@ public struct PedDesc
     public int WorkBudgetPerTick;          // дефолт 8000
     public int StuckCrossTicks;            // дефолт 120 с
     public int StuckStopTicks;             // дефолт max(3 * transit.headway_s, 900) с
+    public PedSource Source;               // peds.source (zoning-demand.md §4.1): Preform - заготовка pedestrians.md §3 (дефолт), City - жители города (Z2); City требует Demand.Model = Residents
 }

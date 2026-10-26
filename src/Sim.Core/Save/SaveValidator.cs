@@ -63,6 +63,12 @@ internal static partial class SaveValidator
             return pst;
         }
 
+        pst = ValidateCityParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||
@@ -100,6 +106,9 @@ internal static partial class SaveValidator
         b += (long)c.MaxVehicles * 64;   // очереди
         b += (long)c.MaxPeds * (160L + (4L * Math.Max(0, c.MaxPedPathSteps)));   // пешеходы: поля и арена путей
         b += (long)c.MaxResidents * 160L;
+        b += (long)c.MaxLots * 96L;   // город: участки, здания, жители (скимы проверяет ValidateCityParams)
+        b += (long)c.MaxBuildings * 260L;
+        b += (long)c.MaxCityResidents * 150L;
         return b;
     }
 
@@ -885,6 +894,17 @@ internal static partial class SaveValidator
             }
 
             owned[r >> 6] |= 1UL << (r & 63);
+        }
+
+        if (w.City == null)
+        {
+            for (int i = 0; i < v.HighWater; i++)
+            {
+                if (v.Resident[i] != -1)
+                {
+                    return Bad(c, i, 41);   // без города у машин нет жителей
+                }
+            }
         }
 
         if ((w.Overlay != null) != (w.Routing.Levels > 0) || (w.Lod != null) != (w.LodCfg.Mode != LodMode.Off) ||

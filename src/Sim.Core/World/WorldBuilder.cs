@@ -69,6 +69,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = City.CityBuild.Validate(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
@@ -103,6 +109,12 @@ internal static class WorldBuilder
         }
 
         st = BuildPeds(w);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = City.CityBuild.Build(w, create: true, default);   // жители: нарезка, зоны, начальное население (zoning-demand.md §2.5); без residents - ничего
         if (st != CreateStatus.Ok)
         {
             return st;

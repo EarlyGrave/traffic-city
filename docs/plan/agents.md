@@ -116,7 +116,7 @@
 | 110 | render-v1 (worktree) | sonnet | 3.3 V1: замеры клиента (RenderStats, --pose, stats) | done, merged (детерминированные draw/prims/память; «до»: s1k-peds agents overview 302k prims) |
 | 111 | render-v2 (worktree) | sonnet | 3.3 V2: render-budgets формат 2 + валидатор | done, merged (234 теста Mods; base ok) |
 | 112 | ped-phase-tune (worktree) | sonnet | 3.1d: настройка пешеходной фазы (s10k-peds поездки ≥ 90% s10k) | done, merged: критерий не взят (82.5%); корень — занятость переходов, не фаза; bidirectional −2.7% |
-| 113 | zoning-z1 (worktree) | sonnet | 3.2 Z1: поверхность — desc, хранилища, участки, автозонирование, сейв, kind 23/24 | wip |
+| 113 | zoning-z1 (worktree) | sonnet | 3.2 Z1: поверхность — desc, хранилища, участки, автозонирование, сейв, kind 23/24 | done, merged (world_version 3; без residents побитово; s1k: 12 371 житель) |
 | 114 | braess-z8a (worktree) | sonnet | 3.2 Z8a: парадокс Брайеса на синтетике | done, merged (перемычка 50%, время +34.5%, без правок ядра) |
 | 115 | render-v3 (worktree) | sonnet | 3.3 V3: машины — батчи по LOD, точки, вид = прямоугольник точек | done, merged (agents overview prims 303k → 75k; alloc при смене вида — только 2 первых тика, ленивый init) |
 | 116 | half-crossings (worktree) | sonnet | 3.1e: «половины» перехода — раздельные BusyUntil для XIn/XOut | wip |

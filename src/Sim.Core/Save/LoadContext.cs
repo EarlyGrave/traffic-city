@@ -48,6 +48,17 @@ internal sealed class LoadContext
     public int SelectedGeneration;
     public readonly ulong[] RngState = new ulong[6];
     public ulong PedRngState;
+    public ulong DemandRngState;
+
+    // город (zoning-demand.md §15): сетка ячеек (PARM), таблица типов зданий (BTYP), накопитель наблюдений скимов (SKIM) до вставки в таблицу
+    public float CityGridOriginX;
+    public float CityGridOriginZ;
+    public int CityGridCellsX;
+    public int CityGridCellsZ;
+    public Sim.Core.Api.BuildingTypeDesc[] BuildingTypes = Array.Empty<Sim.Core.Api.BuildingTypeDesc>();
+    public int[]? ObsKeys;
+    public long[]? ObsSums;
+    public int[]? ObsCounts;
 
     public float LodOriginX;
     public float LodOriginZ;

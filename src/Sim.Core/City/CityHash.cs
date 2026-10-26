@@ -1,0 +1,260 @@
+using Sim.Core.Agents;
+using Sim.Core.Api;
+using Sim.Core.Demand;
+using Sim.Core.Util;
+
+namespace Sim.Core.City;
+
+/// <summary>
+/// Секции хэша состояния города (core-api §9 п. 12, zoning-demand.md §15): добавляются только при <c>residents</c> (<c>hash_version</c> 3), поэтому хэш прежних сценариев не меняется.
+/// Порядок фиксирован: PRNG, сутки и курсоры, участки (состояние), здания (живые слоты), жители (живые слоты, планы, ноги), очередь ищущих, деньги, скимы (данные, накопители),
+/// загрузки клеток, ссылки машин на жителей, счётчики города. Производные (геометрия участков, колесо жителей, сетка занятости) не хэшируются.
+/// </summary>
+internal static class CityHash
+{
+    public static void Add(ref Fnv1a64 h, World w)
+    {
+        CityWorld c = w.City!;
+        h.Add(w.RngDemand.State);
+        h.Add(w.RngDemand.Inc);
+        h.Add(c.Day);
+        h.Add((int)c.Exec);
+        h.Add(c.ExecPending);
+        h.Add(c.CursorResidents);
+        h.Add(c.CursorBuildings);
+        h.Add(c.CursorAccess);
+        h.Add(c.DemandR);
+        h.Add(c.DemandC);
+        h.Add(c.DemandI);
+        for (int i = 0; i < c.ToursDay.Length; i++)
+        {
+            h.Add(c.ToursDay[i]);
+        }
+
+        for (int i = 0; i < c.LegsDay.Length; i++)
+        {
+            h.Add(c.LegsDay[i]);
+            h.Add(c.LegCostDay[i]);
+        }
+
+        AddLots(ref h, c.Lots);
+        AddBuildings(ref h, c.Buildings);
+        AddResidents(ref h, c.Residents);
+
+        Ledger lg = c.Ledger;
+        h.Add(lg.External);
+        h.Add(lg.City);
+        for (int k = 0; k < Ledger.FlowCount; k++)
+        {
+            h.Add(lg.FlowDay[k]);
+            h.Add(lg.FlowYesterday[k]);
+            h.Add(lg.FlowTotal[k]);
+        }
+
+        AddSkims(ref h, c.Skims);
+        for (int i = 0; i < c.Loads.L.Length; i++)
+        {
+            h.Add(c.Loads.L[i]);
+        }
+
+        VehicleStore v = w.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (v.Pool.IsAlive(i))
+            {
+                h.Add(v.Resident[i]);
+            }
+        }
+
+        AddCounters(ref h, in w.Counters);
+    }
+
+    private static void AddLots(ref Fnv1a64 h, LotStore l)
+    {
+        h.Add(l.Count);
+        for (int i = 0; i < l.Count; i++)
+        {
+            h.Add(l.Seg[i]);
+            h.Add(l.SegGen[i]);
+            h.Add(l.Side[i]);
+            h.Add(l.S0Mm[i]);
+            h.Add(l.S1Mm[i]);
+            h.Add(l.Zone[i]);
+            h.Add(l.Density[i]);
+            h.Add(l.Building[i]);
+            h.Add(l.Flags[i]);
+        }
+    }
+
+    private static void AddBuildings(ref Fnv1a64 h, BuildingStore b)
+    {
+        int high = b.HighWater;
+        h.Add(high);
+        for (int i = 0; i < high; i++)
+        {
+            h.Add(b.Pool.GenerationOf(i));
+            if (!b.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            h.Add(b.Lot[i]);
+            h.Add(b.Type[i]);
+            h.Add(b.State[i]);
+            h.Add(b.StateTick[i]);
+            h.Add(b.Occupants[i]);
+            h.Add(b.Jobs[i]);
+            h.Add(b.HeadRes[i]);
+            h.Add(b.HeadWork[i]);
+            h.Add(b.Account[i]);
+            h.Add(b.RevenueEwma[i]);
+            h.Add(b.ProfitEwma[i]);
+            for (int k = 0; k < 2; k++)
+            {
+                h.Add(b.VisitsDay[(2 * i) + k]);
+                h.Add(b.RevenueDay[(2 * i) + k]);
+                h.Add(b.CostDay[(2 * i) + k]);
+            }
+
+            h.Add((int)b.LossDays[i]);
+            h.Add((int)b.VacantDays[i]);
+        }
+    }
+
+    private static void AddResidents(ref Fnv1a64 h, CityResidents r)
+    {
+        int high = r.HighWater;
+        h.Add(high);
+        h.Add(r.NextSeq);
+        for (int i = 0; i < high; i++)
+        {
+            h.Add(r.Pool.GenerationOf(i));
+            if (!r.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            h.Add(r.Home[i]);
+            h.Add(r.Work[i]);
+            h.Add(r.NextHome[i]);
+            h.Add(r.NextWork[i]);
+            h.Add(r.Flags[i]);
+            h.Add(r.State[i]);
+            h.Add(r.StateTick[i]);
+            h.Add(r.EvTick[i]);
+            h.Add(r.EvKind[i]);
+            h.Add(r.PlanCount[i]);
+            h.Add(r.PlanCursor[i]);
+            int pb = i * CityResidents.MaxTours;
+            for (int k = 0; k < CityResidents.MaxTours; k++)
+            {
+                h.Add(r.PlanKind[pb + k]);
+                h.Add(r.PlanMode[pb + k]);
+                h.Add(r.PlanDest[pb + k]);
+                h.Add((int)r.PlanSlot[pb + k]);
+            }
+
+            h.Add(r.LegMode[i]);
+            h.Add((int)r.LegO[i]);
+            h.Add((int)r.LegD[i]);
+            h.Add(r.LegReq[i]);
+            h.Add(r.LegWalk[i]);
+            h.Add(r.LegWait[i]);
+            h.Add(r.LegRide[i]);
+            h.Add(r.Agent[i]);
+            h.Add(r.AgentGen[i]);
+            h.Add(r.Account[i]);
+            h.Add(r.IncomeEwma[i]);
+            h.Add((int)r.SeekDays[i]);
+            h.Add((int)r.EvictDays[i]);
+            h.Add(r.Seq[i]);
+        }
+
+        int seek = r.SeekQueue.Count;
+        h.Add(seek);
+        for (int k = 0; k < seek; k++)
+        {
+            ref readonly SeekEntry e = ref r.SeekQueue.At(k);
+            h.Add(e.Index);
+            h.Add(e.Generation);
+        }
+    }
+
+    private static void AddSkims(ref Fnv1a64 h, Skims s)
+    {
+        h.Add(s.LsRef);
+        h.Add(s.LsRefSet ? 1 : 0);
+        h.Add(s.CurPeriod);
+        h.Add(s.UpdateCursor);
+        h.Add(s.FrozenN);
+        for (int i = 0; i < s.Skim.Length; i++)
+        {
+            h.Add(s.Skim[i]);
+        }
+
+        for (int i = 0; i < s.K.Length; i++)
+        {
+            h.Add(s.K[i]);
+        }
+
+        for (int i = 0; i < s.FrozenN; i++)
+        {
+            h.Add(s.FrozenKey[i]);
+            h.Add(s.FrozenSum[i]);
+            h.Add(s.FrozenCount[i]);
+        }
+
+        // Текущий накопитель - отсортированным слепком (порядок вставки на хэш не влияет). Scratch - только вне горячего цикла (хэш зовут тесты и сейв).
+        int n = s.Current.Count;
+        h.Add(n);
+        if (n > 0)
+        {
+            var keys = new int[n];
+            var sums = new long[n];
+            var counts = new int[n];
+            s.Current.CopySorted(keys, sums, counts);
+            for (int i = 0; i < n; i++)
+            {
+                h.Add(keys[i]);
+                h.Add(sums[i]);
+                h.Add(counts[i]);
+            }
+        }
+    }
+
+    private static void AddCounters(ref Fnv1a64 h, in SimCounters c)
+    {
+        h.Add(c.CityEvents);
+        h.Add(c.ResToursPlanned);
+        h.Add(c.ResToursDropped);
+        h.Add(c.ResToursUnreachable);
+        h.Add(c.ResToursCancelled);
+        h.Add(c.ResLegsCar);
+        h.Add(c.ResLegsBus);
+        h.Add(c.ResLegsWalk);
+        h.Add(c.ResLegsDone);
+        h.Add(c.ResLegCostDsTotal);
+        h.Add(c.ResVisits);
+        h.Add(c.ResVisitsUnserved);
+        h.Add(c.ResLegOverdue);
+        h.Add(c.ResStuck);
+        h.Add(c.ResWaitDepartTicks);
+        h.Add(c.SkimObserved);
+        h.Add(c.SkimObsDropped);
+        h.Add(c.SkimUpdates);
+        h.Add(c.Immigrants);
+        h.Add(c.Emigrants);
+        h.Add(c.ResRelocations);
+        h.Add(c.ResHired);
+        h.Add(c.ResFired);
+        h.Add(c.ResJobSwitches);
+        h.Add(c.BuildingsBuilt);
+        h.Add(c.BuildingsAbandoned);
+        h.Add(c.BuildingsRemoved);
+        h.Add(c.FirmClosures);
+        h.Add(c.PaintCommands);
+        h.Add(c.ExecSwitches);
+        h.Add(c.CityDays);
+        h.Add(c.AggregateLegs);
+    }
+}

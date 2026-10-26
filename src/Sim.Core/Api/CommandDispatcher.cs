@@ -62,6 +62,12 @@ internal static class CommandDispatcher
                 }
 
                 break;
+            case CommandKind.PaintZone:
+                Result(w, in cmd, City.Zoning.Apply(w, in cmd));
+                break;
+            case CommandKind.SetTripExecution:
+                Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
+                break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
                 break;
@@ -77,6 +83,19 @@ internal static class CommandDispatcher
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
+        }
+    }
+
+    /// <summary>Итог обработчика города: <see cref="RejectReason.None"/> - применена, иначе отклонена с причиной.</summary>
+    private static void Result(World w, in Command cmd, RejectReason reason)
+    {
+        if (reason == RejectReason.None)
+        {
+            Applied(w, in cmd);
+        }
+        else
+        {
+            Rejected(w, in cmd, reason);
         }
     }
 

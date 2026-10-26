@@ -188,6 +188,16 @@ public sealed class Simulation : IDisposable
     // ---- метрики ----
     public ref readonly SimCounters Counters { get; }                // монотонные счётчики, §11
     public void GetStats(out SimStats stats);                        // производные значения, §11
+
+    // ---- город (3.2, ADR-0011, `zoning-demand.md` §13; без demand.model = residents - false/0/пусто) ----
+    public bool HasCity { get; }
+    public bool GetCityStats(out CityStats stats);                   // население, работа, жильё, здания, спрос, деньги по классам (Σ = 0)
+    public int GetBuildings(Span<BuildingRenderData> dst);           // 24 Б на слот пула; BuildingsVersion/BuildingSlotCount - перечитывать при смене версии
+    public int GetLots(Span<LotRenderData> dst);                     // 16 Б на участок; LotsVersion/LotCount
+    public bool TryGetResidentInfo(int index, int generation, out ResidentInfo info);   // EntityRef - с волной инструментов T1
+    public bool TryGetBuildingInfo(int index, int generation, out BuildingInfo info);
+    public int GetAccessibility(Span<int> perCell, AccessKind kind); // heatmap; Z1 - нули, поле считает Z3
+    public bool CopyFlowTotals(Span<long> dst, FlowPeriod period);   // 13 видов потоков за вчера/сегодня/всё время
     public ReadOnlySpan<uint> NodeThroughput { get; }                // [MaxNodes] машин, проехавших узел (всего)
     public ReadOnlySpan<BusRouteStats> BusRouteStats { get; }        // [MaxBusRoutes]
 
@@ -374,6 +384,9 @@ public enum CommandKind : int
     SetNodeControl = 10,        // тип регулирования узла: none/yield/stop/signal [шаг 3]
     SetPedTarget = 12,          // 3.1: цель активных пешеходов {Count} (4 Б); без секции peds - NotSupported. 11 закреплён за SetLodFocus
     SetLodFocus = 11,           // слот фокуса/закрепления LOD {Slot 0..7, Kind Clear/Focus/Pin, X, Z, RadiusM} (ADR-0013, `sim-lod.md` §4)
+    // 13..22 заняты планом инструментов (`player-tools.md` §1)
+    PaintZone = 23,             // 3.2, ADR-0011: зона на участках в прямоугольнике {X0,Z0,X1,Z1, ZoneKind, Density} (20 Б); Z1 - NotSupported (заглушка `Zoning.Apply`), тело - Z6
+    SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate на границе суток; Z1 - NotSupported (заглушка `AggregateExec.ApplySwitch`), тело - Z5
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
@@ -1091,7 +1104,7 @@ public struct Pcg32
 Сидирование: `ScenarioDesc.Seed` → подпотоки с фиксированными `stream`-номерами
 (`RngStream` enum): `CityGen = 1`, `Zones = 2`, `Spawn = 3` (OD-пары, тип ТС, стартовая полоса),
 `Behaviour = 4` (зарезервировано: шум в параметрах водителей — этап 2), `Transit = 5`,
-`Routing = 6` (разрешение ничьих), `Peds = 7` (жители в `Create`, скорость пешехода при запуске поездки, время занятий; `pedestrians.md` §13). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
+`Routing = 6` (разрешение ничьих), `Peds = 7` (жители в `Create`, скорость пешехода при запуске поездки, время занятий; `pedestrians.md` §13), `Demand = 8` (город: `Create`, события жителей, дневные проходы; `zoning-demand.md` §18). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
 `World` — никаких общих генераторов, чтобы добавление вызова в одной подсистеме не меняло
 поток другой. Генератор города использует только `CityGen`, поэтому сеть зависит от seed и
 `CityGenDesc`, но не от числа машин.
@@ -1140,6 +1153,10 @@ public struct Fnv1a64
 
 11. Пешеходы (только при `peds`, `hash_version` 2; `Peds/PedHash.cs`): `Peds`-PRNG, `TargetPeds`; пул и поля пешеходов (живые слоты; путь - шаги `[0, PathCount)`); жители и очередь готовых; состояние переходов
     (по индексу `x`), очереди остановок, `PaxHead`; очередь путей; гистограммы ожидания; счётчики группы «пешеходы». Списки по рёбрам, колесо таймеров, `RenderHint` - производные, не хэшируются.
+
+12. Город (только при `demand.model = residents`, `hash_version` 3; `City/CityHash.cs`): `Demand`-PRNG, сутки и режим исполнения, курсоры, сглаженный спрос; участки (состояние), здания и жители (живые слоты, планы, ноги),
+    очередь ищущих работу; `External`/`City` и потоки; скимы (данные, `K`, накопители отсортированным слепком, `LS_ref`), `CellLoads`; `Resident` живых машин; счётчики группы «город». Геометрия участков, колесо жителей, сетка занятости
+    нарезки - производные, не хэшируются.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).

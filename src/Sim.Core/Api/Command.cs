@@ -18,6 +18,9 @@ public enum CommandKind : int
     SetNodeControl = 10,
     // 11 зарезервирован под SetLodFocus (core-api §4, ADR-0013): в ядре пока не реализован
     SetPedTarget = 12,   // 3.1, ADR-0020: цель активных пешеходов (как SetTargetVehicleCount); без секции peds отклоняется
+    // 13..22 заняты планом инструментов (player-tools.md §1; 12 там тоже указан как RemoveRoad - конфликт с SetPedTarget решает оркестратор волны 4.3)
+    PaintZone = 23,      // 3.2, ADR-0011: зона на участках в прямоугольнике (zoning-demand.md §14); Z1 - заглушка Zoning.Apply (NotSupported), тело - Z6
+    SetTripExecution = 24, // 3.2: micro/aggregate на границе суток (zoning-demand.md §9.2); Z1 - заглушка AggregateExec.ApplySwitch (NotSupported), тело - Z5
 }
 
 public enum SignalMode : int
@@ -81,6 +84,12 @@ public struct Command
 
     [FieldOffset(8)]
     public SetPedTargetCmd SetPedTarget;
+
+    [FieldOffset(8)]
+    public PaintZoneCmd PaintZone;
+
+    [FieldOffset(8)]
+    public SetTripExecutionCmd SetTripExecution;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -169,6 +178,24 @@ public struct Command
         c.Kind = CommandKind.SetPedTarget;
         c.Tag = tag;
         c.SetPedTarget = new SetPedTargetCmd { Count = count };
+        return c;
+    }
+
+    public static Command MakePaintZone(in PaintZoneCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.PaintZone;
+        c.Tag = tag;
+        c.PaintZone = payload;
+        return c;
+    }
+
+    public static Command MakeSetTripExecution(TripExecution mode, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetTripExecution;
+        c.Tag = tag;
+        c.SetTripExecution = new SetTripExecutionCmd { Mode = (byte)mode };
         return c;
     }
 
@@ -267,4 +294,19 @@ public struct SetNodeControlCmd
 public struct SetPedTargetCmd
 {
     public int Count;
+}
+
+/// <summary>Прямоугольник зонирования (player-tools.md §2): участок попадает под команду, если его центр внутри. <c>ZoneKind</c> - <see cref="LotZone"/> (0 снимает зону), <c>Density</c> 0/1.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct PaintZoneCmd
+{
+    public float X0, Z0, X1, Z1;      // углы прямоугольника, м (упорядочиваются)
+    public byte ZoneKind, Density, R0, R1;
+}
+
+/// <summary>Режим исполнения ног (<see cref="TripExecution"/>); применяется на границе суток.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetTripExecutionCmd
+{
+    public byte Mode;
 }

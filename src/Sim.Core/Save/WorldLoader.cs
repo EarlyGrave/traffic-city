@@ -160,6 +160,14 @@ internal static class WorldLoader
             case "QMSO":
                 expected = c.Lod.Mode != LodMode.Off && c.Lod.MesoModel == MesoModel.Queue;
                 break;
+            case "BTYP":
+            case "LOTS":
+            case "BLDG":
+            case "RESD":
+            case "SKIM":
+            case "LEDG":
+                expected = c.Desc.Demand.Model == DemandModel.Residents;
+                break;
             case "PEDS":
             case "PPTH":
             case "RESI":
@@ -269,6 +277,7 @@ internal static class WorldLoader
     {
         ApplyOverride(ref c.Desc.Capacities, in c.Options.CapacityOverride);
         c.Desc.VehicleTypes = c.Types;
+        c.Desc.Town.BuildingTypes = c.BuildingTypes;
         c.Desc.Demand.Zones = c.Zones;
         c.Desc.Demand.OdPairs = c.OdPairs;
         c.Desc.Demand.TypeMix = c.TypeMix.Length > 0 ? c.TypeMix : null!;
@@ -286,7 +295,13 @@ internal static class WorldLoader
         c.Desc.City.LaneWidth = c.NetLaneWidth;
         c.Desc.City.ConnectorSamples = c.NetConnectorSamples;
         c.W = new World(in c.Desc, c.Rules, c.Routing, c.Types);
-        return WorldBuilder.BuildPeds(c.W, create: false) == CreateStatus.Ok ? LoadStatus.Ok : LoadStatus.CapacityExceeded;   // пешеходы: структуры без жителей, состояние - из блоков
+        if (WorldBuilder.BuildPeds(c.W, create: false) != CreateStatus.Ok)   // пешеходы: структуры без жителей, состояние - из блоков
+        {
+            return LoadStatus.CapacityExceeded;
+        }
+
+        var grid = new City.CityGrid(c.Lod.CellM, c.CityGridOriginX, c.CityGridOriginZ, c.CityGridCellsX, c.CityGridCellsZ);
+        return City.CityBuild.Build(c.W, create: false, in grid) == CreateStatus.Ok ? LoadStatus.Ok : LoadStatus.CapacityExceeded;   // город: хранилища по ёмкостям, состояние - из блоков
     }
 
     private static void ApplyOverride(ref SimCapacities caps, in SimCapacities ov)
@@ -308,6 +323,10 @@ internal static class WorldLoader
         if (ov.MaxSignalizedNodes != 0) { caps.MaxSignalizedNodes = ov.MaxSignalizedNodes; }
         if (ov.MaxConnectors != 0) { caps.MaxConnectors = ov.MaxConnectors; }
         if (ov.MaxConflicts != 0) { caps.MaxConflicts = ov.MaxConflicts; }
+        if (ov.MaxLots != 0) { caps.MaxLots = ov.MaxLots; }
+        if (ov.MaxBuildings != 0) { caps.MaxBuildings = ov.MaxBuildings; }
+        if (ov.MaxCityResidents != 0) { caps.MaxCityResidents = ov.MaxCityResidents; }
+        if (ov.SkimObsCapacity != 0) { caps.SkimObsCapacity = ov.SkimObsCapacity; }
     }
 
     /// <summary>Конец загрузки: проверки состояния, производные, роутер, снапшот, сверка хэша.</summary>
@@ -351,6 +370,18 @@ internal static class WorldLoader
             }
 
             w.Peds!.RestoreDerived(w);
+        }
+
+        if (w.City != null)
+        {
+            st = SaveValidator.ValidateCity(c);
+            if (st != LoadStatus.Ok)
+            {
+                c.FailBlock = SaveFormat.FourCc("BLDG"u8);
+                return st;
+            }
+
+            w.City.RestoreDerived(w);   // геометрия участков, ячейки, точки доступа, компоненты - тем же кодом, что в Create
         }
 
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);

@@ -10,4 +10,5 @@ public enum RngStream : ulong
     Transit = 5,
     Routing = 6,
     Peds = 7,
+    Demand = 8,   // 3.2, ADR-0011: Create города, события жителей по (tick, ключ), дневные проходы по индексу (zoning-demand.md §18)
 }
