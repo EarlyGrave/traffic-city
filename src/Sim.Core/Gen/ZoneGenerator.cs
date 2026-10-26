@@ -46,8 +46,8 @@ internal static class ZoneGenerator
             return CreateStatus.InvalidDemand;
         }
 
-        int zx = (int)MathF.Ceiling(width / zoneM);
-        int zz = (int)MathF.Ceiling(height / zoneM);
+        int zx = DetMath.ToIntSat(MathF.Ceiling(width / zoneM));
+        int zz = DetMath.ToIntSat(MathF.Ceiling(height / zoneM));
         if (zx < 1 || zz < 1)
         {
             return CreateStatus.InvalidDemand;
@@ -106,8 +106,8 @@ internal static class ZoneGenerator
             Vec2 pos = net.Nodes[n].Position;
             bool bx = MathF.Abs(pos.X) >= halfW - 0.5f;
             bool bz = MathF.Abs(pos.Z) >= halfH - 0.5f;
-            int kx = Clamp((int)MathF.Floor((pos.X + halfW) / cx), zx - 1);
-            int kz = Clamp((int)MathF.Floor((pos.Z + halfH) / cz), zz - 1);
+            int kx = Clamp(DetMath.ToIntSat(MathF.Floor((pos.X + halfW) / cx)), zx - 1);
+            int kz = Clamp(DetMath.ToIntSat(MathF.Floor((pos.Z + halfH) / cz)), zz - 1);
             int zone;
             if (bx && bz)
             {
@@ -330,8 +330,8 @@ internal static class ZoneGenerator
         Vec2 b = net.Nodes[sd.NodeB].Position;
         float xm = (a.X + b.X) * 0.5f;
         float zm = (a.Z + b.Z) * 0.5f;
-        int kx = Clamp((int)MathF.Floor((xm + halfW) / cx), zx - 1);
-        int kz = Clamp((int)MathF.Floor((zm + halfH) / cz), zz - 1);
+        int kx = Clamp(DetMath.ToIntSat(MathF.Floor((xm + halfW) / cx)), zx - 1);
+        int kz = Clamp(DetMath.ToIntSat(MathF.Floor((zm + halfH) / cz)), zz - 1);
         return (kz * zx) + kx;
     }
 

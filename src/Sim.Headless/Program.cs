@@ -24,6 +24,8 @@ public static class Program
         "  golden           write cross-language golden files for the Rust pilot (--out <dir>; see golden --help)\n" +
         "  compare          compare a result with the baseline\n" +
         "  update-baseline  replace perf/baseline.json with a result\n" +
+        "  render-compare   gate client render counters (godot-shot.sh stats) against budgets and the client baseline\n" +
+        "  render-update-baseline  replace the client render baseline with fresh stats\n" +
         "  render           render a scenario to mp4 (--scenario <name|path> --seconds <s> --out <file.mp4>; see render --help)\n" +
         "  validate         load a scenario and print a summary (--scenario <name|path> [--scenarios-dir <dir>])\n" +
         "  validate-package check a mod package: loader, content, glTF/GLB and LODs (<package-dir> [--budgets <file>] [--game])\n" +
@@ -81,6 +83,10 @@ public static class Program
                     : UpdateBaselineCommand.Run(args, Console.Out, Console.Error);
             case "golden":
                 return HasHelp(args) ? Help(GoldenCommand.Usage) : GoldenCommand.Run(args, Console.Out, Console.Error);
+            case "render-compare":
+                return HasHelp(args) ? Help(RenderCompare.Usage) : RenderCompare.RunCompare(args, Console.Out, Console.Error);
+            case "render-update-baseline":
+                return HasHelp(args) ? Help(RenderCompare.UpdateUsage) : RenderCompare.RunUpdate(args, Console.Out, Console.Error);
             case "run":
                 return HasHelp(args) ? Help(RunCommand.Usage) : RunCommand.Run(args, Console.Out, Console.Error);
             default:

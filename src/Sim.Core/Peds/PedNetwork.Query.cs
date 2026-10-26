@@ -83,7 +83,7 @@ internal sealed partial class PedNetwork
         float t = span > 1e-3f ? (s - ed.S0) / span : 0.5f;
         t = t < 0f ? 0f : (t > 1f ? 1f : t);
         edge = e;
-        sMm = (int)(ed.LenMm * t);
+        sMm = DetMath.ToIntSat(ed.LenMm * t);
         return true;
     }
 

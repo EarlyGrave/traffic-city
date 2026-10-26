@@ -578,7 +578,7 @@ internal static class CityGenerator
     }
 
     /// <summary>Округление «от нуля» (как f32::round в Rust), чтобы порт совпадал на .5.</summary>
-    internal static int RoundI(float v) => (int)MathF.Round(v, MidpointRounding.AwayFromZero);
+    internal static int RoundI(float v) => DetMath.ToIntSat(MathF.Round(v, MidpointRounding.AwayFromZero));
 
     private static int MarkArterialLines(byte[] lines, int n, int every)
     {

@@ -527,7 +527,7 @@ internal sealed partial class NetworkBuilder
 
     private static bool IsFinite(Vec2 p) => float.IsFinite(p.X) && float.IsFinite(p.Z);
 
-    private int Cell(float v) => (int)MathF.Floor(v / _o.SnapRadius);
+    private int Cell(float v) => DetMath.ToIntSat(MathF.Floor(v / _o.SnapRadius));
 
     private static long CellKey(int cx, int cz) => ((long)cx << 32) ^ (uint)cz;
 }

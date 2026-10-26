@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Lod;
 using Sim.Core.Metrics;
+using Sim.Core.Util;
 
 namespace Sim.Core.Agents;
 
@@ -62,7 +63,7 @@ internal sealed class TickMasks
     }
 
     /// <summary>Шаг пути за тик в мм (то же округление, что у прежнего прохода фазы 9).</summary>
-    public static long StepMm(float speed) => (long)((speed * MetricsPhase.MmPerSecondTick) + 0.5f);
+    public static long StepMm(float speed) => DetMath.ToLongSat((speed * MetricsPhase.MmPerSecondTick) + 0.5f);
 
     private void Apply(float speed, bool meso, int sign)
     {

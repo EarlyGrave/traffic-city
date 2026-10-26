@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Sim.Core.Api;
 using Sim.Core.Demand;
 using Sim.Core.Network;
+using Sim.Core.Util;
 
 namespace Sim.Core.City;
 
@@ -41,14 +42,14 @@ internal static class CityInit
         float zoneM = w.Demand.ZoneSize > 1f ? w.Demand.ZoneSize : 500f;
         float width = g.CellsX * g.CellM;
         float height = g.CellsZ * g.CellM;
-        int zx = Math.Max(1, (int)MathF.Ceiling(width / zoneM));
-        int zz = Math.Max(1, (int)MathF.Ceiling(height / zoneM));
+        int zx = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(width / zoneM)));
+        int zz = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(height / zoneM)));
         var cellOf = new int[l.Count];
         var occupied = new bool[zx * zz];
         for (int i = 0; i < l.Count; i++)
         {
-            int cx = Math.Clamp((int)MathF.Floor((l.X[i] - g.OriginX) / zoneM), 0, zx - 1);
-            int cz = Math.Clamp((int)MathF.Floor((l.Z[i] - g.OriginZ) / zoneM), 0, zz - 1);
+            int cx = Math.Clamp(DetMath.ToIntSat(MathF.Floor((l.X[i] - g.OriginX) / zoneM)), 0, zx - 1);
+            int cz = Math.Clamp(DetMath.ToIntSat(MathF.Floor((l.Z[i] - g.OriginZ) / zoneM)), 0, zz - 1);
             cellOf[i] = (cz * zx) + cx;
             occupied[cellOf[i]] = true;
         }
@@ -72,7 +73,7 @@ internal static class CityInit
 
             float dx = g.OriginX + (((k % zx) + 0.5f) * zoneM) - midX;
             float dz = g.OriginZ + (((k / zx) + 0.5f) * zoneM) - midZ;
-            keys[m++] = ((long)((dx * dx) + (dz * dz)) * 4L << 24) + k;
+            keys[m++] = (DetMath.ToLongSat((dx * dx) + (dz * dz)) * 4L << 24) + k;
         }
 
         Array.Sort(keys);

@@ -457,7 +457,7 @@ internal sealed class ConnectorStore
 
     private static ushort ToCm(float s)
     {
-        int v = (int)((s * 100f) + 0.5f);
+        int v = DetMath.ToIntSat((s * 100f) + 0.5f);
         return (ushort)(v < 0 ? 0 : v > ushort.MaxValue ? ushort.MaxValue : v);
     }
 

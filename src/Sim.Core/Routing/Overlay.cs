@@ -198,8 +198,8 @@ internal sealed partial class Overlay
             return CreateStatus.InvalidCapacity;
         }
 
-        int nx1 = (int)nx;
-        int nz1 = (int)nz;
+        int nx1 = DetMath.ToIntSat(nx);
+        int nz1 = DetMath.ToIntSat(nz);
         long cells = 0;
         long div = 1;
         for (int l = 1; l <= cfg.Levels; l++)

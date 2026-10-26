@@ -3,6 +3,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Peds;
 using Sim.Core.Routing;
+using Sim.Core.Util;
 
 namespace Sim.Core.Transit;
 
@@ -79,7 +80,7 @@ internal static class BusStopPhase
             return;
         }
 
-        int period = (int)((TicksPerMinute / rate) + 0.5f);
+        int period = DetMath.ToIntSat((TicksPerMinute / rate) + 0.5f);
         if (period < 1)
         {
             period = 1;
@@ -163,7 +164,7 @@ internal static class BusStopPhase
         w.Masks.Retune(v, i, oldSpeed, v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0);   // накопители метрик фазы 9 (ADR-0019, A4)
         v.Flags[i] |= (byte)VehicleFlags.AtStop;
         TransitDesc cfg = w.TransitCfg;
-        int dwell = cfg.DwellBaseTicks + (int)(cfg.DwellPerPassengerTicks * (alight + board));
+        int dwell = cfg.DwellBaseTicks + DetMath.ToIntSat(cfg.DwellPerPassengerTicks * (alight + board));
         dwell = dwell < 1 ? 1 : dwell > MaxDwellTicks ? MaxDwellTicks : dwell;
         dwell += HoldTicks(cfg, in stop, in br, v.BusNextStop[i], terminal, w.Tick + dwell);
         v.DwellTicks[i] = (ushort)(dwell > ushort.MaxValue ? ushort.MaxValue : dwell);
@@ -201,7 +202,7 @@ internal static class BusStopPhase
             return 0;
         }
 
-        long earliest = stop.LastDepartTick + (long)(cfg.HoldAlpha * br.HeadwayTicks);
+        long earliest = stop.LastDepartTick + DetMath.ToLongSat(cfg.HoldAlpha * br.HeadwayTicks);
         long extra = earliest - departAt;
         if (extra <= 0)
         {

@@ -6,6 +6,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Rules;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Util;
 
 namespace Sim.Core.Lod;
 
@@ -375,7 +376,7 @@ internal sealed class QueueMeso
         float ds = s - v.S[i];
         if (ds > 0f)
         {
-            PendingDistMm += (long)((ds * 1000f) + 0.5f);
+            PendingDistMm += DetMath.ToLongSat((ds * 1000f) + 0.5f);
         }
 
         v.S[i] = s;
@@ -493,7 +494,7 @@ internal sealed class QueueMeso
 
         if (ns > s)
         {
-            PendingDistMm += (long)(((ns - s) * 1000f) + 0.5f);
+            PendingDistMm += DetMath.ToLongSat(((ns - s) * 1000f) + 0.5f);
         }
 
         v.S[i] = ns;
@@ -542,7 +543,7 @@ internal sealed class QueueMeso
         float ds = v.DestS[i] - v.S[i];
         if (ds > 0f)
         {
-            PendingDistMm += (long)((ds * 1000f) + 0.5f);
+            PendingDistMm += DetMath.ToLongSat((ds * 1000f) + 0.5f);
         }
 
         v.S[i] = v.DestS[i];
@@ -1209,7 +1210,7 @@ internal sealed class QueueMeso
             ? (MathF.Sqrt((vin * vin) + (2f * acc * dist)) - vin) / acc
             : ta + ((dist - da) / vff);
         float c = MathF.Ceiling(sec / _dt);
-        return c < 1e8f ? (int)c : 100_000_000;
+        return c < 1e8f ? DetMath.ToIntSat(c) : 100_000_000;
     }
 
     private int CeilTicks(float seconds)
@@ -1220,7 +1221,7 @@ internal sealed class QueueMeso
         }
 
         float ticks = MathF.Ceiling(seconds / _dt);
-        return ticks < 1e8f ? (int)ticks : 100_000_000;
+        return ticks < 1e8f ? DetMath.ToIntSat(ticks) : 100_000_000;
     }
 
     private float Vff(int i)
@@ -1236,7 +1237,7 @@ internal sealed class QueueMeso
         return vff > 0.5f ? vff : 0.5f;
     }
 
-    private int SpanCm(int i) => (int)(((_v.Length[i] + _w.Types[_v.Type[i]].MinGap) * 100f) + 0.5f);
+    private int SpanCm(int i) => DetMath.ToIntSat(((_v.Length[i] + _w.Types[_v.Type[i]].MinGap) * 100f) + 0.5f);
 
     private void KinInc(int lane)
     {

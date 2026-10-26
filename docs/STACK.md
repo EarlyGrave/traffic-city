@@ -27,8 +27,9 @@ Xvfb (в образе есть) + Mesa llvmpipe через OpenGL (`--rendering-
 `scripts/godot-shot.sh install` (скачать и проверить sha512, ~105 МБ, в `/opt/godot`), затем
 `scripts/godot-shot.sh shot s1k 120` -> `perf/results/godot/s1k.png`, `scripts/godot-shot.sh fps s1k 600` -> средний FPS.
 FPS - программный рендер на CPU (4 vCPU, шумит как и tick p95): годится для сравнения до/после, не для абсолютных бюджетов.
-`scripts/godot-shot.sh stats s1k [позы]` -> `perf/results/godot/stats-<сценарий>-<поза>.json`: draw calls / примитивы / объекты (основной проход, тени),
+`scripts/godot-shot.sh stats s1k [позы]` -> `perf/results/godot/stats-<сценарий>-<поза>-<пресет>.json` (PRESET, по умолчанию low): draw calls / примитивы / объекты (основной проход, тени),
 память, инстансы по батчам; `--fixed-fps 20` + `--warmup-ticks` + `--pose overview|mid|close` делают счётчики детерминированными (docs/design/render.md §8).
+Гейт клиента (V9): `scripts/godot-shot.sh gate` (stats по `SCENARIOS`, по умолчанию `s1k-peds s10k`, + `Sim.Headless render-compare` с бюджетом `low` и `perf/render-baseline.json`); `gate-update` / `render-update-baseline` - единственный способ менять baseline клиента. CI: job `render` (необязательная, ADR-0014).
 `--headless` не рендерит, `--write-movie` пишет PNG-кадры при фиксированном dt.
 
 ## Десктоп (Windows)

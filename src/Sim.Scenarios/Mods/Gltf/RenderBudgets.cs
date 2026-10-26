@@ -54,9 +54,21 @@ public sealed record PedestrianBudget(IReadOnlyList<double> LodDistancesM, FarMo
 /// <summary>Тени пресета: дальность, число каскадов (1, 2 или 4), размер атласа.</summary>
 public sealed record ShadowBudget(double DistanceM, int Splits, int Atlas);
 
+/// <summary>
+/// Бюджет кадра пресета (render.md §1.2), детерминированные счётчики для гейта <c>render-compare</c> (V9); <c>null</c> - не проверять.
+/// Draw calls - основной проход и тени вместе; <c>Shadow*</c> - только тени; примитивы и объекты - основной проход.
+/// </summary>
+public sealed record FrameBudget(
+    int? DrawCalls, int? ShadowDrawCalls, int? Primitives, int? ShadowPrimitives, int? Objects, int? TextureMb, int? VideoMb);
+
 /// <summary>Пресет качества клиента (<c>low</c>/<c>high</c>); <c>Caps</c> — лимиты инстансов на кадр по виду (4 уровня).</summary>
 public sealed record PresetBudget(
-    double LodScale, double PointMinPx, double Scaling3d, ShadowBudget Shadow, IReadOnlyDictionary<string, IReadOnlyList<int>> Caps);
+    double LodScale,
+    double PointMinPx,
+    double Scaling3d,
+    ShadowBudget Shadow,
+    IReadOnlyDictionary<string, IReadOnlyList<int>> Caps,
+    FrameBudget? Frame = null);
 
 /// <summary>
 /// Бюджеты рендера из <c>content/render-budgets.json</c> (render.md §4.1, modding.md §4.3; ADR-0014). Числа — только из файла.
@@ -386,9 +398,26 @@ public sealed class RenderBudgets
             c.Finish();
         }
 
+        FrameBudget? frame = null;
+        JsonObjectReader? f = p.OptObject("frame");
+        if (f != null)
+        {
+            frame = new FrameBudget(
+                OptInt(f, "draw_calls"),
+                OptInt(f, "shadow_draw_calls"),
+                OptInt(f, "primitives"),
+                OptInt(f, "shadow_primitives"),
+                OptInt(f, "objects"),
+                OptInt(f, "texture_mb"),
+                OptInt(f, "video_mb"));
+            f.Finish();
+        }
+
         p.Finish();
-        return new PresetBudget(lodScale, pointPx, scaling, new ShadowBudget(distance, splits, atlas), caps);
+        return new PresetBudget(lodScale, pointPx, scaling, new ShadowBudget(distance, splits, atlas), caps, frame);
     }
+
+    private static int? OptInt(JsonObjectReader r, string key) => r.Has(key) ? r.Int(key, min: 0, max: int.MaxValue) : null;
 
     private static string Fmt(double d) => d.ToString(CultureInfo.InvariantCulture);
 }
