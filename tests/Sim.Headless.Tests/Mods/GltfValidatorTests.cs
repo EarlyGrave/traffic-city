@@ -330,22 +330,90 @@ public sealed class GltfValidatorTests : IDisposable
     }
 
     [Fact]
-    public void Budgets_RealFile_LoadsAndMatchesStub()
+    public void Budgets_RealFile_Format2()
     {
         var issues = new List<ModIssue>();
         RenderBudgets b = RenderBudgets.Load(Path.Combine(Root(), "content", RenderBudgets.FileName), issues)!;
         Assert.Empty(issues);
-        foreach (AssetKind k in new[] { AssetKind.Vehicle, AssetKind.Road, AssetKind.Building, AssetKind.Prop })
-        {
-            Assert.Equal(3, b.For(k).MinLods);
-            Assert.All(b.For(k).MaxTris, t => Assert.Null(t));
-        }
+        Assert.Equal(2, b.Version);
+        Assert.Equal(3, b.For(AssetKind.Vehicle).MinLods);
+        Assert.Equal(2, b.For(AssetKind.Road).MinLods);
+        Assert.Equal([1200, 300, 60], b.For(AssetKind.Vehicle).MaxTris.Select(t => t!.Value).ToArray());
+        Assert.Equal(60, b.For(AssetKind.Vehicle).TrisLimit(2));
+        Assert.Equal(1, b.For(AssetKind.Vehicle).SurfacesLimit(5));
+        Assert.Equal(1.0, b.For(AssetKind.Road).ProfileTileM);
+        Assert.Equal(2, b.For(AssetKind.Building).UntexturedFromLod);
+        Assert.Equal(2, b.For(AssetKind.Prop).UntexturedFromLod);
+        Assert.Equal(FarMode.ImpostorBox, b.For(AssetKind.Building).Far);
+        Assert.Equal(FarMode.None, b.For(AssetKind.Prop).Far);
+        Assert.Equal([60.0, 200.0, 600.0], b.For(AssetKind.Vehicle).LodDistancesM!.ToArray());
+        Assert.Equal(900.0, b.Pedestrian!.FarDistanceM);
+        Assert.Equal(0.7, b.Presets["low"].LodScale);
+        Assert.Equal(4, b.Presets["high"].Shadow.Splits);
+        Assert.Equal([100, 800, 4000, 30000], b.Presets["low"].Caps["vehicle"].ToArray());
 
         Assert.Equal(3, RenderBudgets.Default.For(AssetKind.Vehicle).MinLods);
+        Assert.Null(RenderBudgets.Default.For(AssetKind.Vehicle).TrisLimit(0));
+    }
+
+    [Fact]
+    public void Budgets_Format1_StillRead()
+    {
+        string file = Path.Combine(_tmp, "f1.json");
+        File.WriteAllText(file, """
+            {"format_version":1,"kinds":{"building":{"min_lods":3,"max_tris":[100,50,10]}}}
+            """);
+        var issues = new List<ModIssue>();
+        RenderBudgets b = RenderBudgets.Load(file, issues)!;
+        Assert.Empty(issues);
+        Assert.Equal(1, b.Version);
+        Assert.Equal(10, b.For(AssetKind.Prop).TrisLimit(2)); // проп без записи берёт здание
+        Assert.Null(b.For(AssetKind.Prop).TrisLimit(5)); // формат 1: уровни сверх массива не проверяются
+        Assert.Null(b.For(AssetKind.Building).MaxSurfaces);
+        Assert.Null(b.Pedestrian);
+        Assert.Empty(b.Presets);
     }
 
     [Theory]
-    [InlineData("""{"format_version":2,"kinds":{}}""", ModError.UnsupportedFormatVersion)]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"lod_distances_m":[60,60,600]}}}""", "$.kinds.vehicle.lod_distances_m[1]")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"lod_distances_m":[60,200]}}}""", "$.kinds.vehicle.lod_distances_m")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"lod_distances_m":[60,200,600],"far":"points","far_distance_m":600}}}""", "$.kinds.vehicle.far_distance_m")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"far":"wat"}}}""", "$.kinds.vehicle.far")]
+    [InlineData("""{"format_version":2,"kinds":{"prop":{"min_lods":3,"far":"none","far_distance_m":9}}}""", "$.kinds.prop.far_distance_m")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"max_tris":[1,2]}}}""", "$.kinds.vehicle.max_tris")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"max_surfaces":[1,0,1]}}}""", "$.kinds.vehicle.max_surfaces[1]")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"max_texture_side":500}}}""", "$.kinds.vehicle.max_texture_side")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"max_texture_side":8192}}}""", "$.kinds.vehicle.max_texture_side")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"profile_tile_m":1}}}""", "$.kinds.vehicle.profile_tile_m")]
+    [InlineData("""{"format_version":2,"kinds":{"vehicle":{"min_lods":3,"untextured_from_lod":-1}}}""", "$.kinds.vehicle.untextured_from_lod")]
+    [InlineData("""{"format_version":2,"kinds":{},"pedestrian":{"lod_distances_m":[150,40]}}""", "$.pedestrian.lod_distances_m[1]")]
+    [InlineData("""{"format_version":2,"kinds":{},"pedestrian":{"wat":1}}""", "$.pedestrian.wat")]
+    [InlineData("""{"format_version":2,"kinds":{},"presets":{"low":{"lod_scale":0,"point_min_px":2,"scaling_3d":1,"shadow":{"distance_m":1,"splits":2,"atlas":2048}}}}""", "$.presets.low.lod_scale")]
+    [InlineData("""{"format_version":2,"kinds":{},"presets":{"low":{"lod_scale":1,"point_min_px":2,"scaling_3d":1,"shadow":{"distance_m":1,"splits":3,"atlas":2048}}}}""", "$.presets.low.shadow.splits")]
+    [InlineData("""{"format_version":2,"kinds":{},"presets":{"low":{"lod_scale":1,"point_min_px":2,"scaling_3d":1,"shadow":{"distance_m":1,"splits":2,"atlas":2000}}}}""", "$.presets.low.shadow.atlas")]
+    [InlineData("""{"format_version":2,"kinds":{},"presets":{"low":{"lod_scale":1,"point_min_px":2,"scaling_3d":1,"shadow":{"distance_m":1,"splits":2,"atlas":2048},"caps":{"vehicle":[1,2,3]}}}}""", "$.presets.low.caps.vehicle")]
+    [InlineData("""{"format_version":2,"kinds":{},"presets":{"low":{"lod_scale":1,"point_min_px":2,"scaling_3d":1,"shadow":{"distance_m":1,"splits":2,"atlas":2048},"caps":{"boat":[1,2,3,4]}}}}""", "$.presets.low.caps.boat")]
+    public void Budgets_Format2_Invalid_HasPath(string json, string path)
+    {
+        string file = Path.Combine(_tmp, "bad2.json");
+        File.WriteAllText(file, json);
+        var issues = new List<ModIssue>();
+        Assert.Null(RenderBudgets.Load(file, issues));
+        Assert.Contains(issues, i => i.JsonPath == path);
+    }
+
+    [Fact]
+    public void Budgets_Format1_RejectsFormat2Keys()
+    {
+        string file = Path.Combine(_tmp, "f1x.json");
+        File.WriteAllText(file, """{"format_version":1,"kinds":{"vehicle":{"min_lods":3,"max_surfaces":[1,1,1]}}}""");
+        var issues = new List<ModIssue>();
+        Assert.Null(RenderBudgets.Load(file, issues));
+        Assert.Contains(issues, i => i.Code == ModError.UnknownKey);
+    }
+
+    [Theory]
+    [InlineData("""{"format_version":3,"kinds":{}}""", ModError.UnsupportedFormatVersion)]
     [InlineData("""{"format_version":1,"kinds":{"vehicle":{"min_lods":3,"extra":1}}}""", ModError.UnknownKey)]
     [InlineData("""{"format_version":1,"kinds":{"boat":{"min_lods":3}}}""", ModError.UnknownKey)]
     [InlineData("""{"format_version":1,"kinds":{"vehicle":{"min_lods":0}}}""", ModError.OutOfRange)]
@@ -708,5 +776,245 @@ public sealed class GltfValidatorTests : IDisposable
         Assert.Equal(2, ValidatePackageCommand.Run(["validate-package"], o, e));
         Assert.Equal(2, ValidatePackageCommand.Run(["validate-package", Path.Combine(_tmp, "nope")], o, e));
         Assert.Equal(2, ValidatePackageCommand.Run(["validate-package", "x", "--wat"], o, e));
+    }
+
+    // ------------------------------------------------------------------ формат 2: поверхности, текстуры, профиль (render.md §4.2)
+
+    private RenderBudgets Budgets(string json)
+    {
+        string file = Path.Combine(_tmp, "b2-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(file, json);
+        var issues = new List<ModIssue>();
+        RenderBudgets b = RenderBudgets.Load(file, issues)!;
+        Assert.Empty(issues);
+        return b;
+    }
+
+    private const string CarBudget = """
+        {"format_version":2,"kinds":{"vehicle":{"min_lods":3,"max_tris":[400,200,100],"max_surfaces":[2,1,1],"max_texture_side":512,"untextured_from_lod":2}}}
+        """;
+
+    // Примитивы LOD: по одному на материал (-1 - без материала), все на аксессоре POSITION этого уровня.
+    private static void Prims(JsonObject d, int lod, params int[] materials)
+    {
+        var prims = new JsonArray();
+        foreach (int m in materials)
+        {
+            var p = new JsonObject { ["attributes"] = new JsonObject { ["POSITION"] = lod } };
+            if (m >= 0)
+            {
+                p["material"] = m;
+            }
+
+            prims.Add(p);
+        }
+
+        d["meshes"]![lod]!["primitives"] = prims;
+    }
+
+    private static JsonObject PlainMat() => new() { ["pbrMetallicRoughness"] = new JsonObject { ["baseColorFactor"] = new JsonArray(1, 0, 0, 1) } };
+
+    private static JsonObject TexMat(string slot, int texture) => slot == "normalTexture"
+        ? new JsonObject { ["normalTexture"] = new JsonObject { ["index"] = texture } }
+        : new JsonObject { ["pbrMetallicRoughness"] = new JsonObject { [slot] = new JsonObject { ["index"] = texture } } };
+
+    private static void Materials(JsonObject d, params JsonObject[] mats) => d["materials"] = new JsonArray(mats.Select(m => (JsonNode?)m).ToArray());
+
+    private static void Images(JsonObject d, params byte[][] images)
+    {
+        var imgs = new JsonArray();
+        var texs = new JsonArray();
+        for (int i = 0; i < images.Length; i++)
+        {
+            imgs.Add(new JsonObject { ["uri"] = DataUri(images[i]) });
+            texs.Add(new JsonObject { ["source"] = i });
+        }
+
+        d["images"] = imgs;
+        d["textures"] = texs;
+    }
+
+    private static void Extent(JsonObject d, double x, double z)
+    {
+        foreach (JsonNode? a in (JsonArray)d["accessors"]!)
+        {
+            a!["min"] = new JsonArray(-x / 2, 0.0, 0.0);
+            a["max"] = new JsonArray(x / 2, 0.0, z);
+        }
+    }
+
+    [Fact]
+    public void Format2_ThreeLodsInBudget_Ok()
+    {
+        RenderBudgets b = Budgets(CarBudget);
+        JsonObject d = Doc(200, 200, 100); // LOD0 - два примитива по 200 = 400
+        Prims(d, 0, 0, 1);
+        Materials(d, PlainMat(), PlainMat());
+        Assert.Empty(Check("m.gltf", Text(d), budgets: b).Errors);
+    }
+
+    [Theory]
+    [InlineData(0, 401, 200, 100)]
+    [InlineData(1, 400, 201, 100)]
+    [InlineData(2, 400, 200, 101)]
+    public void Format2_TrianglesOverBudget_EachLevel(int level, int t0, int t1, int t2)
+    {
+        Outcome o = Check("m.gltf", Text(Doc(t0, t1, t2)), budgets: Budgets(CarBudget));
+        ModIssue e = Assert.Single(o.Errors);
+        Assert.Equal(ModError.LodOverBudget, e.Code);
+        Assert.StartsWith($"LOD{level} has ", e.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Format2_Surfaces_OverBudget()
+    {
+        RenderBudgets b = Budgets(CarBudget);
+        JsonObject d = Doc(10, 10, 10);
+        Prims(d, 0, 0, 1, 2);
+        Materials(d, PlainMat(), PlainMat(), PlainMat());
+        Outcome o = Check("m.gltf", Text(d), budgets: b);
+        Assert.Equal("LOD0 has 3 surfaces, budget 2", o.Errors.Single(i => i.Code == ModError.LodSurfaces).Detail);
+
+        // примитив без материала - тоже поверхность; один материал на нескольких примитивах - одна
+        JsonObject d2 = Doc(10, 10, 10);
+        Prims(d2, 0, 0, 0, -1);
+        Prims(d2, 1, 0, 0);
+        Materials(d2, PlainMat());
+        Assert.Empty(Check("m.gltf", Text(d2), budgets: b).Errors);
+        Prims(d2, 1, 0, -1);
+        Assert.Equal("LOD1 has 2 surfaces, budget 1", Check("m.gltf", Text(d2), budgets: b).Errors.Single(i => i.Code == ModError.LodSurfaces).Detail);
+    }
+
+    [Fact]
+    public void Format2_SurfacesLimit_ExtendsLastElement()
+    {
+        RenderBudgets b = Budgets("""
+            {"format_version":2,"kinds":{"vehicle":{"min_lods":2,"max_surfaces":[3,1]}}}
+            """);
+        JsonObject d = Doc(10, 10, 10);
+        Prims(d, 2, 0, -1);
+        Materials(d, PlainMat());
+        AssertError(Check("m.gltf", Text(d), budgets: b), ModError.LodSurfaces);
+    }
+
+    [Theory]
+    [InlineData("baseColorTexture")]
+    [InlineData("metallicRoughnessTexture")]
+    [InlineData("normalTexture")]
+    public void Format2_TexturedLowLod_Rejected(string slot)
+    {
+        RenderBudgets b = Budgets(CarBudget);
+        JsonObject d = Doc(10, 10, 10);
+        Images(d, Png(64, 64));
+        Materials(d, PlainMat(), TexMat(slot, 0));
+        Prims(d, 0, 1);
+        Prims(d, 1, 1);
+        Prims(d, 2, 1);
+        Outcome o = Check("m.gltf", Text(d), budgets: b);
+        Assert.Equal($"LOD2 material 1 uses {slot}", o.Errors.Single(i => i.Code == ModError.LodTextured).Detail);
+
+        Prims(d, 2, 0); // на LOD2 - цвет, текстура остаётся на LOD0/1
+        Assert.Empty(Check("m.gltf", Text(d), budgets: b).Errors);
+    }
+
+    [Fact]
+    public void Format2_TextureOverBudget()
+    {
+        RenderBudgets b = Budgets(CarBudget);
+        JsonObject d = Doc(10, 10, 10);
+        Images(d, Png(1024, 1024), Png(512, 512));
+        Materials(d, TexMat("baseColorTexture", 0), TexMat("baseColorTexture", 1));
+        Prims(d, 0, 0);
+        Outcome o = Check("m.gltf", Text(d), budgets: b);
+        ModIssue e = o.Errors.Single(i => i.Code == ModError.TextureOverBudget);
+        Assert.Equal("PNG 1024x1024, budget 512", e.Detail);
+        Assert.Equal("$.images[0]", e.JsonPath);
+
+        Images(d, Png(512, 512), Png(512, 512));
+        Assert.Empty(Check("m.gltf", Text(d), budgets: b).Errors);
+        Images(d, Png(512, 1024), Png(512, 512)); // любая сторона
+        AssertError(Check("m.gltf", Text(d), budgets: b), ModError.TextureOverBudget);
+        Images(d, Jpeg(1024, 16), Png(16, 16));
+        Assert.Contains("JPEG 1024x16", Check("m.gltf", Text(d), budgets: b).Errors.Single(i => i.Code == ModError.TextureOverBudget).Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Format2_TextureOverBudget_OnlyReferencedImages()
+    {
+        RenderBudgets b = Budgets(CarBudget);
+        JsonObject d = Doc(10, 10, 10);
+        Images(d, Png(1024, 1024), Png(64, 64));
+        Materials(d, TexMat("baseColorTexture", 1));
+        Prims(d, 0, 0);
+        Assert.Empty(Check("m.gltf", Text(d), budgets: b).Errors);
+    }
+
+    private const string RoadBudget = """
+        {"format_version":2,"kinds":{"road":{"min_lods":2,"max_tris":[48,16],"max_surfaces":[2,1],"profile_tile_m":1.0}}}
+        """;
+
+    [Fact]
+    public void Format2_Road_TwoLods_Ok()
+    {
+        JsonObject d = Doc(40, 10);
+        Extent(d, 8, 1.0);
+        Assert.Empty(Check("p.gltf", Text(d), budgets: Budgets(RoadBudget), road: true).Errors);
+    }
+
+    [Theory]
+    [InlineData(4.0, 8.0, "LOD0 Z extent 4.0 m, tile 1.0 m")]
+    [InlineData(0.9, 8.0, "LOD0 Z extent 0.9 m, tile 1.0 m")]
+    [InlineData(1.0, 70.0, "LOD0 X extent 70.0 m, limit 64.0 m")]
+    public void Format2_Road_ProfileBounds(double z, double x, string detail)
+    {
+        JsonObject d = Doc(40, 10);
+        Extent(d, x, z);
+        Outcome o = Check("p.gltf", Text(d), budgets: Budgets(RoadBudget), road: true);
+        Assert.Equal(detail, o.Errors.First(i => i.Code == ModError.ProfileBounds).Detail);
+    }
+
+    [Fact]
+    public void Format2_Road_ProfileBounds_Tolerance_AndMissingMinMax()
+    {
+        RenderBudgets b = Budgets(RoadBudget);
+        JsonObject d = Doc(40, 10);
+        Extent(d, 8, 1.05);
+        Assert.Empty(Check("p.gltf", Text(d), budgets: b, road: true).Errors);
+        Extent(d, 8, 0.95);
+        Assert.Empty(Check("p.gltf", Text(d), budgets: b, road: true).Errors);
+        Extent(d, 8, 1.06);
+        AssertError(Check("p.gltf", Text(d), budgets: b, road: true), ModError.ProfileBounds);
+
+        Outcome o = Check("p.gltf", Text(Doc(40, 10)), budgets: b, road: true); // нет min/max
+        Assert.Contains("no min/max", o.Errors.First(i => i.Code == ModError.ProfileBounds && i.Detail.StartsWith("LOD0", StringComparison.Ordinal)).Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Format2_ProfileTile_NotCheckedForVehicle()
+    {
+        RenderBudgets b = Budgets("""
+            {"format_version":2,"kinds":{"vehicle":{"min_lods":3}}}
+            """);
+        JsonObject d = Doc(10, 10, 10);
+        Extent(d, 4, 400);
+        Assert.Empty(Check("m.gltf", Text(d), budgets: b).Errors);
+    }
+
+    [Fact]
+    public void TextureMemory_WarnsAbove128MiB()
+    {
+        byte[][] big = [.. Enumerable.Range(0, 7).Select(_ => Png(4096, 4096))]; // 7 * 16 Mpx * 4/3 = 149.3 MiB
+        JsonObject d = Doc(10, 10, 10);
+        Images(d, big);
+        Materials(d, TexMat("baseColorTexture", 0));
+        Prims(d, 0, 0);
+        Outcome o = Check("m.gltf", Text(d));
+        Assert.Empty(o.Errors);
+        ModIssue w = o.Warnings.Single(i => i.Code == ModError.TextureMemory);
+        Assert.Equal(PkgId, w.Package);
+        Assert.StartsWith("estimated texture memory 149.3 MiB, budget 128 MiB", w.Detail, StringComparison.Ordinal);
+
+        Images(d, [.. big.Take(6)]); // ровно 128.0 МиБ - не больше предела
+        Assert.DoesNotContain(Check("m.gltf", Text(d)).Warnings, i => i.Code == ModError.TextureMemory);
     }
 }

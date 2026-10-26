@@ -1,8 +1,22 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "kinds": {
-    "vehicle": { "min_lods": 3, "max_tris": [null, null, null] },
-    "road": { "min_lods": 3, "max_tris": [null, null, null] },
-    "building": { "min_lods": 3, "max_tris": [null, null, null] }
+    "vehicle": { "min_lods": 3, "max_tris": [1200, 300, 60], "max_surfaces": [2, 1, 1], "max_texture_side": 512,
+                 "lod_distances_m": [60, 200, 600], "far": "points", "far_distance_m": 2500 },
+    "building": { "min_lods": 3, "max_tris": [5000, 1000, 200], "max_surfaces": [3, 1, 1], "max_texture_side": 1024,
+                  "untextured_from_lod": 2, "lod_distances_m": [150, 500, 1500], "far": "impostor_box", "far_distance_m": 6000 },
+    "prop": { "min_lods": 3, "max_tris": [500, 100, 20], "max_surfaces": [1, 1, 1], "max_texture_side": 256,
+              "untextured_from_lod": 2, "lod_distances_m": [40, 120, 400], "far": "none" },
+    "road": { "min_lods": 2, "max_tris": [48, 16], "max_surfaces": [2, 1], "max_texture_side": 1024,
+              "profile_tile_m": 1.0, "lod_distances_m": [250, 1000], "far": "flat_ribbon", "far_distance_m": 6000 }
+  },
+  "pedestrian": { "lod_distances_m": [40, 150], "far": "points", "far_distance_m": 900 },
+  "presets": {
+    "low": { "lod_scale": 0.7, "point_min_px": 2, "scaling_3d": 0.75,
+             "shadow": { "distance_m": 300, "splits": 2, "atlas": 2048 },
+             "caps": { "vehicle": [100, 800, 4000, 30000], "pedestrian": [200, 2000, 0, 20000], "building": [50, 300, 0, 0] } },
+    "high": { "lod_scale": 1.0, "point_min_px": 2, "scaling_3d": 1.0,
+              "shadow": { "distance_m": 800, "splits": 4, "atlas": 4096 },
+              "caps": { "vehicle": [200, 2000, 8000, 60000], "pedestrian": [500, 5000, 0, 40000], "building": [120, 800, 0, 0] } }
   }
 }

@@ -32,4 +32,9 @@ public enum ModError
     TimelineUnsorted,
     ApiVersionMismatch,
     FingerprintMismatch,
+    LodSurfaces,
+    LodTextured,
+    TextureOverBudget,
+    ProfileBounds,
+    TextureMemory,
 }

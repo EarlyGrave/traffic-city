@@ -148,9 +148,8 @@
   `LOD0 … LODn`, у каждого свой меш. `LOD0` — самый детальный. Треугольники не растут с номером уровня (`LodOrder`).
 - Числа берутся из `content/render-budgets.json` (формат здесь, значения задаёт ADR-0014):
   `{ "format_version": 1, "kinds": { "vehicle": { "min_lods": 3, "max_tris": [null, null, null] }, "road": {…}, "building": {…} } }`.
-  Заглушка до ADR-0014: `min_lods = 3` (`cs2-lessons.md` №4), `max_tris = null` (не проверяется, `TODO(ADR-0014)`),
-  импостор не требуется. ADR-0014 меняет только этот файл и, при необходимости, соглашение об именах. Код валидатора
-  читает бюджеты из файла.
+  Формат 2 (`render.md` §4.1) добавляет пределы поверхностей, текстур, дистанции LOD; код читает числа только из файла,
+  файла нет — 3 LOD без пределов.
 - Превышение бюджета (после ADR-0014) даёт `LodOverBudget` с уровнем и числом треугольников.
 - Дистанции переключения LOD в клиенте тоже задаёт ADR-0014. До него клиент берёт `visibility_range` 0/60/200 м (M7).
 - **ADR-0014 принят в спеку (`render.md` §3–4, задача V2):** формат бюджетов 2 (пределы треугольников и поверхностей на уровень,
@@ -281,7 +280,7 @@
 `UnknownKey, BadType, BadValue, OutOfRange, MissingKey, DuplicateId, DuplicatePackage, DirNameMismatch, UndeclaredDependency,
 MissingDependency, VersionConflict, DependencyCycle, UnsupportedFormatVersion, UnsupportedContent, UnknownAssetRef,
 CapacityExceeded, FileNotAllowed, PathEscape, TooLarge, TooDeep, GltfInvalid, GltfExtension, GltfFeature, LodMissing,
-LodOrder, LodOverBudget, TimelineUnsorted, ApiVersionMismatch, FingerprintMismatch`. Отчёт: список `ModIssue
+LodOrder, LodOverBudget, TimelineUnsorted, ApiVersionMismatch, FingerprintMismatch, LodSurfaces, LodTextured, TextureOverBudget, ProfileBounds`, предупреждение `TextureMemory`. Отчёт: список `ModIssue
 { Package, File, JsonPath, Code, Detail }`, предупреждения отдельно. `ScenarioException` хоста оборачивает первый.
 
 ## 10. Тесты (DoD задач)
