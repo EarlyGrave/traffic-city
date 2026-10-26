@@ -38,6 +38,9 @@ public partial class RtsCamera : Node3D
 
     public Camera3D Camera => _camera;
 
+    /// <summary>Замеры (<c>--pose</c>): ввод и прокрутка у края окна отключены, камера не уезжает от заданной позы.</summary>
+    public bool Locked { get; set; }
+
     /// <summary>Текущее расстояние камеры до точки на земле, м.</summary>
     public float Distance => _distance;
 
@@ -72,6 +75,11 @@ public partial class RtsCamera : Node3D
 
     public override void _Process(double delta)
     {
+        if (Locked)
+        {
+            return;
+        }
+
         float dt = (float)delta;
         Vector2 move = Vector2.Zero;
         if (Input.IsKeyPressed(Key.W))
@@ -127,6 +135,11 @@ public partial class RtsCamera : Node3D
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (Locked)
+        {
+            return;
+        }
+
         switch (@event)
         {
             case InputEventMouseButton mb:

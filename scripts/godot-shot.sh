@@ -3,8 +3,10 @@
 #   scripts/godot-shot.sh install                       # скачать Godot 4.7.2 mono (SourceForge-зеркало) в $GODOT_DIR
 #   scripts/godot-shot.sh shot [scenario] [frames]      # PNG последнего кадра (movie maker, фикс. 30 fps)
 #   scripts/godot-shot.sh fps  [scenario] [frames]      # средний FPS за N кадров (--print-fps, vsync выкл.)
+#   scripts/godot-shot.sh stats [scenario] [poses]      # счётчики рендера (draw calls, примитивы, память) по позам, JSON (docs/design/render.md §8)
+#       poses: "overview mid close" (по умолчанию); env: WARMUP (тики прогрева; 2400, для s100k/s1m 6000), STATS_FRAME (кадр съёма, 10)
 # Доп. аргументы клиента: GAME_ARGS="--cam X Z DIST [PITCH [YAW]] --warmup-ticks N --hud --ped-mode heat|agents"; имя PNG: OUT_NAME (по умолчанию = сценарий).
-# Результаты: $OUT (по умолчанию perf/results/godot): <scenario>.png, <scenario>-fps.txt.
+# Результаты: $OUT (по умолчанию perf/results/godot): <scenario>.png, <scenario>-fps.txt, stats-<scenario>-<поза>.json.
 # FPS здесь - программный рендер на CPU (llvmpipe), абсолют не равен GPU; годится для сравнения до/после.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,6 +18,7 @@ RES=${RES:-1280x720}
 cmd=${1:-}
 scenario=${2:-s1k}
 frames=${3:-}
+poses=${3:-overview mid close}
 
 install() {
   local base=https://sourceforge.net/projects/godot-engine.mirror/files/$VER
@@ -63,5 +66,19 @@ case $cmd in
       END{printf "scenario=%s frames=%d fps_avg=%.1f (по %d секундным отсчётам, %s, llvmpipe)\n", sc, fr, s/n, n, res}' \
       "$OUT/$scenario-fps.raw" | tee "$OUT/$scenario-fps.txt"
     ;;
-  *) sed -n 2,6p "$0"; exit 2 ;;
+  stats)
+    need_godot
+    mkdir -p "$OUT"
+    case $scenario in s100k|s1m) def_warm=6000 ;; *) def_warm=2400 ;; esac
+    for pose in $poses; do
+      f="$OUT/stats-${OUT_NAME:-$scenario}-$pose.json"
+      # --fixed-fps 20: дельта кадра = 1 тик ядра, счётчики детерминированы; съём на кадре STATS_FRAME и выход
+      f_abs=$(realpath -m "$f")
+      GAME_ARGS="${GAME_ARGS:-} --warmup-ticks ${WARMUP:-$def_warm} --pose $pose --render-stats $f_abs --stats-frame ${STATS_FRAME:-10}" \
+        run --fixed-fps 20 --disable-vsync >/dev/null
+      echo "$f"
+      python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); m=d["deterministic"]; print("  %s %s: draw=%d prims=%d objs=%d shadow_draw=%d video_mem=%d MB tex=%d buf=%d instances=%d" % (d["scenario"], d["pose"], m["main"]["draw_calls"], m["main"]["primitives"], m["main"]["objects"], m["shadow"]["draw_calls"], m["memory_bytes"]["video"]>>20, m["memory_bytes"]["texture"], m["memory_bytes"]["buffer"], m["instances"]["total"]))' "$f"
+    done
+    ;;
+  *) sed -n 2,9p "$0"; exit 2 ;;
 esac
