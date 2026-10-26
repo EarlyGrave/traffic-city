@@ -80,6 +80,20 @@ internal static class CommandDispatcher
                 // TODO(step 4): транспорт.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
+            case CommandKind.RemoveRoad:
+            case CommandKind.UpgradeRoad:
+            case CommandKind.SplitRoad:
+            case CommandKind.SetArmControl:
+            case CommandKind.SetTurnBan:
+            case CommandKind.SetLaneFlags:
+            case CommandKind.InsertBusStop:
+            case CommandKind.RemoveBusStop:
+            case CommandKind.RemoveBusRoute:
+            case CommandKind.SetBusRouteParams:
+            case CommandKind.MergeAtNode:
+                // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
+                Rejected(w, in cmd, RejectReason.NotSupported);
+                break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
@@ -114,7 +128,14 @@ internal static class CommandDispatcher
     private static void BuildRoad(World w, in Command cmd)
     {
         BuildRoadCmd b = cmd.BuildRoad;
-        bool noConnectors = (b.Flags & 1) != 0;
+        bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
+        if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || b.RestoreOf.Generation != 0 || b.RestoreNodeA.Generation != 0 || b.RestoreNodeB.Generation != 0)
+        {
+            // AutoSplit / Curve / RestoreOf - T4, T5.
+            Rejected(w, in cmd, RejectReason.NotSupported);
+            return;
+        }
+
         if (!float.IsFinite(b.Ax) || !float.IsFinite(b.Az) || !float.IsFinite(b.Bx) || !float.IsFinite(b.Bz) ||
             !float.IsFinite(b.SpeedLimit) || b.SpeedLimit <= 0f || b.LanesAB + b.LanesBA == 0)
         {

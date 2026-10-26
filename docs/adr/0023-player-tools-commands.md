@@ -15,8 +15,8 @@
 - Детерминизм и потоки (ADR-0017): фаза 1 однопоточная; хэш не зависит от числа потоков; 0 B/тик.
 
 ## Решение
-1. **Один канал — команды.** Новые `CommandKind` (12+, только добавлением, 64 Б, раскладка C ABI): `RemoveRoad`, `UpgradeRoad`,
-   `SplitRoad`, `SetArmControl`, `SetTurnBan`, `SetLaneFlags`, `InsertBusStop`, `RemoveBusStop`, `RemoveBusRoute`, `SetBusRouteParams`,
+1. **Один канал — команды.** Новые `CommandKind` (с 25 - 12, 23, 24 заняты `SetPedTarget`/`PaintZone`/`SetTripExecution`; только добавлением, 64 Б, раскладка C ABI): `RemoveRoad`, `UpgradeRoad`,
+   `SplitRoad`, `MergeAtNode`, `SetArmControl`, `SetTurnBan`, `SetLaneFlags`, `InsertBusStop`, `RemoveBusStop`, `RemoveBusRoute`, `SetBusRouteParams`,
    реализация `CreateBusRoute`; `BuildRoad` получает кривую (контрольная точка) и врезку в существующий узел. `PaintZone` — номер и
    payload зарезервированы, до ADR-0011 → `NotSupported`. Ссылки на объекты в командах — **handle (index + generation)**, не голые индексы.
 2. **Сеть с дырами.** Узлы, сегменты, остановки, маршруты — пулы с поколениями и free-list (LIFO). Диапазоны (`Lanes` блоками
@@ -75,3 +75,9 @@
 - **Undo откатом состояния (сейв на действие)** — выбрасывает прогресс симуляции, сейв s100k — десятки МБ на шаг.
 - **Undo в ядре (стек в `World`)** — состояние в хэше и сейве без пользы для симуляции; клиентская политика — у хоста.
 - **Превью на теневой копии мира** — память ×2 и копирование на каждое движение курсора.
+
+## Реализация T1 (4.3)
+- Номера: `RemoveRoad` 25 ... `MergeAtNode` 35 в порядке таблицы `player-tools.md` §1; 13-22 свободны.
+- `EntityRef` (8 Б); в полях `Restore*` `Generation == 0` значит «не задано» (нулевая инициализация безопасна, `EntityRef.None` = {-1, 0}).
+- `BuildRoadCmd` 56 Б, `SetSignalPlanCmd` 50 Б, `SetNodeControlCmd` 12 Б, `CreateBusRouteCmd` 20 Б; `Command` = 64 Б. Новые виды и биты
+  `AutoSplit`/`Curve`/`RestoreOf` до T3..T5 дают `NotSupported`; `NodeGen` пока не проверяется (проверка - T2).
