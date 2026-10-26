@@ -153,7 +153,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `LOTS` | C | `Count` участков | (v3) участки: `Seg`, `SegGen`, `Side`, `S0Mm`, `S1Mm`, `Zone`, `Density`, `Building`, `Flags`; геометрия, ячейка, точки доступа машины и пешехода, компоненты - производные |
 | `BLDG` | C | `HighWater` зданий | (v3) пул зданий (`HighWater`, `FreeList`, `Generation`) и поля (`Lot`, `Type`, `State`, `StateTick`, `Occupants`, `Jobs`, `HeadRes`, `HeadWork`, `Account`, `RevenueEwma`, `ProfitEwma`, пары «сегодня/вчера» `VisitsDay`/`RevenueDay`/`CostDay`, `LossDays`, `VacantDays`); мёртвые слоты - канон |
 | `RESD` | C | `HighWater` жителей | (v3) пул жителей, поля (`Home`, `Work`, `NextHome/NextWork`, `Flags`, `State`, `StateTick`, `EvTick`, `EvKind`), план дня (`PlanCount/Cursor` и по 3 тура `PlanKind/Mode/Dest/Slot`), нога (`LegMode/O/D/Req/Walk/Wait/Ride`), `Agent/AgentGen`, `Account`, `IncomeEwma`, `SeekDays`, `EvictDays`, `Seq`, `NextSeq`, очередь ищущих работу (индекс, поколение) |
-| `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
+| `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `LsC` (`NC * 3`), `LsJobs` (`NC`; поле доступности Z3), `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
 | `LEDG` | C | 1 | (v3) `External`, `City`, потоки по 13 видам (`FlowDay/Yesterday/Total`), курсоры дневных проходов, сглаженный спрос R/C/I, суточные накопители туров и ног, `CellLoads` |
 
 Блоки хоста (флаг `host`, id со строчной первой буквой, ядро не разбирает): `meta` (имя города, время создания/изменения
@@ -1280,6 +1280,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `SKIM` (demand.model = residents) | 10 | FrozenKey | i32 | FrozenN | 0 |
 | `SKIM` (demand.model = residents) | 11 | FrozenSum | i64 | FrozenN | 0 |
 | `SKIM` (demand.model = residents) | 12 | FrozenCount | i32 | FrozenN | 0 |
+| `SKIM` (demand.model = residents) | 13 | LsC | i32 | NC * 3 | 0 |
+| `SKIM` (demand.model = residents) | 14 | LsJobs | i32 | NC | 0 |
 | `LEDG` (demand.model = residents) | 1 | External | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 2 | City | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 13 | 0 |
