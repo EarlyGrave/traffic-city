@@ -56,15 +56,56 @@ public static class RunCommand
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         int step = every > 0 ? every : ticks;
         int done = 0;
+        long[] prevHist = new long[Simulation.PedWaitBuckets];
+        long[] curHist = new long[Simulation.PedWaitBuckets];
+        long[] stopTmp = new long[Simulation.PedWaitBuckets];
+        SimCounters prev = sim.Counters;
         while (done < ticks)
         {
             int n = System.Math.Min(step, ticks - done);
             sim.Step(n);
             done += n;
-            output.WriteLine(Line(sim));
+            output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
+            prev = sim.Counters;
+            (prevHist, curHist) = (curHist, prevHist);
         }
 
         return ExitOk;
+    }
+
+    /// <summary>Хвост строки: метрики окна с прошлой строки (поездки, ожидание у переходов: среднее, p95 и максимум по корзинам 1 с). Только с пешеходами.</summary>
+    private static string WindowTail(Simulation sim, in SimCounters prev, long[] prevHist, long[] curHist, long[] stopTmp)
+    {
+        SimCounters c = sim.Counters;
+        string win = string.Create(CultureInfo.InvariantCulture, $" | win_trips={c.TripsCompleted - prev.TripsCompleted} win_stuck_events={c.StuckEventsTotal - prev.StuckEventsTotal}");
+        if (!sim.HasPeds)
+        {
+            return win;
+        }
+
+        sim.CopyPedWaitHistograms(curHist, stopTmp);
+        long total = c.PedCrossReleases - prev.PedCrossReleases;
+        long need = ((total * 95) + 99) / 100;
+        long acc = 0;
+        int p95 = -1;
+        int max = 0;
+        for (int i = 0; i < curHist.Length; i++)
+        {
+            long d = curHist[i] - prevHist[i];
+            acc += d;
+            if (p95 < 0 && acc >= need)
+            {
+                p95 = i;
+            }
+
+            if (d > 0)
+            {
+                max = i;
+            }
+        }
+
+        double mean = total > 0 ? (c.PedCrossWaitTicksTotal - prev.PedCrossWaitTicksTotal) / 20.0 / total : 0;
+        return win + string.Create(CultureInfo.InvariantCulture, $" win_cross_wait_mean_s={mean:F2} win_cross_wait_p95_s={p95} win_cross_wait_max_s={max}");
     }
 
     private static string Line(Simulation sim)
