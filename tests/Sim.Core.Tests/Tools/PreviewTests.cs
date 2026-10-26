@@ -458,8 +458,8 @@ public sealed class PreviewTests
                 b.LanesAB = 12;
                 break;
             case 7:
-                int rs = rng.Next(Math.Max(1, n.SegmentCount));   // живой сегмент не в дренаже: восстанавливать нечего (InvalidHandle); мёртвый handle - пересоздание (T8), тестирует UndoTests
-                b.RestoreOf = new EntityRef(rs, n.SegmentAlive(rs) ? n.Segments[rs].Generation : 1);
+                int rs = rng.Next(Math.Max(1, n.SegmentCount));   // случайный handle (мёртвый - пересоздание сегмента в новом слоте, T8; живой не в дренаже - InvalidHandle); регрессия: кэш NextConn после перестройки узла
+                b.RestoreOf = new EntityRef(rs, 1 + (2 * rng.Next(3)));
                 break;
             case 8:
                 b.Flags = BuildRoadFlags.AutoSplit;

@@ -411,3 +411,4 @@
   (`git worktree add /home/user/tc-<задача> <ветка>`), основная папка — только оркестратору для `docs/plan`.
 - **Старые worktree агентов копятся в `.claude/worktrees/` (57 шт., 4,4 ГБ к 2026-10-27).** После мержа волны: `git worktree unlock` +
   `git worktree remove` (без `-f`) для чистых; грязные — разобрать вручную.
+- **`InvalidateNextConn` должен смотреть приёмники ВСЕХ connector'ов полосы, не только кэшированного (агент 150):** `DefaultConnector` выбирает по классам приёмников (тупик/нет выездов), поэтому когда сегмент-приёмник другого connector'а получает выезды после перестройки/пересоздания (BuildRoad с мёртвым `RestoreOf`), порядок выбора меняется, а кэш машины без маршрута остаётся прежним -> Debug-падение `FirstHop`. Ловится `Preview_VerdictMatchesApply_On10000RandomCommands` (seed 5, случайный handle в `RestoreOf`); генератор нельзя «упрощать» до живых handle.
