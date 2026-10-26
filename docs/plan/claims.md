@@ -6,3 +6,4 @@
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
 | 4.1 S1 параллельная фаза 4 | облако | claude/adoring-ritchie-cxzib8-s1 (WIP пушится по шагам; при обрыве — продолжать с ветки, спека scale.md §4, строка S1) | src/Sim.Core/Rules/Intersections, src/Sim.Core/Agents/LaneOccupancy.cs, src/Sim.Core/Lod/QueueMeso.cs | 2026-10-27 |
+| баг NextConn после RestoreOf/дренажа | облако | claude/adoring-ritchie-cxzib8 (WIP пушится по шагам; при обрыве — продолжать с ветки, описание в stage4-plan.md «2026-10-27 (ночь)») | src/Sim.Core/Network, src/Sim.Core/Routing, tests/Sim.Core.Tests/Tools | 2026-10-27 |
