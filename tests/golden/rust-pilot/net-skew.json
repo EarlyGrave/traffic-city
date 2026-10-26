@@ -1,0 +1,11 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/net-skew.json",
+  "load_ok": true,
+  "create_status": 0,
+  "desc_hash": "5a532baf1e296d12",
+  "network_hash": "fc2c2052813925f6",
+  "conflicts_hash": "79d34b9bb8ee4ada",
+  "headings_hash": "3ee7436e676961d1",
+  "counts": { "nodes": 7, "segments": 8, "lanes": 55, "lane_points": 332, "segment_points": 16, "arms": 16, "lane_next": 74, "connectors": 37, "conflicts": 204 }
+}

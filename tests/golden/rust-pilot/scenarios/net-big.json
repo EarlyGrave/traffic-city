@@ -1,0 +1,3021 @@
+{
+  "format_version": 2,
+  "name": "net-big",
+  "seed": 1,
+  "duration_s": 10,
+  "vehicle_types_file": "../../../../scenarios/vehicle-types.json",
+  "city": {
+    "enabled": false
+  },
+  "network": {
+    "nodes": [
+      {
+        "id": "n0",
+        "x": 0,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n1",
+        "x": 100,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n2",
+        "x": 200,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n3",
+        "x": 300,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n4",
+        "x": 400,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n5",
+        "x": 500,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n6",
+        "x": 600,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n7",
+        "x": 700,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n8",
+        "x": 800,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n9",
+        "x": 900,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n10",
+        "x": 1000,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n11",
+        "x": 1100,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n12",
+        "x": 0,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n13",
+        "x": 100,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n14",
+        "x": 200,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n15",
+        "x": 300,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n16",
+        "x": 400,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n17",
+        "x": 500,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n18",
+        "x": 600,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n19",
+        "x": 700,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n20",
+        "x": 800,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n21",
+        "x": 900,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n22",
+        "x": 1000,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n23",
+        "x": 1100,
+        "z": 100,
+        "control": "none"
+      },
+      {
+        "id": "n24",
+        "x": 0,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n25",
+        "x": 100,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n26",
+        "x": 200,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n27",
+        "x": 300,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n28",
+        "x": 400,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n29",
+        "x": 500,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n30",
+        "x": 600,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n31",
+        "x": 700,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n32",
+        "x": 800,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n33",
+        "x": 900,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n34",
+        "x": 1000,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n35",
+        "x": 1100,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n36",
+        "x": 0,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n37",
+        "x": 100,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n38",
+        "x": 200,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n39",
+        "x": 300,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n40",
+        "x": 400,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n41",
+        "x": 500,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n42",
+        "x": 600,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n43",
+        "x": 700,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n44",
+        "x": 800,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n45",
+        "x": 900,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n46",
+        "x": 1000,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n47",
+        "x": 1100,
+        "z": 300,
+        "control": "none"
+      },
+      {
+        "id": "n48",
+        "x": 0,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n49",
+        "x": 100,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n50",
+        "x": 200,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n51",
+        "x": 300,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n52",
+        "x": 400,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n53",
+        "x": 500,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n54",
+        "x": 600,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n55",
+        "x": 700,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n56",
+        "x": 800,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n57",
+        "x": 900,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n58",
+        "x": 1000,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n59",
+        "x": 1100,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n60",
+        "x": 0,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n61",
+        "x": 100,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n62",
+        "x": 200,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n63",
+        "x": 300,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n64",
+        "x": 400,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n65",
+        "x": 500,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n66",
+        "x": 600,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n67",
+        "x": 700,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n68",
+        "x": 800,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n69",
+        "x": 900,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n70",
+        "x": 1000,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n71",
+        "x": 1100,
+        "z": 500,
+        "control": "none"
+      },
+      {
+        "id": "n72",
+        "x": 0,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n73",
+        "x": 100,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n74",
+        "x": 200,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n75",
+        "x": 300,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n76",
+        "x": 400,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n77",
+        "x": 500,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n78",
+        "x": 600,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n79",
+        "x": 700,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n80",
+        "x": 800,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n81",
+        "x": 900,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n82",
+        "x": 1000,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n83",
+        "x": 1100,
+        "z": 600,
+        "control": "none"
+      },
+      {
+        "id": "n84",
+        "x": 0,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n85",
+        "x": 100,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n86",
+        "x": 200,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n87",
+        "x": 300,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n88",
+        "x": 400,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n89",
+        "x": 500,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n90",
+        "x": 600,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n91",
+        "x": 700,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n92",
+        "x": 800,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n93",
+        "x": 900,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n94",
+        "x": 1000,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n95",
+        "x": 1100,
+        "z": 700,
+        "control": "none"
+      },
+      {
+        "id": "n96",
+        "x": 0,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n97",
+        "x": 100,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n98",
+        "x": 200,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n99",
+        "x": 300,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n100",
+        "x": 400,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n101",
+        "x": 500,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n102",
+        "x": 600,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n103",
+        "x": 700,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n104",
+        "x": 800,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n105",
+        "x": 900,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n106",
+        "x": 1000,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n107",
+        "x": 1100,
+        "z": 800,
+        "control": "none"
+      },
+      {
+        "id": "n108",
+        "x": 0,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n109",
+        "x": 100,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n110",
+        "x": 200,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n111",
+        "x": 300,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n112",
+        "x": 400,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n113",
+        "x": 500,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n114",
+        "x": 600,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n115",
+        "x": 700,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n116",
+        "x": 800,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n117",
+        "x": 900,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n118",
+        "x": 1000,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n119",
+        "x": 1100,
+        "z": 900,
+        "control": "none"
+      },
+      {
+        "id": "n120",
+        "x": 0,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n121",
+        "x": 100,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n122",
+        "x": 200,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n123",
+        "x": 300,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n124",
+        "x": 400,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n125",
+        "x": 500,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n126",
+        "x": 600,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n127",
+        "x": 700,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n128",
+        "x": 800,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n129",
+        "x": 900,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n130",
+        "x": 1000,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n131",
+        "x": 1100,
+        "z": 1000,
+        "control": "none"
+      },
+      {
+        "id": "n132",
+        "x": 0,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n133",
+        "x": 100,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n134",
+        "x": 200,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n135",
+        "x": 300,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n136",
+        "x": 400,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n137",
+        "x": 500,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n138",
+        "x": 600,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n139",
+        "x": 700,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n140",
+        "x": 800,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n141",
+        "x": 900,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n142",
+        "x": 1000,
+        "z": 1100,
+        "control": "none"
+      },
+      {
+        "id": "n143",
+        "x": 1100,
+        "z": 1100,
+        "control": "none"
+      }
+    ],
+    "segments": [
+      {
+        "a": "n0",
+        "b": "n1",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n0",
+        "b": "n12",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n2",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n13",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n3",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n14",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n3",
+        "b": "n4",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n3",
+        "b": "n15",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n4",
+        "b": "n5",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n4",
+        "b": "n16",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n5",
+        "b": "n6",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n5",
+        "b": "n17",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n6",
+        "b": "n7",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n6",
+        "b": "n18",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n7",
+        "b": "n8",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n7",
+        "b": "n19",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n8",
+        "b": "n9",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n8",
+        "b": "n20",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n9",
+        "b": "n10",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n9",
+        "b": "n21",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n10",
+        "b": "n11",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n10",
+        "b": "n22",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n11",
+        "b": "n23",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n12",
+        "b": "n13",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n12",
+        "b": "n24",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n13",
+        "b": "n14",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n13",
+        "b": "n25",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n14",
+        "b": "n15",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n14",
+        "b": "n26",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n15",
+        "b": "n16",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n15",
+        "b": "n27",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n16",
+        "b": "n17",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n16",
+        "b": "n28",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n17",
+        "b": "n18",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n17",
+        "b": "n29",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n18",
+        "b": "n19",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n18",
+        "b": "n30",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n19",
+        "b": "n20",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n19",
+        "b": "n31",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n20",
+        "b": "n21",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n20",
+        "b": "n32",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n21",
+        "b": "n22",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n21",
+        "b": "n33",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n22",
+        "b": "n23",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n22",
+        "b": "n34",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n23",
+        "b": "n35",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n24",
+        "b": "n25",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n24",
+        "b": "n36",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n25",
+        "b": "n26",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n25",
+        "b": "n37",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n26",
+        "b": "n27",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n26",
+        "b": "n38",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n27",
+        "b": "n28",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n27",
+        "b": "n39",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n28",
+        "b": "n29",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n28",
+        "b": "n40",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n29",
+        "b": "n30",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n29",
+        "b": "n41",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n30",
+        "b": "n31",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n30",
+        "b": "n42",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n31",
+        "b": "n32",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n31",
+        "b": "n43",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n32",
+        "b": "n33",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n32",
+        "b": "n44",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n33",
+        "b": "n34",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n33",
+        "b": "n45",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n34",
+        "b": "n35",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n34",
+        "b": "n46",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n35",
+        "b": "n47",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n36",
+        "b": "n37",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n36",
+        "b": "n48",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n37",
+        "b": "n38",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n37",
+        "b": "n49",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n38",
+        "b": "n39",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n38",
+        "b": "n50",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n39",
+        "b": "n40",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n39",
+        "b": "n51",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n40",
+        "b": "n41",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n40",
+        "b": "n52",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n41",
+        "b": "n42",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n41",
+        "b": "n53",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n42",
+        "b": "n43",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n42",
+        "b": "n54",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n43",
+        "b": "n44",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n43",
+        "b": "n55",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n44",
+        "b": "n45",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n44",
+        "b": "n56",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n45",
+        "b": "n46",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n45",
+        "b": "n57",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n46",
+        "b": "n47",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n46",
+        "b": "n58",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n47",
+        "b": "n59",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n48",
+        "b": "n49",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n48",
+        "b": "n60",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n49",
+        "b": "n50",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n49",
+        "b": "n61",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n50",
+        "b": "n51",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n50",
+        "b": "n62",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n51",
+        "b": "n52",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n51",
+        "b": "n63",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n52",
+        "b": "n53",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n52",
+        "b": "n64",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n53",
+        "b": "n54",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n53",
+        "b": "n65",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n54",
+        "b": "n55",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n54",
+        "b": "n66",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n55",
+        "b": "n56",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n55",
+        "b": "n67",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n56",
+        "b": "n57",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n56",
+        "b": "n68",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n57",
+        "b": "n58",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n57",
+        "b": "n69",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n58",
+        "b": "n59",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n58",
+        "b": "n70",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n59",
+        "b": "n71",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n60",
+        "b": "n61",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n60",
+        "b": "n72",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n61",
+        "b": "n62",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n61",
+        "b": "n73",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n62",
+        "b": "n63",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n62",
+        "b": "n74",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n63",
+        "b": "n64",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n63",
+        "b": "n75",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n64",
+        "b": "n65",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n64",
+        "b": "n76",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n65",
+        "b": "n66",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n65",
+        "b": "n77",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n66",
+        "b": "n67",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n66",
+        "b": "n78",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n67",
+        "b": "n68",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n67",
+        "b": "n79",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n68",
+        "b": "n69",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n68",
+        "b": "n80",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n69",
+        "b": "n70",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n69",
+        "b": "n81",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n70",
+        "b": "n71",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n70",
+        "b": "n82",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n71",
+        "b": "n83",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n72",
+        "b": "n73",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n72",
+        "b": "n84",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n73",
+        "b": "n74",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n73",
+        "b": "n85",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n74",
+        "b": "n75",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n74",
+        "b": "n86",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n75",
+        "b": "n76",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n75",
+        "b": "n87",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n76",
+        "b": "n77",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n76",
+        "b": "n88",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n77",
+        "b": "n78",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n77",
+        "b": "n89",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n78",
+        "b": "n79",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n78",
+        "b": "n90",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n79",
+        "b": "n80",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n79",
+        "b": "n91",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n80",
+        "b": "n81",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n80",
+        "b": "n92",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n81",
+        "b": "n82",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n81",
+        "b": "n93",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n82",
+        "b": "n83",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n82",
+        "b": "n94",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n83",
+        "b": "n95",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n84",
+        "b": "n85",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n84",
+        "b": "n96",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n85",
+        "b": "n86",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n85",
+        "b": "n97",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n86",
+        "b": "n87",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n86",
+        "b": "n98",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n87",
+        "b": "n88",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n87",
+        "b": "n99",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n88",
+        "b": "n89",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n88",
+        "b": "n100",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n89",
+        "b": "n90",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n89",
+        "b": "n101",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n90",
+        "b": "n91",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n90",
+        "b": "n102",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n91",
+        "b": "n92",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n91",
+        "b": "n103",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n92",
+        "b": "n93",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n92",
+        "b": "n104",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n93",
+        "b": "n94",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n93",
+        "b": "n105",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n94",
+        "b": "n95",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n94",
+        "b": "n106",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n95",
+        "b": "n107",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n96",
+        "b": "n97",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n96",
+        "b": "n108",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n97",
+        "b": "n98",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n97",
+        "b": "n109",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n98",
+        "b": "n99",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n98",
+        "b": "n110",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n99",
+        "b": "n100",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n99",
+        "b": "n111",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n100",
+        "b": "n101",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n100",
+        "b": "n112",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n101",
+        "b": "n102",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n101",
+        "b": "n113",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n102",
+        "b": "n103",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n102",
+        "b": "n114",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n103",
+        "b": "n104",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n103",
+        "b": "n115",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n104",
+        "b": "n105",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n104",
+        "b": "n116",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n105",
+        "b": "n106",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n105",
+        "b": "n117",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n106",
+        "b": "n107",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n106",
+        "b": "n118",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n107",
+        "b": "n119",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n108",
+        "b": "n109",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n108",
+        "b": "n120",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n109",
+        "b": "n110",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n109",
+        "b": "n121",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n110",
+        "b": "n111",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n110",
+        "b": "n122",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n111",
+        "b": "n112",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n111",
+        "b": "n123",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n112",
+        "b": "n113",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n112",
+        "b": "n124",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n113",
+        "b": "n114",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n113",
+        "b": "n125",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n114",
+        "b": "n115",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n114",
+        "b": "n126",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n115",
+        "b": "n116",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n115",
+        "b": "n127",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n116",
+        "b": "n117",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n116",
+        "b": "n128",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n117",
+        "b": "n118",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n117",
+        "b": "n129",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n118",
+        "b": "n119",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n118",
+        "b": "n130",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n119",
+        "b": "n131",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n120",
+        "b": "n121",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n120",
+        "b": "n132",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n121",
+        "b": "n122",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n121",
+        "b": "n133",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n122",
+        "b": "n123",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n122",
+        "b": "n134",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n123",
+        "b": "n124",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n123",
+        "b": "n135",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n124",
+        "b": "n125",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n124",
+        "b": "n136",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n125",
+        "b": "n126",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n125",
+        "b": "n137",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n126",
+        "b": "n127",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n126",
+        "b": "n138",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n127",
+        "b": "n128",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n127",
+        "b": "n139",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n128",
+        "b": "n129",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n128",
+        "b": "n140",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n129",
+        "b": "n130",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n129",
+        "b": "n141",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n130",
+        "b": "n131",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n130",
+        "b": "n142",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n131",
+        "b": "n143",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n132",
+        "b": "n133",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n133",
+        "b": "n134",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n134",
+        "b": "n135",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n135",
+        "b": "n136",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n136",
+        "b": "n137",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n137",
+        "b": "n138",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n138",
+        "b": "n139",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n139",
+        "b": "n140",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      },
+      {
+        "a": "n140",
+        "b": "n141",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n141",
+        "b": "n142",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n142",
+        "b": "n143",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "street"
+      }
+    ]
+  },
+  "vehicles": {
+    "count": 0,
+    "spawn_ramp_s": 1
+  },
+  "demand": {
+    "zone_m": 200,
+    "model": "uniform",
+    "external_share": 0,
+    "min_trip_m": 0
+  },
+  "routing": {
+    "levels": 1,
+    "cell_m": 250,
+    "pathfind_budget_per_tick": 8
+  },
+  "capacities": {
+    "max_vehicles": 64,
+    "max_nodes": 144,
+    "max_segments": 264,
+    "max_lanes": 4096,
+    "max_lane_points": 32768,
+    "max_zones": 16,
+    "max_bus_routes": 1,
+    "max_bus_stops": 1,
+    "max_routes": 256,
+    "max_plan_steps": 8192,
+    "max_pending_trips": 64,
+    "max_signalized_nodes": 1
+  }
+}

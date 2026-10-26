@@ -1,0 +1,11 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/net-signal.json",
+  "load_ok": true,
+  "create_status": 0,
+  "desc_hash": "81f93aaec333f7bf",
+  "network_hash": "a35d0c1d570ae286",
+  "conflicts_hash": "b9f84491e082743b",
+  "headings_hash": "1aafcb4277dcfe8b",
+  "counts": { "nodes": 13, "segments": 12, "lanes": 84, "lane_points": 504, "segment_points": 24, "arms": 24, "lane_next": 112, "connectors": 56, "conflicts": 212 }
+}

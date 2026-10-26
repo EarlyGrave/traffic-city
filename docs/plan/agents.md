@@ -132,5 +132,5 @@
 | 126 | scale-spec (worktree) | opus | 4.1: scale.md + ADR-0024 поток симуляции | done, merged (S0–S13; K1 s100k auto ≤ 15 мс при 4 потоках) |
 | 127 | economy-spec (worktree) | opus | 4.2: ADR-0025 экономика города + city-economy.md | done, merged (E1–E8) |
 | 128 | parking-spec (worktree) | opus | 4.4: ADR-0026 парковка + parking.md | done, merged (K1–K9) |
-| 129 | rust-r2 (worktree) | sonnet | 4.6 R2: ComputeNetworkHash, команда golden, фикстуры | wip |
+| 129 | rust-r2 (worktree) | sonnet | 4.6 R2: ComputeNetworkHash, команда golden, фикстуры | done, merged (23 теста RustPilot; util.json + 10 сценариев) |
 | 130 | tools-t1 (worktree) | sonnet | 4.3 T1: Api-типы, коды, события (номера с 25) | wip |

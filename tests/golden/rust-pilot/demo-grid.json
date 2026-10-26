@@ -1,0 +1,11 @@
+{
+  "golden_version": 1,
+  "scenario": "scenarios/demo-grid.json",
+  "load_ok": true,
+  "create_status": 0,
+  "desc_hash": "1a81f957e4edc465",
+  "network_hash": "564c4a6ed9e0b1b1",
+  "conflicts_hash": "559d5cf43b352719",
+  "headings_hash": "5e6ab183cfc68426",
+  "counts": { "nodes": 9, "segments": 12, "lanes": 74, "lane_points": 424, "segment_points": 24, "arms": 24, "lane_next": 92, "connectors": 46, "conflicts": 112 }
+}

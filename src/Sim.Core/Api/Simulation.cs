@@ -265,6 +265,9 @@ public sealed partial class Simulation : IDisposable
     /// <summary>FNV-1a 64 по состоянию (core-api 9). O(N), не вызывать каждый тик в проде.</summary>
     public ulong ComputeStateHash() => _disposed ? 0UL : StateHash.Compute(_w);
 
+    /// <summary>FNV-1a 64 статики сети после построения и connector'ов (rust-pilot.md §5.2): кросс-языковой golden Rust-пилота. В хэш состояния не входит.</summary>
+    public ulong ComputeNetworkHash() => _disposed ? 0UL : NetworkHash.Network(_w);
+
     // ---- запросы ----
 
     public bool IsAlive(VehicleHandle h) => !_disposed && _w.Vehicles.IsAlive(h);
