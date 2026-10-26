@@ -307,6 +307,7 @@ internal sealed partial class PedWorld
             }
         }
 
+        Stops.ResetDerived(w);
         w.Counters.PedActive = 0;
     }
 

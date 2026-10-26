@@ -14,8 +14,8 @@ namespace Sim.Core.Peds;
 /// <see cref="ReadyNext"/>: <c>-2</c> - жителя в очереди нет, <c>-1</c> - хвост, иначе следующий.
 /// </para>
 /// <para>
-/// P2: автобусные ноги не выбираются (<c>ModeOut = ModeBack = 0</c>, маршруты и остановки -1); все ноги пешие, работа - в радиусе <c>walk_only_m</c>.
-/// Выбор пары остановок и способа (§3 п. 2-3) добавляет P4 в <see cref="Create"/>, поля уже заморожены.
+/// P4: при модели пассажиров <c>agents</c> и наличии маршрутов способ и пара остановок выбираются в <see cref="Create"/> (<see cref="BusPlanner"/>, §3 п. 2-3); индексы остановок - глобальные
+/// в <c>Net.BusStops</c>. Без автобусов (или при <c>counter</c>) <c>ModeOut = ModeBack = 0</c>, маршруты и остановки -1, работа - в радиусе <c>walk_only_m</c>.
 /// </para>
 /// </summary>
 internal sealed class ResidentStore
@@ -186,6 +186,7 @@ internal sealed class ResidentStore
 
         float alpha = w.Demand.GravityExponent > 0f ? w.Demand.GravityExponent : 1f;
         float walkOnlyM = cfg.WalkOnlyMm * 0.001f;
+        BusPlanner? bus = BusPlanner.TryCreate(w, usable, comp);
         Pcg32 rng = w.RngPeds;
         var candW = new float[Math.Max(1, zc)];
         for (int r = 0; r < n; r++)
@@ -230,9 +231,9 @@ internal sealed class ResidentStore
 
                     Vec2 d = net.Zones[z].Center - hc;
                     float dist = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
-                    if (dist > walkOnlyM)
+                    if (dist > walkOnlyM && !(bus != null && z != hz && bus.TryPair(hz, z, out _) && bus.TryPair(z, hz, out _)))
                     {
-                        continue;
+                        continue;   // дальше walk_only_m - только если автобус есть в обе стороны (§3 п. 2)
                     }
 
                     float dd = MathF.Max(dist, 100f);
@@ -284,14 +285,21 @@ internal sealed class ResidentStore
             }
 
             int i = Count++;
+            ModeOut[i] = 0;
+            ModeBack[i] = 0;
+            if (bus != null && hz >= 0 && wz >= 0 && wz != hz)
+            {
+                bus.Choose(w, hz, wz, homeComp, out Plan po, out Plan pb);
+                ApplyPlan(in po, ModeOut, RouteOut, StopAOut, StopBOut, i);
+                ApplyPlan(in pb, ModeBack, RouteBack, StopABack, StopBBack, i);
+            }
+
             HomeEdge[i] = he;
             HomeSMm[i] = hs;
             WorkEdge[i] = we;
             WorkSMm[i] = ws;
             HomeZone[i] = hz;
             WorkZone[i] = wz;
-            ModeOut[i] = 0;
-            ModeBack[i] = 0;
             Where[i] = AtHome;
             ReadyTick[i] = rng.NextBelow((uint)Math.Max(1, cfg.ActivityMaxTicks));
             Ped[i] = -1;
@@ -299,6 +307,14 @@ internal sealed class ResidentStore
         }
 
         w.RngPeds = rng;
+    }
+
+    private static void ApplyPlan(in Plan plan, byte[] mode, int[] route, int[] stopA, int[] stopB, int i)
+    {
+        mode[i] = plan.Bus ? (byte)1 : (byte)0;
+        route[i] = plan.Bus ? plan.Route : -1;
+        stopA[i] = plan.Bus ? plan.A : -1;
+        stopB[i] = plan.Bus ? plan.B : -1;
     }
 
     private static int PickZone(float[] cum, int zc, ref Pcg32 rng)
@@ -370,5 +386,186 @@ internal sealed class ResidentStore
         float len = net.Segments[seg].Length;
         float s = len > 12f ? rng.NextRange(5f, len - 5f) : len * 0.5f;
         return pn.PointOnSide(seg, side, s, out edge, out sMm);
+    }
+}
+
+/// <summary>Способ одного направления поездки: автобус (маршрут, остановки посадки <c>A</c> и высадки <c>B</c> - глобальные индексы) или пешком.</summary>
+internal struct Plan
+{
+    public bool Bus;
+    public int Route, A, B;
+}
+
+/// <summary>
+/// Выбор автобусных ног жителей (pedestrians.md §3, п. 2-3): предрасчёт остановок в радиусе <c>max_walk_to_stop_m</c> от центра каждой зоны (<c>ZoneStops</c>, CSR) и лучшая пара
+/// <c>(A, B)</c> на упорядоченную пару зон <c>(дом, работа)</c> - минимум <c>walk(A) + walk(B) + ride + headway/2</c> (walk = евклид центр зоны - остановка / <c>v_nom</c>, ride = сумма
+/// расстояний между остановками по маршруту / 8 м/с); при равенстве меньший <c>(r, A, B)</c>. Производное, живёт только в <see cref="ResidentStore.Create"/>, PRNG не использует.
+/// </summary>
+internal sealed class BusPlanner
+{
+    private const float RideSpeedMps = 8f;
+
+    private readonly NetworkStore _net;
+    private readonly int _zones;
+    private readonly float[] _stopX, _stopZ;
+    private readonly int[] _stopComp;
+    private readonly float[] _cum;            // расстояние вдоль маршрута от его первой остановки, м
+    private readonly int[] _zsFirst;          // CSR остановок в радиусе зоны (по возрастанию индекса)
+    private readonly int[] _zsList;
+    private readonly byte[] _state;           // [hz * zones + wz]: 0 не считали, 1 нет пары, 2 есть
+    private readonly Plan[] _plan;
+    private readonly float[] _cost;
+    private readonly float _vNomMps;
+    private readonly float[] _zx, _zz;
+
+    private BusPlanner(World w, bool[] usable, int[] comp)
+    {
+        _net = w.Net;
+        PedNetwork pn = _net.PedNet!;
+        PedDesc cfg = w.PedCfg;
+        int ns = _net.BusStopCount;
+        _zones = _net.ZoneCount;
+        _vNomMps = ((cfg.SpeedMinMmPerTick + cfg.SpeedMaxMmPerTick) * 0.5f) * 20f * 0.001f;
+        _stopX = new float[ns];
+        _stopZ = new float[ns];
+        _stopComp = new int[ns];
+        _cum = new float[ns];
+        for (int s = 0; s < ns; s++)
+        {
+            _stopComp[s] = -1;
+            if (Peds.Stops.AccessPoint(w, s, out int e, out int m))
+            {
+                int hint = 0;
+                pn.Evaluate(e, m, false, ref hint, out _stopX[s], out _stopZ[s], out _);
+                _stopComp[s] = pn.PedComp[pn.Edges[e].A];
+            }
+        }
+
+        for (int r = 0; r < _net.BusRouteCount; r++)
+        {
+            ref readonly BusRouteData br = ref _net.BusRoutes[r];
+            for (int k = 1; k < br.StopCount; k++)
+            {
+                int a = br.FirstStop + k - 1;
+                int b = br.FirstStop + k;
+                _cum[b] = _cum[a] + Dist(_stopX[a], _stopZ[a], _stopX[b], _stopZ[b]);
+            }
+        }
+
+        float radius = cfg.MaxWalkToStopMm * 0.001f;
+        _zx = new float[_zones];
+        _zz = new float[_zones];
+        _zsFirst = new int[_zones + 1];
+        var list = new System.Collections.Generic.List<int>();
+        for (int z = 0; z < _zones; z++)
+        {
+            _zx[z] = _net.Zones[z].Center.X;
+            _zz[z] = _net.Zones[z].Center.Z;
+            _zsFirst[z] = list.Count;
+            if (!usable[z])
+            {
+                continue;
+            }
+
+            for (int s = 0; s < ns; s++)
+            {
+                if (_stopComp[s] >= 0 && _stopComp[s] == comp[z] && Dist(_zx[z], _zz[z], _stopX[s], _stopZ[s]) <= radius)
+                {
+                    list.Add(s);
+                }
+            }
+        }
+
+        _zsFirst[_zones] = list.Count;
+        _zsList = list.ToArray();
+        _state = new byte[_zones * _zones];
+        _plan = new Plan[_zones * _zones];
+        _cost = new float[_zones * _zones];
+    }
+
+    /// <summary>null, если автобусных ног не может быть: модель пассажиров <c>counter</c>, нет маршрутов или остановок, радиус нулевой.</summary>
+    public static BusPlanner? TryCreate(World w, bool[] usable, int[] comp)
+    {
+        NetworkStore net = w.Net;
+        if (w.TransitCfg.PassengerModel != PassengerModel.Agents || net.BusRouteCount == 0 || net.BusStopCount == 0 || w.PedCfg.MaxWalkToStopMm <= 0 || w.PedCfg.SpeedMaxMmPerTick <= 0)
+        {
+            return null;
+        }
+
+        return new BusPlanner(w, usable, comp);
+    }
+
+    private static float Dist(float ax, float az, float bx, float bz)
+    {
+        float dx = ax - bx;
+        float dz = az - bz;
+        return MathF.Sqrt((dx * dx) + (dz * dz));
+    }
+
+    /// <summary>Есть ли автобусная пара из зоны <paramref name="hz"/> в зону <paramref name="wz"/>; <paramref name="cost"/> - оценка поездки, с.</summary>
+    public bool TryPair(int hz, int wz, out float cost)
+    {
+        int key = (hz * _zones) + wz;
+        if (_state[key] == 0)
+        {
+            Compute(hz, wz, key);
+        }
+
+        cost = _cost[key];
+        return _state[key] == 2;
+    }
+
+    private void Compute(int hz, int wz, int key)
+    {
+        _state[key] = 1;
+        float best = float.MaxValue;
+        for (int ia = _zsFirst[hz]; ia < _zsFirst[hz + 1]; ia++)
+        {
+            int a = _zsList[ia];
+            int route = _net.BusStops[a].Route;
+            ref readonly BusRouteData br = ref _net.BusRoutes[route];
+            float walkA = Dist(_zx[hz], _zz[hz], _stopX[a], _stopZ[a]) / _vNomMps;
+            for (int ib = _zsFirst[wz]; ib < _zsFirst[wz + 1]; ib++)
+            {
+                int b = _zsList[ib];
+                if (b <= a || b >= br.FirstStop + br.StopCount || _net.BusStops[b].Route != route)
+                {
+                    continue;
+                }
+
+                float c = walkA + (Dist(_zx[wz], _zz[wz], _stopX[b], _stopZ[b]) / _vNomMps) + ((_cum[b] - _cum[a]) / RideSpeedMps) + (br.HeadwayTicks * 0.05f * 0.5f);
+                if (c < best)
+                {
+                    best = c;
+                    _plan[key] = new Plan { Bus = true, Route = route, A = a, B = b };
+                    _state[key] = 2;
+                    _cost[key] = c;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Способ на оба направления для выбранной работы: автобус, если пара есть и поездка на автобусе по оценке быстрее, чем пешком по прямой, либо работа дальше <c>walk_only_m</c>;
+    /// остановки должны лежать в компоненте связности дома (проверка уровня жителя).
+    /// </summary>
+    public void Choose(World w, int hz, int wz, int homeComp, out Plan outPlan, out Plan backPlan)
+    {
+        float walkS = Dist(_zx[hz], _zz[hz], _zx[wz], _zz[wz]);
+        bool far = walkS > w.PedCfg.WalkOnlyMm * 0.001f;
+        walkS /= _vNomMps;
+        outPlan = One(hz, wz, homeComp, far, walkS);
+        backPlan = One(wz, hz, homeComp, far, walkS);
+    }
+
+    private Plan One(int from, int to, int homeComp, bool far, float walkS)
+    {
+        if (!TryPair(from, to, out float cost) || (!far && !(cost < walkS)))
+        {
+            return default;
+        }
+
+        Plan p = _plan[(from * _zones) + to];
+        return _stopComp[p.A] == homeComp && _stopComp[p.B] == homeComp ? p : default;
     }
 }
