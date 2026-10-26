@@ -125,4 +125,5 @@
 | 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | done, merged (41 тест Demand; вектор detlogit.json для Rust) |
 | 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | done, merged (пешеходы 1 draw call; agents mid prims 38.5k → 9k) |
 | 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | wip |
-| 122 | render-v6 (worktree) | sonnet | 3.3 V6: тени, свет, пресеты low/high (визуал — плейсхолдеры) | wip |
+| 122 | render-v6 (worktree) | sonnet | 3.3 V6: тени, свет, пресеты low/high (визуал — плейсхолдеры) | done, merged (VisualPreset.cs; тени только ТС LOD0; Forward+ проверить на GPU) |
+| 123 | render-v9 (worktree) | sonnet | 3.3 V9: бенч клиента, render-compare/update-baseline, CI job render | wip |

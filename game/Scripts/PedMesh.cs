@@ -55,6 +55,10 @@ public sealed class PedMesh
     }
 
     /// <summary>Показать/скрыть все батчи пешеходов.</summary>
+    /// <summary>Тени пешеходов LOD0 (только high, <see cref="VisualPreset.PedestrianShadowsHigh"/>); LOD1 и точки - никогда.</summary>
+    public void SetLod0Shadows(bool on) =>
+        _batch[0].Node.CastShadow = on ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off;
+
     public bool Visible
     {
         set

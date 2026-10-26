@@ -239,6 +239,8 @@ public partial class RenderStats : Node
             j.WriteEndObject();
             j.WriteEndObject();
 
+            WriteShadowInfo(j, vp);
+
             j.WriteStartObject("static_chunks");
             j.WriteString("note", "V4: меши чанков собираются при старте; surface_builds_after_first_frame должен быть 0 без изменений сети");
             j.WriteNumber("chunk_nodes", ChunkStats.Chunks);
@@ -267,6 +269,51 @@ public partial class RenderStats : Node
         }
 
         return ms.ToArray();
+    }
+
+    /// <summary>Тени (V6): параметры света/вьюпорта и перечень геометрии с <c>CastShadow != Off</c> (остальное тень не отбрасывает).</summary>
+    private void WriteShadowInfo(Utf8JsonWriter j, Viewport vp)
+    {
+        j.WriteStartObject("shadows");
+        if (GetParent().GetNodeOrNull<DirectionalLight3D>("DirectionalLight3D") is { } sun)
+        {
+            j.WriteBoolean("enabled", sun.ShadowEnabled);
+            j.WriteString("mode", sun.DirectionalShadowMode.ToString());
+            j.WriteNumber("max_distance_m", sun.DirectionalShadowMaxDistance);
+        }
+
+        j.WriteNumber("scaling_3d", vp.Scaling3DScale);
+        j.WriteString("msaa_3d", vp.Msaa3D.ToString());
+        var casters = new System.Collections.Generic.List<string>();
+        int geometry = 0;
+        CollectCasters(GetParent(), casters, ref geometry);
+        j.WriteNumber("geometry_nodes", geometry);
+        j.WriteNumber("caster_nodes", casters.Count);
+        j.WriteStartArray("casters");
+        foreach (string c in casters)
+        {
+            j.WriteStringValue(c);
+        }
+
+        j.WriteEndArray();
+        j.WriteEndObject();
+    }
+
+    private static void CollectCasters(Node node, System.Collections.Generic.List<string> casters, ref int geometry)
+    {
+        foreach (Node child in node.GetChildren())
+        {
+            if (child is GeometryInstance3D g)
+            {
+                geometry++;
+                if (g.CastShadow != GeometryInstance3D.ShadowCastingSetting.Off)
+                {
+                    casters.Add(g.Name.ToString());
+                }
+            }
+
+            CollectCasters(child, casters, ref geometry);
+        }
     }
 
     private static void WritePass(Utf8JsonWriter j, string name, string source, Viewport vp, Viewport.RenderInfoType type)

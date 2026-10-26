@@ -4,8 +4,8 @@
 #   scripts/godot-shot.sh shot [scenario] [frames]      # PNG последнего кадра (movie maker, фикс. 30 fps)
 #   scripts/godot-shot.sh fps  [scenario] [frames]      # средний FPS за N кадров (--print-fps, vsync выкл.)
 #   scripts/godot-shot.sh stats [scenario] [poses]      # счётчики рендера (draw calls, примитивы, память) по позам, JSON (docs/design/render.md §8)
-#       poses: "overview mid close" (по умолчанию); env: WARMUP (тики прогрева; 2400, для s100k/s1m 6000), STATS_FRAME (кадр съёма, 10)
-# Доп. аргументы клиента: GAME_ARGS="--cam X Z DIST [PITCH [YAW]] --warmup-ticks N --hud --ped-mode heat|agents"; имя PNG: OUT_NAME (по умолчанию = сценарий).
+#       poses: "overview mid close" (по умолчанию; "lod0" - 30 м, единственная поза с LOD0 ТС и тенями); env: WARMUP (тики прогрева; 2400, для s100k/s1m 6000), STATS_FRAME (кадр съёма, 10)
+# Доп. аргументы клиента: GAME_ARGS="--cam X Z DIST [PITCH [YAW]] --warmup-ticks N --hud --ped-mode heat|agents --render-preset low|high"; имя PNG: OUT_NAME (по умолчанию = сценарий).
 # Результаты: $OUT (по умолчанию perf/results/godot): <scenario>.png, <scenario>-fps.txt, stats-<scenario>-<поза>.json.
 # FPS здесь - программный рендер на CPU (llvmpipe), абсолют не равен GPU; годится для сравнения до/после.
 set -euo pipefail

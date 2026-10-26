@@ -46,6 +46,9 @@ public sealed class LodConfig
 
     public string Preset { get; private set; } = "high";
 
+    /// <summary>Пресет из <c>render-budgets.json</c> (тени, scaling_3d); null, если файл не загрузился.</summary>
+    public PresetBudget? Budget { get; private set; }
+
     /// <summary>Откуда взяты числа (для лога).</summary>
     public string Source { get; private set; } = "defaults (render.md §3.1/§3.3)";
 
@@ -112,6 +115,7 @@ public sealed class LodConfig
 
                 if (rb.Presets.TryGetValue(preset, out PresetBudget? pb))
                 {
+                    cfg.Budget = pb;
                     scale = pb.LodScale;
                     cfg.PointMinPx = (float)pb.PointMinPx;
                     if (pb.Caps.TryGetValue("pedestrian", out IReadOnlyList<int>? pc) && pc.Count >= Levels)

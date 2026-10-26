@@ -1,7 +1,7 @@
 // Дороги чанками (docs/design/render.md §3.5, §5.2): цвет полосы из вершин, heatmap = цвет из текстуры SegmentLoads по CUSTOM0.x (сегмент).
 // Непрозрачный, без прозрачного прохода. R = SpeedRatio, G = Density/120, B = Count > 0.
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_opaque, shadows_disabled;
+render_mode diffuse_lambert, specular_disabled, cull_disabled, depth_draw_opaque;
 
 #include "res://Shaders/heat.gdshaderinc"
 
@@ -21,4 +21,7 @@ void fragment() {
 		}
 	}
 	ALBEDO = col;
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+	NORMAL = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz); // плоские ленты: нормаль вверх независимо от обхода граней
 }

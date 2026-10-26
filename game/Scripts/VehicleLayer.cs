@@ -68,6 +68,11 @@ public sealed class VehicleLayer
             _hgt[t] = td.Category == VehicleCategory.Bus ? 3.0f : 1.5f;
             string tn = t.ToString(CultureInfo.InvariantCulture);
             _lod[(t * 3) + 0] = new BoxBatch("Vehicles_" + tn + "_lod0", BuildLod0(_len[t], _hgt[t], _wid[t], td.Category == VehicleCategory.Bus), lit);
+            if (_hgt[t] >= VisualPreset.ShadowMinHeightM)
+            {
+                _lod[t * 3].Node.CastShadow = GeometryInstance3D.ShadowCastingSetting.On; // тень - только LOD0 (render.md §6)
+            }
+
             _lod[(t * 3) + 1] = new BoxBatch("Vehicles_" + tn + "_lod1", new BoxMesh { Size = new Vector3(_len[t], _hgt[t], _wid[t]) }, lit);
             _lod[(t * 3) + 2] = new BoxBatch("Vehicles_" + tn + "_lod2", new PlaneMesh { Size = new Vector2(_len[t], _wid[t]), CenterOffset = new Vector3(0f, _hgt[t] * 0.5f, 0f) }, flat);
         }
