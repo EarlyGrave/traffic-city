@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Tests.Gen;
@@ -41,6 +42,14 @@ public sealed class RustPilotGoldenTests
         string name = RustPilotGolden.FileNameFor(scenarioPath);
         string actual = RustPilotGolden.ScenarioJson(_root, scenarioPath);
         string expected = ReadGolden(name);
+
+        // headings_hash - системный atan2 (glibc/UCRT), между ОС расходится (rust-pilot.md §6.3): строго только при TC_STRICT_HEADINGS=1.
+        if (Environment.GetEnvironmentVariable("TC_STRICT_HEADINGS") != "1")
+        {
+            actual = MaskHeadings(actual);
+            expected = MaskHeadings(expected);
+        }
+
         if (actual != expected)
         {
             Assert.Fail($"{name}: golden не совпадает с ядром.\n--- файл ---\n{expected}\n--- ядро ---\n{actual}\n" +
@@ -116,4 +125,7 @@ public sealed class RustPilotGoldenTests
     }
 
     private static string ReadGolden(string file) => File.ReadAllText(Path.Combine(_dir, file));
+
+    private static string MaskHeadings(string json) =>
+        Regex.Replace(json, "\"headings_hash\": \"[0-9a-f]+\"", "\"headings_hash\": \"*\"");
 }

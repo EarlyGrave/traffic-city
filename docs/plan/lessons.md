@@ -398,3 +398,12 @@
 - **Явные зоны `Demand.Zones` не получают полос появления (`SpawnLaneCount = 0`, TODO генератора):** связность по зонам в таких мирах пуста; тест `Connectivity_Preview` назначает `ZoneLanes` вручную. Для реальных проверок брать город с генератором.
 - **Превью против применения расходятся в одном тике:** фаза 1а (финалы дренажа) идёт до команд того же `Step`, поэтому сегмент/рукав, исчезнувший в 1а, даёт другой отказ - сравнивать вердикты только при `Ops.Count == 0`. Врезка в построенный узел (`BuildRoad`, Mechanism 1) валидатором не планируется (нужен сегмент в сети): `Busy/CreatesTrap` узнаются только при применении.
 - **`SetTurnBan` в валидаторе временно правит `nd.TurnBan` на время `PlanRebuild`** (читает запреты из узла) и возвращает значение до выхода - хэш и сейв не меняются; не вызывать из параллельных фаз.
+
+## Локальная среда: Windows (2026-10-26)
+- **Нужен .NET SDK 10** (`global.json`); Git Bash + `python` хватает хукам Claude (`jq` не обязателен), `test-hooks.sh` - 56/56 на Windows.
+- **`headings_hash` в golden Rust-пилота на Windows другой** (системный atan2 UCRT ≠ glibc, rust-pilot.md §6.3): C#-тест сравнивает его только при `TC_STRICT_HEADINGS=1`, как и Rust.
+- **Тесты симлинков модов (`PackageLoaderTests.Hostile_Symlink_*`) на Windows требуют режима разработчика** (иначе `CreateSymbolicLink` → «Клиент не обладает требуемыми правами») и красят pre-commit.
+- **Полный `dotnet test` на i7-13700K ≈ 3,5 мин** (Sim.Core.Tests 3 м 12 с) - pre-commit локально в разы быстрее облачного.
+- **`bash` из PowerShell - это WSL (`C:\Windows\system32\bash.exe`, дистрибутив docker-desktop), а не Git Bash.** Скрипты (`bench-gate.sh`, `rust-check.sh`, `test-hooks.sh`) запускать через `& "C:\Program Files\Git\bin\bash.exe" ...` или из Git Bash; хукам Claude и git это не мешает (идут через шебанг/Git).
+- **Rust локально: rustup через `winget install Rustlang.Rustup`** (MSVC Build Tools 2022 уже есть), тулчейн 1.97.0 ставится сам по `rust/rust-toolchain.toml`. `~/.cargo/bin` попадает в PATH только в новых терминалах/сессиях.
+- **`python3` в Git Bash на Windows - заглушка Microsoft Store (exit 49)**, настоящий интерпретатор - `python`. `rust-check.sh` без `jq` пробует `python3`, затем `python`; в новых скриптах делать так же. `rust-check.sh` на Windows - exit 0.

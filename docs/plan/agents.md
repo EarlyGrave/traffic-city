@@ -150,3 +150,5 @@
 | 144 | tools-t10 (worktree) | sonnet | 4.3 T10: журнал команд и реплей, replay/bugreport в Headless | done, merged (ReplayTests 9/9; s1k 2000 тиков 50 команд exit 0; контейнер TCRP; точный тик — через --interval 1) |
 | 145 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью, стоимость, кэш компонент | killed (без коммитов), перезапуск |
 | 146 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью (перезапуск 145) | done, merged (ToolValidator общий; Preview без мутаций и аллокаций; фазз 9984/10000 совпали; OutOfBounds/CreatesTrap теперь и при BuildRoad; SetToolsConfig не в сейве — долг) |
+| L1 | local/windows-tests (локал) | opus | Локальная среда на Windows: golden Rust-пилота, грабли в lessons | done, merged (build/format чисто; тесты 1423 ок, 2 skip; headings_hash строго только при TC_STRICT_HEADINGS=1) |
+| L2 | local/rust-check-python (локал) | haiku | rust-check.sh: фолбэк python3 → python в шаге deps без jq | done, merged (rust-check.sh exit 0 на Windows; со 2-й попытки: выбор python перенесён в ветку без jq) |
