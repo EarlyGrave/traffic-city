@@ -85,6 +85,7 @@ public sealed partial class Simulation : IDisposable
         World w = _w;
         w.EventCount = 0;
         w.EventsOverflowed = false;
+        w.Inv.ClearRecords();
         w.Pool?.Wake();
         for (int t = 0; t < ticks;)
         {
@@ -191,6 +192,12 @@ public sealed partial class Simulation : IDisposable
             return steps.IsEmpty ? default : new RouteView(_w.Selected, steps, _w.Vehicles.RouteCursor[i]);
         }
     }
+
+    /// <summary>Обратные записи за последний <c>Step</c>, по одной на применённую команду инструмента, в порядке применения (player-tools.md §8.1).</summary>
+    public ReadOnlySpan<InverseRecord> Inverses => _disposed ? default : new ReadOnlySpan<InverseRecord>(_w.Inv.Recs, 0, _w.Inv.RecCount);
+
+    /// <summary>Команды обратных записей: <c>[First, First+Count)</c> - в порядке, в котором их ставят в очередь (один <c>Step</c>, подряд).</summary>
+    public ReadOnlySpan<Command> InverseCommands => _disposed ? default : new ReadOnlySpan<Command>(_w.Inv.Cmds, 0, _w.Inv.CmdCount);
 
     /// <summary>Длительные операции инструментов (дренаж сноса) с прогрессом: для индикатора на дороге (player-tools.md §7.2).</summary>
     public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views();

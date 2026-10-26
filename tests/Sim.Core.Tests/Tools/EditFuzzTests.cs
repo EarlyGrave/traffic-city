@@ -181,7 +181,7 @@ public sealed class EditFuzzTests
     }
 
     // Случайная команда по состоянию мира (детерминированно: обходы по возрастанию индекса, rng - единственный источник случайности).
-    private static Command Pick(Simulation sim, Random rng, uint tag)
+    internal static Command Pick(Simulation sim, Random rng, uint tag)
     {
         NetworkStore n = sim.World.Net;
         int built = 0;

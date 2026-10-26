@@ -1220,6 +1220,7 @@ public static partial class ScenarioLoader
             c.Finish();
         }
 
+        d.InverseCapacity = r.Int("inverse_capacity", 0, min: 0, max: 1 << 20);
         JsonObjectReader? b = r.OptObject("world_bounds");
         if (b != null)
         {

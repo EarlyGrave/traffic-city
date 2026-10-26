@@ -19,8 +19,19 @@ internal static partial class CommandDispatcher
         ToolOpsPhase.Run(w);   // 1а: финалы дренажа по состоянию конца прошлого тика (player-tools.md §12)
         while (w.Commands.TryDequeue(out Command cmd))
         {
+            if (w.Inv.RemapCount > 0)
+            {
+                // Перенумерация фазы 1 (player-tools.md §8.2): ссылки на пересозданные сущности переводятся на новые handle'ы.
+                CommandRefs.Remap(ref cmd, new RemapTable(new ReadOnlySpan<RemapEntry>(w.Inv.Remap, 0, w.Inv.RemapCount)));
+            }
+
+            InvCtx inv = InverseBuilder.Begin(w, in cmd);
+            long applied0 = w.Counters.CommandsApplied;
             Apply(w, in cmd);
+            InverseBuilder.End(w, in cmd, ref inv, w.Counters.CommandsApplied != applied0);
         }
+
+        w.Inv.ClearRemap();
     }
 
     private static void Apply(World w, in Command cmd)
@@ -206,6 +217,8 @@ internal static partial class CommandDispatcher
         }
 
         w.Emit(SimEventKind.SegmentCreated, cmd.Tag, seg);
+        w.Inv.BuiltSeg = seg;
+        EmitRestoreRemaps(w, in cmd, seg);
         bool rebuilt = false;
         if (!noConnectors)
         {
@@ -236,6 +249,30 @@ internal static partial class CommandDispatcher
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         Applied(w, in cmd);
+    }
+
+    // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.
+    private static void EmitRestoreRemaps(World w, in Command cmd, int seg)
+    {
+        BuildRoadCmd b = cmd.BuildRoad;
+        if (b.RestoreOf.Generation == 0)
+        {
+            return;
+        }
+
+        ref readonly SegmentData sd = ref w.Net.Segments[seg];
+        w.Inv.AddRemap(EntityKind.Segment, in b.RestoreOf, new EntityRef(seg, sd.Generation));
+        w.Emit(SimEventKind.SegmentRemapped, cmd.Tag, b.RestoreOf.Index, seg);
+        for (int e = 0; e < 2; e++)
+        {
+            EntityRef old = e == 0 ? b.RestoreNodeA : b.RestoreNodeB;
+            int now = e == 0 ? sd.NodeA : sd.NodeB;
+            if (old.Generation != 0 && !(old.Index == now && old.Generation == w.Net.Nodes[now].Generation))
+            {
+                w.Inv.AddRemap(EntityKind.Node, in old, new EntityRef(now, w.Net.Nodes[now].Generation));
+                w.Emit(SimEventKind.NodeRemapped, cmd.Tag, old.Index, now);
+            }
+        }
     }
 
     // Концы нового сегмента: непостроенный узел строится как раньше, построенный - перестраивается (врезка рукава, 4.3 T3).

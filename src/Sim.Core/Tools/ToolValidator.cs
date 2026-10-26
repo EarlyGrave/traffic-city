@@ -78,7 +78,7 @@ internal static class ToolValidator
     {
         BuildRoadCmd b = cmd.BuildRoad;
         NetworkStore n = w.Net;
-        if ((b.Flags & ~BuildRoadFlags.Supported) == 0 && b.RestoreOf.Generation != 0 && b.RestoreNodeA.Generation == 0 && b.RestoreNodeB.Generation == 0 &&
+        if ((b.Flags & ~BuildRoadFlags.Supported) == 0 && b.RestoreOf.Generation != 0 &&
             n.ResolveSegment(in b.RestoreOf) && w.Ops.FindSegment(b.RestoreOf.Index) >= 0)
         {
             c.Reopen = true;   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
@@ -86,9 +86,14 @@ internal static class ToolValidator
             return RejectReason.None;
         }
 
-        if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || b.RestoreOf.Generation != 0 || b.RestoreNodeA.Generation != 0 || b.RestoreNodeB.Generation != 0)
+        if ((b.Flags & ~BuildRoadFlags.Supported) != 0)
         {
-            return RejectReason.NotSupported;   // AutoSplit / Curve (T5), пересоздание по RestoreOf (T8)
+            return RejectReason.NotSupported;   // AutoSplit / Curve (T5)
+        }
+
+        if (b.RestoreOf.Generation != 0 && n.ResolveSegment(in b.RestoreOf))
+        {
+            return RejectReason.InvalidHandle;   // RestoreOf жив, но не в дренаже: восстанавливать нечего (хост перепутал handle)
         }
 
         if (!float.IsFinite(b.Ax) || !float.IsFinite(b.Az) || !float.IsFinite(b.Bx) || !float.IsFinite(b.Bz) ||

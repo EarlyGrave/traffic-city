@@ -337,6 +337,17 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
   правками игрока, остаются ёмкость, деньги, `Busy`) → запись снимается, клиент получает `CommandRejected` с кодом.
 - Детерминизм: ядро про undo не знает; журнал (§9) видит обычные команды → реплей совпадает.
 
+### 8.4 Как реализовано (T8, агент 148)
+- Буфер: `InverseLog` (`Tools/InverseLog.cs`), `tools.inverse_capacity` (по умолчанию 4096 команд, записей - `CommandQueueCapacity`); вне хэша и сейва. Запись фиксируется только для применённой команды; `Tag` записи = `Tag` прямой команды.
+- Обратные строит `InverseBuilder` (`Begin` до мутации, `End` после - индекс нового сегмента `BuildRoad` известен только тогда). Сейчас: `BuildRoad` -> `RemoveRoad(новый сегмент)` + `SetNodeControl(прежний режим)` для существующих построенных концов; переоткрытие -> `RemoveRoad`;
+  `RemoveRoad` -> `BuildRoad(RestoreOf, RestoreNodeA/B для осиротевших)` + `SetLaneFlags` + режим/план узлов концов + знак и запреты рукава у выживающего узла; `SetArmControl` -> прежний знак + режим узла;
+  `SetTurnBan`, `SetLaneFlags`, `SetNodeControl`, `SetSignalPlan` - прежнее значение. `UpgradeRoad/SplitRoad/MergeAtNode` (T5) и автобусные (T9) при применении дают запись `NoInverse`.
+- План узла возвращается отдельной `SetSignalPlan`, только если он не равен плану по умолчанию для нынешних осей (снимок плана привязан к числу осей, а дренаж асинхронен).
+- `BuildRoad(RestoreOf = H)`: `H` жив и в дренаже - переоткрытие; `H` жив и не в дренаже - `InvalidHandle`; `H` мёртв - пересоздание в новом слоте: `SegmentRemapped`/`NodeRemapped` (`A` = старый индекс, `B` = новый; `Tag` = тег команды), запись scratch-таблицы `old -> new` с точным старым поколением;
+  таблица применяется к командам той же фазы 1 (`CommandRefs.Remap`) и очищается в её конце. Хост берёт старое поколение из команды-источника (по `Tag` события), новое - из `NetworkView.SegmentRef/NodeRef`.
+- Отступление от §4.3 (дренаж): финал `RemoveRoad` понижает режим выжившего узла `RightHandRule` -> `None`, если у узла осталось <= 2 рукава (как у узла степени 2 из генератора): иначе `BuildRoad`+`RemoveRoad` не возвращают узел в прежнее состояние (`SetNodeControl(None)` на узле с >= 3 рукавами нормализуется в `RightHandRule`, а дренаж завершается позже).
+- Не сделано: `UndoUnavailable` в превью (буфер очищается каждый `Step`, переполнение возможно только при > 64 командах в записи).
+
 ## 9. Журнал команд = реплей (`src/Sim.Scenarios/Tools/ReplayLog.cs`, `Sim.Headless replay|bugreport`)
 
 - Хост пишет каждую принятую `Enqueue` команду: `(Tick на момент Enqueue, Command 64 Б)`; отброшенные (`Enqueue == false`) — нет
