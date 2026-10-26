@@ -141,5 +141,5 @@
 | 135 | mod-m9 (worktree) | sonnet | 4.5 M9: таймлайн команд в сценарии, CoreInfo.ApiVersion | done, merged (таймлайн = ручной Enqueue по хэшу при 1/2/3 потоках) |
 | 136 | rust-r4 (worktree) | sonnet | 4.6 R4: порт сети и connector-ов, network_hash | done, merged (network_hash и create_status совпали 9/9) |
 | 137 | rust-r5r6 (worktree) | sonnet | 4.6 R5+R6: конфликты, conflicts_hash; tc-ffi + C#-смоук | done, merged (conflicts_hash 10/10; ffi-smoke 129 проверок, 0 ошибок) |
-| 138 | mod-m3 (worktree) | sonnet | 4.5 M3: MANI из каталога, отпечаток, AssetNotice, --packages-dir | wip |
+| 138 | mod-m3 (worktree) | sonnet | 4.5 M3: MANI из каталога, отпечаток, AssetNotice, --packages-dir | done, merged (отпечаток base 8345a96e7adc282c; compare exit 2 при разном) |
 | 139 | tools-t3t4 (worktree) | sonnet | 4.3 T3+T4: перенос, перестройка узла, знаки/запреты; дренаж и снос | wip |
