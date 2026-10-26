@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| 3.2 Z8 приёмка зонирования | облако | claude/adoring-ritchie-cxzib8-z8 (WIP пушится по шагам; при обрыве — продолжать с ветки, спека zoning-demand.md строка Z8, §10.2, §11, §19) | scenarios/*-res.json, tests/Sim.Core.Tests/{City,Demand,Fixtures}, tests/SaveCorpus | 2026-10-27 |
