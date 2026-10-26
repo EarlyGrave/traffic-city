@@ -3,8 +3,8 @@ namespace Sim.Core.Tests;
 public class SmokeTests
 {
     [Fact]
-    public void CoreInfo_ApiVersion_IsZeroInScaffold()
+    public void CoreInfo_ApiVersion_IsOne()
     {
-        Assert.Equal(0, CoreInfo.ApiVersion);
+        Assert.Equal(1, CoreInfo.ApiVersion);
     }
 }
