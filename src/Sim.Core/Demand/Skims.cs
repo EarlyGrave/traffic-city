@@ -218,6 +218,7 @@ internal sealed class Skims
         if (_netVersion != net.Version || _stopSig != sig)
         {
             RebuildPrior(w, c);
+            c.Market.InvalidateRows();   // кэш стоимости строк (по суткам) строился по прежней априорной оценке: после правки сети мир и загруженный сейв обязаны считать заново (Z6)
             _netVersion = net.Version;
             _stopSig = sig;
         }

@@ -72,6 +72,15 @@ internal sealed class Market
         ScoreC = new int[cells];
     }
 
+    /// <summary>Кэш стоимости строк (ячейка, есть ли машина) устарел: пересчитать при следующем обращении.</summary>
+    public void InvalidateRows()
+    {
+        if (_rowDay != null)
+        {
+            Array.Fill(_rowDay, -1);
+        }
+    }
+
     /// <summary>Производные устарели (загрузка сейва, внешнее изменение): перестроить при следующем обращении.</summary>
     public void Invalidate()
     {

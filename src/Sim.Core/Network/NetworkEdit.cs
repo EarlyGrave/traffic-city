@@ -42,6 +42,16 @@ internal static class NetworkEdit
             }
         }
 
+        if (w.City != null)
+        {
+            // Z6: участки сегмента - Lost, здания заброшены (до освобождения слота). TODO(T7): IssueCode.ZoneLotsLost в превью RemoveRoad - число зданий на этих участках.
+            int lostLots = City.LotBuilder.OnSegmentRemoved(w, w.City, seg, sd.Generation);
+            if (lostLots > 0)
+            {
+                w.Emit(SimEventKind.ZoneLotsLost, 0, seg, lostLots);
+            }
+        }
+
         n.ToolsTouched = 1;
         w.Builder.UnlinkSegment(seg);
         n.FreeLaneBlock(firstLane, laneTotal);

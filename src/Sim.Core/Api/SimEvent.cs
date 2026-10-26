@@ -34,6 +34,7 @@ public enum SimEventKind : int
     NodeRemapped = 51,           // то же для узла
     BusStopRemapped = 52,        // то же для остановки
     BusRouteRemapped = 53,       // то же для маршрута
+    ZoneLotsLost = 54,           // A = индекс снесённого сегмента, B = число потерянных участков (режим жителей; zoning-demand.md §14)
 }
 
 /// <summary>Причина отказа команды: <c>SimEvent.A</c> для <see cref="SimEventKind.CommandRejected"/>.</summary>

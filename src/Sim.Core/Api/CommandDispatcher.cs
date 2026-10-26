@@ -221,12 +221,14 @@ internal static partial class CommandDispatcher
             {
                 // Сегмент уже добавлен, но connector'ов нет (ёмкость): сообщаем об отказе, сеть остаётся согласованной по версии.
                 GrowOverlay(w, rebuilt);
+                w.City?.LotGen.OnRoadBuilt(w, seg);   // сегмент уже в сети: участки вдоль него нужны, даже если connector'ы не построились
                 RejectNetwork(w, in cmd, bad);
                 return;
             }
         }
 
         GrowOverlay(w, rebuilt);
+        w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         Applied(w, in cmd);
     }
 
