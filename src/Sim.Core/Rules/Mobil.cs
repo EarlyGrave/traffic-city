@@ -58,6 +58,19 @@ internal static class Mobil
             }
         }
 
+        if (forcedDir == 0 && (ld.Flags & LaneFlags.Draining) != 0)
+        {
+            // Убираемая полоса (4.3, T4; player-tools.md §4.3): вынужденная смена к открытой полосе, как «полоса кончается»: вправо, если справа есть полоса не из убираемых, иначе влево.
+            if (ld.Right >= 0 && (e.Net.Lanes[ld.Right].Flags & LaneFlags.Draining) == 0)
+            {
+                forcedDir = -1;
+            }
+            else if (ld.Left >= 0 && (e.Net.Lanes[ld.Left].Flags & LaneFlags.Draining) == 0)
+            {
+                forcedDir = 1;
+            }
+        }
+
         if (forcedDir == 0 && desired >= 0 && ld.Length - v.S[i] < MinOvertakeRemaining)
         {
             return 0;
@@ -90,15 +103,16 @@ internal static class Mobil
         int lane = v.Lane[i];
         ref readonly LaneData ld = ref e.Net.Lanes[lane];
         int target = dir > 0 ? ld.Left : ld.Right;
-        if (target < 0 || (ld.Flags & 2) != 0)
+        if (target < 0 || ((ld.Flags & LaneFlags.NoLaneChangeOut) != 0 && (ld.Flags & LaneFlags.Draining) == 0))
         {
             return Infeasible;
         }
 
         ref readonly LaneData tl = ref e.Net.Lanes[target];
-        if (tl.Kind != LaneKind.Normal || ((tl.Flags & 1) != 0 && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0))
+        if (tl.Kind != LaneKind.Normal || ((tl.Flags & 1) != 0 && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0) ||
+            ((tl.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0 && (ld.Flags & (LaneFlags.Closed | LaneFlags.Draining)) == 0))
         {
-            return Infeasible;
+            return Infeasible;   // BusOnly для не-автобуса; в закрытую и убираемую полосы (4.3, T4) с открытой не перестраиваются (между закрытыми полосами одного сегмента - можно)
         }
 
         ref readonly VehicleTypeDesc t = ref types[v.Type[i]];

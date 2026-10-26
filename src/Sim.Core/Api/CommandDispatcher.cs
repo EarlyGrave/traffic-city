@@ -11,10 +11,11 @@ namespace Sim.Core.Api;
 /// <see cref="SimEventKind.CommandApplied"/> / <see cref="SimEventKind.CommandRejected"/> с эхом Tag.
 /// Applied: <c>A = (int)CommandKind</c>; Rejected: <c>A = (int)RejectReason</c>, <c>B = (int)CommandKind</c>.
 /// </summary>
-internal static class CommandDispatcher
+internal static partial class CommandDispatcher
 {
     public static void Run(World w)
     {
+        ToolOpsPhase.Run(w);   // 1а: финалы дренажа по состоянию конца прошлого тика (player-tools.md §12)
         while (w.Commands.TryDequeue(out Command cmd))
         {
             Apply(w, in cmd);
@@ -80,12 +81,20 @@ internal static class CommandDispatcher
                 // TODO(step 4): транспорт.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
+            case CommandKind.SetArmControl:
+                SetArmControl(w, in cmd);
+                break;
+            case CommandKind.SetTurnBan:
+                SetTurnBan(w, in cmd);
+                break;
+            case CommandKind.SetLaneFlags:
+                SetLaneFlags(w, in cmd);
+                break;
             case CommandKind.RemoveRoad:
+                RemoveRoad(w, in cmd);
+                break;
             case CommandKind.UpgradeRoad:
             case CommandKind.SplitRoad:
-            case CommandKind.SetArmControl:
-            case CommandKind.SetTurnBan:
-            case CommandKind.SetLaneFlags:
             case CommandKind.InsertBusStop:
             case CommandKind.RemoveBusStop:
             case CommandKind.RemoveBusRoute:
@@ -129,9 +138,16 @@ internal static class CommandDispatcher
     {
         BuildRoadCmd b = cmd.BuildRoad;
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
+        if ((b.Flags & ~BuildRoadFlags.Supported) == 0 && b.RestoreOf.Generation != 0 && b.RestoreNodeA.Generation == 0 && b.RestoreNodeB.Generation == 0 &&
+            w.Net.ResolveSegment(in b.RestoreOf) && w.Ops.FindSegment(b.RestoreOf.Index) >= 0)
+        {
+            ReopenRoad(w, in cmd, b.RestoreOf.Index);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
+            return;
+        }
+
         if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || b.RestoreOf.Generation != 0 || b.RestoreNodeA.Generation != 0 || b.RestoreNodeB.Generation != 0)
         {
-            // AutoSplit / Curve / RestoreOf - T4, T5.
+            // AutoSplit / Curve (T5), пересоздание по RestoreOf (T8).
             Rejected(w, in cmd, RejectReason.NotSupported);
             return;
         }
@@ -147,29 +163,31 @@ internal static class CommandDispatcher
         var z = new Vec2(b.Bx, b.Bz);
         if (!noConnectors)
         {
-            // Узел строится один раз (NodeAlreadyBuilt): новый сегмент в уже построенный узел не получил бы connector'ов.
-            // TODO(step 3): перестройка узла при добавлении рукава.
+            // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла; в Q-meso перестройка не поддерживается (состояние очередей по полосам).
             int na = w.Builder.FindNode(a);
             int nb = w.Builder.FindNode(z);
-            if ((na >= 0 && w.Net.Nodes[na].FirstArm >= 0) || (nb >= 0 && w.Net.Nodes[nb].FirstArm >= 0))
+            if (w.Queue != null && ((na >= 0 && w.Net.Nodes[na].FirstArm >= 0) || (nb >= 0 && w.Net.Nodes[nb].FirstArm >= 0)))
             {
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 return;
             }
 
-            // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла,
-            // поэтому ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных построить нельзя (вставка в середину
-            // перенумеровала бы connector'ы). Новые узлы всегда выше всех существующих.
+            // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла, пока сеть не правили.
+            // Построить ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных - уже правка раскладки: ToolsTouched (раскладка - состояние).
             int top = w.Net.HighestBuiltNode();
-            if ((na >= 0 && na < top) || (nb >= 0 && nb < top))
+            if ((na >= 0 && na < top && w.Net.Nodes[na].FirstArm < 0) || (nb >= 0 && nb < top && w.Net.Nodes[nb].FirstArm < 0))
             {
-                Rejected(w, in cmd, RejectReason.NotSupported);
-                return;
+                w.Net.ToolsTouched = 1;
             }
         }
 
         w.Builder.ResetCreated();
         NetworkStatus st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out int seg);
+        if (st == NetworkStatus.Ok && !noConnectors && !CheckBuiltEnds(w, in cmd, seg))
+        {
+            return;
+        }
+
         for (int k = 0; k < w.Builder.CreatedNodeCount; k++)
         {
             w.Emit(SimEventKind.NodeCreated, cmd.Tag, w.Builder.CreatedNodes[k]);   // порядок создания (в дыры сети индексы не растут)
@@ -182,38 +200,104 @@ internal static class CommandDispatcher
         }
 
         w.Emit(SimEventKind.SegmentCreated, cmd.Tag, seg);
+        bool rebuilt = false;
         if (!noConnectors)
         {
             ref readonly SegmentData sd = ref w.Net.Segments[seg];
             int lo = Math.Min(sd.NodeA, sd.NodeB);   // по возрастанию индекса узла (канонический порядок раскладки)
             int hi = Math.Max(sd.NodeA, sd.NodeB);
-            NetworkStatus c1 = w.Builder.BuildConnectorsEx(lo);
-            NetworkStatus c2 = w.Builder.BuildConnectorsEx(hi);
+            NetworkStatus c1 = BuildOrRebuildEnd(w, in cmd, lo, ref rebuilt);
+            NetworkStatus c2 = BuildOrRebuildEnd(w, in cmd, hi, ref rebuilt);
             NetworkStatus bad = c1 != NetworkStatus.Ok ? c1 : c2;
             if (bad == NetworkStatus.Ok)
             {
-                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений.
-                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, lo);
-                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, hi);
+                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений (у перестроенных узлов строки уже есть).
+                NetworkStatus k1 = BuildConflictsIfFresh(w, lo);
+                NetworkStatus k2 = BuildConflictsIfFresh(w, hi);
                 bad = k1 != NetworkStatus.Ok ? k1 : k2;
             }
 
             if (bad != NetworkStatus.Ok)
             {
                 // Сегмент уже добавлен, но connector'ов нет (ёмкость): сообщаем об отказе, сеть остаётся согласованной по версии.
-                GrowOverlay(w);
+                GrowOverlay(w, rebuilt);
                 RejectNetwork(w, in cmd, bad);
                 return;
             }
         }
 
-        GrowOverlay(w);
+        GrowOverlay(w, rebuilt);
         Applied(w, in cmd);
     }
 
+    // Концы нового сегмента: непостроенный узел строится как раньше, построенный - перестраивается (врезка рукава, 4.3 T3).
+    private static NetworkStatus BuildOrRebuildEnd(World w, in Command cmd, int node, ref bool rebuilt)
+    {
+        if (w.Net.Nodes[node].FirstArm < 0)
+        {
+            return w.Builder.BuildConnectorsEx(node);
+        }
+
+        rebuilt = true;
+        return NodeEdit.Rebuild(w, node, rejectTrap: false, cmd.Tag);
+    }
+
+    private static NetworkStatus BuildConflictsIfFresh(World w, int node)
+    {
+        ref readonly NodeData nd = ref w.Net.Nodes[node];
+        if (nd.ConnectorCount > 0 && w.Net.Lanes[nd.FirstConnector].ConflictGroup >= 0)
+        {
+            return NetworkStatus.Ok;
+        }
+
+        return w.Connectors.BuildConflicts(w.Net, node);
+    }
+
+    // Перестройка построенных концов должна получиться до любых изменений: иначе новый сегмент (с созданными узлами) снимается и команда отклоняется (Busy и т.п.).
+    private static bool CheckBuiltEnds(World w, in Command cmd, int seg)
+    {
+        ref readonly SegmentData sd = ref w.Net.Segments[seg];
+        int lo = Math.Min(sd.NodeA, sd.NodeB);
+        int hi = Math.Max(sd.NodeA, sd.NodeB);
+        NetworkStatus bad = NetworkStatus.Ok;
+        if (w.Net.Nodes[lo].FirstArm >= 0)
+        {
+            bad = NodeEdit.Check(w, lo, rejectTrap: false);
+        }
+
+        if (bad == NetworkStatus.Ok && w.Net.Nodes[hi].FirstArm >= 0)
+        {
+            bad = NodeEdit.Check(w, hi, rejectTrap: false);
+        }
+
+        if (bad == NetworkStatus.Ok)
+        {
+            return true;
+        }
+
+        NetworkEdit.ReleaseSegment(w, seg);
+        for (int k = w.Builder.CreatedNodeCount - 1; k >= 0; k--)
+        {
+            NetworkEdit.ReleaseNode(w, w.Builder.CreatedNodes[k]);
+        }
+
+        w.Net.Version++;
+        Rejected(w, in cmd, RejectOf(bad));
+        return false;
+    }
+
+    private static RejectReason RejectOf(NetworkStatus st) => st switch
+    {
+        NetworkStatus.Busy => RejectReason.Busy,
+        NetworkStatus.Trap => RejectReason.CreatesTrap,
+        NetworkStatus.TooManyArms or NetworkStatus.TooManyConnectors => RejectReason.NodeLimit,
+        _ when st.IsCapacity() => RejectReason.Capacity,
+        _ => RejectReason.InvalidArgument,
+    };
+
     // Сеть выросла (routing.md 9.3 "BuildRoad"): граф пересобирается сразу, оверлей дописывает новые узлы/входы/выходы,
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
-    private static void GrowOverlay(World w)
+    private static void GrowOverlay(World w, bool rebuilt = false)
     {
         w.Peds?.OnNetworkGrown(w); // сеть пешеходов - производное сети: пересобирается целиком (pedestrians.md §2); при выключенных peds - null
         w.Lod?.OnNetworkGrown(); // LOD-ячейки: новые узлы и полосы получают ячейку (sim-lod.md §1); при Lod.Mode = Off - null
@@ -228,7 +312,15 @@ internal static class CommandDispatcher
             return;
         }
 
-        ov.OnNetworkGrown();
+        if (rebuilt || w.Net.ToolsTouched != 0)
+        {
+            ov.RebuildAfterEdit();   // правка раскладки: слоты занимаются заново, дуги узлов меняются - инкремент оверлея (дописывание в конец) неприменим
+        }
+        else
+        {
+            ov.OnNetworkGrown();
+        }
+
         w.Counters.OverlayRebuilds = ov.Rebuilds;
         w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;
     }
@@ -389,7 +481,7 @@ internal static class CommandDispatcher
         if (fromLane)
         {
             ref readonly LaneData l = ref w.Net.Lanes[t.FromLane];
-            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length;
+            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length && (l.Flags & LaneFlags.Closed) == 0;
         }
 
         if (!zoneOk || (!fromZone && !fromLane) || (uint)t.VehicleType >= (uint)w.Types.Length || t.Count < 1)

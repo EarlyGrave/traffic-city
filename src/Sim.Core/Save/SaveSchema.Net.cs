@@ -69,6 +69,7 @@ internal static partial class SaveSchema
         Col.Array<int>(19, "SegmentFree", w => w.Net.SegmentPool.FreeListArray, w => w.Net.SegmentPool.FreeCount, "SegmentFreeCount"),
         Col.Array<int>(20, "BusStopFree", w => w.Net.BusStopPool.FreeListArray, w => w.Net.BusStopPool.FreeCount, "BusStopFreeCount"),
         Col.Array<int>(21, "BusRouteFree", w => w.Net.BusRoutePool.FreeListArray, w => w.Net.BusRoutePool.FreeCount, "BusRouteFreeCount"),
+
     },
         ArenaColumns(22, "Lane", w => w.Net.LaneArena),
         ArenaColumns(26, "LanePoint", w => w.Net.LanePointArena),
@@ -76,7 +77,22 @@ internal static partial class SaveSchema
         ArenaColumns(34, "Arm", w => w.Net.ArmArena),
         ArenaColumns(38, "LaneNext", w => w.Net.LaneNextArena),
         ArenaColumns(42, "ZoneLane", w => w.Net.ZoneLaneArena),
-        ArenaColumns(46, "BusRouteStop", w => w.Net.BusRouteStopArena)));
+        ArenaColumns(46, "BusRouteStop", w => w.Net.BusRouteStopArena),
+        new[]
+        {
+        // 4.3 (T4, world_version 5): длительные операции инструментов (дренаж). Прогресс Remaining - производное (фаза 1а), в сейв не входит.
+        Cnt(50, "ToolOpCount", w => w.Ops.Count, (w, v) => w.Ops.Count = v, w => w.Ops.Capacity),
+        Col.Scalar<int>(51, "ToolOpNextId", w => w.Ops.NextId, (c, v) => c.W.Ops.NextId = v, "1"),
+        Col.Array<int>(52, "ToolOpId", w => w.Ops.Id, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<byte>(53, "ToolOpKind", w => w.Ops.Kind, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<int>(54, "ToolOpTargetIndex", w => w.Ops.TargetIndex, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<int>(55, "ToolOpTargetGen", w => w.Ops.TargetGen, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<byte>(56, "ToolOpFlags", w => w.Ops.Flags, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<long>(57, "ToolOpStartTick", w => w.Ops.StartTick, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<long>(58, "ToolOpLastProgressTick", w => w.Ops.LastProgressTick, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<long>(59, "ToolOpLastStallTick", w => w.Ops.LastStallTick, w => w.Ops.Count, "ToolOpCount"),
+        Col.Array<int>(60, "ToolOpBestRemaining", w => w.Ops.BestRemaining, w => w.Ops.Count, "ToolOpCount"),
+        }));
 
     /// <summary>
     /// Состояние арены блоков (4 столбца с <paramref name="firstId"/>): число дыр, потерянные элементы, дыры (<c>класс &lt;&lt; 32 | первый элемент</c>, класс по возрастанию,

@@ -17,17 +17,19 @@ internal enum NetworkStatus : int
     PointsFull = 9,         // MaxLanePoints (или буфер осевых точек сегментов / NodeArms / LaneNext)
     ConnectorsFull = 10,    // MaxConnectors (ConnectorStore)
     ConflictsFull = 11,     // MaxConflicts (ConnectorStore)
+    Busy = 12,              // перестройка узла: исчезающий connector занят машинами (4.3, T3); ёмкостью не является
+    Trap = 13,              // перестройка узла оставила бы входную полосу без выезда (запрет манёвра); ёмкостью не является
 }
 
 internal static class NetworkStatusExtensions
 {
-    public static bool IsCapacity(this NetworkStatus s) => s >= NetworkStatus.NodesFull;
+    public static bool IsCapacity(this NetworkStatus s) => s >= NetworkStatus.NodesFull && s <= NetworkStatus.ConflictsFull;
 
     /// <summary>Отображение на статус <c>Simulation.Create</c> (core-api §10).</summary>
     public static CreateStatus ToCreateStatus(this NetworkStatus s) => s switch
     {
         NetworkStatus.Ok => CreateStatus.Ok,
-        >= NetworkStatus.NodesFull => CreateStatus.NetworkTooLarge,
+        >= NetworkStatus.NodesFull and <= NetworkStatus.ConflictsFull => CreateStatus.NetworkTooLarge,
         _ => CreateStatus.InvalidNetwork,
     };
 }

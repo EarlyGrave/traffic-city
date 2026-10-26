@@ -40,6 +40,56 @@ internal sealed partial class NetworkStore
 
     public bool ResolveBusRoute(in EntityRef r) => ResolveBusRoute(r.Index, r.Generation);
 
+    // ---- закрытие для въезда (4.3, T4): полосы зон спавна/прибытия, не закрытые дренажем ----
+
+    /// <summary>Закрыта ли полоса для въезда (<c>LaneFlags.Closed</c>): сегмент в дренаже или connector, обречённый перестройкой узла.</summary>
+    public bool LaneClosed(int lane) => (Lanes[lane].Flags & LaneFlags.Closed) != 0;
+
+    /// <summary>
+    /// Число полос зоны для спавна и прибытия, не закрытых дренажем. У сети без правок равно <c>SpawnLaneCount</c> (быстрый выход): выбор полосы и расход PRNG прежние (TL1).
+    /// </summary>
+    public int OpenZoneLaneCount(int zone)
+    {
+        ref readonly ZoneData z = ref Zones[zone];
+        int n = z.SpawnLaneCount;
+        if (ToolsTouched == 0 || n <= 0)
+        {
+            return n;
+        }
+
+        int open = 0;
+        for (int k = 0; k < n; k++)
+        {
+            if (!LaneClosed(ZoneLanes[z.FirstSpawnLane + k]))
+            {
+                open++;
+            }
+        }
+
+        return open;
+    }
+
+    /// <summary>Открытая полоса зоны с номером <paramref name="k"/> среди открытых (<c>0 &lt;= k &lt; OpenZoneLaneCount</c>) в порядке списка зоны; -1 - нет.</summary>
+    public int OpenZoneLane(int zone, int k)
+    {
+        ref readonly ZoneData z = ref Zones[zone];
+        if (ToolsTouched == 0)
+        {
+            return ZoneLanes[z.FirstSpawnLane + k];
+        }
+
+        for (int q = 0; q < z.SpawnLaneCount; q++)
+        {
+            int lane = ZoneLanes[z.FirstSpawnLane + q];
+            if (!LaneClosed(lane) && k-- == 0)
+            {
+                return lane;
+            }
+        }
+
+        return -1;
+    }
+
     // ---- канонические значения мёртвых слотов (ссылки -1, остальное 0, поколение чётное; сейв пишет их как есть) ----
 
     internal static NodeData DeadNode(int generation) => new() { FirstArm = -1, Signal = -1, Zone = -1, Generation = generation };

@@ -192,6 +192,9 @@ public sealed partial class Simulation : IDisposable
         }
     }
 
+    /// <summary>Длительные операции инструментов (дренаж сноса) с прогрессом: для индикатора на дороге (player-tools.md §7.2).</summary>
+    public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views();
+
     public NetworkView Network => _disposed ? default : _w.Net.GetView();
 
     /// <summary>События последнего Step (буфер очищается в его начале).</summary>

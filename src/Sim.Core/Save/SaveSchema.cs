@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 4;
+    public const int WorldVersion = 5;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 3;

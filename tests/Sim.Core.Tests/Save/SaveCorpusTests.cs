@@ -21,7 +21,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 5L * 1024 * 1024;
+    private const long BudgetBytes = 8L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -31,6 +31,7 @@ public sealed class SaveCorpusTests
         new("s1k", 2400, S1k),
         new("s1k-peds", 2400, S1kPeds),
         new("s1k-res", 24000, S1kRes),
+        new("small-drain", 600, Small, EvolveDrain),   // 4.3 (T4): сохранение посреди дренажа (операция сноса, закрытые полосы), w5
         new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
     };
 
@@ -207,6 +208,17 @@ public sealed class SaveCorpusTests
         sim.Step(20);
         Sim.Core.Tests.Network.ToolStateFixture.ReleaseDetached(sim, segs);
         sim.Step(ticks - (ticks / 2) - 22);
+    }
+
+    // Снос самого загруженного сегмента за 25 тиков до конца: в сейве активная операция дренажа, закрытый сегмент, перестроенные маршруты.
+    private static void EvolveDrain(Simulation sim, int ticks)
+    {
+        sim.Step(ticks - 25);
+        int seg = Sim.Core.Tests.Tools.ToolsFixture.BusiestSegment(sim);
+        var cmd = Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = Sim.Core.Tests.Tools.ToolsFixture.Segment(sim, seg) }, 1);
+        Assert.Equal(RejectReason.None, Sim.Core.Tests.Tools.ToolsFixture.Run(sim, in cmd));
+        sim.Step(24);
+        Assert.Equal(1, sim.World.Ops.Count);   // дренаж ещё идёт
     }
 
     private static (ScenarioDesc, string[]) S1k()

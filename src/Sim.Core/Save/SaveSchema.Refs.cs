@@ -29,10 +29,10 @@ internal static partial class SaveSchema
         new("NZON", "ZoneLanes", RefKind.Lane, false),
         new("NBUS", "StopLane", RefKind.Lane, true),
         new("NBUS", "BusRouteStops", RefKind.Stop, false),
-        new("CONN", "Lane", RefKind.Lane, false),
-        new("CONN", "Node", RefKind.Node, false),
-        new("CONN", "InLane", RefKind.Lane, false),
-        new("CONN", "OutLane", RefKind.Lane, false),
+        new("CONN", "Lane", RefKind.Lane, true),   // -1 у мёртвой строки (дыра или запас блока строк узла)
+        new("CONN", "Node", RefKind.Node, true),
+        new("CONN", "InLane", RefKind.Lane, true),
+        new("CONN", "OutLane", RefKind.Lane, true),
         new("SIGS", "Node", RefKind.Node, true),
         new("SIGS", "StateNode", RefKind.Node, false),
 

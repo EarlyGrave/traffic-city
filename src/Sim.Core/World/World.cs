@@ -50,6 +50,7 @@ internal sealed class World : IDisposable
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public readonly ToolOps Ops;                 // длительные операции инструментов (дренаж, 4.3 T4); состояние - в хэше и сейве при ToolsTouched = 1
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
     public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
@@ -207,6 +208,7 @@ internal sealed class World : IDisposable
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
         Connectors = new ConnectorStore(maxConnectors, maxConflicts, PedCfg.Enabled);
         Signals = new SignalStore(c.MaxSignalizedNodes, rules.SignalArrowGapTicks);
+        Ops = new ToolOps(ToolOps.DefaultCapacity);
         Masks = new TickMasks(c.MaxVehicles);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
         SignalWait = new SignalMetrics();

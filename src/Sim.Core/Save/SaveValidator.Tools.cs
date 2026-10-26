@@ -71,11 +71,21 @@ internal static partial class SaveValidator
             }
         }
 
-        // Строки connector'ов и конфликты: арены ещё не используются (правки узлов - T3).
-        if (w.Connectors.RowArena.FreeBlockCount != 0 || w.Connectors.ConflictArena.FreeBlockCount != 0 || w.Connectors.RowArena.LeakedElements != 0 ||
-            w.Connectors.ConflictArena.LeakedElements != 0 || HasLadderBits(w.Connectors.RowArena) || HasLadderBits(w.Connectors.ConflictArena))
+        // Строки connector'ов и конфликты (T3): те же арены, что у сети; без правок - подряд без дыр.
+        BlockArena[] cArenas = { w.Connectors.RowArena, w.Connectors.ConflictArena };
+        for (int i = 0; i < cArenas.Length; i++)
         {
-            return Bad(c, 0, 18);
+            st = ValidateArena(c, cArenas[i], n.ToolsTouched != 0);
+            if (st != LoadStatus.Ok)
+            {
+                return Bad(c, c.FailRow, (uint)(18 + (4 * i)));
+            }
+        }
+
+        st = ValidateOps(c, w, n);
+        if (st != LoadStatus.Ok)
+        {
+            return st;
         }
 
         if (n.ToolsTouched == 0 && (n.AliveNodes != n.NodeCount || n.AliveSegments != n.SegmentCount || n.AliveBusStops != n.BusStopCount || n.AliveBusRoutes != n.BusRouteCount))
@@ -90,9 +100,50 @@ internal static partial class SaveValidator
             !HolesCanonical(n.ArmArena, i => n.NodeArms[i] == 0 && n.ArmFlags[i] == 0 && n.ArmDir[i].X == 0f && n.ArmDir[i].Z == 0f) ||
             !HolesCanonical(n.LaneNextArena, i => n.LaneNext[i] == 0) ||
             !HolesCanonical(n.ZoneLaneArena, i => n.ZoneLanes[i] == 0) ||
-            !HolesCanonical(n.BusRouteStopArena, i => n.BusRouteStops[i] == 0))
+            !HolesCanonical(n.BusRouteStopArena, i => n.BusRouteStops[i] == 0) ||
+            !HolesCanonical(w.Connectors.RowArena, i => w.Connectors.DeadRowIsCanonical(i)) ||
+            !HolesCanonical(w.Connectors.ConflictArena, i => w.Connectors.Conflicts[i].OtherLocal == 0 && w.Connectors.Conflicts[i].Flags == 0 && w.Connectors.Conflicts[i].SMineCm == 0 &&
+                w.Connectors.Conflicts[i].SOtherCm == 0 && w.Connectors.Conflicts[i].Reserved == 0))
         {
             return Bad(c, 0, 22);
+        }
+
+        return LoadStatus.Ok;
+    }
+
+    /// <summary>
+    /// Операции дренажа (T4): без правок их нет, <c>NextId = 1</c>; id строго растут и меньше <c>NextId</c>; цель - живой сегмент того же поколения в состоянии «закрывается»,
+    /// по одной операции на сегмент; каждый закрывающийся сегмент имеет операцию.
+    /// </summary>
+    private static LoadStatus ValidateOps(LoadContext c, World w, NetworkStore n)
+    {
+        ToolOps ops = w.Ops;
+        if (ops.Count < 0 || ops.Count > ops.Capacity || ops.NextId < 1 || (n.ToolsTouched == 0 && (ops.Count != 0 || ops.NextId != 1)))
+        {
+            return Bad(c, 0, 50);
+        }
+
+        int prev = 0;
+        for (int k = 0; k < ops.Count; k++)
+        {
+            int seg = ops.TargetIndex[k];
+            if (ops.Id[k] <= prev || ops.Id[k] >= ops.NextId || ops.Kind[k] != (byte)ToolOpKind.RemoveSegment || (ops.Flags[k] & ~ToolOpFlags.KeepNodes) != 0 ||
+                !n.ResolveSegment(seg, ops.TargetGen[k]) || ops.TargetGen[k] == 0 || (n.Segments[seg].Flags & SegmentFlags.Closing) == 0 ||
+                ops.FindSegment(seg) != k || ops.StartTick[k] > w.Tick || ops.LastProgressTick[k] < ops.StartTick[k] || ops.LastProgressTick[k] > w.Tick ||
+                ops.LastStallTick[k] < ops.StartTick[k] || ops.LastStallTick[k] > w.Tick || ops.BestRemaining[k] < 0)
+            {
+                return Bad(c, k, 51);
+            }
+
+            prev = ops.Id[k];
+        }
+
+        for (int s = 0; s < n.SegmentCount; s++)
+        {
+            if (n.SegmentAlive(s) && (n.Segments[s].Flags & SegmentFlags.Closing) != 0 && ops.FindSegment(s) < 0)
+            {
+                return Bad(c, s, 52);
+            }
         }
 
         return LoadStatus.Ok;

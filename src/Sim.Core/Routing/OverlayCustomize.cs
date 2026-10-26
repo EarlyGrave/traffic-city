@@ -84,6 +84,11 @@ internal sealed partial class Overlay
         int n = _g.DirSegCount;
         for (int u = 0; u < n; u++)
         {
+            if (_g.StartNode[u] < 0)
+            {
+                continue;   // мёртвый слот сегмента (4.3, T2): вершины нет
+            }
+
             float c = CustomizedSegCost[u];
             if (MathF.Abs(_g.SegCost[u] - c) > _eps * c)
             {
@@ -94,7 +99,7 @@ internal sealed partial class Overlay
 
         for (int u = 0; u < n; u++)
         {
-            if (Dirty[CellOfNode(1, _g.StartNode[u])] != 0)
+            if (_g.StartNode[u] >= 0 && Dirty[CellOfNode(1, _g.StartNode[u])] != 0)
             {
                 CustomizedSegCost[u] = _g.SegCost[u];
             }

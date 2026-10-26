@@ -314,6 +314,10 @@ internal static class StateHash
             w.Net.AddToolStateToHash(ref h);
             w.Connectors.RowArena.AddToHash(ref h);
             w.Connectors.ConflictArena.AddToHash(ref h);
+            if (w.Ops.NextId != 1)
+            {
+                w.Ops.AddToHash(ref h);   // операции дренажа (T4): пока ни одной не заводили, раздела нет - хэш правленых сетей v4 прежний
+            }
         }
 
         return h.Value;

@@ -399,7 +399,7 @@ public class SimulationTests
     }
 
     [Fact]
-    public void BuildRoad_Invalid_Rejected_AndBuiltNodeNotSupported()
+    public void BuildRoad_Invalid_Rejected_AndBuiltNodeGetsAnArm()
     {
         using Simulation sim = Make();
         var zeroLanes = new BuildRoadCmd { Ax = 0, Az = 500, Bx = 150, Bz = 500, SpeedLimit = 13.9f };
@@ -421,8 +421,8 @@ public class SimulationTests
             }
         }
 
-        Assert.Equal(4, rejected);
-        Assert.Equal(2, sim.Network.Segments.Length);
+        Assert.Equal(3, rejected);   // врезка в построенный узел (4.3, T3) проходит: перестройка узла
+        Assert.Equal(3, sim.Network.Segments.Length);
     }
 
     [Fact]

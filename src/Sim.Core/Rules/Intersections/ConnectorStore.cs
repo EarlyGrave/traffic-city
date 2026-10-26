@@ -172,22 +172,109 @@ internal sealed class ConnectorStore
             return NetworkStatus.NodeAlreadyBuilt;
         }
 
-        if (Count + k > Lane.Length)
+        if (!net.CanAllocBlock(RowArena, k))
         {
             return NetworkStatus.ConnectorsFull;
         }
 
-        int g0 = Count;
+        int g0 = net.AllocBlock(RowArena, k);
+        MarkSpareRowsDead(g0, k);
         Register(net, node, g0);
-        Count += k;
-
         if (nd.Control == NodeControl.None)
         {
             return NetworkStatus.Ok;
         }
 
         ComputePairs(net, g0, k);
-        return WriteRows(net, node, g0, k);
+        NetworkStatus st = WriteRows(net, node, g0, k);
+        if (st != NetworkStatus.Ok)
+        {
+            // Строки уже зарегистрированы, места под конфликты нет: узел остаётся без записей (как раньше при ConflictsFull), блок строк не освобождаем.
+            return st;
+        }
+
+        return NetworkStatus.Ok;
+    }
+
+    /// <summary>Запасные строки блока по лестнице (ёмкость сверх <paramref name="k"/>) получают канонический вид мёртвых.</summary>
+    private void MarkSpareRowsDead(int g0, int k)
+    {
+        int cap = RowArena.CapacityOf(g0, k);
+        for (int g = g0 + k; g < g0 + cap; g++)
+        {
+            KillRow(g);
+        }
+    }
+
+    /// <summary>Строка мёртвая и каноническая (<see cref="KillRow"/>): так её пишет сейв и требует валидатор.</summary>
+    public bool DeadRowIsCanonical(int g) =>
+        Lane[g] == -1 && Node[g] == -1 && InLane[g] == -1 && OutLane[g] == -1 && Length[g] == 0f && InLength[g] == 0f && LocalBit[g] == 0 && Maneuver[g] == 0 && FromArm[g] == 0 &&
+        Flags[g] == 0 && FirstConflict[g] == 0 && ConflictCount[g] == 0 && ConflictMask[g] == 0UL;
+
+    /// <summary>Мёртвая строка: ссылки -1, остальное 0 (канон сейва, TL4); производные пешеходов - -1.</summary>
+    private void KillRow(int g)
+    {
+        Lane[g] = -1;
+        Node[g] = -1;
+        InLane[g] = -1;
+        OutLane[g] = -1;
+        Length[g] = 0f;
+        InLength[g] = 0f;
+        LocalBit[g] = 0;
+        Maneuver[g] = 0;
+        FromArm[g] = 0;
+        Flags[g] = 0;
+        FirstConflict[g] = 0;
+        ConflictCount[g] = 0;
+        ConflictMask[g] = 0;
+        if (CrossInX != null && CrossOutX != null)
+        {
+            CrossInX[g] = -1;
+            CrossOutX[g] = -1;
+        }
+    }
+
+    /// <summary>
+    /// Освобождает строки и записи конфликтов узла по старому блоку (<paramref name="g0"/>, <paramref name="rows"/>): строки получают вид мёртвых, блок конфликтов (<paramref name="conflictFirst"/>,
+    /// <paramref name="conflictTotal"/> - сумма <c>ConflictCount</c> строк) возвращается в арену, записи зануляются.
+    /// </summary>
+    public void FreeNodeRows(int g0, int rows, int conflictFirst, int conflictTotal)
+    {
+        int cap = RowArena.CapacityOf(g0, rows);
+        for (int g = g0; g < g0 + cap; g++)
+        {
+            KillRow(g);
+        }
+
+        RowArena.Free(g0, rows);
+        if (conflictTotal > 0)
+        {
+            int ccap = ConflictArena.CapacityOf(conflictFirst, conflictTotal);
+            Array.Clear(Conflicts, conflictFirst, ccap);
+            ConflictArena.Free(conflictFirst, conflictTotal);
+        }
+    }
+
+    /// <summary>Флаги строк узла (<c>FromMinorArm</c>, знак «стоп») заново по <c>ArmFlags</c> рукавов (смена знаков рукавов, 4.3, T3); <c>Rel</c> - <see cref="RecomputeRel"/>.</summary>
+    public void RefreshFlags(NetworkStore net, int node)
+    {
+        ref readonly NodeData nd = ref net.Nodes[node];
+        if (nd.ConnectorCount == 0)
+        {
+            return;
+        }
+
+        int g0 = net.Lanes[nd.FirstConnector].ConflictGroup;
+        if (g0 < 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < nd.ConnectorCount; i++)
+        {
+            byte af = net.ArmFlags[nd.FirstArm + FromArm[g0 + i]];
+            Flags[g0 + i] = (byte)(((af & NetworkBuilder.ArmMinorBit) != 0 ? 1 : 0) | ((af & NetworkBuilder.ArmStopBit) != 0 ? 2 : 0));
+        }
     }
 
     /// <summary>
@@ -316,7 +403,7 @@ internal sealed class ConnectorStore
             Maneuver[g] = (byte)(a == b
                 ? Network.Maneuver.UTurn
                 : NetworkBuilder.ClassifyTurn(net.ArmDir[nd.FirstArm + a], net.ArmDir[nd.FirstArm + b], nd.ArmCount == 2));
-            Flags[g] = (byte)((net.ArmFlags[nd.FirstArm + a] & NetworkBuilder.ArmMinorBit) != 0 ? 1 : 0);
+            Flags[g] = (byte)(((net.ArmFlags[nd.FirstArm + a] & NetworkBuilder.ArmMinorBit) != 0 ? 1 : 0) | ((net.ArmFlags[nd.FirstArm + a] & NetworkBuilder.ArmStopBit) != 0 ? 2 : 0));
             FirstConflict[g] = 0;
             ConflictCount[g] = 0;
             ConflictMask[g] = 0;
@@ -406,24 +493,31 @@ internal sealed class ConnectorStore
     {
         ref readonly NodeData nd = ref net.Nodes[node];
         bool minorRules = nd.Control == NodeControl.Yield || nd.Control == NodeControl.Stop;
+
+        // Один блок записей на узел: общее число известно до записи, нехватка места - до единственного изменения (T3, player-tools.md §3 п. 2).
+        int total = 0;
         for (int i = 0; i < k; i++)
         {
-            int need = 0;
             for (int j = 0; j < k; j++)
             {
                 if (_kind[(i * MaxLocal) + j] != 0)
                 {
-                    need++;
+                    total++;
                 }
             }
+        }
 
+        if (!net.CanAllocBlock(ConflictArena, total))
+        {
+            return NetworkStatus.ConflictsFull;
+        }
+
+        int block = net.AllocBlock(ConflictArena, total);
+        int used = 0;
+        for (int i = 0; i < k; i++)
+        {
             int g = g0 + i;
-            if (ConflictsUsed + need > Conflicts.Length)
-            {
-                return NetworkStatus.ConflictsFull;
-            }
-
-            int first = ConflictsUsed;
+            int first = block + used;
             int count = 0;
             ulong mask = 0;
             for (int j = 0; j < k; j++)
@@ -459,7 +553,7 @@ internal sealed class ConnectorStore
             FirstConflict[g] = first;
             ConflictCount[g] = count;
             ConflictMask[g] = mask;
-            ConflictsUsed += count;
+            used += count;
         }
 
         return NetworkStatus.Ok;

@@ -145,24 +145,20 @@ public class ToolPayloadSizesTests
     }
 
     [Fact]
-    public void ToolCommands_AreNotSupported_AndStateIsUntouched()
+    public void NotYetImplementedToolCommands_AreNotSupported_AndStateIsUntouched()
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());
         sim.Step(5);
         var seg = new EntityRef(0, 1);
         Command[] cmds =
         {
-            Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = seg }, 1),
-            Command.MakeUpgradeRoad(new UpgradeRoadCmd { Seg = seg }, 2),
-            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 3),
-            Command.MakeSetArmControl(new SetArmControlCmd { Node = seg }, 4),
-            Command.MakeSetTurnBan(new SetTurnBanCmd { Node = seg }, 5),
-            Command.MakeSetLaneFlags(new SetLaneFlagsCmd { Seg = seg }, 6),
-            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 7),
-            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 8),
-            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 9),
-            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 10),
-            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 11),
+            Command.MakeUpgradeRoad(new UpgradeRoadCmd { Seg = seg }, 1),
+            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 2),
+            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 3),
+            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 4),
+            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 5),
+            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 6),
+            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 7),
         };
         foreach (Command c in cmds)
         {
@@ -173,7 +169,7 @@ public class ToolPayloadSizesTests
         int rejected = 0;
         foreach (SimEvent e in sim.Events)
         {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 11)
+            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 7)
             {
                 rejected++;
                 Assert.Equal((int)RejectReason.NotSupported, e.A);

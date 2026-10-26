@@ -158,12 +158,23 @@ internal static partial class SaveValidator
         ConnectorStore cs = w.Connectors;
         for (int g = 0; g < cs.Count; g++)
         {
+            if (cs.Lane[g] < 0)
+            {
+                continue;   // мёртвая строка (дыра или запас блока): производных нет
+            }
+
             cs.Length[g] = n.Lanes[cs.Lane[g]].Length;
             cs.InLength[g] = n.Lanes[cs.InLane[g]].Length;
         }
 
         // Статика светофоров (рукава, оси, входные полосы Adaptive): производное от сети, строится тем же кодом, что при TryAdd.
         w.Signals.RebuildStatics(w);
+
+        // Прогресс операций дренажа - производное: считается по загруженным занятости и сети.
+        for (int k = 0; k < w.Ops.Count; k++)
+        {
+            w.Ops.Remaining[k] = Sim.Core.Network.ToolOpsPhase.CountOn(w, w.Ops.TargetIndex[k]);
+        }
 
         return LoadStatus.Ok;
     }
@@ -499,6 +510,16 @@ internal static partial class SaveValidator
         for (int g = 0; g < cs.Count; g++)
         {
             int ln = cs.Lane[g];
+            if (ln < 0)
+            {
+                if (!cs.DeadRowIsCanonical(g))
+                {
+                    return Bad(c, g, 18);
+                }
+
+                continue;
+            }
+
             if ((uint)ln >= (uint)lanes || n.Lanes[ln].Kind != LaneKind.Connector || (uint)cs.Node[g] >= (uint)nodes || (uint)cs.InLane[g] >= (uint)lanes ||
                 (uint)cs.OutLane[g] >= (uint)lanes || cs.LocalBit[g] >= NetworkBuilder.MaxConnectorsPerNode || cs.FirstConflict[g] < 0 ||
                 cs.ConflictCount[g] < 0 || (long)cs.FirstConflict[g] + cs.ConflictCount[g] > cs.ConflictsUsed || cs.Maneuver[g] > (byte)Maneuver.UTurn)
@@ -649,7 +670,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 334);
             }
 
-            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Ped)
+            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Closed)
             {
                 return Bad(c, i, 340);
             }

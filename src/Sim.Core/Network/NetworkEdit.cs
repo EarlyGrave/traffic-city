@@ -126,17 +126,29 @@ internal static class NetworkEdit
     }
 
     /// <summary>
-    /// Пакетный пересчёт производных после структурных правок (player-tools.md §12 шаг 1c, версия T2): граф маршрутов целиком и веса по нагрузке, пересборка сети пешеходов и
-    /// LOD-привязок, пометка маршрутов грязными. Оверлей (<c>Routing.Levels &gt; 0</c>) здесь <b>не</b> трогается - его дыры и волна кастомизации появятся в T3,
-    /// поэтому структурные правки в мире с оверлеем до T3 не поддерживаются. Скан закрытых DirSeg и перенос ссылок - T3.
+    /// Пакетный пересчёт производных после структурных правок (player-tools.md §12 шаг 1c): сеть пешеходов (при <paramref name="pedsChanged"/>; сейчас - полная пересборка со сбросом
+    /// пешеходов, как после <c>BuildRoad</c>; T11), LOD-привязки, граф маршрутов целиком и веса по нагрузке, оверлей (при <c>Routing.Levels &gt; 0</c> - полная перестройка, T6 сделает её
+    /// инкрементальной), пометка маршрутов грязными, сброс кэша спавна. Скан закрытых DirSeg - T4.
     /// </summary>
-    public static void RefreshDerived(World w)
+    public static void RefreshDerived(World w, bool pedsChanged = true)
     {
-        w.Peds?.OnNetworkGrown(w);
+        if (pedsChanged)
+        {
+            w.Peds?.OnNetworkGrown(w);
+        }
+
         w.Lod?.OnNetworkGrown();
         w.Vehicles.MarkAllRouteDirty();
         w.Graph.Rebuild();
         w.Graph.RecalcCosts(w.EnsureSegmentLoads(), w.Net.SegmentCount);
+        w.Spawn.Ready = false;
+        Routing.Overlay? ov = w.Overlay;
+        if (ov != null && !ov.Disabled)
+        {
+            ov.RebuildAfterEdit();
+            w.Counters.OverlayRebuilds = ov.Rebuilds;
+            w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;
+        }
     }
 
     private static bool StopListed(NetworkStore n, int stop)

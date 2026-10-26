@@ -66,6 +66,7 @@ internal sealed partial class NetworkBuilder
             return NetworkStatus.PointsFull;
         }
 
+        _ban = 0UL;
         int plan = PlanConnectors(nd.Control, arms);
         if (plan < 0)
         {
@@ -93,6 +94,31 @@ internal sealed partial class NetworkBuilder
         int baseLane = _s.AllocLaneBlock(plan);
         int basePoint = _s.AllocBlock(_s.LanePointArena, plan * samples);
         int blockIn = _s.AllocBlock(_s.LaneNextArena, 2 * plan);
+        WriteConnectorBlock(node, plan, baseLane, basePoint, blockIn, linkInLanes: true);
+
+        for (int a = 0; a < arms; a++)
+        {
+            _s.ArmDir[firstArm + a] = _armDir[a];
+            _s.ArmFlags[firstArm + a] = 0;   // переопределения знаков рукавов у нового узла нет
+        }
+
+        nd.FirstArm = firstArm;
+        nd.ArmCount = arms;
+        nd.FirstConnector = baseLane;
+        nd.ConnectorCount = plan;
+        RefreshArmFlags(node);
+        _s.RefreshLaneGateNode(node);
+        _s.Version++;
+        return NetworkStatus.Ok;
+    }
+
+    /// <summary>
+    /// Пишет блок connector'ов узла по плану (<c>_plan*</c>): полосы, точки кривых, блок <c>LaneNext</c> (<c>2 * plan</c>: сначала по входным полосам, затем собственные выходы).
+    /// <paramref name="linkInLanes"/> - связать входные полосы с connector'ами (<c>FirstNext/NextCount</c>); перестройка узла связывает их позже, когда старый блок уже не нужен.
+    /// </summary>
+    private void WriteConnectorBlock(int node, int plan, int baseLane, int basePoint, int blockIn, bool linkInLanes)
+    {
+        int samples = _o.ConnectorSamples;
         int blockOwn = blockIn + plan;
         for (int p = 0; p < plan; p++)
         {
@@ -102,12 +128,16 @@ internal sealed partial class NetworkBuilder
 
             ref LaneData li = ref _s.Lanes[inLane];
             ref LaneData lo = ref _s.Lanes[outLane];
-            if (li.NextCount == 0)
+            if (linkInLanes)
             {
-                li.FirstNext = blockIn + p;
+                if (li.NextCount == 0)
+                {
+                    li.FirstNext = blockIn + p;
+                }
+
+                li.NextCount++;
             }
 
-            li.NextCount++;
             _s.LaneNext[blockIn + p] = laneIdx;
             _s.LaneNext[blockOwn + p] = outLane;
 
@@ -136,20 +166,6 @@ internal sealed partial class NetworkBuilder
                 Generation = 1,
             };
         }
-
-        for (int a = 0; a < arms; a++)
-        {
-            _s.ArmDir[firstArm + a] = _armDir[a];
-        }
-
-        nd.FirstArm = firstArm;
-        nd.ArmCount = arms;
-        nd.FirstConnector = baseLane;
-        nd.ConnectorCount = plan;
-        RefreshArmFlags(node);
-        _s.RefreshLaneGateNode(node);
-        _s.Version++;
-        return NetworkStatus.Ok;
     }
 
     /// <summary>Собирает рукава узла в _arm* по возрастанию «псевдоугла» (по часовой стрелке в X-Z); -1 при переполнении.</summary>
@@ -248,6 +264,7 @@ internal sealed partial class NetworkBuilder
         int f = nd.FirstArm;
         bool anyArterial = false;
         bool anyStreet = false;
+        bool forcedMinor = false;
         for (int a = 0; a < arms; a++)
         {
             if (_s.Segments[_s.NodeArms[f + a]].Kind == RoadKind.Arterial)
@@ -259,7 +276,9 @@ internal sealed partial class NetworkBuilder
                 anyStreet = true;
             }
 
-            _s.ArmFlags[f + a] = 0;
+            // Знаки рукава игрока (SetArmControl) переживают пересчёт: сохраняются биты переопределения, автоматический бит minor считается заново.
+            _s.ArmFlags[f + a] = (byte)(_s.ArmFlags[f + a] & ArmOverrideMask);
+            forcedMinor |= (_s.ArmFlags[f + a] & ArmForceMinorBit) != 0;
         }
 
         bool anyMinor = false;
@@ -305,6 +324,30 @@ internal sealed partial class NetworkBuilder
             }
         }
 
+        if (forcedMinor || HasForceMajor(f, arms))
+        {
+            for (int a = 0; a < arms; a++)
+            {
+                byte fl = _s.ArmFlags[f + a];
+                if ((fl & ArmForceMajorBit) != 0)
+                {
+                    fl = (byte)(fl & ~ArmMinorBit);
+                }
+                else if ((fl & ArmForceMinorBit) != 0)
+                {
+                    fl |= ArmMinorBit;
+                }
+
+                _s.ArmFlags[f + a] = fl;
+            }
+
+            anyMinor = false;
+            for (int a = 0; a < arms; a++)
+            {
+                anyMinor |= (_s.ArmFlags[f + a] & ArmMinorBit) != 0;
+            }
+        }
+
         if (arms >= 3)
         {
             bool noRules = nd.Control == NodeControl.None;
@@ -313,10 +356,42 @@ internal sealed partial class NetworkBuilder
             {
                 nd.Control = NodeControl.RightHandRule;
             }
+
+            if (forcedMinor && anyMinor && nd.Control == NodeControl.RightHandRule)
+            {
+                nd.Control = NodeControl.Yield;   // игрок назначил второстепенный рукав: правило «уступи» включается само
+            }
         }
     }
 
+    private bool HasForceMajor(int first, int arms)
+    {
+        for (int a = 0; a < arms; a++)
+        {
+            if ((_s.ArmFlags[first + a] & ArmForceMajorBit) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal const byte ArmMinorBit = 1;
+
+    /// <summary>Рукав назначен главным игроком (<c>SetArmControl</c> Priority): бит minor сброшен.</summary>
+    internal const byte ArmForceMajorBit = 2;
+
+    /// <summary>Рукав назначен второстепенным игроком (Yield или Stop): бит minor установлен.</summary>
+    internal const byte ArmForceMinorBit = 4;
+
+    /// <summary>Знак «стоп» на рукаве (Stop): полная остановка у линии независимо от режима узла (кроме светофора).</summary>
+    internal const byte ArmStopBit = 8;
+
+    internal const byte ArmOverrideMask = ArmForceMajorBit | ArmForceMinorBit | ArmStopBit;
+
+    // Запреты манёвров нового построения узла (бит ai * 8 + aj в номерах рукавов); 0 - нет. Выставляет перестройка узла.
+    private ulong _ban;
 
     /// <summary>Заполняет _planIn/_planOut в порядке (рукав, полоса, манёвр: прямо, направо, налево, разворот); -1 при переполнении.</summary>
     private int PlanConnectors(NodeControl control, int arms)
@@ -347,6 +422,11 @@ internal sealed partial class NetworkBuilder
                             else if (m == Maneuver.UTurn || Classify(ai, aj, arms) != m)
                             {
                                 continue;
+                            }
+
+                            if (_ban != 0UL && ai < 8 && aj < 8 && ((_ban >> ((ai * 8) + aj)) & 1UL) != 0UL)
+                            {
+                                continue;   // запрет манёвра рукав -> рукав (NodeData.TurnBan, player-tools.md §5)
                             }
 
                             ArmLanes(aj, false, out int outFirst, out int outCount);
