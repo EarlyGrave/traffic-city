@@ -1,3 +1,2 @@
-//! Публичные типы ядра (порт `Sim.Core/Api`). В R3 - только то, что нужно загрузчику и `desc_hash`; R4 расширяет.
-
 pub mod desc;
+pub mod status;

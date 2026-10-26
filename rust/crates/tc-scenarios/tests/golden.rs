@@ -1,9 +1,13 @@
-//! Сверка с C#-golden (`tests/golden/rust-pilot/*.json`, rust-pilot.md §5.3): `load_ok` и `desc_hash` на каждом сценарии.
-//! `create_status`, `network_hash` и т.д. сверяет R4+ (нужен `Sim::create`).
+//! Сверка с C#-golden (`tests/golden/rust-pilot/*.json`, rust-pilot.md §5.3): `load_ok`, `desc_hash` (R3), `create_status`,
+//! `network_hash`, `counts` (R4) на каждом сценарии; `headings_hash` - отдельным тестом (системный atan2, не блокирует).
+//! `conflicts_hash` и `counts.conflicts` - R5: до него `network_hash` считается с `conflicts_used` из эталона (в хэш входит
+//! `ConflictsUsed`, а конфликты ещё не строятся).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use tc_core::api::status::CreateStatus;
+use tc_core::sim::Sim;
 use tc_scenarios::json::{self, Json};
 use tc_scenarios::{desc_hash, load_str};
 
@@ -31,6 +35,57 @@ fn golden_files() -> Vec<PathBuf> {
         .collect();
     v.sort();
     v
+}
+
+fn hex(g: &Json, key: &str) -> Option<String> {
+    match field(g, key) {
+        Some(Json::Str(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn count(g: &Json, key: &str) -> i32 {
+    let Some(c) = field(g, "counts") else { panic!("нет counts") };
+    field(c, key).and_then(Json::as_i32).unwrap_or_else(|| panic!("counts.{key}"))
+}
+
+fn expected_status(g: &Json) -> i32 {
+    field(g, "create_status").and_then(Json::as_i32).expect("create_status")
+}
+
+/// `create_status`, `network_hash`, `counts` (кроме `conflicts`, R5) против golden.
+fn check_create(name: &str, desc: &tc_core::api::desc::ScenarioDesc, g: &Json) {
+    let status = expected_status(g);
+    match Sim::create(desc) {
+        Err(st) => {
+            assert_eq!(st as i32, status, "{name}: create_status (Rust: {st:?})");
+            assert!(field(g, "network_hash").is_none(), "{name}: ошибка create, но network_hash есть");
+        }
+        Ok(mut sim) => {
+            assert_eq!(
+                status,
+                CreateStatus::Ok as i32,
+                "{name}: Rust создал сеть, golden ждёт статус {status}"
+            );
+            let c = sim.counts();
+            let want = [
+                ("nodes", c.nodes),
+                ("segments", c.segments),
+                ("lanes", c.lanes),
+                ("lane_points", c.lane_points),
+                ("segment_points", c.segment_points),
+                ("arms", c.arms),
+                ("lane_next", c.lane_next),
+                ("connectors", c.connectors),
+            ];
+            for (key, got) in want {
+                assert_eq!(got, count(g, key), "{name}: counts.{key}");
+            }
+            sim.set_conflicts_used_for_golden(count(g, "conflicts"));
+            let expected = hex(g, "network_hash").unwrap_or_else(|| panic!("{name}: нет network_hash"));
+            assert_eq!(format!("{:016x}", sim.network_hash()), expected, "{name}: network_hash");
+        }
+    }
 }
 
 #[test]
@@ -67,6 +122,7 @@ fn desc_hash_and_load_ok_match_csharp_golden() {
                 panic!("{name}: нет desc_hash")
             };
             assert_eq!(format!("{:016x}", desc_hash(&desc)), *expected, "{name}: desc_hash");
+            check_create(&name, &desc, &g);
         } else {
             assert!(field(&g, "desc_hash").is_none(), "{name}: load_ok=false, но desc_hash есть");
         }
@@ -85,4 +141,29 @@ fn corrupted_hash_is_detected() {
     let mut b = a.clone();
     b.network.nodes[0].x = f32::from_bits(b.network.nodes[0].x.to_bits() ^ 1);
     assert_ne!(desc_hash(&a), desc_hash(&b));
+}
+
+/// `headings_hash` (atan2 системного libm): на Linux x64 ожидается совпадение с C#, на других ОС - нет (rust-pilot.md §6.3);
+/// расхождение сообщается, но тест не красный, если не задано `TC_STRICT_HEADINGS=1`.
+#[test]
+fn headings_hash_matches_csharp_golden_on_linux() {
+    let strict = std::env::var("TC_STRICT_HEADINGS").is_ok_and(|v| v == "1");
+    let mut mismatches: Vec<String> = Vec::new();
+    for f in golden_files() {
+        let name = f.file_name().unwrap().to_string_lossy().into_owned();
+        let g = json::parse(&fs::read_to_string(&f).unwrap()).unwrap();
+        let (Some(Json::Str(scenario)), Some(expected)) = (field(&g, "scenario"), hex(&g, "headings_hash")) else {
+            continue;
+        };
+        let desc = load_str(&fs::read_to_string(repo_root().join(scenario)).unwrap()).unwrap();
+        let sim = Sim::create(&desc).unwrap();
+        let got = format!("{:016x}", sim.headings_hash());
+        if got != expected {
+            mismatches.push(format!("{name}: rust {got} != c# {expected}"));
+        }
+    }
+    if !mismatches.is_empty() {
+        eprintln!("headings_hash расходится (не блокер, §6.3): {mismatches:?}");
+        assert!(!strict || !cfg!(target_os = "linux"), "headings_hash: {mismatches:?}");
+    }
 }
