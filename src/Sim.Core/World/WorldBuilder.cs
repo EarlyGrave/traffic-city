@@ -263,7 +263,12 @@ internal static class WorldBuilder
     /// Сеть пешеходов (ADR-0020, pedestrians.md §2): при выключенной секции <c>peds</c> ничего не выделяется и не меняется.
     /// Строится после сети, connector'ов, зон и автобусных остановок; не трогает ГСЧ и состояние.
     /// </summary>
-    private static CreateStatus BuildPeds(World w)
+    private static CreateStatus BuildPeds(World w) => BuildPeds(w, create: true);
+
+    /// <summary>
+    /// <paramref name="create"/> = false: загрузчик сейва выделяет структуры, а жителей и состояние берёт из блоков файла (<c>PEDS</c> и др.).
+    /// </summary>
+    internal static CreateStatus BuildPeds(World w, bool create)
     {
         if (!w.PedCfg.Enabled)
         {
@@ -272,7 +277,23 @@ internal static class WorldBuilder
 
         var net = new Peds.PedNetwork(in w.Caps, w.Net, w.Connectors, in w.PedCfg);
         w.Net.PedNet = net;
-        return net.Rebuild(w) ? CreateStatus.Ok : CreateStatus.NetworkTooLarge;
+        if (!net.Rebuild(w))
+        {
+            return CreateStatus.NetworkTooLarge;
+        }
+
+        var pw = new Peds.PedWorld(w);
+        w.Peds = pw;
+        if (create)
+        {
+            pw.Init(w);
+        }
+        else
+        {
+            w.TargetPeds = 0;
+        }
+
+        return CreateStatus.Ok;
     }
 
     /// <summary>Секция <c>peds</c> (pedestrians.md §12): пределы ёмкостей и параметров; <c>passenger_model = agents</c> без <c>peds</c> - отказ.</summary>

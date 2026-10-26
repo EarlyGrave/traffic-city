@@ -46,6 +46,8 @@ internal static class SnapshotPhase
             rv.Run(w, buf, b, high);
         }
 
+        w.Peds?.Snapshot.Run(w, snapTick);   // пешеходы: тот же вид, свой двойной буфер (pedestrians.md §10.1)
+
         // Общие записи - только здесь, на главном потоке, после параллельной части.
         w.SnapshotSlots[(int)(snapTick & 1)] = high;
         w.SnapshotTick = snapTick;

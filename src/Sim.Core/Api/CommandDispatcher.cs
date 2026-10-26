@@ -50,6 +50,18 @@ internal static class CommandDispatcher
                 }
 
                 break;
+            case CommandKind.SetPedTarget:
+                if (w.Peds == null || cmd.SetPedTarget.Count < 0)
+                {
+                    Rejected(w, in cmd, w.Peds == null ? RejectReason.NotSupported : RejectReason.InvalidArgument);
+                }
+                else
+                {
+                    w.TargetPeds = cmd.SetPedTarget.Count;
+                    Applied(w, in cmd);
+                }
+
+                break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
                 break;
@@ -163,7 +175,7 @@ internal static class CommandDispatcher
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
     private static void GrowOverlay(World w)
     {
-        w.Net.PedNet?.Rebuild(w); // сеть пешеходов - производное сети: пересобирается целиком (pedestrians.md §2); при выключенных peds - null
+        w.Peds?.OnNetworkGrown(w); // сеть пешеходов - производное сети: пересобирается целиком (pedestrians.md §2); при выключенных peds - null
         w.Lod?.OnNetworkGrown(); // LOD-ячейки: новые узлы и полосы получают ячейку (sim-lod.md §1); при Lod.Mode = Off - null
         w.Vehicles.MarkAllRouteDirty();
         // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая

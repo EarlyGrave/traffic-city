@@ -47,6 +47,7 @@ internal sealed class LoadContext
     public int SelectedIndex;
     public int SelectedGeneration;
     public readonly ulong[] RngState = new ulong[6];
+    public ulong PedRngState;
 
     public float LodOriginX;
     public float LodOriginZ;

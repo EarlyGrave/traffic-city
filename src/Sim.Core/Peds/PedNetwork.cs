@@ -116,6 +116,7 @@ internal sealed partial class PedNetwork
         MidNextBwd = new int[MidCap];
         LaneMidX = new int[net.Lanes.Length];
 
+        PointCum = new float[_pointCap];
         _sp = new Vec2[Math.Max(2, sp)];
         _ss = new float[Math.Max(2, sp)];
         _bnd = new float[MidCap + 2];

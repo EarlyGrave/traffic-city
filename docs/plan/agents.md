@@ -101,7 +101,11 @@
 | 95 | rust-pilot-spec (worktree) | opus | 4.6: ADR-0022 Rust-пилот ядра, граница FFI, кросс-хэш | done, merged (R1–R8 + R-CI; тулчейн 1.97 есть, crates.io открыт) |
 | 96 | modding-spec (worktree) | opus | 4.5: ADR-0015 моддинг, ассеты как данные | done, merged (M1–M10; скриптов нет) |
 | 97 | tools-spec (worktree) | opus | 4.3: ADR-0023 инструменты игрока через команды, undo, реплей | done, merged (T1–T14; дренаж вместо удаления машин) |
-| 98 | peds-p2 (worktree) | sonnet | 3.1 P2: агенты, жители, пути, события, снапшот, сейв w2, метрики, сценарии | wip |
-| 99 | rust-r1 (worktree) | sonnet | 4.6 R1 + R-CI: workspace `rust/`, Util, clippy-правила, rust-check, job CI, хук `.rs` | done, merged (13 тестов util, векторы C# сошлись; хук `.rs` — в индексе агента, докоммитить) |
+| 98 | peds-p2 (worktree) | sonnet | 3.1 P2: агенты, жители, пути, события, снапшот, сейв w2, метрики, сценарии | done, merged (634+163 тестов; golden s1k/s10k равны; s10k-peds 19998 активных, stuck 0) |
+| 99 | rust-r1 (worktree) | sonnet | 4.6 R1 + R-CI: workspace `rust/`, Util, clippy-правила, rust-check, job CI, хук `.rs` | done, merged (13 тестов util, векторы C# сошлись; хук `.rs` df75e32 слит) |
 | 100 | mod-m1 (worktree) | sonnet | 4.5 M1: загрузчик пакетов (Sim.Scenarios), враждебные фикстуры | done, merged (106 тестов Mods) |
 | 101 | alloc-flake (worktree) | sonnet | флейк allocation-тестов под нагрузкой (RenderViewTests threads:2, S1k_StationaryTick) | done, merged (корень — фоновый поток рантайма в GetTotalAllocatedBytes; замер по потокам симуляции; 9/20 → 0/20) |
+| 102 | peds-p3 (worktree) | sonnet | 3.1 P3: переходы × машины, пешеходная фаза светофора | wip |
+| 103 | peds-p4 (worktree) | sonnet | 3.1 P4: пассажиры-агенты, bidirectional, корпус w2 | wip |
+| 104 | peds-p5 (worktree) | sonnet | 3.1 P5: Godot-клиент — пешеходы, зебры, HUD | wip |
+| 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | wip |

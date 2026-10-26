@@ -10,13 +10,12 @@ public static class Program
 {
     private const int ExitOk = 0;
     private const int ExitUsage = 2;
-    private const int ExitNotImplemented = 3;
 
     private const string Usage =
         "Usage: Sim.Headless <command> [options]\n" +
         "\n" +
         "Commands:\n" +
-        "  run              run a scenario\n" +
+        "  run              run a scenario and print counters (--scenario <name|path> --ticks N [--every K]; see run --help)\n" +
         "  bench            run a scenario and write perf JSON\n" +
         "  hash             print the state hash every K ticks (--scenario <name|path> --ticks N [--every K]; see hash --help)\n" +
         "  save             run a scenario and write a save container (--scenario <name|path> --ticks N --out <file>; see save --help)\n" +
@@ -76,14 +75,7 @@ public static class Program
                     ? Help(UpdateBaselineCommand.Usage)
                     : UpdateBaselineCommand.Run(args, Console.Out, Console.Error);
             case "run":
-                if (HasHelp(args))
-                {
-                    Console.Out.WriteLine(Usage);
-                    return ExitOk;
-                }
-
-                Console.Error.WriteLine($"{command}: not implemented");
-                return ExitNotImplemented;
+                return HasHelp(args) ? Help(RunCommand.Usage) : RunCommand.Run(args, Console.Out, Console.Error);
             default:
                 Console.Error.WriteLine($"Unknown command '{command}'.");
                 Console.Error.WriteLine(Usage);

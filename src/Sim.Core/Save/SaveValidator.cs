@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 /// ходит по этим данным (построение производных, обход списков). Ошибка - код <see cref="LoadStatus"/> и место в <see cref="LoadContext.FailColumn"/>/<see cref="LoadContext.FailRow"/>.
 /// После <c>Ok</c> <c>Step</c> безопасен: ни одна ссылка не выходит за массив.
 /// </summary>
-internal static class SaveValidator
+internal static partial class SaveValidator
 {
     private const float SBackTolerance = 1f;      // м: допуск S ниже нуля
     private const float SForwardTolerance = 20f;  // м: допуск S выше длины полосы (машина дошла до конца, переход - в фазе 7)
@@ -57,6 +57,12 @@ internal static class SaveValidator
             return LoadStatus.InvalidValue;
         }
 
+        LoadStatus pst = ValidatePedParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||
@@ -92,6 +98,8 @@ internal static class SaveValidator
         b += (long)c.MaxConnectors * 120;
         b += (long)c.MaxConflicts * 8;
         b += (long)c.MaxVehicles * 64;   // очереди
+        b += (long)c.MaxPeds * (160L + (4L * Math.Max(0, c.MaxPedPathSteps)));   // пешеходы: поля и арена путей
+        b += (long)c.MaxResidents * 160L;
         return b;
     }
 

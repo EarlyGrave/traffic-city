@@ -43,6 +43,7 @@ dotnet run --project src/Sim.Headless -c Release -- compare --result perf/result
 dotnet run --project src/Sim.Headless -c Release -- update-baseline ...   # только осознанно, см. ниже
 dotnet run --project bench/Sim.Bench -c Release -- --filter '*'          # микробенчмарки
 bash .claude/hooks/test-hooks.sh                         # самопроверка хуков Claude Code
+bash scripts/rust-check.sh                               # Rust-пилот: fmt, clippy, test, сторонние крейты
 ```
 
 ## Бюджеты
@@ -76,6 +77,7 @@ bash .claude/hooks/test-hooks.sh                         # самопровер�
   основная сессия (нет `agent_id`) пишет только `docs/**` и `CLAUDE.md`.
 - PreToolUse Bash: защита main — нет push в main/master, нет force push, нет `branch -D main`, нет `reset --hard` на main.
 - PostToolUse Edit|Write `*.cs`: сборка затронутого проекта, ошибка → exit 2.
+- PostToolUse Edit|Write `*.rs`/`Cargo.toml`/`clippy.toml` под `rust/`: `cargo clippy -D warnings` (`post-rust.sh`), ошибка → exit 2.
 - Stop: если изменены `.cs` — test + `scripts/bench-gate.sh` (bench-smoke s1k + compare с повторами).
 - SessionStart (облако): доустановка .NET SDK из `global.json`.
 

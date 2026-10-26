@@ -16,6 +16,8 @@ public enum CommandKind : int
     ClearSelection = 8,
     SetTargetVehicleCount = 9,
     SetNodeControl = 10,
+    // 11 зарезервирован под SetLodFocus (core-api §4, ADR-0013): в ядре пока не реализован
+    SetPedTarget = 12,   // 3.1, ADR-0020: цель активных пешеходов (как SetTargetVehicleCount); без секции peds отклоняется
 }
 
 public enum SignalMode : int
@@ -76,6 +78,9 @@ public struct Command
 
     [FieldOffset(8)]
     public SetNodeControlCmd SetNodeControl;
+
+    [FieldOffset(8)]
+    public SetPedTargetCmd SetPedTarget;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -155,6 +160,15 @@ public struct Command
         c.Kind = CommandKind.SetTargetVehicleCount;
         c.Tag = tag;
         c.SetTargetVehicleCount = new SetTargetVehicleCountCmd { Count = count };
+        return c;
+    }
+
+    public static Command MakeSetPedTarget(int count, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetPedTarget;
+        c.Tag = tag;
+        c.SetPedTarget = new SetPedTargetCmd { Count = count };
         return c;
     }
 
@@ -247,4 +261,10 @@ public struct SetNodeControlCmd
 {
     public int Node;
     public NodeControl Control;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetPedTargetCmd
+{
+    public int Count;
 }

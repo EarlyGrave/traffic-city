@@ -108,7 +108,7 @@ column_count × 24 Б, по возрастанию column_id:
 xxh64 каждого блока и подвала, каталог столбцов (тип, `elem_size`, `offset + count·elem_size ≤ length`, id по возрастанию).
 Аллокация по `count` — только после сверки с длиной блока (защита от «count = 2^60»).
 
-## 3. Блоки `world_version = 1`
+## 3. Блоки `world_version = 1` (и 2: добавлены блоки пешеходов, см. ниже)
 
 `C` — critical. Столбцы — поля в порядке перечисления, `column_id` = порядковый номер с 1. Точные списки фиксирует S2 в
 приложении A этого файла (таблица `блок / id / имя / тип / длина / дефолт`) одновременно с кодом `Save/SaveSchema.cs` —
@@ -144,6 +144,11 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `RGRP` | C | `DirSegCount` | `SegCost`, `WeightsVersion` |
 | `OVLY` | C | — | есть ⇔ `Overlay != null`; §1 |
 | `LODS` | C | — | (ADR-0013) есть ⇔ `Lod.Mode != Off`; §1 |
+| `PEDS` | C | `HighWater` пешеходов | (v2, ADR-0020) есть ⇔ `peds.enabled`: пул (`HighWater`, `FreeList`, `Generation`), поля `PedStore` (`State`, `Leg`, `Resident`, `Edge`, `T0`, `S0Mm`, `VMmT`, `EvTick`, `PathCursor/Count`, `GoalEdge/SMm`, `Next`, `Bus`, `AlightStop`, `TripTick`); мёртвые слоты - канон (ссылки −1, остальное 0) |
+| `PPTH` | C | `HighWater · max_ped_path_steps` | (v2) арена путей; мёртвые слоты - нули; `Steps` - проверка ёмкости |
+| `RESI` | C | `Residents` | (v2) жители: дом, работа, способ, маршруты и остановки (P4), `Where`, `ReadyTick`, `Ped`, `ReadyNext`; голова/хвост очереди готовых |
+| `XING` | C | переходы / остановки | (v2) `XState`, `QHead/QTail/QCount`, `OnCross`, `BusyUntil`, `ClosedSince`, `CarWindowUntil`, `CarsWaiting`, `WaitSum`, `Releases`, `MeasuredWait` по индексу перехода (`NodeArmCount` + по одному на остановку при `midblock_at_stops`); `StopQHead/Tail/Count` по остановкам; `PaxHead` по машинам; гистограммы ожидания (256 корзин по 1 с) |
+| `PQUE` | C | очередь | (v2) `PedPathQueue` (индекс, поколение) в логическом порядке |
 
 Блоки хоста (флаг `host`, id со строчной первой буквой, ядро не разбирает): `meta` (имя города, время создания/изменения
 по часам хоста, сыгранные тики, имя сценария, версия игры), `thmb` (превью PNG), `camr` (камера), `mod?` (состояние модов,
@@ -151,6 +156,8 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 
 Статика сети (`N*`, `CONN`, раскладка `OVLY`) отделена от динамики (`*DYN`, `VEHC`, `ROUT`…) намеренно: будущий
 «компактный сейв» опускает статику и пересобирает её (§11 п.3) без смены остальных блоков.
+
+Блоки пешеходов (v2) и столбцы в `PARM` (86-112: секция `peds`, `PassengerModel`, ёмкости `MaxPeds/MaxResidents/MaxPedPathSteps`), `WRLD` (11-13: поток `Peds`, `TargetPeds`), `CNTR` (96-117: счётчики пешеходов), `SIGS` (39-41: `XWalkLeft/XClearLeft/XServed` пешеходной фазы) объявлены задачей P2 целиком, поэтому P3 и P4 схему не меняют. Индекс перехода `x` = слот рукава в `NodeArms`, переход на перегоне `m` = `NodeArmCount + m`. Сеть пешеходов, списки пешеходов по рёбрам, колесо таймеров, `NodeXIn/NodeXOut`, `XActive`, `RenderHint` - производные, не сохраняются; после `Load` их строит `PedWorld.RestoreDerived` (после `PedNetwork.Rebuild` в `WorldLoader.Finish`). Проверки состояния - `SaveValidator.ValidatePeds` (пул, жители, очередь готовых, события, очереди переходов и остановок, списки пассажиров, очередь путей).
 
 Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
@@ -310,18 +317,20 @@ public sealed partial class Simulation
 
 **Реализация S3:** конверт - `Sim.Headless/SaveFile.cs` (`Pack/TryUnpack/ReadContainer`; `Sim.Headless save` пишет конверт, `--raw` - голый контейнер, `load` определяет формат по магии).
 Корпус проверяет `Sim.Core.Tests/Save/SaveCorpusTests` (входит в обычный `dotnet test`; файлы копируются в вывод тестов как `SaveCorpus/*`). Файлы: `w1-small-t600`, `w1-s1k-t2400`
-(`.tcsave` + `.json` с `world_version`, `tick`, `state_hash`, `hash_after_load`, `continue_ticks` = 200, `hash_after_continue`, хэши - hex). Перегенерация (до этапа 3 корпус **перегенерируется**, старые файлы удаляются):
+(`.tcsave` + `.json` с `world_version`, `tick`, `state_hash`, `hash_after_load`, `continue_ticks` = 200, `hash_after_continue`, хэши - hex). Перегенерация (с этапа 3.1 перегенерируются **только файлы текущей версии**, `w1-*` остаются навсегда):
 `TC_REGEN_CORPUS=1 dotnet test tests/Sim.Core.Tests --filter FullyQualifiedName~SaveCorpusTests`, результат коммитится отдельным коммитом. Изменение схемы или поведения без перегенерации -
-тест падает сообщением «перегенерируй корпус: …». Миграции с этапа 3: файлы прошлых версий остаются, шаг добавляется в `Save/Migrations.cs`.
+тест падает сообщением «перегенерируй корпус: …». Миграции с этапа 3.1: файлы прошлых версий остаются, шаг добавляется в `Save/Migrations.cs`. `w2` «открыта» до конца волны 3.1: P3 и P4 меняют
+поведение пешеходов (golden-хэши `w2-s1k-peds-t2400` меняются), поэтому корпус w2 перегенерирует последняя слитая задача волны; столбцы w2 заморожены P2.
 
 **Golden-корпус** `tests/SaveCorpus/` (бинарные, `.gitattributes: binary`, бюджет ≤ 5 МБ):
 - `w{world_version}-{имя}-t{tick}.tcsave` + `.json`: `world_version`, `tick`, `state_hash` (заголовок), `hash_after_load`,
   `continue_ticks` (200), `hash_after_continue`.
-- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый).
+- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый); с v2 ещё `s1k-peds-t2400` (≤ 1 МБ сжатый).
+  Файлы w2 без пешеходов (`w2-small-t600`, `w2-s1k-t2400`) несут те же `state_hash` и `hash_after_continue`, что `w1-*` (миграция 1 → 2 поведение не меняет).
   s10k в корпус не кладём (≈ 2.5 МБ на версию) — его round-trip строится в тесте.
 - Файлы прошлых версий **не меняются и не удаляются**. Для текущей версии `hash_after_*` проверяются строго и
   обновляются вместе с golden-хэшами при смене поведения (как `HotPathGoldenHashTests`). Для прошлых — загрузка + миграция +
-  проверки §6.1 + `continue_ticks` без исключений + повторный сейв → загрузка → побайтно равен.
+  проверки §6.1 + `continue_ticks` и **тот же `hash_after_continue`** (для миграции 1 → 2: пешеходов в старом мире нет, поведение прежнее) + повторный сейв → загрузка → побайтно равен.
 - Пополнение: `Sim.Headless save --scenario … --ticks … --out tests/SaveCorpus/…` + `load --in … --ticks 200` печатает хэши
   для `.json`. Новая `world_version` без файлов корпуса → тест `Corpus_HasCurrentVersion` красный.
 
@@ -407,6 +416,8 @@ s10k с цифрами размера и времени. Клиентские к
 |---|---|---|
 | 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`). Дополнен в рамках 2.5 S2 (адаптивные светофоры, ADR-0018) без `world_version++`: `PARM` 76-82 (дефолты `RulesDesc.Signal*`), `SIGS` 18-37, `SMET` 6 (`ConnDelay`), `VEHC` 40 (`DenyReason`) | — |
 
+| 2 | 3.1, ADR-0020, задача P2: пешеходы. Блоки `PEDS`, `PPTH`, `RESI`, `XING`, `PQUE` (только при `peds.enabled`); столбцы `PARM` 86-112, `WRLD` 11-13, `CNTR` 96-117, `SIGS` 39-41; `hash_version` 2 (секции пешеходов в хэше только при `peds`) | `MigrationV2` (`Save/MigrationV2.cs`): добавляет столбцы с дефолтами «пешеходов нет, пассажиры - счётчик», блоков не создаёт; w1 продолжается тем же хэшем |
+
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
 ## 13. Открытые вопросы
@@ -423,7 +434,7 @@ s10k с цифрами размера и времени. Клиентские к
 6. Снос дорог (этап 2+): пул узлов/сегментов с free-list → `IncHead/Cells` перестают быть производными «в порядке индекса» —
    при появлении сноса перенести их в сохраняемые или доказать независимость.
 
-## Приложение A. Реестр столбцов `world_version = 1`
+## Приложение A. Реестр столбцов `world_version = 2`
 
 Стрится из `Save/SaveSchema*.cs` (`SaveSchema.AppendixMarkdown()`); тест `SaveSchemaTests.EveryDoc_Appendix_MatchesRegistry` сверяет таблицу с реестром
 (обновить: `TC_DUMP_SCHEMA=<файл> dotnet test --filter SaveSchemaTests`). Дефолт - значение для сейвов без столбца (новые столбцы будущих версий) и канон мёртвого слота.
@@ -517,6 +528,33 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 83 | TransitHoldAlpha | f32 | 1 | 0 |
 | `PARM` | 84 | TransitHoldMaxTicks | i32 | 1 | 0 |
 | `PARM` | 85 | TransitHoldEveryN | i32 | 1 | 0 |
+| `PARM` | 86 | PedsEnabled | u8 | 1 | 0 |
+| `PARM` | 87 | TransitPassengerModel | i32 | 1 | 0 |
+| `PARM` | 88 | MaxPeds | i32 | 1 | 0 |
+| `PARM` | 89 | MaxResidents | i32 | 1 | 0 |
+| `PARM` | 90 | MaxPedPathSteps | i32 | 1 | 0 |
+| `PARM` | 91 | PedCount | i32 | 1 | 0 |
+| `PARM` | 92 | PedResidents | i32 | 1 | 0 |
+| `PARM` | 93 | PedSpawnRampTicks | i32 | 1 | 0 |
+| `PARM` | 94 | PedSpeedMinMmPerTick | i32 | 1 | 0 |
+| `PARM` | 95 | PedSpeedMaxMmPerTick | i32 | 1 | 0 |
+| `PARM` | 96 | PedActivityMinTicks | i32 | 1 | 0 |
+| `PARM` | 97 | PedActivityMaxTicks | i32 | 1 | 0 |
+| `PARM` | 98 | PedWalkOnlyMm | i32 | 1 | 0 |
+| `PARM` | 99 | PedMaxWalkToStopMm | i32 | 1 | 0 |
+| `PARM` | 100 | PedMaxWalkMm | i32 | 1 | 0 |
+| `PARM` | 101 | PedSidewalkWidthMm | i32 | 1 | 0 |
+| `PARM` | 102 | PedCrosswalkWidthMm | i32 | 1 | 0 |
+| `PARM` | 103 | PedArterialCrossings | i32 | 1 | 0 |
+| `PARM` | 104 | PedMidblockAtStops | u8 | 1 | 0 |
+| `PARM` | 105 | PedWalkTicks | i32 | 1 | 0 |
+| `PARM` | 106 | PedClearSpeedMmPerTick | i32 | 1 | 0 |
+| `PARM` | 107 | PedMaxCloseTicks | i32 | 1 | 0 |
+| `PARM` | 108 | PedCarWindowTicks | i32 | 1 | 0 |
+| `PARM` | 109 | PedPathfindBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 110 | PedWorkBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 111 | PedStuckCrossTicks | i32 | 1 | 0 |
+| `PARM` | 112 | PedStuckStopTicks | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -551,6 +589,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `WRLD` | 8 | SegmentLoadsTick | i64 | 1 | -1 |
 | `WRLD` | 9 | RngState | u64 | 6 | 0 |
 | `WRLD` | 10 | RngInc | u64 | 6 | 0 |
+| `WRLD` | 11 | PedRngState | u64 | 1 | 0 |
+| `WRLD` | 12 | PedRngInc | u64 | 1 | 0 |
+| `WRLD` | 13 | TargetPeds | i32 | 1 | 0 |
 | `CNTR` | 1 | Ticks | i64 | 1 | 0 |
 | `CNTR` | 2 | VehiclesSpawned | i64 | 1 | 0 |
 | `CNTR` | 3 | TripsCompleted | i64 | 1 | 0 |
@@ -646,6 +687,28 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 93 | LaneShareH7 | i64 | 1 | 0 |
 | `CNTR` | 94 | LaneShareH8 | i64 | 1 | 0 |
 | `CNTR` | 95 | LaneShareH9 | i64 | 1 | 0 |
+| `CNTR` | 96 | PedActive | i32 | 1 | 0 |
+| `CNTR` | 97 | PedActiveTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 98 | PedSpawned | i64 | 1 | 0 |
+| `CNTR` | 99 | PedTripsCompleted | i64 | 1 | 0 |
+| `CNTR` | 100 | PedTripTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 101 | PedCrossWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 102 | PedCrossReleases | i64 | 1 | 0 |
+| `CNTR` | 103 | PedStopWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 104 | PedStopBoardings | i64 | 1 | 0 |
+| `CNTR` | 105 | PedStuckEvents | i64 | 1 | 0 |
+| `CNTR` | 106 | CarCrossDelayTicks | i64 | 1 | 0 |
+| `CNTR` | 107 | CrossingClosedTicks | i64 | 1 | 0 |
+| `CNTR` | 108 | CrossingObservedTicks | i64 | 1 | 0 |
+| `CNTR` | 109 | BusPassengersAlighted | i64 | 1 | 0 |
+| `CNTR` | 110 | BusPaxOnBoardTicks | i64 | 1 | 0 |
+| `CNTR` | 111 | PedPathQueries | i64 | 1 | 0 |
+| `CNTR` | 112 | PedPathWork | i64 | 1 | 0 |
+| `CNTR` | 113 | PedNoPath | i64 | 1 | 0 |
+| `CNTR` | 114 | PedModeFallback | i64 | 1 | 0 |
+| `CNTR` | 115 | GrantsRevokedPed | i64 | 1 | 0 |
+| `CNTR` | 116 | PedAllocFailed | i64 | 1 | 0 |
+| `CNTR` | 117 | PedNetResets | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -783,6 +846,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `SIGS` | 36 | ArmLeftYield | u16 | Count * 16 | 0 |
 | `SIGS` | 37 | ArmLeftHead | i32 | Count * 16 | -1 |
 | `SIGS` | 38 | SpillTicks | u16 | Count | 0 |
+| `SIGS` | 39 | XWalkLeft | u16 | Count * 8 | 0 |
+| `SIGS` | 40 | XClearLeft | u16 | Count * 8 | 0 |
+| `SIGS` | 41 | XServed | u8 | Count | 0 |
 | `NDYN` | 1 | NodeTicket | u32 | NodeCount | 0 |
 | `NDYN` | 2 | NodeThroughput | u32 | NodeCount | 0 |
 | `LDYN` | 1 | LaneHead | i32 | LaneCount | -1 |
@@ -943,6 +1009,70 @@ s10k с цифрами размера и времени. Клиентские к
 | `SMET` | 4 | ConnWaitSum | i64 | Count | 0 |
 | `SMET` | 5 | ConnGrantCount | i32 | Count | 0 |
 | `SMET` | 6 | ConnDelay | f32 | Count | 0 |
+| `PEDS` (peds.enabled) | 1 | HighWater | i32 | 1 | 0 |
+| `PEDS` (peds.enabled) | 2 | FreeCount | i32 | 1 | 0 |
+| `PEDS` (peds.enabled) | 3 | FreeList | i32 | FreeCount | 0 |
+| `PEDS` (peds.enabled) | 4 | Generation | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 5 | State | u8 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 6 | Leg | u8 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 7 | Resident | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 8 | Edge | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 9 | T0 | i64 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 10 | S0Mm | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 11 | VMmT | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 12 | EvTick | i64 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 13 | PathCursor | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 14 | PathCount | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 15 | GoalEdge | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 16 | GoalSMm | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 17 | Next | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 18 | Bus | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 19 | AlightStop | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 20 | TripTick | i64 | HighWater | 0 |
+| `PPTH` (peds.enabled) | 1 | Steps | i32 | 1 | 0 |
+| `PPTH` (peds.enabled) | 2 | Path | i32 | HighWater * Steps | 0 |
+| `RESI` (peds.enabled) | 1 | Count | i32 | 1 | 0 |
+| `RESI` (peds.enabled) | 2 | ReadyHead | i32 | 1 | -1 |
+| `RESI` (peds.enabled) | 3 | ReadyTail | i32 | 1 | -1 |
+| `RESI` (peds.enabled) | 4 | HomeEdge | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 5 | HomeSMm | i32 | Count | 0 |
+| `RESI` (peds.enabled) | 6 | WorkEdge | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 7 | WorkSMm | i32 | Count | 0 |
+| `RESI` (peds.enabled) | 8 | HomeZone | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 9 | WorkZone | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 10 | ModeOut | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 11 | ModeBack | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 12 | RouteOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 13 | StopAOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 14 | StopBOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 15 | RouteBack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 16 | StopABack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 17 | StopBBack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 18 | Where | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 19 | ReadyTick | i64 | Count | 0 |
+| `RESI` (peds.enabled) | 20 | Ped | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 21 | ReadyNext | i32 | Count | -2 |
+| `XING` (peds.enabled) | 1 | XState | u8 | XCount | 0 |
+| `XING` (peds.enabled) | 2 | QHead | i32 | XCount | -1 |
+| `XING` (peds.enabled) | 3 | QTail | i32 | XCount | -1 |
+| `XING` (peds.enabled) | 4 | QCount | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 5 | OnCross | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 6 | BusyUntil | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 7 | ClosedSince | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 8 | CarWindowUntil | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 9 | CarsWaiting | u8 | XCount | 0 |
+| `XING` (peds.enabled) | 10 | WaitSum | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 11 | Releases | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 12 | MeasuredWait | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 13 | StopQHead | i32 | BusStopCount | -1 |
+| `XING` (peds.enabled) | 14 | StopQTail | i32 | BusStopCount | -1 |
+| `XING` (peds.enabled) | 15 | StopQCount | i32 | BusStopCount | 0 |
+| `XING` (peds.enabled) | 16 | PaxHead | i32 | Vehicles.HighWater | -1 |
+| `XING` (peds.enabled) | 17 | CrossWaitHist | i64 | 256 | 0 |
+| `XING` (peds.enabled) | 18 | StopWaitHist | i64 | 256 | 0 |
+| `PQUE` (peds.enabled) | 1 | Count | i32 | 1 | 0 |
+| `PQUE` (peds.enabled) | 2 | Index | i32 | Count | 0 |
+| `PQUE` (peds.enabled) | 3 | Generation | i32 | Count | 0 |
 | `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
 | `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
 | `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |

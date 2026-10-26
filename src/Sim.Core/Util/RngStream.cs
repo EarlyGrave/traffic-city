@@ -9,4 +9,5 @@ public enum RngStream : ulong
     Behaviour = 4,
     Transit = 5,
     Routing = 6,
+    Peds = 7,
 }

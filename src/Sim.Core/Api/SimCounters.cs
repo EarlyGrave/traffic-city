@@ -79,6 +79,29 @@ public struct SimCounters
     public long LaneShareSamples;         // выборок (направление многополосного сегмента, >= 4 машин)
     public long LaneShareMaxPermilleSum;  // Σ доли самой загруженной полосы направления, ‰
     public long LaneShareH0, LaneShareH1, LaneShareH2, LaneShareH3, LaneShareH4, LaneShareH5, LaneShareH6, LaneShareH7, LaneShareH8, LaneShareH9; // гистограмма той же доли, корзины по 10%
+    // --- пешеходы и пассажиры (ADR-0020, pedestrians.md §9); заморожены в P2. Состояние: в хэше и сейве (CNTR); при выключенных peds все нули и в хэш не входят ---
+    public int PedActive;                 // текущее: живых пешеходов
+    public long PedActiveTicksTotal;      // Σ активных пешеходов по тикам (ped_active_mean)
+    public long PedSpawned;               // запущенных поездок
+    public long PedTripsCompleted;        // завершённых поездок
+    public long PedTripTicksTotal;        // Σ длительностей завершённых поездок
+    public long PedCrossWaitTicksTotal;   // Σ ожидания у переходов на момент выпуска (P3); гистограмма 1 с - блок XING
+    public long PedCrossReleases;         // выпущенных с ожидания у переходов (P3)
+    public long PedStopWaitTicksTotal;    // Σ ожидания на остановках на момент посадки (P4)
+    public long PedStopBoardings;         // севших на автобус (P4)
+    public long PedStuckEvents;           // ожидание >= stuck_cross_s / stuck_stop_s (цель 0)
+    public long CarCrossDelayTicks;       // Σ тиков отказа DenyPed у кандидатов + тиков стоянки с ClampFlags.Cross (P3)
+    public long CrossingClosedTicks;      // Σ по переходам с выпусками: тики «не Free» (P3)
+    public long CrossingObservedTicks;    // Σ по таким переходам: тики наблюдения (P3)
+    public long BusPassengersAlighted;    // вышло из автобусов (P4)
+    public long BusPaxOnBoardTicks;       // Σ пассажиров на борту по тикам (P4)
+    public long PedPathQueries;           // запросов путей
+    public long PedPathWork;              // релаксаций A* пешеходов
+    public long PedNoPath;                // запросов без пути (норма 0)
+    public long PedModeFallback;          // автобусная нога заменена пешей (P4)
+    public long GrantsRevokedPed;         // снятий допуска из-за закрытия перехода (P3)
+    public long PedAllocFailed;           // пул пешеходов исчерпан при запуске поездки
+    public long PedNetResets;             // сбросов пешеходов при BuildRoad
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

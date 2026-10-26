@@ -219,6 +219,19 @@ public sealed class Simulation : IDisposable
     public bool IsAlive(VehicleHandle h);
     public bool TryGetVehicleInfo(VehicleHandle h, out VehicleInfo info);   // для инспектора/HUD
     public bool TryPickVehicle(float x, float z, float radius, out VehicleHandle h); // O(N) по живым, для клика
+
+    // Пешеходы (3.1, ADR-0020, pedestrians.md §10; без секции peds спаны пусты, запросы возвращают false). Реализация: Api/Simulation.Peds.cs
+    public bool HasPeds { get; }
+    public ReadOnlySpan<PedestrianRenderData> Pedestrians { get; }          // 24 Б, индекс = слот пула пешеходов, длина = HighWater; вне вида / PendingPath / OnBus - Flags = 0
+    public ReadOnlySpan<PedestrianRenderData> PreviousPedestrians { get; }  // тик SnapshotTick - 1 (двойной буфер без копии, как у машин)
+    public ReadOnlySpan<byte> CrossingStates { get; }                       // биты 0-1 XState, 2-3 сигнал (P3); индекс - слот рукава, затем переходы на перегоне
+    public ReadOnlySpan<ushort> PedEdgeCounts { get; }                      // пешеходов на ребре сети пешеходов (heatmap «вдали»)
+    public ReadOnlySpan<ushort> BusStopWaiting { get; }                     // ожидающих на остановках (режим agents)
+    public int ActivePedCount { get; } public int ResidentCount { get; } public int PedTarget { get; }
+    public bool IsAlive(PedHandle h);
+    public bool TryGetPedInfo(PedHandle h, out PedInfo info);
+    public bool TryPickPedestrian(float x, float z, float radius, out PedHandle h);
+    public void CopyPedWaitHistograms(long[] cross, long[] stop);           // накопительные гистограммы ожидания (256 корзин по 1 с) для p95 хоста
 }
 
 public delegate void PhaseProbe(int phase);   // phase = номер фазы §7 (1..10); подфазы 2b/4a/8b — в составе своих номеров
@@ -359,6 +372,7 @@ public enum CommandKind : int
     ClearSelection = 8,
     SetTargetVehicleCount = 9,  // целевое число живых машин (спавнер догоняет)
     SetNodeControl = 10,        // тип регулирования узла: none/yield/stop/signal [шаг 3]
+    SetPedTarget = 12,          // 3.1: цель активных пешеходов {Count} (4 Б); без секции peds - NotSupported. 11 закреплён за SetLodFocus
     SetLodFocus = 11,           // слот фокуса/закрепления LOD {Slot 0..7, Kind Clear/Focus/Pin, X, Z, RadiusM} (ADR-0013, `sim-lod.md` §4)
 }
 
@@ -970,6 +984,7 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 7 | **Переходы**: (a) начало смены полосы для `LaneChangeDir != 0` — вставка в целевую, ghost в исходной; завершение манёвров; (b) `s' ≥ Length` → перенос на следующую полосу маршрута (`RouteCursor++`, `s' −= Length`, PushTail, пересчёт `DesiredSpeed`, `PointHint = 0`); фиксация `NodeThroughput[node]++` при выходе с connector'а | S, Route | Lane, списки, RouteCursor | `Agents/TransitionPhase.cs` |
 | 8 | **Прибытие/деспаун**: `Lane == DestLane && S >= DestS` → `TripCompleted`, счётчики времени поездки, `Free`; автобус на конечной — **[шаг 4]**. Деспаун застрявших запрещён | S, Dest | VehicleStore, Counters, Events | `Agents/ArrivalPhase.cs` |
 | 9 | **Метрики**: stuck/unstuck (§11), gridlock, `SegmentLoads`, `BusRouteStats`, счётчики | всё | Counters, SegmentLoads | `Metrics/MetricsPhase.cs` |
+| 2d / 3b / 4p | **Пешеходы** (3.1, `pedestrians.md` §8; только при `peds`): `PedSpawn` (после 2b: очередь готовых жителей → пешеходы `PendingPath`), `PedPhase.Route` (после 3: пути в бюджете), `PedPhase.Run` (после 4a, до 4b: события колеса таймеров, автоматы переходов); зонд шлёт номера 11, 12, 13 и метку 14 (время 4a отнести к gate) | Residents, Peds, Crossings | Peds, Residents, Crossings, TimerWheel, Counters | `Peds/Ped{Spawn,Phase,Router}.cs` |
 | 10 | **Снапшот** (§5.2): заполнить `Render[(tick+1) & 1][..HighWater]` и `SnapshotSlots` (позиция по полилинии с `PointHint` + `Lateral`, курс из `LanePieceHeading`), `SelectedRoute` | S, Lane, Lateral, флаги | RenderBuffers | `Api/SnapshotPhase.cs` |
 
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
@@ -1076,7 +1091,7 @@ public struct Pcg32
 Сидирование: `ScenarioDesc.Seed` → подпотоки с фиксированными `stream`-номерами
 (`RngStream` enum): `CityGen = 1`, `Zones = 2`, `Spawn = 3` (OD-пары, тип ТС, стартовая полоса),
 `Behaviour = 4` (зарезервировано: шум в параметрах водителей — этап 2), `Transit = 5`,
-`Routing = 6` (разрешение ничьих). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
+`Routing = 6` (разрешение ничьих), `Peds = 7` (жители в `Create`, скорость пешехода при запуске поездки, время занятий; `pedestrians.md` §13). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
 `World` — никаких общих генераторов, чтобы добавление вызова в одной подсистеме не меняло
 поток другой. Генератор города использует только `CityGen`, поэтому сеть зависит от seed и
 `CityGenDesc`, но не от числа машин.
@@ -1122,6 +1137,9 @@ public struct Fnv1a64
 9. Управляющее состояние команд: `TargetVehicles`, `Selected.Packed`.
 10. LOD (только при `Lod.Mode != Off`, ADR-0013): в п.3 для живых ещё `Lod`, для meso — `MesoAllow`; затем по ячейкам
     `CellLevel, CellHoldUntil, CellCongStreak`, слоты `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick`. `RenderView` не входит.
+
+11. Пешеходы (только при `peds`, `hash_version` 2; `Peds/PedHash.cs`): `Peds`-PRNG, `TargetPeds`; пул и поля пешеходов (живые слоты; путь - шаги `[0, PathCount)`); жители и очередь готовых; состояние переходов
+    (по индексу `x`), очереди остановок, `PaxHead`; очередь путей; гистограммы ожидания; счётчики группы «пешеходы». Списки по рёбрам, колесо таймеров, `RenderHint` - производные, не хэшируются.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
