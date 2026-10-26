@@ -338,6 +338,11 @@ public partial class SimHost : Node3D
             UpdateSignals(_sim);
         }
 
+        if (_roads != null && _roads.Version != _sim.Network.Version)
+        {
+            RebuildRoads(_sim);
+        }
+
         if (_roadHeat != null)
         {
             // heatmap дорог в шейдере: раз в 0.5 с обновляется только текстура данных, мешей не трогаем (render.md §3.5)
@@ -522,6 +527,18 @@ public partial class SimHost : Node3D
         return true;
     }
 
+    /// <summary>Сеть изменилась (4.3, T2-T4: снос, перенос, закрытие): дороги и текстура heatmap пересобираются целиком (инкрементальный оверлей - T6, бэклог).</summary>
+    private void RebuildRoads(Simulation sim)
+    {
+        bool heat = _roads!.Heat;
+        _roads.Root.QueueFree();
+        _roadHeat = new HeatTexture(sim.Network.Segments.Length);
+        _roadHeat.UpdateRoads(sim.SegmentLoads);
+        _roads = new RoadChunks(sim, _roadHeat, _lod);
+        _roads.SetHeat(heat);
+        AddChild(_roads.Root);
+    }
+
     private void BuildScene(Simulation sim)
     {
         NetworkView net = sim.Network;
@@ -610,7 +627,7 @@ public partial class SimHost : Node3D
         int n = 0;
         for (int i = 0; i < lanes; i++)
         {
-            if (net.Lanes[i].Kind != LaneKind.Connector && net.Lanes[i].PointCount >= 2)
+            if (net.IsLaneAlive(i) && net.Lanes[i].Kind != LaneKind.Connector && net.Lanes[i].PointCount >= 2)
             {
                 tmp[n++] = i;
             }
@@ -652,7 +669,7 @@ public partial class SimHost : Node3D
         }
 
         NetworkView net = _sim.Network;
-        if (node < 0 || node >= net.Nodes.Length)
+        if (!net.IsNodeAlive(node))
         {
             return;
         }
@@ -664,7 +681,7 @@ public partial class SimHost : Node3D
     private void SelectNode(Simulation sim, int node, bool focus)
     {
         NetworkView net = sim.Network;
-        if (_nodePanel == null || _nodePicker == null || node < 0 || node >= net.Nodes.Length)
+        if (_nodePanel == null || _nodePicker == null || !net.IsNodeAlive(node))
         {
             return;
         }
@@ -689,7 +706,7 @@ public partial class SimHost : Node3D
         for (int i = 0; i < net.Nodes.Length; i++)
         {
             ref readonly NodeData n = ref net.Nodes[i];
-            if (n.Control != NodeControl.Signal || n.Signal < 0 || n.ArmCount < 4)
+            if (!net.IsNodeAlive(i) || n.Control != NodeControl.Signal || n.Signal < 0 || n.ArmCount < 4)
             {
                 continue;
             }
@@ -963,7 +980,7 @@ public partial class SimHost : Node3D
         for (int k = 0; k < _signalLanes.Length; k++)
         {
             int li = _signalLanes[k];
-            if (li >= ls.Length || ls[li] == (byte)LaneSignal.None)
+            if (li >= ls.Length || ls[li] == (byte)LaneSignal.None || !net.IsLaneAlive(li))
             {
                 continue;
             }
@@ -1085,7 +1102,7 @@ public partial class SimHost : Node3D
         for (int s = Math.Max(route.Cursor, 0); s < route.Steps.Length; s++)
         {
             int li = route.Steps[s].Lane;
-            if (li < 0 || li >= net.Lanes.Length)
+            if (!net.IsLaneAlive(li))
             {
                 continue;
             }
