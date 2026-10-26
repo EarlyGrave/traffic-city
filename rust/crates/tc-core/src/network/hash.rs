@@ -122,3 +122,24 @@ pub fn headings_hash(net: &NetworkStore) -> u64 {
     }
     h.value()
 }
+
+/// `conflicts_hash`: по connector'ам `first_conflict, conflict_count, conflict_mask`, затем записи конфликтов.
+pub fn conflicts_hash(cs: &ConnectorStore) -> u64 {
+    let mut h = Fnv1a64::new();
+    h.add_i32(HASH_VERSION);
+    h.add_i32(cs.count);
+    h.add_i32(cs.conflicts_used);
+    for i in 0..cs.count as usize {
+        h.add_i32(cs.first_conflict[i]);
+        h.add_i32(cs.conflict_count[i]);
+        h.add_u64(cs.conflict_mask[i]);
+    }
+    for e in &cs.conflicts[..cs.conflicts_used as usize] {
+        h.add_u8(e.other_local);
+        h.add_u8(e.flags);
+        h.add_bytes(&e.s_mine_cm.to_le_bytes());
+        h.add_bytes(&e.s_other_cm.to_le_bytes());
+        h.add_bytes(&e.reserved.to_le_bytes());
+    }
+    h.value()
+}

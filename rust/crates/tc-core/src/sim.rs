@@ -4,7 +4,7 @@
 use crate::api::desc::{NetworkOptions, ScenarioDesc, SimCapacities};
 use crate::api::status::CreateStatus;
 use crate::intersections::ConnectorStore;
-use crate::network::hash::{headings_hash, network_hash};
+use crate::network::hash::{conflicts_hash, headings_hash, network_hash};
 use crate::network::{DefaultConnectorRules, NetworkBuilder, NetworkStatus, NetworkStore};
 use crate::util::Vec2;
 
@@ -135,10 +135,8 @@ impl Sim {
         &self.connectors
     }
 
-    /// Только для сверки golden до R5 (конфликты ещё не строятся): подставляет `conflicts_used` из эталона.
-    #[doc(hidden)]
-    pub fn set_conflicts_used_for_golden(&mut self, v: i32) {
-        self.connectors.conflicts_used = v;
+    pub fn conflicts_hash(&self) -> u64 {
+        conflicts_hash(&self.connectors)
     }
 
     pub fn network_hash(&self) -> u64 {

@@ -2,4 +2,4 @@
 
 pub mod connector_store;
 
-pub use connector_store::ConnectorStore;
+pub use connector_store::{ConflictEntry, ConflictKind, ConflictRel, ConnectorStore};
