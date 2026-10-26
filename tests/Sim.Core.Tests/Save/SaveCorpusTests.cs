@@ -30,6 +30,7 @@ public sealed class SaveCorpusTests
         new("small", 600, Small),
         new("s1k", 2400, S1k),
         new("s1k-peds", 2400, S1kPeds),
+        new("s1k-res", 1200, S1kRes),
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -194,6 +195,8 @@ public sealed class SaveCorpusTests
         return (sc.Desc, sc.TypeNames);
     }
 
+    private static (ScenarioDesc, string[]) S1kRes() => (City.CityFixtures.S1kRes(), new[] { "car", "bus" });
+
     private static (ScenarioDesc, string[]) S1kPeds()
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-peds.json"));
@@ -203,7 +206,7 @@ public sealed class SaveCorpusTests
     [Fact]
     public void Corpus_OldVersionFiles_AreKeptAndMigrate()
     {
-        // Файлы w1 не удаляются и после миграции 1 -> 2 продолжаются тем же хэшем, что записан в .json (хэш продолжения проверяет CheckFile для каждого файла).
+        // Файлы w1 не удаляются и после миграций (1 -> 2 -> 3) продолжаются тем же хэшем, что записан в .json (хэш продолжения проверяет CheckFile для каждого файла).
         string[] old = Directory.GetFiles(CorpusDir, "w1-*.tcsave");
         Assert.True(old.Length >= 2, "корпус w1 (w1-small-t600, w1-s1k-t2400) должен остаться в репозитории");
         foreach (string path in old)
@@ -215,8 +218,31 @@ public sealed class SaveCorpusTests
             Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
             using (sim!)
             {
-                Assert.Equal(1, rep.MigrationsApplied);
+                Assert.Equal(Simulation.CurrentWorldVersion - 1, rep.MigrationsApplied);
                 Assert.False(sim!.HasPeds);
+                Assert.False(sim.HasCity);
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W2Files_AreKeptAndMigrate()
+    {
+        // Файлы w2 (пешеходы) остаются навсегда: миграция 2 -> 3 добавляет столбцы города с дефолтами, поведение и хэш продолжения не меняются.
+        string[] old = Directory.GetFiles(CorpusDir, "w2-*.tcsave");
+        Assert.True(old.Length >= 3, "корпус w2 (w2-small-t600, w2-s1k-t2400, w2-s1k-peds-t2400) должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(2, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 2, rep.MigrationsApplied);
+                Assert.Equal(path.Contains("-peds-", StringComparison.Ordinal), sim!.HasPeds);
+                Assert.False(sim.HasCity);
             }
         }
     }

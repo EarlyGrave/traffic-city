@@ -8,7 +8,7 @@ using Sim.Headless;
 
 namespace Sim.Core.Tests.Save;
 
-/// <summary>Миграция <c>world_version</c> 1 -> 2 (save-format.md §4, pedestrians.md §11): чистая функция над таблицами, результат - ровно схема v2 без блоков пешеходов.</summary>
+/// <summary>Миграции w1 -> w2 (пешеходы, save-format.md §4, pedestrians.md §11) и дальше по цепочке: чистые функции над таблицами, результат - ровно текущая схема без блоков пешеходов и города.</summary>
 public sealed class PedMigrationTests
 {
     private static SaveTables ReadCorpus(string name)
@@ -25,9 +25,9 @@ public sealed class PedMigrationTests
     {
         SaveTables t = ReadCorpus(file);
         Assert.Equal(1, t.Header.WorldVersion);
-        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 1, 2, Migrations.Steps, out int applied));
-        Assert.Equal(1, applied);
-        Assert.Equal(2, t.Header.WorldVersion);
+        Assert.Equal(LoadStatus.Ok, Migrations.Apply(t, 1, SaveSchema.WorldVersion, Migrations.Steps, out int applied));
+        Assert.Equal(SaveSchema.WorldVersion - 1, applied);
+        Assert.Equal(SaveSchema.WorldVersion, t.Header.WorldVersion);
         foreach (BlockDef b in SaveSchema.Blocks)
         {
             int idx = t.FindBlock(b.Id);
@@ -45,7 +45,7 @@ public sealed class PedMigrationTests
         }
 
         // Блоков пешеходов у старого мира нет.
-        foreach (string name in new[] { "PEDS", "PPTH", "RESI", "XING", "PQUE" })
+        foreach (string name in new[] { "PEDS", "PPTH", "RESI", "XING", "PQUE", "BTYP", "LOTS", "BLDG", "RESD", "SKIM", "LEDG" })
         {
             Assert.True(t.FindBlock(SaveFormat.FourCc(System.Text.Encoding.ASCII.GetBytes(name))) < 0, name);
         }
@@ -82,8 +82,9 @@ public sealed class PedMigrationTests
         using (sim!)
         {
             Assert.Equal(1, rep.FileWorldVersion);
-            Assert.Equal(1, rep.MigrationsApplied);
+            Assert.Equal(SaveSchema.WorldVersion - 1, rep.MigrationsApplied);
             Assert.False(sim!.HasPeds);
+            Assert.False(sim.HasCity);
             Assert.True(sim.Pedestrians.IsEmpty);
             sim.Step(200);
             Assert.Equal(expected, sim.ComputeStateHash());

@@ -6,6 +6,7 @@
   "title": "Base game content",
   "content": {
     "vehicles": ["vehicles.json"],
-    "roads": ["roads.json"]
+    "roads": ["roads.json"],
+    "buildings": ["buildings.json"]
   }
 }

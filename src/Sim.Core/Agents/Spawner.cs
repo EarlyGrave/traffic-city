@@ -55,7 +55,11 @@ internal static class Spawner
             Init(w);
         }
 
-        Generate(w);
+        if (w.City == null)
+        {
+            Generate(w);   // 2a: OD-генератор; в режиме жителей поездки приходят от города (zoning-demand.md §4.1, §12)
+        }
+
         Dispatch(w);
     }
 

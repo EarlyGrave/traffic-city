@@ -296,6 +296,12 @@ internal static class StateHash
             Peds.PedHash.Add(ref h, w);
         }
 
+        // 12. Город: участки, здания, жители, деньги, скимы (zoning-demand.md §15): только при residents (hash_version 3) - хэш прежних сценариев не меняется.
+        if (w.City != null)
+        {
+            City.CityHash.Add(ref h, w);
+        }
+
         return h.Value;
     }
 

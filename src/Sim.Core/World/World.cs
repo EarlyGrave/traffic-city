@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Gen;
 using Sim.Core.Lod;
 using Sim.Core.Metrics;
@@ -31,6 +32,7 @@ internal sealed class World : IDisposable
     public readonly TransitDesc TransitCfg;
     public readonly PedDesc PedCfg;            // с применёнными дефолтами (PedNetwork.WithDefaults); Enabled = false - пешеходов нет, ничего не выделено
     public readonly LodDesc LodCfg;            // с применёнными дефолтами (WorldBuilder.WithDefaults); Mode = Off - LOD нет
+    public readonly CityDesc Town;             // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -49,6 +51,7 @@ internal sealed class World : IDisposable
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
+    public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
@@ -76,6 +79,7 @@ internal sealed class World : IDisposable
     public Pcg32 RngBehaviour;
     public Pcg32 RngTransit;
     public Pcg32 RngRouting;
+    public Pcg32 RngDemand;               // подпоток Demand (zoning-demand.md §18): Create города, события жителей, дневные проходы; в хэше только при residents
     public Pcg32 RngPeds;                 // подпоток Peds (pedestrians.md §13): жители в Create, скорость при запуске поездки, время занятий
 
     // ---- время, команды, события, метрики ----
@@ -169,6 +173,7 @@ internal sealed class World : IDisposable
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);
+        Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
@@ -201,6 +206,7 @@ internal sealed class World : IDisposable
         RngTransit = Pcg32.ForStream(Seed, RngStream.Transit);
         RngRouting = Pcg32.ForStream(Seed, RngStream.Routing);
         RngPeds = Pcg32.ForStream(Seed, RngStream.Peds);
+        RngDemand = Pcg32.ForStream(Seed, RngStream.Demand);
 
         Commands = new RingBuffer<Command>(c.CommandQueueCapacity);
         Events = new SimEvent[c.EventCapacity];

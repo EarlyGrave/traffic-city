@@ -19,6 +19,10 @@ public static class ModLimits
     public const int MaxTitleBytes = 128;
     public const int MaxAssetIdBytes = 128;
 
+    /// <summary>Здания (zoning-demand.md §17): типов в наборе и вместимость одного здания.</summary>
+    public const int MaxBuildingTypes = 512;
+    public const int MaxBuildingCapacity = 2_000;
+
     /// <summary>Расширения, которые пакет может содержать и использовать.</summary>
     public static readonly string[] AllowedExtensions = [".json", ".gltf", ".glb", ".bin", ".png", ".jpg", ".jpeg", ".ktx2"];
 

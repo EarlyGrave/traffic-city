@@ -64,9 +64,10 @@ internal static class ContainerTestData
         return t;
     }
 
-    public static byte[] Write(SaveTables t)
+    public static byte[] Write(SaveTables t, int worldVersion = 1)
     {
         var h = Header();
+        h.WorldVersion = worldVersion;
         Assert.Equal(SaveStatus.Ok, SaveWriter.Measure(ref t, out long len));
         byte[] buf = new byte[len];
         Assert.Equal(SaveStatus.Ok, SaveWriter.Write(ref t, in h, buf, out long written));

@@ -145,7 +145,6 @@ public sealed class PackageLoaderTests : IDisposable
     [InlineData("cyc_a", ModError.DependencyCycle, null)]
     [InlineData("bad_future_format", ModError.UnsupportedFormatVersion, "$.format_version")]
     [InlineData("bad_content_format", ModError.UnsupportedFormatVersion, "$.content_format")]
-    [InlineData("bad_buildings", ModError.UnsupportedContent, "$.content.buildings")]
     [InlineData("bad_gd", ModError.FileNotAllowed, null)]
     [InlineData("bad_tscn", ModError.FileNotAllowed, null)]
     [InlineData("bad_dll", ModError.FileNotAllowed, null)]

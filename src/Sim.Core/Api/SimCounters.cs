@@ -13,6 +13,7 @@ public enum CreateStatus : int
     InvalidDemand = 6,
     NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (например, генератор города)
     InvalidPeds = 8,            // секция peds: ёмкости max_peds/max_residents меньше требуемых, ширины или скорости вне пределов
+    InvalidCity = 9,            // режим жителей (demand.model = residents): секции CityDesc или ёмкости вне пределов, нет lod.cell_m, нечего нарезать
 }
 
 /// <summary>Монотонные счётчики ядра (core-api §11), кроме полей, помеченных «текущее».</summary>
@@ -102,6 +103,35 @@ public struct SimCounters
     public long GrantsRevokedPed;         // снятий допуска из-за закрытия перехода (P3)
     public long PedAllocFailed;           // пул пешеходов исчерпан при запуске поездки
     public long PedNetResets;             // сбросов пешеходов при BuildRoad
+    // --- город: жители, здания, экономика, скимы (ADR-0011, zoning-demand.md §13, §15); заморожены в Z1. Состояние: в хэше и сейве (CNTR) только при residents; иначе нули ---
+    public long CityEvents;               // обработанных событий жителей (Z2)
+    public long ResToursPlanned;          // туров в планах дня
+    public long ResToursDropped;          // туров, не поместившихся в сутки (res_tours_dropped)
+    public long ResToursUnreachable;      // туров без доступных вариантов (res_tours_unreachable)
+    public long ResToursCancelled;        // туров, отменённых по дедлайну WaitDepart
+    public long ResLegsCar, ResLegsBus, ResLegsWalk;          // начатых ног по способам
+    public long ResLegsDone;              // завершённых ног
+    public long ResLegCostDsTotal;        // Σ обобщённой стоимости завершённых ног, дс
+    public long ResVisits;                // визитов в C
+    public long ResVisitsUnserved;        // визитов впустую (res_visits_unserved)
+    public long ResLegOverdue;            // нога дольше 3 * ским (res_leg_overdue, только отчёт)
+    public long ResStuck;                 // нарушений дедлайнов (res_stuck; норма 0)
+    public long ResWaitDepartTicks;       // Σ тиков в WaitDepart
+    public long SkimObserved;             // принятых наблюдений скимов
+    public long SkimObsDropped;           // отброшенных (накопитель полон; skim_obs_dropped)
+    public long SkimUpdates;              // обновлённых записей скима
+    public long Immigrants, Emigrants;    // въехало / уехало жителей
+    public long ResRelocations;           // переездов
+    public long ResHired, ResFired;       // найм / увольнение
+    public long ResJobSwitches;           // добровольных смен работы
+    public long BuildingsBuilt;           // построено (Constructing -> Active)
+    public long BuildingsAbandoned;       // ушло в Abandoned
+    public long BuildingsRemoved;         // снесено
+    public long FirmClosures;             // закрытий фирм по убыткам
+    public long PaintCommands;            // применённых PaintZone
+    public long ExecSwitches;             // переключений micro/aggregate
+    public long CityDays;                 // пройденных границ суток
+    public long AggregateLegs;            // ног, исполненных агрегатом
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

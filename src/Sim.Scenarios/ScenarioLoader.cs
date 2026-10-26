@@ -39,7 +39,7 @@ public sealed class LoadedScenario
 /// Загрузчик сценариев JSON → <see cref="ScenarioDesc"/> по docs/design/scenario-format.md:
 /// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 2 (сценарий) / 1 (типы ТС).
 /// </summary>
-public static class ScenarioLoader
+public static partial class ScenarioLoader
 {
     public const int SupportedFormatVersion = 2;
     public const int PackagesFormatVersion = 3;
@@ -171,8 +171,21 @@ public static class ScenarioLoader
 
         RulesDesc rules = ParseRules(root.OptObject("rules"));
         RoutingDesc routing = ParseRouting(root.OptObject("routing"));
-        LodDesc lod = ParseLod(root.OptObject("lod"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds);
+        bool residents = demand.Model == DemandModel.Residents;
+        JsonObjectReader? lodR = root.OptObject("lod");
+        if (residents && (lodR == null || !lodR.Has("cell_m")))
+        {
+            throw new ScenarioException("$.lod.cell_m: required with demand.model = \"residents\" (the city grid of skims uses the LOD cell size)");
+        }
+
+        LodDesc lod = ParseLod(lodR);
+        if (peds.Source == PedSource.City && !residents)
+        {
+            throw new ScenarioException("$.peds.source: \"city\" requires demand.model = \"residents\"");
+        }
+
+        CityDesc town = ParseTown(root, residents, catalog);
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents);
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -183,6 +196,7 @@ public static class ScenarioLoader
             Routing = routing,
             Lod = lod,
             Peds = peds,
+            Town = town,
             City = city,
             Network = network,
             Demand = demand,
@@ -791,7 +805,8 @@ public static class ScenarioLoader
         {
             "gravity" => DemandModel.Gravity,
             "uniform" => DemandModel.Uniform,
-            _ => throw new ScenarioException($"{r.ChildPath("model")}: expected \"uniform\" or \"gravity\""),
+            "residents" => DemandModel.Residents,
+            _ => throw new ScenarioException($"{r.ChildPath("model")}: expected \"uniform\", \"gravity\" or \"residents\""),
         };
         d.GravityExponent = (float)r.Num("gravity_exponent", 1.0, min: 0);
         d.WeightJitter = (float)r.Num("weight_jitter", 0.5, min: 0, max: 1);
@@ -953,6 +968,13 @@ public static class ScenarioLoader
         p.WorkBudgetPerTick = r.Int("work_budget_per_tick", 8000, min: 0);
         p.StuckCrossTicks = Math.Max(1, Ticks(r.Num("stuck_cross_s", 120, min: 0.05)));
         p.StuckStopTicks = r.Has("stuck_stop_s") ? Math.Max(1, Ticks(r.Num("stuck_stop_s", min: 0.05))) : 0;   // 0 -> max(3 · headway_s, 900) после разбора transit
+        string source = r.Str("source", "preform");
+        p.Source = source switch
+        {
+            "preform" => PedSource.Preform,
+            "city" => PedSource.City,
+            _ => throw new ScenarioException($"{r.ChildPath("source")}: expected \"preform\" or \"city\""),
+        };
         r.Finish();
         return p;
     }
@@ -1242,7 +1264,7 @@ public static class ScenarioLoader
 
     private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds)
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds, bool residents)
     {
         var c = new SimCapacities
         {
@@ -1282,6 +1304,25 @@ public static class ScenarioLoader
                 if (r.Has(key))
                 {
                     throw new ScenarioException($"{r.ChildPath(key)}: allowed only with an enabled $.peds section");
+                }
+            }
+        }
+
+        if (residents)
+        {
+            // zoning-demand.md §16: ключ max_residents занят заготовками peds, жители города - max_city_residents.
+            c.MaxLots = r.Int("max_lots", min: 1);
+            c.MaxBuildings = r.Int("max_buildings", min: 1);
+            c.MaxCityResidents = r.Int("max_city_residents", min: 1);
+            c.SkimObsCapacity = r.Int("skim_obs_capacity", 65_536, min: 1);
+        }
+        else
+        {
+            foreach (string key in _cityCapacityKeys)
+            {
+                if (r.Has(key))
+                {
+                    throw new ScenarioException($"{r.ChildPath(key)}: allowed only with demand.model = \"residents\"");
                 }
             }
         }

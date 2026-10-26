@@ -324,7 +324,7 @@ public class WorldSaveApiTests
             }
         }
 
-        byte[] missing = ContainerTestData.Write(noVehicles);
+        byte[] missing = ContainerTestData.Write(noVehicles, SaveSchema.WorldVersion);
         Assert.Equal(LoadStatus.MissingBlock, Simulation.Load(missing, default, default, out Simulation? s, out LoadReport rep));
         Assert.Null(s);
         Assert.Equal(SaveFormat.FourCc("VEHC"u8), rep.FailedBlock);

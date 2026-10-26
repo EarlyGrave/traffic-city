@@ -260,11 +260,23 @@ internal static partial class SaveSchema
     };
 
     /// <summary>Блок с добавленными в конец столбцами (новые id в старых блоках: PARM, WRLD, CNTR, SIGS).</summary>
-    private static BlockDef Extend(BlockDef b, ColumnDef[] extra)
+    private static BlockDef Extend(BlockDef b, params ColumnDef[][] extras)
     {
-        var all = new ColumnDef[b.Columns.Length + extra.Length];
+        int total = b.Columns.Length;
+        foreach (ColumnDef[] extra in extras)
+        {
+            total += extra.Length;
+        }
+
+        var all = new ColumnDef[total];
         Array.Copy(b.Columns, all, b.Columns.Length);
-        Array.Copy(extra, 0, all, b.Columns.Length, extra.Length);
+        int at = b.Columns.Length;
+        foreach (ColumnDef[] extra in extras)
+        {
+            Array.Copy(extra, 0, all, at, extra.Length);
+            at += extra.Length;
+        }
+
         return new BlockDef(b.Name, b.Title, all)
         {
             Schema = b.Schema,

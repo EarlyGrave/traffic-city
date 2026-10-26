@@ -14,10 +14,10 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 2;
+    public const int WorldVersion = 3;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
-    public const int HashVersion = 2;
+    public const int HashVersion = 3;
 
     /// <summary>Версия ядра-писателя: <c>major &lt;&lt; 20 | minor &lt;&lt; 10 | patch</c> (справочно).</summary>
     public const int WriterVersion = (0 << 20) | (1 << 10) | 0;
@@ -31,11 +31,12 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => new[]
     {
-        Extend(Params(), PedParams()),
+        Extend(Params(), PedParams(), CityParams()),
         Demand(),
         VehicleTypes(),
-        Extend(WorldState(), PedWorldState()),
-        Extend(Counters(), PedCounters()),
+        BuildingTypesBlock(),
+        Extend(WorldState(), PedWorldState(), CityWorldState()),
+        Extend(Counters(), PedCounters(), CityCounters()),
         NetworkCounts(),
         Nodes(),
         Segments(),
@@ -51,7 +52,7 @@ internal static partial class SaveSchema
         LaneDynamic(),
         SegmentDynamic(),
         BusDynamic(),
-        Vehicles(),
+        Extend(Vehicles(), new[] { VehicleResident() }),
         Trips(),
         Queues(),
         Routes(),
@@ -65,6 +66,11 @@ internal static partial class SaveSchema
         ResidentsBlock(),
         CrossingsBlock(),
         PedPathQueue(),
+        LotsBlock(),
+        BuildingsBlock(),
+        ResidentsCityBlock(),
+        SkimsBlock(),
+        LedgerBlock(),
         Manifest(),
     };
 
