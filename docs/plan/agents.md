@@ -151,3 +151,4 @@
 | 145 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью, стоимость, кэш компонент | killed (без коммитов), перезапуск |
 | 146 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью (перезапуск 145) | running |
 | L1 | local/windows-tests (локал) | opus | Локальная среда на Windows: golden Rust-пилота, грабли в lessons | done, merged (build/format чисто; тесты 1423 ок, 2 skip; headings_hash строго только при TC_STRICT_HEADINGS=1) |
+| L2 | local/rust-check-python (локал) | haiku | rust-check.sh: фолбэк python3 → python в шаге deps без jq | done, merged (rust-check.sh exit 0 на Windows; со 2-й попытки: выбор python перенесён в ветку без jq) |

@@ -400,4 +400,4 @@
 - **Полный `dotnet test` на i7-13700K ≈ 3,5 мин** (Sim.Core.Tests 3 м 12 с) - pre-commit локально в разы быстрее облачного.
 - **`bash` из PowerShell - это WSL (`C:\Windows\system32\bash.exe`, дистрибутив docker-desktop), а не Git Bash.** Скрипты (`bench-gate.sh`, `rust-check.sh`, `test-hooks.sh`) запускать через `& "C:\Program Files\Git\bin\bash.exe" ...` или из Git Bash; хукам Claude и git это не мешает (идут через шебанг/Git).
 - **Rust локально: rustup через `winget install Rustlang.Rustup`** (MSVC Build Tools 2022 уже есть), тулчейн 1.97.0 ставится сам по `rust/rust-toolchain.toml`. `~/.cargo/bin` попадает в PATH только в новых терминалах/сессиях.
-- **`rust-check.sh` шаг deps падает на Windows:** `python3` в Git Bash - заглушка Microsoft Store (exit 49), настоящий интерпретатор - `python`. fmt/clippy/test проходят; deps проверять вручную, пока скрипт не умеет фолбэк на `python`.
+- **`python3` в Git Bash на Windows - заглушка Microsoft Store (exit 49)**, настоящий интерпретатор - `python`. `rust-check.sh` без `jq` пробует `python3`, затем `python`; в новых скриптах делать так же. `rust-check.sh` на Windows - exit 0.
