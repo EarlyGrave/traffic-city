@@ -366,31 +366,6 @@ public sealed class ZoningDataTests
         Assert.Equal(9, sim.GetAccessibility(acc, AccessKind.Jobs));
     }
 
-    // ------------------------------------------------------------ команды 23/24: заглушки
-
-    [Theory]
-    [InlineData(CommandKind.PaintZone)]
-    public void CityCommands_AreNotSupportedInZ1(CommandKind kind)   // SetTripExecution (24) исполняет Z5: AggregateTests
-    {
-        ScenarioDesc d = CityFixtures.S1kRes();
-        using Simulation sim = Make(d);
-        Command cmd = Command.MakePaintZone(new PaintZoneCmd { X0 = 0, Z0 = 0, X1 = 100, Z1 = 100, ZoneKind = 1 }, 7);
-        Assert.True(sim.Enqueue(cmd));
-        sim.Step(1);
-        bool rejected = false;
-        foreach (SimEvent e in sim.Events)
-        {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag == 7)
-            {
-                rejected = true;
-                Assert.Equal((int)RejectReason.NotSupported, e.A);
-                Assert.Equal((int)kind, e.B);
-            }
-        }
-
-        Assert.True(rejected);
-    }
-
     // ------------------------------------------------------------ Create: пределы
 
     [Fact]

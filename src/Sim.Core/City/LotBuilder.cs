@@ -102,18 +102,100 @@ internal sealed class LotBuilder
     public void RestoreDerived(World w)
     {
         CityWorld c = w.City!;
-        Array.Clear(_occ);
+        RebuildOccupancy(w, c);
         int[] comp = RoadLabels(w.Net);
         for (int lot = 0; lot < c.Lots.Count; lot++)
         {
-            if (c.Lots.Seg[lot] < w.Net.SegmentCount)
+            Derive(w, c, lot, comp);
+        }
+    }
+
+    /// <summary>
+    /// Участок без сегмента: флаг <c>Lost</c> или сегмент мёртв/сменил поколение. Геометрии у него нет (сейв её не хранит), поэтому производные такого участка всегда канонические
+    /// и одинаковы в живом мире и после <c>Load</c>.
+    /// </summary>
+    internal static bool IsDead(World w, CityWorld c, int lot)
+    {
+        int seg = c.Lots.Seg[lot];
+        return (c.Lots.Flags[lot] & LotFlags.Lost) != 0 || (uint)seg >= (uint)w.Net.SegmentCount || !w.Net.SegmentAlive(seg) || w.Net.Segments[seg].Generation != c.Lots.SegGen[lot];
+    }
+
+    /// <summary>Сетка занятости - чистая функция живых участков (мёртвые её не занимают): так живой мир и загруженный нарезают новые сегменты одинаково.</summary>
+    private void RebuildOccupancy(World w, CityWorld c)
+    {
+        Array.Clear(_occ);
+        for (int lot = 0; lot < c.Lots.Count; lot++)
+        {
+            if (!IsDead(w, c, lot))
             {
                 Frame(w, c, c.Lots.Seg[lot], c.Lots.Side[lot], c.Lots.S0Mm[lot], c.Lots.S1Mm[lot], out float cx, out float cz, out float tx, out float tz, out float nx, out float nz);
                 Mark(cx, cz, tx, tz, nx, nz, c.Lots.S1Mm[lot] - c.Lots.S0Mm[lot]);
             }
+        }
+    }
 
+    /// <summary>
+    /// Хук <c>BuildRoad</c> (zoning-demand.md §2.1, Z6): дописывает участки нового сегмента в конец (по возрастанию отрезка, стороны 0, 1) и пересчитывает производные всех участков
+    /// (компоненты могли слиться, индексы полос и рёбер тротуара - сдвинуться). Вызывается после пересборки сети пешеходов. Ёмкость <c>max_lots</c> исчерпана - дописано сколько влезло.
+    /// </summary>
+    public void OnRoadBuilt(World w, int seg)
+    {
+        CityWorld c = w.City!;
+        RebuildOccupancy(w, c);
+        AppendSegment(w, c, seg, derive: false);
+        int[] comp = RoadLabels(w.Net);
+        for (int lot = 0; lot < c.Lots.Count; lot++)
+        {
             Derive(w, c, lot, comp);
         }
+    }
+
+    /// <summary>
+    /// Хук финала <c>RemoveSegment</c> (Z6): живые участки сегмента получают <c>Lost</c>, их здания уходят в <c>Abandoned</c> (§8.4); возвращает число потерянных участков.
+    /// Вызывается до того, как слот сегмента освобождён и переиспользован. Производные остальных участков пересчитывает <see cref="RestoreDerived"/> после пересборки сети.
+    /// </summary>
+    public static int OnSegmentRemoved(World w, CityWorld c, int seg, int gen)
+    {
+        LotStore l = c.Lots;
+        int lost = 0;
+        for (int lot = 0; lot < l.Count; lot++)
+        {
+            if (l.Seg[lot] != seg || l.SegGen[lot] != gen || (l.Flags[lot] & LotFlags.Lost) != 0)
+            {
+                continue;
+            }
+
+            int bi = l.Building[lot];
+            if (bi >= 0)
+            {
+                Growth.Abandon(w, c, bi);   // до смены производных: учёт рынка идёт по прежней ячейке участка
+            }
+
+            l.Flags[lot] |= LotFlags.Lost;
+            MakeCanonicalDerived(l, lot);
+            lost++;
+        }
+
+        if (lost > 0)
+        {
+            l.Version++;
+        }
+
+        return lost;
+    }
+
+    private static void MakeCanonicalDerived(LotStore l, int lot)
+    {
+        l.X[lot] = 0f;
+        l.Z[lot] = 0f;
+        l.Heading[lot] = 0f;
+        l.Cell[lot] = 0;
+        l.CarLane[lot] = -1;
+        l.CarS[lot] = 0f;
+        l.PedEdge[lot] = -1;
+        l.PedSMm[lot] = 0;
+        l.RoadComp[lot] = -1;
+        l.PedComp[lot] = -1;
     }
 
     /// <summary>Пересчитывает <c>RoadComp</c> всех участков (после <c>BuildRoad</c> компоненты могут слиться).</summary>
@@ -299,9 +381,10 @@ internal sealed class LotBuilder
     {
         LotStore l = c.Lots;
         int seg = l.Seg[lot];
-        if (seg >= w.Net.SegmentCount)
+        if (IsDead(w, c, lot))
         {
-            l.RoadComp[lot] = -1;
+            MakeCanonicalDerived(l, lot);
+            l.Version++;
             return;
         }
 

@@ -52,6 +52,7 @@ internal static class ToolOpsPhase
         if (finished)
         {
             NetworkEdit.RefreshDerived(w, pedsChanged: w.Peds != null);
+            w.City?.LotGen.RestoreDerived(w);   // Z6: компоненты связности, полосы и рёбра тротуара оставшихся участков
         }
     }
 
