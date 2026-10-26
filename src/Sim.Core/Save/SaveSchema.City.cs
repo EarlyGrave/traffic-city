@@ -294,6 +294,9 @@ internal static partial class SaveSchema
         Col.Array<int>(13, "LegsDay", w => w.City!.LegsDay, static _ => 2 * Skims.Modes, "6"),
         Col.Array<long>(14, "LegCostDay", w => w.City!.LegCostDay, static _ => 2 * Skims.Modes, "6"),
         Col.Array<int>(15, "CellLoads", w => w.City!.Loads.L, w => w.City!.Loads.L.Length, "NC * P * 2"),
+        Col.Scalar<int>(16, "DayStage", w => w.City!.DayStage, (c, v) => c.W.City!.DayStage = v),
+        Col.Array<int>(17, "VisitsDayTotal", w => w.City!.VisitsDayTotal, static _ => 2, "2"),
+        Col.Array<int>(18, "UnservedDayTotal", w => w.City!.UnservedDayTotal, static _ => 2, "2"),
     })
     {
         PresentText = "demand.model = residents",

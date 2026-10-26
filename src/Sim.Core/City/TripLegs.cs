@@ -274,6 +274,18 @@ internal static class TripLegs
         res.LegDest[r] = -1;
         res.LegStopA[r] = -1;
         res.LegStopB[r] = -1;
+        if ((res.Flags[r] & ResidentFlags.Leaving) != 0)
+        {
+            c.Market.Emigrate(w, c, r);   // единственная точка «житель дома, события нет»: отъезд по дедлайну
+            return;
+        }
+
+        if ((res.Flags[r] & ResidentFlags.Evicted) != 0 && c.Market.TryRelocate(w, c, r, true))
+        {
+            res.Flags[r] = (byte)(res.Flags[r] & ~ResidentFlags.Evicted);
+            res.EvictDays[r] = 0;
+        }
+
         res.PlanCursor[r]++;
         if (res.PlanCursor[r] < res.PlanCount[r])
         {
@@ -485,7 +497,7 @@ internal static class TripLegs
         if (res.PlanKind[tour] == TourKind.Work)
         {
             res.State[r] = (byte)ResidentState.AtWork;
-            ref readonly BuildingTypeDesc t = ref c.Types.Rows[c.Buildings.Type[res.Work[r]]];
+            ref readonly BuildingTypeDesc t = ref c.Types.Rows[c.Buildings.Type[res.PlanDest[tour]]];   // фирма тура: работу могли сменить или потерять в пути
             int endSlot = t.ShiftStartSlot + ((res.Seq[r] % 7) - 3) + t.ShiftSlots;
             long end = c.TickOfSlot(Calendar.DayOf(c, res.LegReq[r]), endSlot);
             CityPhase.SetEvent(w, c, r, end > now ? end : now + 1, ResidentEvent.EndActivity);
@@ -494,6 +506,7 @@ internal static class TripLegs
         {
             res.State[r] = (byte)ResidentState.AtShop;
             w.Counters.ResVisits++;
+            Economy.Visit(w, c, r, res.PlanDest[tour]);
             CityPhase.SetEvent(w, c, r, now + ((long)Math.Max(1, c.Cfg.Residents.ShopSlots) * c.SlotTicks), ResidentEvent.EndActivity);
         }
     }

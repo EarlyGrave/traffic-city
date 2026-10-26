@@ -114,6 +114,11 @@ public static class RunCommand
         string veh = string.Create(
             CultureInfo.InvariantCulture,
             $"tick={sim.Tick} vehicles={c.ActiveVehicles} stuck={c.StuckVehicles} stuck_events={c.StuckEventsTotal} trips={c.TripsCompleted} gridlock={c.GridlockFlag}");
+        if (sim.HasCity)
+        {
+            veh += CityLine(sim, c);
+        }
+
         if (!sim.HasPeds)
         {
             return veh;
@@ -127,5 +132,23 @@ public static class RunCommand
             $"car_cross_delay_s_per_veh_h={(c.VehicleTicksTotal > 0 ? c.CarCrossDelayTicks / (double)c.VehicleTicksTotal * 3600.0 : 0):F1} grants_revoked_ped={c.GrantsRevokedPed} crossing_closed_share={(c.CrossingObservedTicks > 0 ? (double)c.CrossingClosedTicks / c.CrossingObservedTicks : 0):F3} " +
             $"boardings={c.PedStopBoardings} alighted={c.BusPassengersAlighted} mode_fallback={c.PedModeFallback} " +
             $"stop_wait_mean_s={(c.PedStopBoardings > 0 ? c.PedStopWaitTicksTotal * 0.05 / c.PedStopBoardings : 0.0):F1}");
+    }
+
+    /// <summary>Сводка города (режим residents): население, занятость, деньги (Σ = 0), туры и дедлайны.</summary>
+    private static string CityLine(Simulation sim, SimCounters c)
+    {
+        if (!sim.GetCityStats(out CityStats s))
+        {
+            return string.Empty;
+        }
+
+        long sum = s.BalanceResidents + s.BalanceFirms + s.BalanceExternal + s.BalanceCity;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $" | city day={s.Day} pop={s.Population} labour={s.Labour} employed={s.Employed} seeking={s.Seeking} vacancies={s.Vacancies} free_housing={s.FreeHousing} " +
+            $"bld_r={s.BuildingsR} bld_c={s.BuildingsC} bld_i={s.BuildingsI} constructing={s.Constructing} abandoned={s.Abandoned} " +
+            $"bal_res={s.BalanceResidents} bal_firms={s.BalanceFirms} bal_ext={s.BalanceExternal} bal_city={s.BalanceCity} bal_sum={sum} " +
+            $"tours={c.ResToursPlanned} dropped={c.ResToursDropped} cancelled={c.ResToursCancelled} legs_done={c.ResLegsDone} visits={c.ResVisits} unserved={c.ResVisitsUnserved} " +
+            $"imm={c.Immigrants} emig={c.Emigrants} reloc={c.ResRelocations} hired={c.ResHired} fired={c.ResFired} built={c.BuildingsBuilt} res_stuck={c.ResStuck} leg_overdue={c.ResLegOverdue}");
     }
 }

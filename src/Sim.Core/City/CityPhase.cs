@@ -61,6 +61,7 @@ internal static class CityPhase
             TripLegs.OnLegArrived(w, c, r);
         }
 
+        c.Market.MatchStep(w, c);   // рынок труда (Z4): до match_per_tick ищущих за тик
         c.Skims.Advance(w);   // граница периода и порция обновления скима (Z3), каждый тик
         int cells = c.Skims.Cells;
         if (w.Tick % Math.Max(1, c.DayTicks / Math.Max(1, cells)) == 0)
@@ -68,12 +69,20 @@ internal static class CityPhase
             Demand.Accessibility.Step(w, 1);   // поле доступности: ячейки-источники порциями, полный проход за сутки
         }
 
+        DayPass(w, c, false);
         if ((w.Tick + 1) % c.DayTicks == 0)
         {
             c.Day++;
             w.Counters.CityDays++;
+            c.Ledger.RollDay();
+            c.DayStage = DayStages.Buildings;
+            c.CursorBuildings = 0;
+            c.CursorResidents = 0;
+            c.Market.InvalidateSupplier();
             int idx = c.Day & 1;
             c.ToursDay[idx] = 0;
+            c.VisitsDayTotal[idx] = 0;
+            c.UnservedDayTotal[idx] = 0;
             for (int m = 0; m < Demand.Skims.Modes; m++)
             {
                 c.LegsDay[(idx * Demand.Skims.Modes) + m] = 0;
@@ -87,6 +96,74 @@ internal static class CityPhase
             CheckInvariants(w, c);
         }
 #endif
+    }
+
+    /// <summary>
+    /// Дневной проход (Z4): стадия 0 - здания (стройка, прибыль, найм, закрытие, товары, экспорт), стадия 1 - жители (дедлайны, переезды, смена работы), стадия 2 - спрос, снос, въезд, рост.
+    /// Каждая из первых двух стадий уложена в четверть суток порциями по курсору (<see cref="CityWorld.CursorBuildings"/>, <see cref="CityWorld.CursorResidents"/>); <paramref name="all"/> - целиком
+    /// за один вызов (агрегат при прыжке по дням, тесты). Первые сутки (Day = 0) проход не идёт: вчера не было.
+    /// </summary>
+    internal static void DayPass(World w, CityWorld c, bool all)
+    {
+        if (c.DayStage >= DayStages.Idle)
+        {
+            return;
+        }
+
+        int quarter = Math.Max(1, c.DayTicks / 4);
+        if (c.DayStage == DayStages.Buildings)
+        {
+            BuildingStore b = c.Buildings;
+            int quota = all ? int.MaxValue : Math.Max(1, (b.HighWater + quarter - 1) / quarter);
+            int end = (int)Math.Min((long)c.CursorBuildings + quota, b.HighWater);
+            for (int i = c.CursorBuildings; i < end; i++)
+            {
+                Economy.BuildingDay(w, c, i);
+            }
+
+            c.CursorBuildings = end;
+            if (end >= b.HighWater)
+            {
+                c.DayStage = DayStages.Residents;
+                c.CursorResidents = 0;
+            }
+
+            if (!all || c.DayStage != DayStages.Residents)
+            {
+                return;
+            }
+        }
+
+        if (c.DayStage == DayStages.Residents)
+        {
+            CityResidents res = c.Residents;
+            int quota = all ? int.MaxValue : Math.Max(1, (res.HighWater + quarter - 1) / quarter);
+            int end = (int)Math.Min((long)c.CursorResidents + quota, res.HighWater);
+            for (int r = c.CursorResidents; r < end; r++)
+            {
+                if (res.Pool.IsAlive(r))
+                {
+                    c.Market.ResidentDay(w, c, r);
+                }
+            }
+
+            c.CursorResidents = end;
+            if (end >= res.HighWater)
+            {
+                c.DayStage = DayStages.Growth;
+            }
+
+            if (!all || c.DayStage != DayStages.Growth)
+            {
+                return;
+            }
+        }
+
+        if (c.DayStage == DayStages.Growth)
+        {
+            Growth.Daily(w, c);
+            c.DayStage = DayStages.Idle;
+        }
     }
 
     /// <summary>Ставит единственное событие жителя (<c>EvTick/EvKind</c>) и обновляет колесо; <paramref name="when"/> &lt; 0 - события нет.</summary>
@@ -118,6 +195,18 @@ internal static class CityPhase
         {
             SetEvent(w, c, r, w.Tick + c.SlotTicks, ResidentEvent.Plan);   // ещё не вернулся: план чуть позже
             return;
+        }
+
+        if ((res.Flags[r] & ResidentFlags.Leaving) != 0)
+        {
+            c.Market.Emigrate(w, c, r);   // дедлайн поиска работы или выселения истёк: отъезд из дома
+            return;
+        }
+
+        if ((res.Flags[r] & ResidentFlags.Evicted) != 0 && c.Market.TryRelocate(w, c, r, true))
+        {
+            res.Flags[r] = (byte)(res.Flags[r] & ~ResidentFlags.Evicted);
+            res.EvictDays[r] = 0;
         }
 
         DayPlanner.Build(w, c, r);
@@ -161,6 +250,11 @@ internal static class CityPhase
         else if (state == (byte)ResidentState.AtWork || state == (byte)ResidentState.AtShop)
         {
             int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
+            if (state == (byte)ResidentState.AtWork)
+            {
+                Economy.PayWage(w, c, r);
+            }
+
             if (!TripLegs.StartLeg(w, c, r, false, (TravelMode)res.PlanMode[tour]))
             {
                 TripLegs.ArriveWithoutLeg(w, c, r);
@@ -169,7 +263,7 @@ internal static class CityPhase
     }
 
 #if DEBUG
-    /// <summary>CZ3 (debug, раз в 100 тиков): состояния согласованы с агентами и колесом, Σ по состояниям = число живых.</summary>
+    /// <summary>CZ3 и CZ2 (debug, раз в 100 тиков): состояния согласованы с агентами и колесом, Σ по состояниям = число живых, Σ счетов = 0.</summary>
     private static void CheckInvariants(World w, CityWorld c)
     {
         CityResidents res = c.Residents;
@@ -202,6 +296,7 @@ internal static class CityPhase
         }
 
         System.Diagnostics.Debug.Assert(alive == res.AliveCount && inLeg <= alive, "CZ3: Alive");
+        System.Diagnostics.Debug.Assert(c.Ledger.SumAll() == 0, "CZ2: сумма счетов");
     }
 #endif
 }

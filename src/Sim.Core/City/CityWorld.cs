@@ -27,6 +27,7 @@ internal sealed class CityWorld
     public readonly Skims Skims;
     public readonly CellLoads Loads;
     public readonly LotBuilder LotGen;
+    public readonly Market Market;             // производные рынков труда и жилья (Z4); в сейв не входят
 
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
@@ -43,11 +44,16 @@ internal sealed class CityWorld
     public int CursorBuildings;
     public int CursorAccess;
 
+    /// <summary>Стадия дневного прохода (<see cref="DayStages"/>, LEDG): 0 здания, 1 жители, 2 рынки и рост, 3 - сегодня всё сделано.</summary>
+    public int DayStage = DayStages.Idle;
+
     // ---- сглаженный спрос, как показывается клиенту (LEDG, Z4) ----
     public int DemandR, DemandC, DemandI;
 
     // ---- накопители суток «сегодня/вчера» (LEDG): туры, ноги по способам и их стоимость ----
     public readonly int[] ToursDay = new int[2];          // [day & 1]
+    public readonly int[] VisitsDayTotal = new int[2];    // [day & 1] визитов в C за сутки (LEDG, Z4)
+    public readonly int[] UnservedDayTotal = new int[2];  // [day & 1] визитов впустую за сутки (LEDG, Z4)
     public readonly int[] LegsDay = new int[2 * Skims.Modes];            // [(day & 1) * 3 + mode]
     public readonly long[] LegCostDay = new long[2 * Skims.Modes];       // Σ обобщённой стоимости, дс
 
@@ -68,6 +74,7 @@ internal sealed class CityWorld
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
         LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm);
+        Market = new Market(grid.Cells, caps.MaxBuildings, Math.Max(1, cfg.Zoning.MaxNewBuildingsPerDay));
         Wheel = new TimerWheel(caps.MaxCityResidents);
         Arrivals = new ArrivalRing(caps.MaxCityResidents);
         DueScratch = new int[Math.Max(1, caps.MaxCityResidents)];
@@ -86,6 +93,7 @@ internal sealed class CityWorld
     public void RestoreDerived(World w)
     {
         LotGen.RestoreDerived(w);
+        Market.Invalidate();
         RebuildWheel(w.Tick - 1);
         TripLegs.RestoreDerived(w);
     }

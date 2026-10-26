@@ -9,6 +9,16 @@ internal static class ResidentFlags
     public const byte Labour = 2;     // в рабочей силе (ищет или имеет работу)
     public const byte Evicted = 4;    // дом заброшен: переезд с приоритетом (§8.2)
     public const byte Leaving = 8;    // уедет из города при ближайшем AtHome
+    public const byte InSeekQueue = 16;   // есть живая запись в очереди ищущих работу (Z4: без дублей)
+}
+
+/// <summary>Стадии дневного прохода (<c>CityWorld.DayStage</c>, Z4): здания, жители, рынки и рост, затем покой до границы суток.</summary>
+internal static class DayStages
+{
+    public const int Buildings = 0;
+    public const int Residents = 1;
+    public const int Growth = 2;
+    public const int Idle = 3;
 }
 
 /// <summary>Вид события колеса жителя (<c>EvKind</c>): что произойдёт в <c>EvTick</c>. Числа лежат в сейве.</summary>

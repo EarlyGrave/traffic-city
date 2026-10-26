@@ -68,6 +68,9 @@
   "residents": {
     "initial_fill": 0.1
   },
+  "choice": {
+    "asc_freq_s": 850
+  },
   "rules": {
     "min_physical_gap_m": 0.5,
     "stuck_threshold_s": 60,

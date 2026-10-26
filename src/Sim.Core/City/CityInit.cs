@@ -30,6 +30,11 @@ internal static class CityInit
         c.Lots.Version++;
         c.RebuildWheel(-1);   // колесо жителей: начальные события Plan (Z2)
         Accessibility.Init(w);   // производные скимов, поле доступности и LS_ref (zoning-demand.md §6.7)
+        if (c.Cfg.Zoning.Auto)
+        {
+            AssignJobs(w, c);   // начальная работа - тем же рынком, что и днём (§2.5 п. 3, §8.1)
+        }
+
         return CreateStatus.Ok;
     }
 
@@ -179,26 +184,12 @@ internal static class CityInit
                 c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(ri), cfg.Economy.InitialResidentBalance, FlowKind.Endowment);
             }
         }
-
-        AssignJobs(w, c);
     }
 
-    /// <summary>Начальная работа: рабочие в порядке индекса жителя, фирмы в порядке индекса здания, общая дорожная компонента; указатель на компоненту идёт вперёд один раз.</summary>
+    /// <summary>Начальная работа: рабочие в порядке индекса жителя подбирают фирму рынком (§8.1); не нашедшие встают в очередь ищущих.</summary>
     private static void AssignJobs(World w, CityWorld c)
     {
-        BuildingStore b = c.Buildings;
         CityResidents r = c.Residents;
-        var firms = new int[b.HighWater];
-        int nf = 0;
-        for (int bi = 0; bi < b.HighWater; bi++)
-        {
-            if (b.IsAlive(bi) && c.Types.Rows[b.Type[bi]].Kind != LotZone.Residential && b.State[bi] == (byte)BuildingState.Active)
-            {
-                firms[nf++] = bi;
-            }
-        }
-
-        var ptr = new Dictionary<int, int>();
         for (int ri = 0; ri < r.HighWater; ri++)
         {
             if (!r.IsAlive(ri) || (r.Flags[ri] & ResidentFlags.Labour) == 0)
@@ -206,32 +197,14 @@ internal static class CityInit
                 continue;
             }
 
-            int comp = c.Lots.RoadComp[b.Lot[r.Home[ri]]];
-            ptr.TryGetValue(comp, out int p);
-            int found = -1;
-            while (p < nf)
+            int firm = c.Market.PickFirm(w, c, ri, -1, out _);
+            if (firm >= 0)
             {
-                int f = firms[p];
-                if (c.Lots.RoadComp[b.Lot[f]] == comp && b.Occupants[f] < b.Jobs[f])
-                {
-                    found = f;
-                    break;
-                }
-
-                p++;
-            }
-
-            ptr[comp] = p;
-            if (found >= 0)
-            {
-                r.Work[ri] = found;
-                r.NextWork[ri] = b.HeadWork[found];
-                b.HeadWork[found] = ri;
-                b.Occupants[found]++;
+                c.Market.Employ(w, c, ri, firm);
             }
             else
             {
-                r.SeekQueue.TryEnqueue(new SeekEntry { Index = ri, Generation = r.Pool.GenerationOf(ri) });
+                Market.StartSeeking(c, ri);
             }
         }
     }

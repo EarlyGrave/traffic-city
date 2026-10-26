@@ -165,7 +165,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 6);
             }
 
-            if (r.Flags[i] > 15 || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.Arrive || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
+            if (r.Flags[i] > 31 || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.Arrive || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
             {
                 return Bad(c, i, 9);
             }
@@ -219,7 +219,7 @@ internal static partial class SaveValidator
             }
 
             int stops = w.Net.BusStopCount;
-            if ((r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
+            if ((r.EvTick[i] != -1 && r.EvTick[i] < w.Tick) || (r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
                 r.LegDest[i] < -1 || (r.LegDest[i] != -1 && !b.Pool.IsAlive(r.LegDest[i])) || r.LegStopA[i] < -1 || r.LegStopA[i] >= stops || r.LegStopB[i] < -1 || r.LegStopB[i] >= stops ||
                 (r.State[i] == (byte)ResidentState.WaitDepart && r.LegDest[i] == -1) || (r.State[i] == (byte)ResidentState.AtHome && r.Agent[i] != -1))
             {
@@ -323,7 +323,7 @@ internal static partial class SaveValidator
     private static LoadStatus ValidateCityMisc(LoadContext c, World w, CityWorld city)
     {
         if (city.Day < 0 || (int)city.Exec > (int)TripExecution.Aggregate || city.ExecPending < -1 || city.ExecPending > (int)TripExecution.Aggregate ||
-            city.CursorResidents < 0 || city.CursorBuildings < 0 || city.CursorAccess < 0 || city.Ledger.SumAll() != 0)
+            city.CursorResidents < 0 || city.CursorBuildings < 0 || city.CursorAccess < 0 || (uint)city.DayStage > DayStages.Idle || city.Ledger.SumAll() != 0)
         {
             return Bad(c, 0, 16);
         }
