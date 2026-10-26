@@ -70,6 +70,11 @@ public partial class SimHost : Node3D
     private bool _showHud;
     private bool _hudPending;
     private bool _selectFirstPed;
+    private const int SelectCentralSignal = -2;
+    private int _selectNodeArg = -1;
+    private NodePanel.NodePreset? _presetArg;
+    private NodePicker? _nodePicker;
+    private NodePanel? _nodePanel;
     private float _viewX0, _viewZ0, _viewX1, _viewZ1;
     private float _mapX0, _mapZ0, _mapX1, _mapZ1;
 
@@ -149,7 +154,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
-    /// <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>,
+    /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>,
     /// <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
     private void ParseArgs(string[] args, ref string name)
@@ -177,6 +182,27 @@ public partial class SimHost : Node3D
             else if (_renderStats != null && _renderStats.TryParseArg(args, i, out int used))
             {
                 i += used;
+            }
+            else if (a == "--select-node" && i + 1 < args.Length)
+            {
+                string v = args[++i];
+                if (v == "signal")
+                {
+                    _selectNodeArg = SelectCentralSignal;
+                }
+                else
+                {
+                    int.TryParse(v, NumberStyles.Integer, inv, out _selectNodeArg);
+                }
+            }
+            else if (a == "--node-preset" && i + 1 < args.Length)
+            {
+                _presetArg = args[++i] switch
+                {
+                    "fixed" => NodePanel.NodePreset.Fixed,
+                    "flash" => NodePanel.NodePreset.Flash,
+                    _ => NodePanel.NodePreset.Adaptive,
+                };
             }
             else if (a == "--select-ped")
             {
@@ -304,6 +330,8 @@ public partial class SimHost : Node3D
         {
             UpdatePeds(_sim, alpha, dist, delta);
         }
+
+        _nodePanel?.Refresh(_sim, delta);
 
         if (_signalsOn)
         {
@@ -475,6 +503,21 @@ public partial class SimHost : Node3D
         {
             SelectFirstWalkingPed(sim);
         }
+
+        if (_selectNodeArg == SelectCentralSignal)
+        {
+            _selectNodeArg = CentralSignalNode(sim);
+        }
+
+        if (_selectNodeArg >= 0)
+        {
+            SelectNode(sim, _selectNodeArg, !_hasCamArgs && _pose.Length == 0);
+            if (_presetArg.HasValue)
+            {
+                OnNodePreset(_selectNodeArg, _presetArg.Value);
+                sim.Step(2);
+            }
+        }
         SetStatus(string.Empty);
         return true;
     }
@@ -593,6 +636,79 @@ public partial class SimHost : Node3D
         AddChild(_routeNode);
 
         _camera?.Focus(center, MathF.Max(w, h));
+
+        _nodePicker = new NodePicker();
+        AddChild(_nodePicker);
+        _nodePanel = new NodePanel();
+        _nodePanel.PresetRequested += OnNodePreset;
+        GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_nodePanel);
+    }
+
+    private void OnNodePreset(int node, NodePanel.NodePreset preset)
+    {
+        if (_sim == null)
+        {
+            return;
+        }
+
+        NetworkView net = _sim.Network;
+        if (node < 0 || node >= net.Nodes.Length)
+        {
+            return;
+        }
+
+        _sim.Enqueue(NodePanel.MakePreset(node, net.Nodes[node].Generation, preset));
+    }
+
+    /// <summary>Выбрать узел (клик или <c>--select-node</c>): панель + кольцо; <paramref name="focus"/> - поставить камеру на узел.</summary>
+    private void SelectNode(Simulation sim, int node, bool focus)
+    {
+        NetworkView net = sim.Network;
+        if (_nodePanel == null || _nodePicker == null || node < 0 || node >= net.Nodes.Length)
+        {
+            return;
+        }
+
+        _nodePanel.Open(node);
+        _nodePicker.ShowAt(in net.Nodes[node]);
+        if (focus)
+        {
+            Vec2 p = net.Nodes[node].Position;
+            _camera?.SetPose(new Vector3(p.X, 0f, p.Z), 110f, 55f, 0f);
+        }
+    }
+
+    /// <summary>Для скриншотов (<c>--select-node signal</c>): светофорный узел ближе всего к центру карты, предпочтительно с 4 рукавами.</summary>
+    private int CentralSignalNode(Simulation sim)
+    {
+        NetworkView net = sim.Network;
+        float cx = (_mapX0 + _mapX1) * 0.5f;
+        float cz = (_mapZ0 + _mapZ1) * 0.5f;
+        int best = -1;
+        float bestD = float.MaxValue;
+        for (int i = 0; i < net.Nodes.Length; i++)
+        {
+            ref readonly NodeData n = ref net.Nodes[i];
+            if (n.Control != NodeControl.Signal || n.Signal < 0 || n.ArmCount < 4)
+            {
+                continue;
+            }
+
+            float d = ((n.Position.X - cx) * (n.Position.X - cx)) + ((n.Position.Z - cz) * (n.Position.Z - cz));
+            if (d < bestD)
+            {
+                bestD = d;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private void DeselectNode()
+    {
+        _nodePanel?.Close();
+        _nodePicker?.Clear();
     }
 
     private void LogInfo(Simulation sim)
@@ -901,6 +1017,7 @@ public partial class SimHost : Node3D
             && _sim.TryPickPedestrian(hit.X, hit.Z, MathF.Max(1.5f, origin.DistanceTo(hit) * 0.01f), out PedHandle ph))
         {
             _selPed = ph;
+            DeselectNode();
             _inspectTimer = 0;
             _sim.Enqueue(Command.MakeClearSelection());
             _routeDirty = true;
@@ -912,10 +1029,20 @@ public partial class SimHost : Node3D
         if (_sim.TryPickVehicle(hit.X, hit.Z, radius, out VehicleHandle h))
         {
             _sim.Enqueue(Command.MakeSelectVehicle(h));
+            DeselectNode();
         }
         else
         {
             _sim.Enqueue(Command.MakeClearSelection());
+            int node = _nodePicker?.Pick(_sim, hit.X, hit.Z, MathF.Max(NodePicker.MinRadius, origin.DistanceTo(hit) * 0.01f)) ?? -1;
+            if (node >= 0)
+            {
+                SelectNode(_sim, node, false);
+            }
+            else
+            {
+                DeselectNode();
+            }
         }
 
         _routeDirty = true;
@@ -926,6 +1053,7 @@ public partial class SimHost : Node3D
     {
         _sim?.Enqueue(Command.MakeClearSelection());
         _selPed = PedHandle.Null;
+        DeselectNode();
         _routeDirty = true;
     }
 

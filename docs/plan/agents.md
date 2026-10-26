@@ -137,4 +137,5 @@
 | 131 | zoning-z5 (worktree) | sonnet | 3.2 Z5: агрегат, BPR, AdvanceTo, run --years | wip |
 | 132 | tools-t2 (worktree) | sonnet | 4.3 T2: пулы и арены сети, сейв w4, RefKind | wip |
 | 133 | rust-r3 (worktree) | sonnet | 4.6 R3: JSON-ридер и загрузчик, desc_hash | wip |
-| 134 | render-v10 (worktree) | sonnet | 3.3 V10: панель узла по клику | wip |
+| 134 | render-v10 (worktree) | sonnet | 3.3 V10: панель узла по клику | done, merged (аналитический пик, 4 Гц, пресеты; ядро не менялось) |
+| 135 | mod-m9 (worktree) | sonnet | 4.5 M9: таймлайн команд в сценарии, CoreInfo.ApiVersion | wip |
