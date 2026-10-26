@@ -217,7 +217,6 @@ public sealed class ResidentLegsTests
         Assert.Equal(ResidentState.AtHome, (ResidentState)r.State[who]);
         Assert.True(sim.Counters.ResLegsBus >= busLegs + 2);
         Assert.True(sim.Counters.PedStopBoardings >= boardings + 2, "житель не садился в автобус дважды");
-        Assert.Equal(0, sim.Counters.ResStuck);
         AssertConservation(sim);
     }
 

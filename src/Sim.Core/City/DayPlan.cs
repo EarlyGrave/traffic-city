@@ -73,7 +73,12 @@ internal static class DayPlanner
         int destLot = c.Buildings.Lot[dest];
         int baseSlot = desiredBase < CityWorld.SlotsPerDay ? desiredBase : CityWorld.SlotsPerDay - 1;
         int period = c.PeriodOf(c.TickOfSlot(day, baseSlot));
-        TravelMode mode = Choice.ChooseMode(w, r, dest, period);
+        if (!Choice.TryChooseMode(w, r, dest, period, out TravelMode mode))
+        {
+            w.Counters.ResToursUnreachable++;   // ни один способ не доступен: тур отменяется
+            return;
+        }
+
         int travel = TravelSlots(c, homeLot, destLot, mode, period);
         int desired = desiredBase > cursor + travel ? desiredBase : cursor + travel;
         int depart = Choice.ChooseDepartSlot(w, r, desired, travel);

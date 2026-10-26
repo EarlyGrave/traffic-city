@@ -100,7 +100,7 @@ internal sealed class CityWorld
         {
             if (r.Pool.IsAlive(i) && r.EvTick[i] >= 0)
             {
-                Wheel.Schedule(i, r.EvTick[i], now);
+                Wheel.Schedule(i, r.EvTick[i], Math.Min(now, r.EvTick[i] - 1));   // честный сейв: EvTick > now; прыжок Tick в тесте не должен ронять Schedule
             }
         }
     }

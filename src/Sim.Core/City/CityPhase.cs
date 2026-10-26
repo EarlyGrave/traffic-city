@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Api;
 
 namespace Sim.Core.City;
@@ -58,6 +59,13 @@ internal static class CityPhase
         while (c.Arrivals.TryPop(out int r))
         {
             TripLegs.OnLegArrived(w, c, r);
+        }
+
+        c.Skims.Advance(w);   // граница периода и порция обновления скима (Z3), каждый тик
+        int cells = c.Skims.Cells;
+        if (w.Tick % Math.Max(1, c.DayTicks / Math.Max(1, cells)) == 0)
+        {
+            Demand.Accessibility.Step(w, 1);   // поле доступности: ячейки-источники порциями, полный проход за сутки
         }
 
         if ((w.Tick + 1) % c.DayTicks == 0)

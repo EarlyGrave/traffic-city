@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Sim.Core.Api;
+using Sim.Core.Demand;
 using Sim.Core.Network;
 
 namespace Sim.Core.City;
@@ -28,6 +29,7 @@ internal static class CityInit
 
         c.Lots.Version++;
         c.RebuildWheel(-1);   // колесо жителей: начальные события Plan (Z2)
+        Accessibility.Init(w);   // производные скимов, поле доступности и LS_ref (zoning-demand.md §6.7)
         return CreateStatus.Ok;
     }
 

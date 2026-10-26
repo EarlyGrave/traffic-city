@@ -147,13 +147,13 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `PEDS` | C | `HighWater` пешеходов | (v2, ADR-0020) есть ⇔ `peds.enabled`: пул (`HighWater`, `FreeList`, `Generation`), поля `PedStore` (`State`, `Leg`, `Resident`, `Edge`, `T0`, `S0Mm`, `VMmT`, `EvTick`, `PathCursor/Count`, `GoalEdge/SMm`, `Next`, `Bus`, `AlightStop`, `TripTick`); мёртвые слоты - канон (ссылки −1, остальное 0) |
 | `PPTH` | C | `HighWater · max_ped_path_steps` | (v2) арена путей; мёртвые слоты - нули; `Steps` - проверка ёмкости |
 | `RESI` | C | `Residents` | (v2) жители: дом, работа, способ, маршруты и остановки (P4), `Where`, `ReadyTick`, `Ped`, `ReadyNext`; голова/хвост очереди готовых |
-| `XING` | C | переходы / остановки | (v2) `XState`, `QHead/QTail/QCount`, `OnCross`, `BusyUntil`, `ClosedSince`, `CarWindowUntil`, `CarsWaiting`, `WaitSum`, `Releases`, `MeasuredWait` по индексу перехода (`NodeArmCount` + по одному на остановку при `midblock_at_stops`); `StopQHead/Tail/Count` по остановкам; `PaxHead` по машинам; гистограммы ожидания (256 корзин по 1 с) |
+| `XING` | C | переходы / остановки | (v2) `XState`, `QHead/QTail/QCount`, `OnCross`, `BusyUntil`, `BusyUntilIn`, `BusyUntilOut` (половины перехода, pedestrians.md §5.9), `ClosedSince`, `CarWindowUntil`, `CarsWaiting`, `WaitSum`, `Releases`, `MeasuredWait` по индексу перехода (`NodeArmCount` + по одному на остановку при `midblock_at_stops`); `StopQHead/Tail/Count` по остановкам; `PaxHead` по машинам; гистограммы ожидания (256 корзин по 1 с) |
 | `PQUE` | C | очередь | (v2) `PedPathQueue` (индекс, поколение) в логическом порядке |
 | `BTYP` | C | типы зданий | (v3, ADR-0011, PreWorld как `VTYP`) есть ⇔ `demand.model = residents`: таблица типов зданий по полям (`Kind`, `Density`, `Capacity`, `ShopCapacity`, `ShiftStartSlot`, `ShiftSlots`, `ConstructDays`, `AttractQ8`, `VisualRow`); строки только дописываются |
 | `LOTS` | C | `Count` участков | (v3) участки: `Seg`, `SegGen`, `Side`, `S0Mm`, `S1Mm`, `Zone`, `Density`, `Building`, `Flags`; геометрия, ячейка, точки доступа машины и пешехода, компоненты - производные |
 | `BLDG` | C | `HighWater` зданий | (v3) пул зданий (`HighWater`, `FreeList`, `Generation`) и поля (`Lot`, `Type`, `State`, `StateTick`, `Occupants`, `Jobs`, `HeadRes`, `HeadWork`, `Account`, `RevenueEwma`, `ProfitEwma`, пары «сегодня/вчера» `VisitsDay`/`RevenueDay`/`CostDay`, `LossDays`, `VacantDays`); мёртвые слоты - канон |
 | `RESD` | C | `HighWater` жителей | (v3) пул жителей, поля (`Home`, `Work`, `NextHome/NextWork`, `Flags`, `State`, `StateTick`, `EvTick`, `EvKind`), план дня (`PlanCount/Cursor` и по 3 тура `PlanKind/Mode/Dest/Slot`), нога (`LegMode/O/D/Req/Walk/Wait/Ride`, Z2: `LegDest`, `LegStopA/B`), `Agent/AgentGen`, `Account`, `IncomeEwma`, `SeekDays`, `EvictDays`, `Seq`, `NextSeq`, очередь ищущих работу (индекс, поколение) |
-| `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
+| `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `LsC` (`NC * 3`), `LsJobs` (`NC`; поле доступности Z3), `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
 | `LEDG` | C | 1 | (v3) `External`, `City`, потоки по 13 видам (`FlowDay/Yesterday/Total`), курсоры дневных проходов, сглаженный спрос R/C/I, суточные накопители туров и ног, `CellLoads` |
 
 Блоки хоста (флаг `host`, id со строчной первой буквой, ядро не разбирает): `meta` (имя города, время создания/изменения
@@ -1199,6 +1199,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `XING` (peds.enabled) | 16 | PaxHead | i32 | Vehicles.HighWater | -1 |
 | `XING` (peds.enabled) | 17 | CrossWaitHist | i64 | 256 | 0 |
 | `XING` (peds.enabled) | 18 | StopWaitHist | i64 | 256 | 0 |
+| `XING` (peds.enabled) | 19 | BusyUntilIn | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 20 | BusyUntilOut | i64 | XCount | 0 |
 | `PQUE` (peds.enabled) | 1 | Count | i32 | 1 | 0 |
 | `PQUE` (peds.enabled) | 2 | Index | i32 | Count | 0 |
 | `PQUE` (peds.enabled) | 3 | Generation | i32 | Count | 0 |
@@ -1284,6 +1286,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `SKIM` (demand.model = residents) | 10 | FrozenKey | i32 | FrozenN | 0 |
 | `SKIM` (demand.model = residents) | 11 | FrozenSum | i64 | FrozenN | 0 |
 | `SKIM` (demand.model = residents) | 12 | FrozenCount | i32 | FrozenN | 0 |
+| `SKIM` (demand.model = residents) | 13 | LsC | i32 | NC * 3 | 0 |
+| `SKIM` (demand.model = residents) | 14 | LsJobs | i32 | NC | 0 |
 | `LEDG` (demand.model = residents) | 1 | External | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 2 | City | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 13 | 0 |

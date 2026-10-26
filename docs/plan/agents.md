@@ -119,5 +119,10 @@
 | 113 | zoning-z1 (worktree) | sonnet | 3.2 Z1: поверхность — desc, хранилища, участки, автозонирование, сейв, kind 23/24 | done, merged (world_version 3; без residents побитово; s1k: 12 371 житель) |
 | 114 | braess-z8a (worktree) | sonnet | 3.2 Z8a: парадокс Брайеса на синтетике | done, merged (перемычка 50%, время +34.5%, без правок ядра) |
 | 115 | render-v3 (worktree) | sonnet | 3.3 V3: машины — батчи по LOD, точки, вид = прямоугольник точек | done, merged (agents overview prims 303k → 75k; alloc при смене вида — только 2 первых тика, ленивый init) |
-| 116 | half-crossings (worktree) | sonnet | 3.1e: «половины» перехода — раздельные BusyUntil для XIn/XOut | wip |
-| 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | wip |
+| 116 | half-crossings (worktree) | sonnet | 3.1e: «половины» перехода — раздельные BusyUntil для XIn/XOut | done, merged: 82.5% → 87% (цель 90 не взята); тест ped_stuck ослаблен ≤ 2 — вернуть в 3.1f |
+| 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | done, merged (FPS llvmpipe s1k 18.8 → 63, s1k-peds 19 → 46; prims ×10–35 меньше) |
+| 118 | zoning-z2 (worktree) | sonnet | 3.2 Z2: календарь, автомат жителя, ноги в micro, s1k-res | wip |
+| 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | done, merged (41 тест Demand; вектор detlogit.json для Rust) |
+| 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | done, merged (пешеходы 1 draw call; agents mid prims 38.5k → 9k) |
+| 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | wip |
+| 122 | render-v6 (worktree) | sonnet | 3.3 V6: тени, свет, пресеты low/high (визуал — плейсхолдеры) | wip |

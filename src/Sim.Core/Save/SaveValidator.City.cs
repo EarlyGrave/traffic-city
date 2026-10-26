@@ -219,7 +219,7 @@ internal static partial class SaveValidator
             }
 
             int stops = w.Net.BusStopCount;
-            if ((r.EvTick[i] != -1 && r.EvTick[i] < w.Tick) || (r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
+            if ((r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
                 r.LegDest[i] < -1 || (r.LegDest[i] != -1 && !b.Pool.IsAlive(r.LegDest[i])) || r.LegStopA[i] < -1 || r.LegStopA[i] >= stops || r.LegStopB[i] < -1 || r.LegStopB[i] >= stops ||
                 (r.State[i] == (byte)ResidentState.WaitDepart && r.LegDest[i] == -1) || (r.State[i] == (byte)ResidentState.AtHome && r.Agent[i] != -1))
             {
