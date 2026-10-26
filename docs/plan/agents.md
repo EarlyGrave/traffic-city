@@ -144,4 +144,4 @@
 | 138 | mod-m3 (worktree) | sonnet | 4.5 M3: MANI из каталога, отпечаток, AssetNotice, --packages-dir | done, merged (отпечаток base 8345a96e7adc282c; compare exit 2 при разном) |
 | 139 | tools-t3t4 (worktree) | sonnet | 4.3 T3+T4: перенос, перестройка узла, знаки/запреты; дренаж и снос | done, merged (world_version 5; фазз 12 seed; снос без потери машин) |
 | 140 | scale-s8s9 (worktree) | sonnet | 4.1 S8+S9: копия видимого снапшота + Sim.Host (поток симуляции) | done, merged (Host 12/12; хэш хоста = прямой прогон) |
-| 141 | client-dead-slots (worktree) | sonnet | 4.3 клиент: мёртвые слоты (`Alive = 0`) и `Closing` сети в мешах после сноса | running |
+| 141 | client-dead-slots (worktree) | sonnet | 4.3 клиент: мёртвые слоты (`Alive = 0`) и `Closing` сети в мешах после сноса | done, merged (RoadChunks/NodePicker/NodePanel/SimHost; пересборка по Network.Version; CrosswalkMesh/остановки — нет) |
