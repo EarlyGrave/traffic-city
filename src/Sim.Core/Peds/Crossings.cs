@@ -116,9 +116,10 @@ internal static class Crossings
 
         if (st == XStateCode.Claimed)
         {
-            if (xs.QCount[x] == 0)
+            if (xs.QCount[x] == 0 || (signal >= 0 && !PedSignals.IsWalk(xs, x)))
             {
-                Open(w, pw, xs, x, tick);   // очередь опустела (сброс/редкий случай): переход открыт
+                // Очередь опустела (сброс/редкий случай) либо на светофоре Walk кончился, пока ждали обязавшихся: переход открывается, пешеходы ждут следующего Walk.
+                Open(w, pw, xs, x, tick);
                 st = XStateCode.Free;
             }
             else if (!HasObligated(w, pw, x))

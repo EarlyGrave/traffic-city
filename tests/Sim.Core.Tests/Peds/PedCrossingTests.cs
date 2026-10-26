@@ -35,7 +35,7 @@ public sealed class PedCrossingTests
     }
 
     /// <summary>Индекс перехода через рукав-сегмент <paramref name="segment"/> узла 0.</summary>
-    private static int CrossingOfArm(World w, int segment)
+    internal static int CrossingOfArm(World w, int segment)
     {
         ref readonly NodeData nd = ref w.Net.Nodes[0];
         for (int a = 0; a < nd.ArmCount; a++)
@@ -51,7 +51,7 @@ public sealed class PedCrossingTests
     }
 
     /// <summary>Ставит пешехода в конец очереди перехода <paramref name="x"/> (как событие «дошёл до бордюра»): житель <paramref name="resident"/> становится активным.</summary>
-    private static int AddPed(World w, int x, int resident, int speedMmPerTick = 60)
+    internal static int AddPed(World w, int x, int resident, int speedMmPerTick = 60)
     {
         PedWorld pw = w.Peds!;
         PedStore ps = pw.P;
@@ -305,6 +305,105 @@ public sealed class PedCrossingTests
         Assert.True(leftAt >= 0 && leftAt < 30 * 20, $"машина не проехала за 30 с (leftAt={leftAt})");
         Assert.True(sim.Counters.PedCrossReleases > 3);
         Assert.True(sim.Counters.CarCrossDelayTicks > 0);
+    }
+
+    // ------------------------------------------------------------ перегон у остановки
+
+    [Fact]
+    public void MidblockCrossing_StopsApproachingVehicleBeforeZone_ThenLetsItGo()
+    {
+        ScenarioDesc d = WorldSaveFixtures.Small();
+        d.Demand.TargetVehicles = 0;
+        d.Peds = new PedDesc { Enabled = true, Count = 0, Residents = 4, MidblockAtStops = true, ActivityMinTicks = 100_000, ActivityMaxTicks = 200_000 };
+        d.Capacities.MaxPeds = 8;
+        d.Capacities.MaxResidents = 4;
+        d.Capacities.MaxPedPathSteps = 8;
+        using Simulation sim = Make(in d);
+        World w = sim.World;
+        PedNetwork pn = w.Peds!.Net;
+        Assert.True(pn.MidCount > 0);
+        // Переход на перегоне, у сегмента которого есть полоса B->A: переход стоит в 20 м от A, то есть в конце пути по этой полосе (запас разгона - вся длина сегмента).
+        int m = -1;
+        for (int k = 0; k < pn.MidCount && m < 0; k++)
+        {
+            if (pn.MidNextBwd[k] < 0 && w.Net.Segments[pn.MidSegment[k]].LanesBA > 0 && w.Net.Segments[pn.MidSegment[k]].Length > 90f)
+            {
+                m = k;
+            }
+        }
+
+        Assert.True(m >= 0, "нужен переход с запасом разгона");
+        int lane = w.Net.Segments[pn.MidSegment[m]].FirstLaneBA;
+        float len = w.Net.LaneLength[lane];
+        pn.MidLaneRange(m, 1, len, out float s0, out float s1);
+        int car = GateFixture.Place(sim, lane, s0 - 40f, 8f);
+        int x = pn.MidXBase + m;
+        int p = AddPed(w, x, 0, speedMmPerTick: 45);
+        sim.Step(1);
+        Assert.Equal(XStateCode.Busy, w.Peds.X.XState[x]);
+        Assert.Equal(1, w.Peds.X.MidClosed[m]);
+        bool stoppedBefore = false;
+        bool passed = false;
+        for (int t = 0; t < 1500 && !passed; t++)
+        {
+            sim.Step(1);
+            float s = w.Vehicles.S[car];
+            if (w.Peds.X.OnCross[x] > 0 && w.Vehicles.Lane[car] == lane)
+            {
+                Assert.True(s <= s0 - PedRules.StopMargin + 0.05f, $"тик {sim.Tick}: машина заехала в зону перехода (S {s:F2}, зона с {s0:F2}) при пешеходе на нём");
+                stoppedBefore |= w.Vehicles.Speed[car] < 0.3f;
+            }
+
+            passed = w.Vehicles.Lane[car] != lane || s > s1 + 1f;
+        }
+
+        Assert.True(stoppedBefore, "машина должна была остановиться перед переходом");
+        Assert.True(passed, "после прохода пешехода машина должна проехать");
+        Assert.False(w.Peds.P.Pool.IsAlive(p));
+        Assert.True(sim.Counters.CarCrossDelayTicks > 0);
+    }
+
+    // ------------------------------------------------------------ Q-meso и kinematic meso
+
+    [Fact]
+    public void QueueMesoWithPeds_IsNotSupported_KinematicMesoIsAccepted()
+    {
+        ScenarioDesc d = NodeWithPeds(NodeControl.Yield, Arm.E(1), Arm.W(1), Arm.S(1));
+        d.Lod = new LodDesc { Mode = LodMode.AllMeso, CellM = 300f, MesoModel = MesoModel.Queue };
+        Assert.Equal(CreateStatus.NotSupported, Simulation.TryCreate(in d, out Simulation? bad));
+        Assert.Null(bad);
+        d.Lod.MesoModel = MesoModel.Kinematic;
+        Assert.Equal(CreateStatus.Ok, Simulation.TryCreate(in d, out Simulation? ok));
+        ok!.Dispose();
+    }
+
+    [Fact]
+    public void KinematicMeso_WithCrossings_RunsAndStaysDeterministicAcrossThreads()
+    {
+        ScenarioDesc d = WorldSaveFixtures.Small();
+        d.Lod = new LodDesc { Mode = LodMode.AllMeso, CellM = 300f, MesoModel = MesoModel.Kinematic };
+        d.Peds = new PedDesc { Enabled = true, Count = 200, Residents = 400, SpawnRampTicks = 200, ActivityMinTicks = 100, ActivityMaxTicks = 400, MidblockAtStops = true };
+        d.Capacities.MaxPeds = 270;
+        d.Capacities.MaxResidents = 400;
+        d.Capacities.MaxPedPathSteps = 64;
+        d.Transit.PassengerModel = PassengerModel.Agents;
+        ulong? reference = null;
+        foreach (int threads in new[] { 1, 3 })
+        {
+            using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
+            sim.Step(3000);
+            Assert.True(sim.Counters.PedCrossReleases > 10, $"releases {sim.Counters.PedCrossReleases}");
+            Assert.Equal(0, sim.Counters.StuckVehicles);
+            ulong h = sim.ComputeStateHash();
+            if (reference == null)
+            {
+                reference = h;
+            }
+            else
+            {
+                Assert.Equal(reference, h);
+            }
+        }
     }
 
     // ------------------------------------------------------------ PD5 на городе
