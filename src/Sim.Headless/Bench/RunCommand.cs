@@ -3,6 +3,7 @@ using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -54,6 +55,7 @@ public static class RunCommand
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        var timeline = new TimelineRunner(sc.Timeline);
         int step = every > 0 ? every : ticks;
         int done = 0;
         long[] prevHist = new long[Simulation.PedWaitBuckets];
@@ -63,13 +65,14 @@ public static class RunCommand
         while (done < ticks)
         {
             int n = System.Math.Min(step, ticks - done);
-            sim.Step(n);
+            timeline.Step(sim, n);
             done += n;
             output.WriteLine(Line(sim) + WindowTail(sim, in prev, prevHist, curHist, stopTmp));
             prev = sim.Counters;
             (prevHist, curHist) = (curHist, prevHist);
         }
 
+        timeline.WriteSummary(output);
         return ExitOk;
     }
 
