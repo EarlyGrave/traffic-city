@@ -70,3 +70,24 @@
   одного и того же musl-кода в обе стороны.
 - **cbindgen** — сторонний инструмент; заголовок пилота ~60 строк пишется руками, размеры struct сверяет `ffi-smoke`.
 - **gdext сразу** — вторая зависимость (крейт `godot`) и сборка расширения до того, как известна цена порта; набросок — спека §9.
+
+## Реализация R3 (`tc-scenarios`, 2026-10-26)
+- Ридер `json.rs` (≈ 300 строк, 0 зависимостей): RFC 8259 как `System.Text.Json` с `Disallow` комментариям, без висячих запятых, `MaxDepth = 64`
+  (65-й уровень — ошибка), `\u`-суррогаты только парами. Числа хранятся токеном: `f64` — `str::parse` (корректное округление) + `as f32`
+  (двойное округление как в C#); целое — токен без `.`/`e`/`E` (как `TryGetInt32/UInt64`; `seed` — ещё и десятичная строка из одних цифр).
+- Загрузчик `loader.rs` — подмножество: `format_version: 2`, `city.enabled = false`, явная сеть, `capacities` (дефолты и пределы как в C#, включая
+  `max_plan_steps` от `routing.levels`). Полностью разбираемые объекты (корень, `network`, узел, сегмент, `capacities`) отвергают неизвестные ключи и дубликаты;
+  `city`, `vehicles`, `demand`, `peds`, `routing` — выборочно (остальные ключи пропускаются), `transit`/`rules`/`lod` пропускаются. Вне подмножества
+  (`city.enabled != false`, `peds.enabled`, `demand.model = "residents"`, секции города) — ошибка, а не молчаливый пропуск. Файл типов ТС не читается
+  (ядро без I/O); `vehicle_types_file` проверяется только как строка, поэтому `load_ok` Rust может быть `true` там, где C# отвергнет сценарий из-за файла типов
+  (в golden таких нет).
+- Типы `ScenarioDesc`/`SimCapacities`/`NetworkDesc`/`NetworkOptions.DEFAULT` и `desc_hash` лежат в `tc-core::api::desc` (R4 дополняет, не переносит).
+- Результат: `desc_hash` и `load_ok` совпали с C#-golden на всех 10 сценариях (demo-grid + 9 фикстур) с первого прогона.
+
+## Реализация R5/R6 (`tc-core::intersections`, `tc-ffi`, `ffi-smoke`, 2026-10-26)
+- R5: порт `ComputePairs`/`WriteRows`/`ComputeRel`/`RecomputeRel` и `ConflictEntry` (8 Б, `reserved` = 0) в `connector_store.rs`; `min/max` — только `detmath::{min_net,max_net}`,
+  `ToCm` — `as i32` с насыщением (= `DetMath.ToIntSat`). `network_hash`, `conflicts_hash` и `counts.conflicts` совпали со всеми 10 golden с первого прогона.
+- R6: `tc-ffi` (`cdylib` + `rlib`) — единственный крейт с `unsafe`; `tc-core` остался `forbid(unsafe_code)`. Параметры построителя (`NetworkOptions.Default`) зашиты в обеих
+  реализациях и в `tc_scenario_desc` не передаются. Обёртки `guard`/`guard_mut`: NULL -> `catch_unwind` -> код; паника отравляет экземпляр (`AtomicBool`).
+  Пилотная очередь команд, `VehicleRenderData` и `PilotCounters` живут в `tc-core::api`/`sim`. `tc_sim_test_panic` экспортируется только с фичей `test-panic`.
+- `rust/ffi-smoke` — C#-консоль вне `traffic-city.sln` (net10.0, `[DllImport]`, `SafeHandle`, зеркальные struct): все сценарные golden, размеры struct, очередь, NULL-аргументы, паника.

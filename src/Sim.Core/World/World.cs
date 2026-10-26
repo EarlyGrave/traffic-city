@@ -123,6 +123,14 @@ internal sealed class World : IDisposable
     public bool DisableJump;              // тест «прыжки = шаги»: прыжки выключены, пустые тики идут по одному
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
 
+    /// <summary>1 после первой структурной правки сети (<see cref="NetworkStore.ToolsTouched"/>): с этого момента раскладка, free-list'ы и новые поля сети входят в хэш и сейв (player-tools.md §10).</summary>
+    public byte ToolsTouched => Net.ToolsTouched;
+
+    /// <summary>
+    /// Сверка производных сети с полной перестройкой (player-tools.md §3 п. 4); для тестов и отладки (аллоцирует). <c>null</c> - всё совпало, иначе описание расхождения.
+    /// </summary>
+    public string? VerifyDerived() => DerivedCheck.Run(this);
+
     /// <summary>true = <c>Lod.Mode != Off</c>: ячейки построены, массивы уровней машин выделены.</summary>
     public bool LodEnabled => Lod != null;
 

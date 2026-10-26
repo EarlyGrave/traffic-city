@@ -12,8 +12,11 @@ namespace Sim.Scenarios;
 /// <summary>Результат загрузки: desc плюс информативные поля, которых нет в <see cref="ScenarioDesc"/>.</summary>
 public sealed class LoadedScenario
 {
-    public LoadedScenario(string name, string[] typeNames, ScenarioDesc desc, ContentCatalog? catalog = null, PackageSet? packages = null)
+    public LoadedScenario(
+        string name, string[] typeNames, ScenarioDesc desc, ContentCatalog? catalog = null, PackageSet? packages = null,
+        IReadOnlyList<TimelineEntry>? timeline = null)
     {
+        Timeline = timeline ?? [];
         Catalog = catalog;
         Packages = packages;
         Name = name;
@@ -27,6 +30,9 @@ public sealed class LoadedScenario
     public string[] TypeNames { get; }
 
     public ScenarioDesc Desc { get; }
+
+    /// <summary>Таймлайн команд (<c>timeline</c>, modding.md §3.5); пустой, если ключа нет. В <see cref="Desc"/> не входит.</summary>
+    public IReadOnlyList<TimelineEntry> Timeline { get; }
 
     /// <summary>Каталог контента набора пакетов (только <c>format_version: 3</c>, иначе <c>null</c>); индекс типа ТС = индекс в <see cref="ContentCatalog.Vehicles"/>.</summary>
     public ContentCatalog? Catalog { get; }
@@ -186,6 +192,11 @@ public static partial class ScenarioLoader
 
         CityDesc town = ParseTown(root, residents, catalog);
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents);
+        TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
+        {
+            Types = refs,
+            Road = catalog != null ? (reference, path) => ResolveRoad(catalog, packages!, reference, path) : null,
+        });
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -204,7 +215,7 @@ public static partial class ScenarioLoader
             Rules = rules,
             VehicleTypes = types,
         };
-        return new LoadedScenario(name, typeNames, desc, catalog, packages);
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline);
     }
 
     // ---------------------------------------------------------------- units
@@ -364,6 +375,26 @@ public static partial class ScenarioLoader
 
         error = ModError.BadValue;
         return false;
+    }
+
+    private static RoadEntry ResolveRoad(ContentCatalog cat, PackageSet set, string reference, string path)
+    {
+        var cands = new List<AssetId>();
+        if (!ExpandRef(set, reference, cands, out ModError err))
+        {
+            throw new ScenarioException($"{path}: {err} ('{reference}')", err);
+        }
+
+        foreach (AssetId c in cands)
+        {
+            int idx = c.Kind == ModAssetKind.Road ? cat.FindRoad(c) : -1;
+            if (idx >= 0)
+            {
+                return cat.Roads[idx];
+            }
+        }
+
+        throw new ScenarioException($"{path}: {ModError.UnknownAssetRef} ('{reference}')", ModError.UnknownAssetRef);
     }
 
     // city.road_assets: визуальная метка сегментов генератора; до M4 только проверяется (modding.md §3.4).

@@ -31,6 +31,7 @@ public sealed class SaveCorpusTests
         new("s1k", 2400, S1k),
         new("s1k-peds", 2400, S1kPeds),
         new("s1k-res", 24000, S1kRes),
+        new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -159,7 +160,14 @@ public sealed class SaveCorpusTests
         using Simulation sim = Simulation.Create(desc, new SimRuntimeOptions { WorkerThreads = 1 });
         AssetManifestBuilder.ForVehicleTypes(typeNames, desc.VehicleTypes, out AssetRef[] refs, out byte[] ids);
         Assert.True(sim.SetAssetManifest(refs, ids));
-        sim.Step(c.Ticks);
+        if (c.Evolve != null)
+        {
+            c.Evolve(sim, c.Ticks);
+        }
+        else
+        {
+            sim.Step(c.Ticks);
+        }
 
         byte[] raw = WorldSaveFixtures.SaveBytes(sim);
         ulong stateHash = sim.ComputeStateHash();
@@ -188,6 +196,18 @@ public sealed class SaveCorpusTests
     }
 
     private static (ScenarioDesc, string[]) Small() => (WorldSaveFixtures.Small(), new[] { "car", "bus" });
+
+    private static (ScenarioDesc, string[]) SmallEdited() => (Sim.Core.Tests.Network.ToolStateFixture.Desc(), new[] { "car", "bus" });
+
+    // Прогрев, дороги без connector'ов вдали от города строятся и освобождаются (дыры в пулах и арены), остаток тиков до ticks.
+    private static void EvolveEdited(Simulation sim, int ticks)
+    {
+        sim.Step(ticks / 2);
+        (int First, int Second) segs = Sim.Core.Tests.Network.ToolStateFixture.BuildDetached(sim);
+        sim.Step(20);
+        Sim.Core.Tests.Network.ToolStateFixture.ReleaseDetached(sim, segs);
+        sim.Step(ticks - (ticks / 2) - 22);
+    }
 
     private static (ScenarioDesc, string[]) S1k()
     {
@@ -252,7 +272,30 @@ public sealed class SaveCorpusTests
         }
     }
 
-    private sealed record CorpusCase(string Name, int Ticks, Func<(ScenarioDesc, string[])> Build)
+    [Fact]
+    public void Corpus_W3Files_AreKeptAndMigrate()
+    {
+        // Файлы w3 (жители, зоны, экономика) остаются навсегда: миграция 3 -> 4 добавляет столбцы сети с дырами с дефолтами «правок не было», хэш продолжения не меняется
+        // (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w3-*.tcsave");
+        Assert.True(old.Length >= 4, "корпус w3 (w3-small-t600, w3-s1k-t2400, w3-s1k-peds-t2400, w3-s1k-res-t24000) должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(3, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 3, rep.MigrationsApplied);
+                Assert.Equal(0, sim!.World.ToolsTouched);
+                Assert.Null(sim.World.VerifyDerived());
+            }
+        }
+    }
+
+    private sealed record CorpusCase(string Name, int Ticks, Func<(ScenarioDesc, string[])> Build, Action<Simulation, int>? Evolve = null)
     {
         public string FileStem(int worldVersion) => $"w{worldVersion}-{Name}-t{Ticks}";
     }

@@ -72,6 +72,8 @@ void     tc_sim_pilot_counters(const tc_sim* sim, tc_pilot_counters* out); // co
 `tc_vehicle_render_data` — 32 Б, раскладка `VehicleRenderData` (core-api §5.1). C# `Sim.Core` для пилота не обязан быть blittable на уровне `ScenarioDesc`:
 `ffi-smoke` переводит C#-desc в свои зеркальные struct.
 
+**Уточнения R6.** Параметры построителя (`NetworkOptions.Default`) зашиты в обеих реализациях и через ABI не передаются; `tc_scenario_desc` = 144 Б (64-бит), `tc_capacities` = 96 Б. Заголовок — `rust/crates/tc-ffi/include/tc_sim.h`; `tc_sim_test_panic` — только с фичей `test-panic`. `tc_sim_create`: 0 = ok, > 0 = `CreateStatus`, < 0 = `TC_ERR_*`.
+
 Пилотный `Step(n)`: `n` раз — применить очередь команд (FIFO, ёмкость `CommandQueueCapacity`, кольцо как `Util/RingBuffer`), `Tick++`. Больше ничего.
 
 ## 3. Workspace `rust/`
@@ -147,6 +149,15 @@ connector `i` → поля раздела 7 в перечисленном пор
 `headings_hash`: `Add(1)`, `Add(LanePointCount)`, затем `Add(float)` для `LanePieceHeading[0..LanePointCount)`. `conflicts_hash`: `Add(1)`, `Add(Connectors.Count)`, `Add(ConflictsUsed)`, по connector'ам `FirstConflict, ConflictCount` (int), `ConflictMask` (ulong), затем по записям `OtherLocal, Flags` (byte), `SMineCm, SOtherCm, Reserved` (ushort).
 `desc_hash`: `Add(1)`, `Seed` (ulong), `SimCapacities` — 24 int-поля в порядке объявления (`MaxVehicles … SkimObsCapacity`, значения как в разобранном desc, до дефолтов `Create`), число узлов (int), по узлу `X, Z` (float), `Control` (int); число сегментов, по сегменту `A, B, LanesAB, LanesBA` (int), `SpeedLimit` (float), `Kind` (byte); затем `NetworkOptions.Default`: `LaneWidth, SnapRadius, NodeSetback` (float), `ConnectorSamples` (int), `MinLaneLength` (float).
 Файл сценария при `create_status != 0` содержит `load_ok`, `create_status`, `desc_hash` (без `network_hash`/`conflicts_hash`/`headings_hash`/`counts`). `util.json`: PCG32 (16 комбинаций, `NextInt(-5, 100)`), `fnv1a64`, `xxh64`, `minmax`, `float_int`, `denormal`; u64 — hex-строки.
+
+**Уточнения R3 (реализация `tc-scenarios`).** `desc_hash`, `ScenarioDesc`, `SimCapacities`, `NetworkOptions::DEFAULT` — в `tc-core::api::desc`; загрузчик `tc_scenarios::load_str(&str)` (без I/O).
+Из golden-каталога сценарными считаются файлы с ключом `scenario` (`detlogit.json` и др. — нет). `create_status` в R3 не сверяется (нужен `Sim::create`, R4);
+`load_ok: false` у `err-json` — синтаксис. Подмножество и границы — ADR-0022 «Реализация R3».
+
+**Уточнения R4 (реализация `tc-core::{network,intersections,sim}`).** `network_hash` включает `ConflictsUsed` (шапка) и `ConflictGroup` полос. **R5 выполнен:** конфликты строятся (`ConnectorStore::{compute_pairs, write_rows, compute_rel, recompute_rel}`, `ConflictEntry`), обход `Sim::set_conflicts_used_for_golden` и подстановка в тесте удалены, `counts.conflicts` и `conflicts_hash` сверяются со всеми golden.
+`ConnectorStore` R4 = регистрация (`Register`, `BuildAll`); пары - R5. `Sim::create` повторяет порядок `WorldBuilder.Create`: ёмкости (`InvalidCapacity`) -> узлы (snap/индекс != i -> `InvalidNetwork`)
+-> сегменты -> `BuildAllConnectors` -> `ConnectorStore.BuildAll`; `NetworkStatus >= NodesFull` -> `NetworkTooLarge`, остальное -> `InvalidNetwork`.
+`headings_hash` (системный atan2) на Linux x64 совпал со всеми golden-сценариями; тест не краснеет при расхождении, если не задано `TC_STRICT_HEADINGS=1`.
 
 Изменение порядка/состава — правка этого раздела, `golden_version++`, перегенерация golden.
 

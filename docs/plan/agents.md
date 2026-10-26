@@ -134,3 +134,12 @@
 | 128 | parking-spec (worktree) | opus | 4.4: ADR-0026 парковка + parking.md | done, merged (K1–K9) |
 | 129 | rust-r2 (worktree) | sonnet | 4.6 R2: ComputeNetworkHash, команда golden, фикстуры | done, merged (23 теста RustPilot; util.json + 10 сценариев) |
 | 130 | tools-t1 (worktree) | sonnet | 4.3 T1: Api-типы, коды, события (номера с 25) | done, merged (CommandKind 25–35, события 40–53; поведения нет) |
+| 131 | zoning-z5 (worktree) | sonnet | 3.2 Z5: агрегат, BPR, AdvanceTo, run --years | wip |
+| 132 | tools-t2 (worktree) | sonnet | 4.3 T2: пулы и арены сети, сейв w4, RefKind | done, merged (world_version 4; golden без правок прежние; VerifyDerived) |
+| 133 | rust-r3 (worktree) | sonnet | 4.6 R3: JSON-ридер и загрузчик, desc_hash | done, merged (desc_hash совпал на 10/10 golden) |
+| 134 | render-v10 (worktree) | sonnet | 3.3 V10: панель узла по клику | done, merged (аналитический пик, 4 Гц, пресеты; ядро не менялось) |
+| 135 | mod-m9 (worktree) | sonnet | 4.5 M9: таймлайн команд в сценарии, CoreInfo.ApiVersion | done, merged (таймлайн = ручной Enqueue по хэшу при 1/2/3 потоках) |
+| 136 | rust-r4 (worktree) | sonnet | 4.6 R4: порт сети и connector-ов, network_hash | done, merged (network_hash и create_status совпали 9/9) |
+| 137 | rust-r5r6 (worktree) | sonnet | 4.6 R5+R6: конфликты, conflicts_hash; tc-ffi + C#-смоук | done, merged (conflicts_hash 10/10; ffi-smoke 129 проверок, 0 ошибок) |
+| 138 | mod-m3 (worktree) | sonnet | 4.5 M3: MANI из каталога, отпечаток, AssetNotice, --packages-dir | wip |
+| 139 | tools-t3t4 (worktree) | sonnet | 4.3 T3+T4: перенос, перестройка узла, знаки/запреты; дренаж и снос | wip |

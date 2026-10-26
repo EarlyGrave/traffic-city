@@ -168,11 +168,11 @@ internal static class CommandDispatcher
             }
         }
 
-        int nodesBefore = w.Net.NodeCount;
+        w.Builder.ResetCreated();
         NetworkStatus st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out int seg);
-        for (int n = nodesBefore; n < w.Net.NodeCount; n++)
+        for (int k = 0; k < w.Builder.CreatedNodeCount; k++)
         {
-            w.Emit(SimEventKind.NodeCreated, cmd.Tag, n);
+            w.Emit(SimEventKind.NodeCreated, cmd.Tag, w.Builder.CreatedNodes[k]);   // порядок создания (в дыры сети индексы не растут)
         }
 
         if (st != NetworkStatus.Ok)
@@ -247,6 +247,11 @@ internal static class CommandDispatcher
             return;
         }
 
+        if (!CheckNodeHandle(w, in cmd, p.Node, p.NodeGen))
+        {
+            return;
+        }
+
         ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
         if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count)
         {
@@ -278,6 +283,11 @@ internal static class CommandDispatcher
         if ((uint)c.Node >= (uint)w.Net.NodeCount || (uint)c.Control > (uint)NodeControl.RightHandRule)
         {
             Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        if (!CheckNodeHandle(w, in cmd, c.Node, c.NodeGen))
+        {
             return;
         }
 
@@ -318,6 +328,36 @@ internal static class CommandDispatcher
         }
 
         Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// Handle узла (индекс + поколение, player-tools.md §2, ADR-0023): слот жив и (при <paramref name="gen"/> != 0) поколение совпало, иначе <c>InvalidHandle</c>
+    /// и <c>InvalidHandleOps++</c>. <c>gen == 0</c> - без проверки поколения (генератор, тесты); мёртвый слот отклоняется всегда.
+    /// </summary>
+    private static bool CheckNodeHandle(World w, in Command cmd, int node, int gen) => CheckEntity(w, in cmd, EntityKind.Node, new EntityRef(node, gen));
+
+    /// <summary>
+    /// Проверка <see cref="EntityRef"/> команды (узел, сегмент, остановка, маршрут): слот жив и поколение совпало (<c>Generation == 0</c> - без проверки поколения), иначе
+    /// <c>InvalidHandle</c> (+<c>InvalidHandleOps</c>) и <c>false</c>. Общая точка для команд инструментов T3..T9: ни одна из них не обращается к слоту до этой проверки.
+    /// </summary>
+    internal static bool CheckEntity(World w, in Command cmd, EntityKind kind, in EntityRef r)
+    {
+        NetworkStore n = w.Net;
+        bool ok = kind switch
+        {
+            EntityKind.Node => n.ResolveNode(in r),
+            EntityKind.Segment => n.ResolveSegment(in r),
+            EntityKind.BusStop => n.ResolveBusStop(in r),
+            EntityKind.BusRoute => n.ResolveBusRoute(in r),
+            _ => false,
+        };
+        if (!ok)
+        {
+            w.Counters.InvalidHandleOps++;
+            Rejected(w, in cmd, RejectReason.InvalidHandle);
+        }
+
+        return ok;
     }
 
     private static void RejectNetwork(World w, in Command cmd, NetworkStatus st)

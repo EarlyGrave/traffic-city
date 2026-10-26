@@ -108,7 +108,7 @@ column_count × 24 Б, по возрастанию column_id:
 xxh64 каждого блока и подвала, каталог столбцов (тип, `elem_size`, `offset + count·elem_size ≤ length`, id по возрастанию).
 Аллокация по `count` — только после сверки с длиной блока (защита от «count = 2^60»).
 
-## 3. Блоки `world_version = 1` (и 2: добавлены блоки пешеходов, и 3: блоки города, см. ниже)
+## 3. Блоки `world_version = 1` (и 2: добавлены блоки пешеходов, и 3: блоки города, и 4: сеть с дырами, см. ниже)
 
 `C` — critical. Столбцы — поля в порядке перечисления, `column_id` = порядковый номер с 1. Точные списки фиксирует S2 в
 приложении A этого файла (таблица `блок / id / имя / тип / длина / дефолт`) одновременно с кодом `Save/SaveSchema.cs` —
@@ -166,6 +166,8 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 Блоки пешеходов (v2) и столбцы в `PARM` (86-112: секция `peds`, `PassengerModel`, ёмкости `MaxPeds/MaxResidents/MaxPedPathSteps`), `WRLD` (11-13: поток `Peds`, `TargetPeds`), `CNTR` (96-117: счётчики пешеходов), `SIGS` (39-41: `XWalkLeft/XClearLeft/XServed` пешеходной фазы) объявлены задачей P2 целиком, поэтому P3 и P4 схему не меняют. Индекс перехода `x` = слот рукава в `NodeArms`, переход на перегоне `m` = `NodeArmCount + m`. Сеть пешеходов, списки пешеходов по рёбрам, колесо таймеров, `NodeXIn/NodeXOut`, `XActive`, `RenderHint` - производные, не сохраняются; после `Load` их строит `PedWorld.RestoreDerived` (после `PedNetwork.Rebuild` в `WorldLoader.Finish`). Проверки состояния - `SaveValidator.ValidatePeds` (пул, жители, очередь готовых, события, очереди переходов и остановок, списки пассажиров, очередь путей).
 
 Блоки и столбцы города (v3, ADR-0011, zoning-demand.md §15) объявлены задачей Z1 целиком, поэтому Z2-Z6 схему не меняют: блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`), столбцы `PARM` 113-184 (`PedSource`, секции `calendar/zoning/residents/economy/choice` по полям, ёмкости `MaxLots/MaxBuildings/MaxCityResidents/SkimObsCapacity`, сетка ячеек города: начало и число ячеек), `WRLD` 14-18 (поток `Demand`, `CityDay`, `CityExec`, `CityExecPending`), `CNTR` 118-149 (счётчики города), `VEHC` 41 (`Resident`, -1 у машин без жителя). Производные не сохраняются и строятся `CityWorld.RestoreDerived` (после `PedNetwork.Rebuild` в `WorldLoader.Finish`): центр, курс и ячейка участка, `CarLane/CarS`, `PedEdge/PedSMm`, `RoadComp/PedComp`, сетка занятости нарезки; колесо жителей по `EvTick/EvKind` добавляет Z2 в тот же метод. Проверки состояния - `SaveValidator.ValidateCity` (пулы, ссылки участок-здание-житель, списки дома и работы, `Occupants` = длина списка, `Σ счетов = 0`, агенты жителей в пути живы и ссылаются назад (нога агрегата, Z5: агента нет, `EvKind = Arrive` и `EvTick >= Tick`), накопители скимов). Пока `world_version = 3` не закрыт (Z9), Z2-Z6 вправе дописывать столбцы в этих блоках, добавляя дефолт и в `MigrationV3`, и перегенерируя `w3-*` корпуса.
+
+**Сеть с дырами (v4, ADR-0023, player-tools.md §3, §10; задача T2).** Столбцы `Count`-счётчиков сети (`NodeCount`, `SegmentCount`, `BusStopCount`, `BusRouteCount`) теперь `HighWater` пула, а `LaneCount`, `LanePointCount`, `SegmentPointCount`, `NodeArmCount`, `LaneNextCount`, `ZoneLaneCount`, `BusRouteStopCount`, `CONN.Count`, `CONN.ConflictsUsed` - хвосты арен; в хвосте лежат живые блоки и дыры. Поколение слота (`Generation` в `NNOD/NSEG/NBUS`; нечётное = занят) - единственный признак живости; мёртвый слот пишется каноническими значениями (ссылки -1, остальное 0; полоса - `Generation = 0`, `Segment = Node = FromLane = ToLane = Left = Right = ConflictGroup = -1`, запас блока выглядит так же; элементы остальных массивов в дырах - нули), валидатор требует именно их. Free-list пула - массив слотов в LIFO-порядке снизу вверх. Дыры арены - упакованные `класс << 32 | первый элемент`, класс по возрастанию, внутри класса сверху вниз (порядок выдачи); битовая карта (по `Tail`) помечает начало блоков, выделенных по лестнице ёмкостей (`BlockArena.CapFor`) - их физическая ёмкость `CapFor(n)`, у блока без запаса (генератор, `Create`, сеть без правок) она равна `n`. Для сети без правок (`ToolsTouched = 0`) всё это нулевое, а валидатор отклоняет дыры, потери и биты лестницы. `ToolsTouched` ставит первая структурная правка; он управляет разделом хэша (core-api §9 п. 13) и способом выделения блоков (без запаса / по лестнице). Арены строк и конфликтов connector'ов (`CONN` 18-25) до T3 пусты (валидатор требует). Проверки: пулы (§6.1), дыры арен внутри хвоста и без пересечений, канонические мёртвые слоты, живые полосы - только у живых владельцев, `RefKind` (`SaveValidator.ValidateRefs`: каждая ссылка тегированного столбца в диапазоне своего вида, `InvalidReference`).
 
 Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
@@ -299,7 +301,8 @@ public sealed partial class Simulation
 - Каждая ссылка в диапазоне или равна своему «нет» (−1): узлы, сегменты, полосы, connector'ы, конфликты (`FirstConflict +
   ConflictCount ≤ ConflictsUsed`), диапазоны точек/рукавов/`LaneNext`, зоны, остановки, маршруты, слоты машин/маршрутов
   (+ поколение живого слота), `PlanFirst + PlanCap ≤ PlanUsed`, `WinCount ≤ WindowSteps`, `Selected`.
-- Пулы: free-list без повторов, только мёртвые слоты `< HighWater`, поколение живого нечётно, мёртвого — чётно.
+- Пулы (в том числе узлов, сегментов, остановок, маршрутов; v4): free-list без повторов, только мёртвые слоты `< HighWater`, поколение живого нечётно, мёртвого — чётно.
+- Теги `RefKind` (v4): значение каждого столбца-ссылки (`SaveSchema.Refs`) в `[0, граница вида)` либо -1 там, где «нет» допустимо; нарушение - `InvalidReference`, `FailedColumn` - id столбца.
 - Списки полос: обход от `LaneHead` по `Behind` заканчивается за `LaneCount` шагов на `LaneTail`, `Ahead/Behind`
   взаимны, `Lane` машины совпадает; ghost-списки — то же через `Ghost*`. Машина в ровно одном основном списке.
 - Числа: все `float` состояния конечны; `0 ≤ S ≤ длина полосы + допуск`, `Speed ≥ 0`, длины полос > 0, точки полилиний
@@ -333,7 +336,7 @@ public sealed partial class Simulation
 **Golden-корпус** `tests/SaveCorpus/` (бинарные, `.gitattributes: binary`, бюджет ≤ 5 МБ):
 - `w{world_version}-{имя}-t{tick}.tcsave` + `.json`: `world_version`, `tick`, `state_hash` (заголовок), `hash_after_load`,
   `continue_ticks` (200), `hash_after_continue`.
-- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый); с v2 ещё `s1k-peds-t2400` (≤ 1 МБ сжатый).
+- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый); с v2 ещё `s1k-peds-t2400` (≤ 1 МБ сжатый); с v3 `s1k-res-t24000`; с v4 `small-edited-t600` (малый мир без оверлея, дороги построены и освобождены: дыры в пулах и аренах, `ToolsTouched = 1`).
   Файлы w2 без пешеходов (`w2-small-t600`, `w2-s1k-t2400`) несут те же `state_hash` и `hash_after_continue`, что `w1-*` (миграция 1 → 2 поведение не меняет).
   s10k в корпус не кладём (≈ 2.5 МБ на версию) — его round-trip строится в тесте.
 - Файлы прошлых версий **не меняются и не удаляются**. Для текущей версии `hash_after_*` проверяются строго и
@@ -426,6 +429,7 @@ s10k с цифрами размера и времени. Клиентские к
 
 | 2 | 3.1, ADR-0020, задача P2: пешеходы. Блоки `PEDS`, `PPTH`, `RESI`, `XING`, `PQUE` (только при `peds.enabled`); столбцы `PARM` 86-112, `WRLD` 11-13, `CNTR` 96-117, `SIGS` 39-41; `hash_version` 2 (секции пешеходов в хэше только при `peds`) | `MigrationV2` (`Save/MigrationV2.cs`): добавляет столбцы с дефолтами «пешеходов нет, пассажиры - счётчик», блоков не создаёт; w1 продолжается тем же хэшем |
 | 3 | 3.2, ADR-0011/0021, задача Z1: жители, зоны, экономика, скимы. Блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`); столбцы `PARM` 113-184, `WRLD` 14-18, `CNTR` 118-149, `VEHC` 41; `hash_version` 3 (секции города в хэше только при `residents`). Номера занял Z1 (решение оркестратора 2026-10-26): запланированные T2 и M4 сдвигаются на следующие свободные (`w4`, `w5`). Дополнено задачей Z4: `LEDG` 16-18 (`DayStage`, `VisitsDayTotal`, `UnservedDayTotal`); флаги жителя `RESD.Flags` используют бит 4 (`InSeekQueue`), предел значения - 31. Дополнено задачей Z2 (до закрытия w3): `RESD` 38-40 (`LegDest`, `LegStopA`, `LegStopB`), `TRIP` 11 (`ResidentRef`, 0 = поездка не жителя; в хэш только при `residents`) | `MigrationV3` (`Save/MigrationV3.cs`): добавляет столбцы с дефолтами «города нет», `VEHC.Resident = -1`, `TRIP.ResidentRef = 0`, блоков не создаёт; w1 и w2 продолжаются тем же хэшем |
+| 4 | 4.3, ADR-0023, задача T2: сеть с дырами (пулы узлов, сегментов, остановок, маршрутов; арены блоков). Столбцы `NETW` 13-49 (`ToolsTouched`, длины и списки free-list'ов четырёх пулов, у каждой из семи арен `Lane/LanePoint/SegmentPoint/Arm/LaneNext/ZoneLane/BusRouteStop` четыре столбца: число дыр, потерянные элементы, дыры `класс<<32 \| первый`, битовая карта лестницы), `CONN` 18-25 (арены строк и конфликтов connector'ов), `NNOD` 13-14 (`Flags`, `TurnBan`), `NSEG` 13-15 (`Flags`, `Cx`, `Cz`), `NBUS` 11 (поколение остановки); `hash_version` 3 (раздел хэша «состояние инструментов» только при `ToolsTouched = 1`). Теги `RefKind` на столбцах-ссылках (`SaveSchema.Refs`) - не столбцы, а признак схемы | `MigrationV4` (`Save/MigrationV4.cs`): все столбцы с дефолтами «правок не было, всё живо» (`ToolsTouched = 0`, free-list'ы пусты, поколение остановок 1), блоков не создаёт; w1-w3 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -441,9 +445,11 @@ s10k с цифрами размера и времени. Клиентские к
    узлам и сегментам (тест `CanonicalLayoutTests`). Индексы полос остаются историческими (сегменты `BuildRoad` лежат после уже построенных connector'ов): у «компактного сейва» они
    придут из `FirstLane*/FirstConnector` узлов и сегментов. Golden-хэши s1k/s10k (без `BuildRoad`) не изменились; тестов с хэшем после `BuildRoad` не было.
 6. Снос дорог (этап 2+): пул узлов/сегментов с free-list → `IncHead/Cells` перестают быть производными «в порядке индекса» —
-   при появлении сноса перенести их в сохраняемые или доказать независимость.
+   при появлении сноса перенести их в сохраняемые или доказать независимость. **Закрыто в T2 (v4):** цепочки `IncHead/IncNext` и `CellNext/Cells` идут по убыванию индекса живых слотов и
+   поддерживаются вставкой/удалением в этом порядке (равны полной перестройке по возрастанию индекса живых; `World.VerifyDerived()` сверяет), поэтому остаются производными и не сохраняются.
+   П. 5 («раскладка = построенной заново») после первой правки не действует: раскладка (дыры, free-list'ы, `Alive`) - состояние, v4 её сохраняет; для сетей без правок п. 5 остаётся (`CanonicalLayoutTests`).
 
-## Приложение A. Реестр столбцов `world_version = 3`
+## Приложение A. Реестр столбцов `world_version = 4`
 
 Стрится из `Save/SaveSchema*.cs` (`SaveSchema.AppendixMarkdown()`); тест `SaveSchemaTests.EveryDoc_Appendix_MatchesRegistry` сверяет таблицу с реестром
 (обновить: `TC_DUMP_SCHEMA=<файл> dotnet test --filter SaveSchemaTests`). Дефолт - значение для сейвов без столбца (новые столбцы будущих версий) и канон мёртвого слота.
@@ -848,6 +854,43 @@ s10k с цифрами размера и времени. Клиентские к
 | `NETW` | 10 | BusStopCount | i32 | 1 | 0 |
 | `NETW` | 11 | BusRouteCount | i32 | 1 | 0 |
 | `NETW` | 12 | BusRouteStopCount | i32 | 1 | 0 |
+| `NETW` | 13 | ToolsTouched | u8 | 1 | 0 |
+| `NETW` | 14 | NodeFreeCount | i32 | 1 | 0 |
+| `NETW` | 15 | SegmentFreeCount | i32 | 1 | 0 |
+| `NETW` | 16 | BusStopFreeCount | i32 | 1 | 0 |
+| `NETW` | 17 | BusRouteFreeCount | i32 | 1 | 0 |
+| `NETW` | 18 | NodeFree | i32 | NodeFreeCount | 0 |
+| `NETW` | 19 | SegmentFree | i32 | SegmentFreeCount | 0 |
+| `NETW` | 20 | BusStopFree | i32 | BusStopFreeCount | 0 |
+| `NETW` | 21 | BusRouteFree | i32 | BusRouteFreeCount | 0 |
+| `NETW` | 22 | LaneFreeCount | i32 | 1 | 0 |
+| `NETW` | 23 | LaneLeaked | i64 | 1 | 0 |
+| `NETW` | 24 | LaneFree | u64 | LaneFreeCount | 0 |
+| `NETW` | 25 | LaneLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 26 | LanePointFreeCount | i32 | 1 | 0 |
+| `NETW` | 27 | LanePointLeaked | i64 | 1 | 0 |
+| `NETW` | 28 | LanePointFree | u64 | LanePointFreeCount | 0 |
+| `NETW` | 29 | LanePointLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 30 | SegmentPointFreeCount | i32 | 1 | 0 |
+| `NETW` | 31 | SegmentPointLeaked | i64 | 1 | 0 |
+| `NETW` | 32 | SegmentPointFree | u64 | SegmentPointFreeCount | 0 |
+| `NETW` | 33 | SegmentPointLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 34 | ArmFreeCount | i32 | 1 | 0 |
+| `NETW` | 35 | ArmLeaked | i64 | 1 | 0 |
+| `NETW` | 36 | ArmFree | u64 | ArmFreeCount | 0 |
+| `NETW` | 37 | ArmLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 38 | LaneNextFreeCount | i32 | 1 | 0 |
+| `NETW` | 39 | LaneNextLeaked | i64 | 1 | 0 |
+| `NETW` | 40 | LaneNextFree | u64 | LaneNextFreeCount | 0 |
+| `NETW` | 41 | LaneNextLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 42 | ZoneLaneFreeCount | i32 | 1 | 0 |
+| `NETW` | 43 | ZoneLaneLeaked | i64 | 1 | 0 |
+| `NETW` | 44 | ZoneLaneFree | u64 | ZoneLaneFreeCount | 0 |
+| `NETW` | 45 | ZoneLaneLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 46 | BusRouteStopFreeCount | i32 | 1 | 0 |
+| `NETW` | 47 | BusRouteStopLeaked | i64 | 1 | 0 |
+| `NETW` | 48 | BusRouteStopFree | u64 | BusRouteStopFreeCount | 0 |
+| `NETW` | 49 | BusRouteStopLadder | u64 | ceil(Tail / 64) | 0 |
 | `NNOD` | 1 | PositionX | f32 | NodeCount | 0 |
 | `NNOD` | 2 | PositionZ | f32 | NodeCount | 0 |
 | `NNOD` | 3 | Elevation | f32 | NodeCount | 0 |
@@ -860,6 +903,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `NNOD` | 10 | Signal | i32 | NodeCount | -1 |
 | `NNOD` | 11 | Zone | i32 | NodeCount | -1 |
 | `NNOD` | 12 | Generation | i32 | NodeCount | 0 |
+| `NNOD` | 13 | Flags | u32 | NodeCount | 0 |
+| `NNOD` | 14 | TurnBan | u64 | NodeCount | 0 |
 | `NSEG` | 1 | NodeA | i32 | SegmentCount | 0 |
 | `NSEG` | 2 | NodeB | i32 | SegmentCount | 0 |
 | `NSEG` | 3 | Length | f32 | SegmentCount | 0 |
@@ -872,6 +917,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `NSEG` | 10 | FirstPoint | i32 | SegmentCount | 0 |
 | `NSEG` | 11 | PointCount | i32 | SegmentCount | 0 |
 | `NSEG` | 12 | Generation | i32 | SegmentCount | 0 |
+| `NSEG` | 13 | Flags | u8 | SegmentCount | 0 |
+| `NSEG` | 14 | Cx | f32 | SegmentCount | 0 |
+| `NSEG` | 15 | Cz | f32 | SegmentCount | 0 |
 | `NLAN` | 1 | Kind | u8 | LaneCount | 0 |
 | `NLAN` | 2 | LaneNo | u8 | LaneCount | 0 |
 | `NLAN` | 3 | Direction | u8 | LaneCount | 0 |
@@ -918,6 +966,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NBUS` | 8 | RouteVehicleType | i32 | BusRouteCount | 0 |
 | `NBUS` | 9 | RouteGeneration | i32 | BusRouteCount | 0 |
 | `NBUS` | 10 | BusRouteStops | i32 | BusRouteStopCount | 0 |
+| `NBUS` | 11 | StopGeneration | i32 | BusStopCount | 0 |
 | `CONN` | 1 | Count | i32 | 1 | 0 |
 | `CONN` | 2 | ConflictsUsed | i32 | 1 | 0 |
 | `CONN` | 3 | Lane | i32 | Count | 0 |
@@ -935,6 +984,14 @@ s10k с цифрами размера и времени. Клиентские к
 | `CONN` | 15 | ConflictFlags | u8 | ConflictsUsed | 0 |
 | `CONN` | 16 | SMineCm | u16 | ConflictsUsed | 0 |
 | `CONN` | 17 | SOtherCm | u16 | ConflictsUsed | 0 |
+| `CONN` | 18 | RowFreeCount | i32 | 1 | 0 |
+| `CONN` | 19 | RowLeaked | i64 | 1 | 0 |
+| `CONN` | 20 | RowFree | u64 | RowFreeCount | 0 |
+| `CONN` | 21 | RowLadder | u64 | ceil(Tail / 64) | 0 |
+| `CONN` | 22 | ConflictFreeCount | i32 | 1 | 0 |
+| `CONN` | 23 | ConflictLeaked | i64 | 1 | 0 |
+| `CONN` | 24 | ConflictFree | u64 | ConflictFreeCount | 0 |
+| `CONN` | 25 | ConflictLadder | u64 | ceil(Tail / 64) | 0 |
 | `SIGS` | 1 | Count | i32 | 1 | 0 |
 | `SIGS` | 2 | SignalCount | i32 | 1 | 0 |
 | `SIGS` | 3 | Node | i32 | Count | -1 |

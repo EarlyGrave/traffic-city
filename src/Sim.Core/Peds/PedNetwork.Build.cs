@@ -108,7 +108,7 @@ internal sealed partial class PedNetwork
         return 0;
     }
 
-    private static bool Built(NetworkStore net, int node) => net.Nodes[node].FirstArm >= 0 && net.Nodes[node].ArmCount > 0;
+    private static bool Built(NetworkStore net, int node) => net.NodeAlive(node) && net.Nodes[node].FirstArm >= 0 && net.Nodes[node].ArmCount > 0;
 
     /// <summary>Позиции углов: пересечение параллелей соседних рукавов, сдвинутых на <c>h + sw/2</c> в сторону сектора между ними (§2.1).</summary>
     private void BuildCorners(NetworkStore net, float laneW, float sw)

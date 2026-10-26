@@ -130,7 +130,7 @@ jobs:
           path: perf/results/render/stats-*.json
           if-no-files-found: ignore
 
-  # Rust-пилот ядра (ADR-0022, docs/design/rust-pilot.md §9). Шаг ffi-smoke добавляет задача R6.
+  # Rust-пилот ядра (ADR-0022, docs/design/rust-pilot.md §9).
   rust:
     runs-on: ubuntu-latest
     defaults:
@@ -163,3 +163,27 @@ jobs:
 
       - name: Third-party crates check
         run: bash ../scripts/rust-check.sh --deps-only
+
+      # ffi-smoke (R6): C#-ядро и Rust cdylib в одном процессе - network_hash, create_status, размеры struct, очередь, коды ошибок.
+      - uses: actions/setup-dotnet@v4
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        with:
+          global-json-file: global.json
+
+      - name: ffi-smoke
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        run: dotnet run --project ffi-smoke -c Release -- --lib target/release/libtc_ffi.so --golden ../tests/golden/rust-pilot
+
+      # Вариант библиотеки с фичей test-panic: catch_unwind -> TC_ERR_PANIC, затем TC_ERR_POISONED, destroy.
+      - name: Build tc-ffi (test-panic)
+        if: hashFiles('rust/crates/tc-ffi/Cargo.toml') != ''
+        run: cargo build --release -p tc-ffi --features test-panic --locked --target-dir target/panic
+
+      - name: ffi-smoke (panic)
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        run: dotnet run --project ffi-smoke -c Release --no-build -- --lib target/panic/release/libtc_ffi.so --golden ../tests/golden/rust-pilot --expect-panic-test
+
+      - name: Format ffi-smoke
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        working-directory: .
+        run: dotnet format rust/ffi-smoke/FfiSmoke.csproj --verify-no-changes

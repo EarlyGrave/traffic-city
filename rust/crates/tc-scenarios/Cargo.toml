@@ -1,0 +1,11 @@
+[package]
+name = "tc-scenarios"
+version = "0.1.0"
+description = "Загрузчик сценариев JSON -> ScenarioDesc (Rust-пилот, ADR-0022). Свой JSON-ридер, 0 сторонних зависимостей."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tc-core = { path = "../tc-core" }

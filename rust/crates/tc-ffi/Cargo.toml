@@ -1,0 +1,19 @@
+[package]
+name = "tc-ffi"
+version = "0.1.0"
+description = "C ABI Rust-пилота (ADR-0022, rust-pilot.md §2). Единственный крейт с unsafe. 0 сторонних зависимостей."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib - для хоста (C#/Godot), rlib - для unit-тестов крейта.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Экспортирует tc_sim_test_panic: проверка catch_unwind и «отравления» экземпляра (только для ffi-smoke).
+test-panic = []
+
+[dependencies]
+tc-core = { path = "../tc-core" }
