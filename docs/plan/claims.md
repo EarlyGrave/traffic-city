@@ -5,3 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
+| 4.3 T8 undo/redo | облако | claude/adoring-ritchie-cxzib8 | src/Sim.Core/Tools, src/Sim.Core/Api, src/Sim.Scenarios/Tools, tests/Sim.Core.Tests/Tools | 2026-10-26 |
