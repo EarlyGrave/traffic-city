@@ -106,7 +106,7 @@
 | 100 | mod-m1 (worktree) | sonnet | 4.5 M1: загрузчик пакетов (Sim.Scenarios), враждебные фикстуры | done, merged (106 тестов Mods) |
 | 101 | alloc-flake (worktree) | sonnet | флейк allocation-тестов под нагрузкой (RenderViewTests threads:2, S1k_StationaryTick) | done, merged (корень — фоновый поток рантайма в GetTotalAllocatedBytes; замер по потокам симуляции; 9/20 → 0/20) |
 | 102 | peds-p3 (worktree) | sonnet | 3.1 P3: переходы × машины, пешеходная фаза светофора | wip |
-| 103 | peds-p4 (worktree) | sonnet | 3.1 P4: пассажиры-агенты, bidirectional, корпус w2 | wip |
+| 103 | peds-p4 (worktree) | sonnet | 3.1 P4: пассажиры-агенты, bidirectional, корпус w2 | done (ждёт мержа с P3 + регенерации корпуса; 31% поездок автобусом) |
 | 104 | peds-p5 (worktree) | sonnet | 3.1 P5: Godot-клиент — пешеходы, зебры, HUD | done, merged (машины теперь видны: раздувание по дистанции + прогрев; FPS llvmpipe 15–33) |
 | 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | done, merged (v3 ≡ v2 побайтно, golden равны) |
 | 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | wip |
