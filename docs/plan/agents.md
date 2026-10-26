@@ -111,5 +111,7 @@
 | 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | done, merged (v3 ≡ v2 побайтно, golden равны) |
 | 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | done, merged (55 новых тестов; base ok) |
 | 107 | zoning-demand-spec (worktree) | opus | 3.2: ADR-0011 жители/экономика + ADR-0021 эластичный спрос + zoning-demand.md | wip |
-| 108 | render-spec (worktree) | opus | 3.3: ADR-0014 бюджет рендера и LOD + render.md | wip |
+| 108 | render-spec (worktree) | opus | 3.3: ADR-0014 бюджет рендера и LOD + render.md | done, merged (V1–V10; FPS «до» s1k-peds agents 9.7 — раздувание по дистанции) |
 | 109 | merge-p3-p4 (worktree) | sonnet | слияние P3 + P4, регенерация корпуса w2-s1k-peds | wip |
+| 110 | render-v1 (worktree) | sonnet | 3.3 V1: замеры клиента (RenderStats, --pose, stats) | wip |
+| 111 | render-v2 (worktree) | sonnet | 3.3 V2: render-budgets формат 2 + валидатор | wip |
