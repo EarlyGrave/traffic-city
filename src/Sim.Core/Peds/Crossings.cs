@@ -110,7 +110,7 @@ internal static class Crossings
 
         if (st == XStateCode.Free && xs.QCount[x] > 0 && Permitted(w, pw, xs, x, signal, tick))
         {
-            SetState(w, pw, xs, x, XStateCode.Claimed, tick);
+            SetState(xs, x, XStateCode.Claimed, tick);
             st = XStateCode.Claimed;
         }
 
@@ -118,9 +118,18 @@ internal static class Crossings
         {
             if (xs.QCount[x] == 0 || (signal >= 0 && !PedSignals.IsWalk(xs, x)))
             {
-                // Очередь опустела (сброс/редкий случай) либо на светофоре Walk кончился, пока ждали обязавшихся: переход открывается, пешеходы ждут следующего Walk.
-                Open(w, pw, xs, x, tick);
-                st = XStateCode.Free;
+                // Очередь опустела (сброс/редкий случай) либо на светофоре Walk кончился, пока ждали обязавшихся: заявка снимается, пешеходы ждут следующего Walk.
+                // Заявка из Busy (на переходе ещё идут пешеходы) возвращает Busy: половины закрываются по BusyUntilIn/Out.
+                if (xs.OnCross[x] > 0)
+                {
+                    SetState(xs, x, XStateCode.Busy, tick);
+                    st = XStateCode.Busy;
+                }
+                else
+                {
+                    Open(pw, xs, x, tick);
+                    st = XStateCode.Free;
+                }
             }
             else if (!HasObligated(w, pw, x))
             {
@@ -139,15 +148,31 @@ internal static class Crossings
 
             if (xs.QCount[x] > 0 && Permitted(w, pw, xs, x, signal, tick))
             {
-                Release(w, pw, xs, x, tick);
+                if (HalvesClosed(pw, xs, x, tick))
+                {
+                    Release(w, pw, xs, x, tick);   // обе половины уже закрыты: обязавшихся нет по построению (проверены при выпуске, новых не допускали)
+                }
+                else
+                {
+                    // Какая-то половина уже открыта (§5.9): машины могли въехать на неё. Заявка закрывает обе половины; выпуск, когда обязавшихся нет.
+                    SetState(xs, x, XStateCode.Claimed, tick);
+                    st = XStateCode.Claimed;
+                    if (!HasObligated(w, pw, x))
+                    {
+                        Release(w, pw, xs, x, tick);
+                        st = XStateCode.Busy;
+                    }
+                }
             }
 
-            if (xs.OnCross[x] == 0)
+            if (st == XStateCode.Busy && xs.OnCross[x] == 0)
             {
-                Open(w, pw, xs, x, tick);
+                Open(pw, xs, x, tick);
                 st = XStateCode.Free;
             }
         }
+
+        SyncHalves(w, pw, xs, x, tick);
 
         if (xs.XState[x] != XStateCode.Free && xs.Releases[x] > 0)
         {
@@ -198,42 +223,77 @@ internal static class Crossings
 
     // ------------------------------------------------------------------ смена состояния, маски
 
-    private static void SetState(World w, PedWorld pw, CrossingState xs, int x, byte st, long tick)
+    private static void SetState(CrossingState xs, int x, byte st, long tick)
     {
         byte old = xs.XState[x];
         xs.XState[x] = st;
         if (old == XStateCode.Free && st != XStateCode.Free)
         {
             xs.ClosedSince[x] = tick;
-            xs.XClosedNow[xs.XClosedNowCount++] = x;
-        }
-
-        if ((old == XStateCode.Free) != (st == XStateCode.Free))
-        {
-            RecomputeMasks(w, pw, xs, x);
         }
 
         PedSignals.PublishState(xs, x);
     }
 
-    /// <summary>Переход свободен (<c>Busy -> Free</c>): отложенное окно машин начинает отсчёт, маски узла пересчитываются.</summary>
-    private static void Open(World w, PedWorld pw, CrossingState xs, int x, long tick)
+    /// <summary>Переход свободен (<c>Busy -> Free</c>): отложенное окно машин начинает отсчёт.</summary>
+    private static void Open(PedWorld pw, CrossingState xs, int x, long tick)
     {
         if (xs.CarWindowUntil[x] == long.MaxValue)
         {
             xs.CarWindowUntil[x] = tick + pw.Cfg.CarWindowTicks;
         }
 
-        SetState(w, pw, xs, x, XStateCode.Free, tick);
+        SetState(xs, x, XStateCode.Free, tick);
     }
 
-    /// <summary>Маски <c>NodeXIn/NodeXOut</c> узла (OR масок закрытых переходов его рукавов) либо флаг <c>MidClosed</c> перехода на перегоне.</summary>
+    // ------------------------------------------------------------------ половины перехода (§5.9)
+
+    /// <summary>Закрытые половины перехода <paramref name="x"/> в тик <paramref name="tick"/>: бит 0 - входная, бит 1 - выходная. <c>Free</c> - ни одной, <c>Claimed</c> и переход на перегоне - обе.</summary>
+    private static byte HalfBits(PedWorld pw, CrossingState xs, int x, long tick)
+    {
+        byte st = xs.XState[x];
+        if (st == XStateCode.Free)
+        {
+            return 0;
+        }
+
+        if (st == XStateCode.Claimed || x >= pw.Net.MidXBase)
+        {
+            return 3;
+        }
+
+        return (byte)((tick < xs.BusyUntilIn[x] ? 1 : 0) | (tick < xs.BusyUntilOut[x] ? 2 : 0));
+    }
+
+    private static bool HalvesClosed(PedWorld pw, CrossingState xs, int x, long tick) => HalfBits(pw, xs, x, tick) == 3;
+
+    /// <summary>Конец шага автомата: маски узла по закрытым половинам; вновь закрывшиеся половины идут в <c>XClosedNow</c> (снятие допусков в 4b).</summary>
+    private static void SyncHalves(World w, PedWorld pw, CrossingState xs, int x, long tick)
+    {
+        byte bits = HalfBits(pw, xs, x, tick);
+        byte old = xs.HalfMask[x];
+        if (bits == old)
+        {
+            return;
+        }
+
+        xs.HalfMask[x] = bits;
+        RecomputeMasks(w, pw, xs, x);
+        byte added = (byte)(bits & ~old);
+        if (added != 0)
+        {
+            xs.XClosedNowBits[xs.XClosedNowCount] = added;
+            xs.XClosedNow[xs.XClosedNowCount++] = x;
+        }
+    }
+
+    /// <summary>Маски <c>NodeXIn/NodeXOut</c> узла (OR масок закрытых половин переходов его рукавов) либо флаг <c>MidClosed</c> перехода на перегоне.</summary>
     internal static void RecomputeMasks(World w, PedWorld pw, CrossingState xs, int x)
     {
         PedNetwork pn = pw.Net;
         if (x >= pn.MidXBase)
         {
-            xs.MidClosed[x - pn.MidXBase] = xs.XState[x] != XStateCode.Free ? (byte)1 : (byte)0;
+            xs.MidClosed[x - pn.MidXBase] = xs.HalfMask[x] != 0 ? (byte)1 : (byte)0;
             return;
         }
 
@@ -244,10 +304,18 @@ internal static class Crossings
         for (int a = 0; a < nd.ArmCount; a++)
         {
             int slot = nd.FirstArm + a;
-            if (pn.XEdge[slot] >= 0 && xs.XState[slot] != XStateCode.Free)
+            if (pn.XEdge[slot] >= 0)
             {
-                mi |= pn.XIn[slot];
-                mo |= pn.XOut[slot];
+                byte hm = xs.HalfMask[slot];
+                if ((hm & 1) != 0)
+                {
+                    mi |= pn.XIn[slot];
+                }
+
+                if ((hm & 2) != 0)
+                {
+                    mo |= pn.XOut[slot];
+                }
             }
         }
 
@@ -262,6 +330,8 @@ internal static class Crossings
     {
         PedStore ps = pw.P;
         long maxEv = xs.BusyUntil[x];
+        long inUntil = xs.BusyUntilIn[x];
+        long outUntil = xs.BusyUntilOut[x];
         int count = 0;
         int p = xs.QHead[x];
         while (p != -1)
@@ -269,10 +339,27 @@ internal static class Crossings
             int next = ps.Next[p];
             long wait = tick - ps.T0[p];
             ps.Next[p] = -1;
-            pw.StartEdge(w, p, ps.Edge[p], PedState.Crossing, 0);
-            if (ps.EvTick[p] > maxEv)
+            int step = ps.Edge[p];
+            pw.StartEdge(w, p, step, PedState.Crossing, 0);
+            long ev = ps.EvTick[p];
+            if (ev > maxEv)
             {
-                maxEv = ps.EvTick[p];
+                maxEv = ev;
+            }
+
+            // Половины (§5.9): пешеход идёт от A к B, A - сторона входных полос (правостороннее движение); первая половина занята до середины пути, вторая - до конца
+            // и закрыта с момента выпуска (машина, въехавшая на неё позже, встретила бы пешехода). Переход на перегоне не делится.
+            if (x >= pw.Net.MidXBase)
+            {
+                inUntil = Math.Max(inUntil, ev);
+                outUntil = Math.Max(outUntil, ev);
+            }
+            else
+            {
+                long mid = tick + ((ev - tick + 1) / 2);
+                bool inFirst = (step & PedStore.StepBwd) == 0;
+                inUntil = Math.Max(inUntil, inFirst ? mid : ev);
+                outUntil = Math.Max(outUntil, inFirst ? ev : mid);
             }
 
             w.Counters.PedCrossWaitTicksTotal += wait;
@@ -300,7 +387,9 @@ internal static class Crossings
         xs.QCount[x] = 0;
         xs.OnCross[x] += count;
         xs.BusyUntil[x] = maxEv;
-        SetState(w, pw, xs, x, XStateCode.Busy, tick);
+        xs.BusyUntilIn[x] = inUntil;
+        xs.BusyUntilOut[x] = outUntil;
+        SetState(xs, x, XStateCode.Busy, tick);
     }
 
     // ------------------------------------------------------------------ обязавшиеся машины (§5.3)
@@ -481,12 +570,19 @@ internal static class Crossings
         Array.Clear(xs.MidClosed);
         Array.Clear(xs.XActive);
         Array.Clear(xs.CrossingSignals);
+        Array.Clear(xs.HalfMask);
         xs.XClosedNowCount = 0;
         xs.ObservedCount = 0;
         int xn = PedWorld.XCount(w);
+        long lastStep = Math.Max(0L, w.Tick - 1);   // автомат последний раз шёл в тике Tick - 1 (Tick++ после тика)
         for (int x = 0; x < xn; x++)
         {
-            if (xs.XState[x] != XStateCode.Free)
+            xs.HalfMask[x] = HalfBits(pw, xs, x, lastStep);
+        }
+
+        for (int x = 0; x < xn; x++)
+        {
+            if (xs.HalfMask[x] != 0)
             {
                 RecomputeMasks(w, pw, xs, x);
             }

@@ -89,6 +89,8 @@ internal static class PedHash
             h.Add(x.QCount[k]);
             h.Add(x.OnCross[k]);
             h.Add(x.BusyUntil[k]);
+            h.Add(x.BusyUntilIn[k]);
+            h.Add(x.BusyUntilOut[k]);
             h.Add(x.ClosedSince[k]);
             h.Add(x.CarWindowUntil[k]);
             h.Add(x.CarsWaiting[k]);

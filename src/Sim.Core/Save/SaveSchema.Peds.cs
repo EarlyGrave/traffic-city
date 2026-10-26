@@ -149,6 +149,8 @@ internal static partial class SaveSchema
         Col.Array<int>(16, "PaxHead", w => w.Peds!.PaxHead, _vehicleHw, "Vehicles.HighWater", "-1", _vehPool, -1),
         Col.Array<long>(17, "CrossWaitHist", w => w.Peds!.CrossWaitHist, static _ => PedWorld.HistBuckets, "256"),
         Col.Array<long>(18, "StopWaitHist", w => w.Peds!.StopWaitHist, static _ => PedWorld.HistBuckets, "256"),
+        Col.Array<long>(19, "BusyUntilIn", w => w.Peds!.X.BusyUntilIn, _xN, "XCount"),
+        Col.Array<long>(20, "BusyUntilOut", w => w.Peds!.X.BusyUntilOut, _xN, "XCount"),
     })
     {
         PresentText = "peds.enabled",
