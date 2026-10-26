@@ -1,7 +1,5 @@
 //! Сверка с C#-golden (`tests/golden/rust-pilot/*.json`, rust-pilot.md §5.3): `load_ok`, `desc_hash` (R3), `create_status`,
-//! `network_hash`, `counts` (R4) на каждом сценарии; `headings_hash` - отдельным тестом (системный atan2, не блокирует).
-//! `conflicts_hash` и `counts.conflicts` - R5: до него `network_hash` считается с `conflicts_used` из эталона (в хэш входит
-//! `ConflictsUsed`, а конфликты ещё не строятся).
+//! `network_hash`, `counts` (R4), `conflicts_hash` (R5) на каждом сценарии; `headings_hash` - отдельным тестом (системный atan2, не блокирует).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,7 +51,7 @@ fn expected_status(g: &Json) -> i32 {
     field(g, "create_status").and_then(Json::as_i32).expect("create_status")
 }
 
-/// `create_status`, `network_hash`, `counts` (кроме `conflicts`, R5) против golden.
+/// `create_status`, `network_hash`, `conflicts_hash`, `counts` против golden.
 fn check_create(name: &str, desc: &tc_core::api::desc::ScenarioDesc, g: &Json) {
     let status = expected_status(g);
     match Sim::create(desc) {
@@ -61,7 +59,7 @@ fn check_create(name: &str, desc: &tc_core::api::desc::ScenarioDesc, g: &Json) {
             assert_eq!(st as i32, status, "{name}: create_status (Rust: {st:?})");
             assert!(field(g, "network_hash").is_none(), "{name}: ошибка create, но network_hash есть");
         }
-        Ok(mut sim) => {
+        Ok(sim) => {
             assert_eq!(
                 status,
                 CreateStatus::Ok as i32,
@@ -77,13 +75,15 @@ fn check_create(name: &str, desc: &tc_core::api::desc::ScenarioDesc, g: &Json) {
                 ("arms", c.arms),
                 ("lane_next", c.lane_next),
                 ("connectors", c.connectors),
+                ("conflicts", c.conflicts),
             ];
             for (key, got) in want {
                 assert_eq!(got, count(g, key), "{name}: counts.{key}");
             }
-            sim.set_conflicts_used_for_golden(count(g, "conflicts"));
             let expected = hex(g, "network_hash").unwrap_or_else(|| panic!("{name}: нет network_hash"));
             assert_eq!(format!("{:016x}", sim.network_hash()), expected, "{name}: network_hash");
+            let expected = hex(g, "conflicts_hash").unwrap_or_else(|| panic!("{name}: нет conflicts_hash"));
+            assert_eq!(format!("{:016x}", sim.conflicts_hash()), expected, "{name}: conflicts_hash");
         }
     }
 }

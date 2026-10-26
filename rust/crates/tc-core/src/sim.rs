@@ -1,12 +1,14 @@
 //! Пилотный фасад ядра (rust-pilot.md §2, R4): `create` для явной сети (порядок и коды `CreateStatus` как у `WorldBuilder.Create`),
 //! `step` (в пилоте только счётчик тиков, 0 аллокаций), хэши и счётчики для golden.
 
+use crate::api::command::{Command, KIND_SET_TARGET_VEHICLE_COUNT, PilotCounters};
 use crate::api::desc::{NetworkOptions, ScenarioDesc, SimCapacities};
+use crate::api::snapshot::VehicleRenderData;
 use crate::api::status::CreateStatus;
 use crate::intersections::ConnectorStore;
-use crate::network::hash::{headings_hash, network_hash};
+use crate::network::hash::{conflicts_hash, headings_hash, network_hash};
 use crate::network::{DefaultConnectorRules, NetworkBuilder, NetworkStatus, NetworkStore};
-use crate::util::Vec2;
+use crate::util::{RingBuffer, Vec2};
 
 /// `WorldBuilder.MaxCapacity`.
 const MAX_CAPACITY: i32 = 1 << 24;
@@ -29,6 +31,10 @@ pub struct Sim {
     net: NetworkStore,
     connectors: ConnectorStore,
     tick: i64,
+    queue: RingBuffer<Command>,
+    vehicles: Vec<VehicleRenderData>,
+    target_vehicles: i32,
+    counters: PilotCounters,
 }
 
 fn in_range(v: i32, min: i32) -> bool {
@@ -113,14 +119,57 @@ impl Sim {
             return Err(st);
         }
 
-        Ok(Sim { net, connectors, tick: 0 })
+        Ok(Sim {
+            net,
+            connectors,
+            tick: 0,
+            queue: RingBuffer::new(c.command_queue_capacity as usize),
+            vehicles: vec![VehicleRenderData::default(); c.max_vehicles as usize],
+            target_vehicles: 0,
+            counters: PilotCounters::default(),
+        })
     }
 
-    /// Пилотный шаг: только счётчик тиков. 0 аллокаций.
+    /// Пилотный шаг (rust-pilot.md §2): `ticks` раз - применить очередь команд (FIFO), `tick += 1`. 0 аллокаций.
     pub fn step(&mut self, ticks: i32) {
-        if ticks > 0 {
-            self.tick += i64::from(ticks);
+        for _ in 0..ticks.max(0) {
+            while let Some(cmd) = self.queue.try_dequeue() {
+                if cmd.kind == KIND_SET_TARGET_VEHICLE_COUNT {
+                    self.target_vehicles = cmd.payload_i32();
+                }
+                self.counters.commands_applied += 1;
+            }
+            self.tick += 1;
         }
+    }
+
+    /// `true` - команда принята; `false` - очередь полна (`commands_dropped` растёт).
+    pub fn enqueue(&mut self, cmd: Command) -> bool {
+        if self.queue.try_enqueue(cmd) {
+            true
+        } else {
+            self.counters.commands_dropped += 1;
+            false
+        }
+    }
+
+    pub fn counters(&self) -> PilotCounters {
+        self.counters
+    }
+
+    /// Последнее принятое `SetTargetVehicleCount` (пилот только запоминает).
+    pub fn target_vehicles(&self) -> i32 {
+        self.target_vehicles
+    }
+
+    /// Снапшот ТС `[max_vehicles]`; в пилоте нули.
+    pub fn vehicles(&self) -> &[VehicleRenderData] {
+        &self.vehicles
+    }
+
+    /// Точки полос `[lane_point_count]` - реальная геометрия построенной сети.
+    pub fn lane_points(&self) -> &[Vec2] {
+        &self.net.lane_points[..self.net.lane_point_count as usize]
     }
 
     pub fn tick(&self) -> i64 {
@@ -135,10 +184,8 @@ impl Sim {
         &self.connectors
     }
 
-    /// Только для сверки golden до R5 (конфликты ещё не строятся): подставляет `conflicts_used` из эталона.
-    #[doc(hidden)]
-    pub fn set_conflicts_used_for_golden(&mut self, v: i32) {
-        self.connectors.conflicts_used = v;
+    pub fn conflicts_hash(&self) -> u64 {
+        conflicts_hash(&self.connectors)
     }
 
     pub fn network_hash(&self) -> u64 {

@@ -7,6 +7,13 @@ name = "tc-core"
 version = "0.1.0"
 
 [[package]]
+name = "tc-ffi"
+version = "0.1.0"
+dependencies = [
+ "tc-core",
+]
+
+[[package]]
 name = "tc-scenarios"
 version = "0.1.0"
 dependencies = [
