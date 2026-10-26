@@ -14,9 +14,11 @@
   "presets": {
     "low": { "lod_scale": 0.7, "point_min_px": 2, "scaling_3d": 0.75,
              "shadow": { "distance_m": 300, "splits": 2, "atlas": 2048 },
+             "frame": { "draw_calls": 1000, "shadow_draw_calls": 250, "primitives": 2000000, "shadow_primitives": 500000, "objects": 1500, "texture_mb": 512, "video_mb": 1536 },
              "caps": { "vehicle": [100, 800, 4000, 30000], "pedestrian": [200, 2000, 0, 20000], "building": [50, 300, 0, 0] } },
     "high": { "lod_scale": 1.0, "point_min_px": 2, "scaling_3d": 1.0,
               "shadow": { "distance_m": 800, "splits": 4, "atlas": 4096 },
+              "frame": { "draw_calls": 2000, "shadow_draw_calls": 600, "primitives": 5000000, "shadow_primitives": 1500000, "objects": 3000, "texture_mb": 1536, "video_mb": 3072 },
               "caps": { "vehicle": [200, 2000, 8000, 60000], "pedestrian": [500, 5000, 0, 40000], "building": [120, 800, 0, 0] } }
   }
 }

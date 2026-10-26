@@ -68,7 +68,7 @@ internal readonly struct CityGrid
             return false;
         }
 
-        grid = new CityGrid(cellM, minX, minZ, (int)nx, (int)nz);
+        grid = new CityGrid(cellM, minX, minZ, DetMath.ToIntSat(nx), DetMath.ToIntSat(nz));
         return true;
     }
 
@@ -85,5 +85,5 @@ internal readonly struct CityGrid
         z = OriginZ + (((cell / CellsX) + 0.5f) * CellM);
     }
 
-    private static int Clamp(float v, int n) => v < 0f ? 0 : (v >= n ? n - 1 : (int)v);
+    private static int Clamp(float v, int n) => !(v > 0f) ? 0 : (v >= n ? n - 1 : (int)v);
 }

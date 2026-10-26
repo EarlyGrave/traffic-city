@@ -290,8 +290,8 @@ internal sealed class PedSnapshot
         int nx, nz;
         while (true)
         {
-            nx = Math.Max(1, (int)MathF.Ceiling((maxX - minX) / cellM));
-            nz = Math.Max(1, (int)MathF.Ceiling((maxZ - minZ) / cellM));
+            nx = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling((maxX - minX) / cellM)));
+            nz = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling((maxZ - minZ) / cellM)));
             if ((long)nx * nz <= MaxCells)
             {
                 break;

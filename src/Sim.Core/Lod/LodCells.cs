@@ -162,7 +162,7 @@ internal sealed class LodCells
             return CreateStatus.InvalidCapacity;
         }
 
-        var c = new LodCells(net, cfg.CellM, minX, minZ, (int)nx, (int)nz);
+        var c = new LodCells(net, cfg.CellM, minX, minZ, DetMath.ToIntSat(nx), DetMath.ToIntSat(nz));
         c.OnNetworkGrown();
         if (cfg.Mode == LodMode.AllMeso)
         {

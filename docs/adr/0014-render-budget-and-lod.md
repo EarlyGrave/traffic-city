@@ -126,3 +126,17 @@
   (считается как один инстанс). Оценка сверху для проверки бюджета без GPU: сплиты x лимит LOD0 x треугольники LOD0 (24): low 2 x 100 x 24 = 4 800, high 4 x 200 x 24 = 19 200 (<< 0.5 M / 1.5 M); при ассетах 1 200 тр. -
   low 240 000, high 960 000 (всё ещё в бюджете). Draw calls теней = сплиты x непустые LOD0-батчи (типы ТС): low <= 2 x типов, high <= 4 x типов.
 - Поза `lod0` (30 м) добавлена в `--pose`: на `close` (60 м) LOD0 ТС не бывает ни у одного пресета (граница 42/60 м), и теней там нет.
+
+## Дополнение V9: гейт клиента и job `render` (2026-10-26)
+- **Реализация** в `Sim.Headless` (чистый C#-разбор JSON, `Render/RenderCompare.cs`), не скриптом: те же правила, тесты и exit-коды, что у `compare`/`update-baseline`.
+  `render-compare --result <dir> [--budget content/render-budgets.json] [--baseline <файл>] [--tolerance 0.10]`: exit 1 при превышении бюджета кадра пресета
+  результата (`presets.<имя>.frame` - необязательная секция формата 2: draw calls основной проход + тени, draw calls теней, примитивы основного прохода и теней,
+  объекты, текстуры и видеопамять в МБ) или росте любого детерминированного счётчика > 10% к baseline; exit 2 - ввод, нет результатов, другое окружение
+  (`driver/method/resolution`). `timing` (FPS, CPU/GPU-время кадра) только печатается.
+- **Baseline клиента** - по окружению, как ADR-0007: `perf/render-baseline.json` (облачный контейнер, llvmpipe), `perf/render-baseline-ci.json` (раннер CI).
+  Меняются только `render-update-baseline --from <dir> --baseline <файл> [--merge]` (`scripts/godot-shot.sh gate-update`), отдельным коммитом с объяснением.
+  Ручную правку блокирует хук только для `perf/baseline.json`; для файлов клиента запрет - договорённость (расширить `guard-core.sh` на `perf/render-baseline*.json`).
+- **Набор замеров**: `scripts/godot-shot.sh gate` - `SCENARIOS` (по умолчанию `s1k-peds s10k`) × позы overview/mid/close/lod0 × пресет `low`. s100k - вручную (`SCENARIOS=s100k`, долго на llvmpipe).
+- **Job `render`** (решение T5): `continue-on-error: true`; Godot 4.7.2 mono с зеркала SourceForge (sha512 в `install`), кэш `actions/cache` по версии, Xvfb + Mesa llvmpipe;
+  запуск на push/PR, `workflow_dispatch` и раз в сутки. Пока нет `perf/render-baseline-ci.json` - проверяется только бюджет; baseline CI снимается из выведенных в лог
+  `stats-*.json` (артефакт `render-stats`). Обязательной (убрать `continue-on-error`, внести в required checks) станет после 5 зелёных прогонов подряд.

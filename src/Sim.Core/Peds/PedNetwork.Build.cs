@@ -391,7 +391,7 @@ internal sealed partial class PedNetwork
             len += MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
         }
 
-        return (int)MathF.Round(len * 1000f);
+        return DetMath.ToIntSat(MathF.Round(len * 1000f));
     }
 
     // ---------------------------------------------------------------- обходы тупиков
@@ -417,7 +417,7 @@ internal sealed partial class PedNetwork
             Points[PointCount++] = NodePos[fa];
             Points[PointCount++] = nd.Position + (net.ArmDir[fa] * (-0.5f * sw));
             Points[PointCount++] = NodePos[DeadBase + fa];
-            int mm = (int)MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f);
+            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f));
             AddEdge(PedEdgeKind.EndCap, fa, DeadBase + fa, mm, 0, 0, seg, n, fa, 0f, 0f, first, 3);
         }
 
@@ -461,7 +461,7 @@ internal sealed partial class PedNetwork
                 int first = PointCount;
                 Points[PointCount++] = NodePos[a];
                 Points[PointCount++] = NodePos[b];
-                int mm = (int)MathF.Round(((2f * HalfRoad(in sd, laneW)) + sw) * 1000f);
+                int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in sd, laneW)) + sw) * 1000f));
                 int idx = AddEdge(PedEdgeKind.Crossing, a, b, mm, signal ? (byte)1 : (byte)0, 0, seg, n, slot, 0f, 0f, first, 2);
                 Edges[idx].CostTicks += WaitTicks(w, signal, arterial);
                 XEdge[slot] = idx;
@@ -487,7 +487,7 @@ internal sealed partial class PedNetwork
             int first = PointCount;
             Points[PointCount++] = NodePos[a];
             Points[PointCount++] = NodePos[b];
-            int mm = (int)MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f);
+            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f));
             int idx = AddEdge(PedEdgeKind.MidCrossing, a, b, mm, 0, 0, seg, -1, m, MidS[m], MidS[m], first, 2);
             Edges[idx].CostTicks += 2 * 20;   // улица без светофора: 2 с (§2.3)
             MidEdge[m] = idx;

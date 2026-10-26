@@ -1,0 +1,102 @@
+{
+  "format": 1,
+  "environment": "opengl3/gl_compatibility/1280x720",
+  "entries": {
+    "s10k/close/low": {
+      "instances.total": 17,
+      "main.draw_calls": 12,
+      "main.objects": 21,
+      "main.primitives": 7760,
+      "memory.buffer_bytes": 15521128,
+      "memory.texture_bytes": 11783787,
+      "memory.video_bytes": 27304915,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s10k/lod0/low": {
+      "instances.total": 4,
+      "main.draw_calls": 10,
+      "main.objects": 19,
+      "main.primitives": 7696,
+      "memory.buffer_bytes": 15521128,
+      "memory.texture_bytes": 11783787,
+      "memory.video_bytes": 27304915,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s10k/mid/low": {
+      "instances.total": 425,
+      "main.draw_calls": 53,
+      "main.objects": 63,
+      "main.primitives": 8598,
+      "memory.buffer_bytes": 15553896,
+      "memory.texture_bytes": 11783787,
+      "memory.video_bytes": 27337683,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s10k/overview/low": {
+      "instances.total": 0,
+      "main.draw_calls": 17,
+      "main.objects": 28,
+      "main.primitives": 15164,
+      "memory.buffer_bytes": 15521128,
+      "memory.texture_bytes": 11783787,
+      "memory.video_bytes": 27304915,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s1k-peds/close/low": {
+      "instances.total": 40,
+      "main.draw_calls": 26,
+      "main.objects": 38,
+      "main.primitives": 12114,
+      "memory.buffer_bytes": 9861588,
+      "memory.texture_bytes": 11800171,
+      "memory.video_bytes": 21661759,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s1k-peds/lod0/low": {
+      "instances.total": 40,
+      "main.draw_calls": 29,
+      "main.objects": 38,
+      "main.primitives": 12150,
+      "memory.buffer_bytes": 9861588,
+      "memory.texture_bytes": 11800171,
+      "memory.video_bytes": 21661759,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 288
+    },
+    "s1k-peds/mid/low": {
+      "instances.total": 325,
+      "main.draw_calls": 56,
+      "main.objects": 67,
+      "main.primitives": 12262,
+      "memory.buffer_bytes": 9861588,
+      "memory.texture_bytes": 11800171,
+      "memory.video_bytes": 21661759,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    },
+    "s1k-peds/overview/low": {
+      "instances.total": 0,
+      "main.draw_calls": 9,
+      "main.objects": 20,
+      "main.primitives": 9576,
+      "memory.buffer_bytes": 9861588,
+      "memory.texture_bytes": 11800171,
+      "memory.video_bytes": 21661759,
+      "shadow.draw_calls": 0,
+      "shadow.objects": 0,
+      "shadow.primitives": 96
+    }
+  }
+}

@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -59,6 +62,72 @@ jobs:
         with:
           name: perf-results
           path: perf/results/*.json
+          if-no-files-found: ignore
+
+  # Рендер клиента (V9, ADR-0014 п. 9, docs/design/render.md §8.3): Godot 4.7.2 mono (SourceForge-зеркало, sha512) + Xvfb + Mesa llvmpipe,
+  # детерминированные счётчики (draw calls, примитивы, память) трёх поз -> бюджет `low` и baseline клиента perf/render-baseline-ci.json.
+  # FPS/время llvmpipe - только справочно. Решение T5: пока необязательная (continue-on-error); обязательной станет после 5 зелёных прогонов подряд
+  # (убрать continue-on-error и добавить в required checks). Baseline клиента снимается: scripts/godot-shot.sh gate-update с
+  # RENDER_BASELINE=perf/render-baseline-ci.json - вывод job печатает JSON замеров (ADR-0007).
+  render:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 40
+    env:
+      GODOT_DIR: ${{ github.workspace }}/.godot-bin
+      RENDER_BASELINE: perf/render-baseline-ci.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Godot version
+        id: godot
+        run: echo "ver=$(sed -n 's/^VER=//p' scripts/godot-shot.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: .godot-bin
+          key: godot-${{ steps.godot.outputs.ver }}-mono-linux-x86_64
+
+      - name: System packages (Xvfb, Mesa llvmpipe)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1 libgl1-mesa-dri libglx-mesa0 libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libfontconfig1 python3
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/godot-shot.sh install
+
+      - name: Render gate (budget low + client baseline)
+        run: |
+          if [ -f "$RENDER_BASELINE" ]; then echo "baseline: $RENDER_BASELINE"; else echo "no $RENDER_BASELINE yet: budget only"; fi
+          bash scripts/godot-shot.sh gate
+
+      # Baseline клиента для CI снимается из этого вывода (ADR-0007): положить файл и закоммитить через render-update-baseline.
+      - name: Print render stats JSON
+        if: always()
+        run: |
+          for f in perf/results/render/stats-*.json; do
+            echo "=== RENDER-STATS-BEGIN $f ==="
+            cat "$f"
+            echo "=== RENDER-STATS-END ==="
+          done
+
+      - name: Upload render stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-stats
+          path: perf/results/render/stats-*.json
           if-no-files-found: ignore
 
   # Rust-пилот ядра (ADR-0022, docs/design/rust-pilot.md §9). Шаг ffi-smoke добавляет задача R6.

@@ -33,8 +33,8 @@ internal sealed class LotBuilder
         _oz = grid.OriginZ - OccMarginM;
         float w = (grid.CellsX * grid.CellM) + (2f * OccMarginM);
         float h = (grid.CellsZ * grid.CellM) + (2f * OccMarginM);
-        _nx = Math.Max(1, (int)MathF.Ceiling(w / OccCellM));
-        _nz = Math.Max(1, (int)MathF.Ceiling(h / OccCellM));
+        _nx = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(w / OccCellM)));
+        _nz = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(h / OccCellM)));
         _occ = new byte[checked(_nx * _nz)];
     }
 
@@ -57,7 +57,7 @@ internal sealed class LotBuilder
     {
         int[]? labels = null;
         ref readonly SegmentData sd = ref w.Net.Segments[seg];
-        long lengthMm = (long)MathF.Round(sd.Length * 1000f);
+        long lengthMm = DetMath.ToLongSat(MathF.Round(sd.Length * 1000f));
         long clear = c.Cfg.Zoning.NodeClearMm;
         long frontage = c.Cfg.Zoning.LotFrontageMm;
         long avail = lengthMm - (2 * clear);
@@ -255,10 +255,10 @@ internal sealed class LotBuilder
     {
         float ex = (MathF.Abs(tx) * halfL) + (MathF.Abs(nx) * halfD);
         float ez = (MathF.Abs(tz) * halfL) + (MathF.Abs(nz) * halfD);
-        int ix0 = Math.Max(0, (int)MathF.Floor((cx - ex - _ox) / OccCellM));
-        int ix1 = Math.Min(_nx - 1, (int)MathF.Floor((cx + ex - _ox) / OccCellM));
-        int iz0 = Math.Max(0, (int)MathF.Floor((cz - ez - _oz) / OccCellM));
-        int iz1 = Math.Min(_nz - 1, (int)MathF.Floor((cz + ez - _oz) / OccCellM));
+        int ix0 = Math.Max(0, DetMath.ToIntSat(MathF.Floor((cx - ex - _ox) / OccCellM)));
+        int ix1 = Math.Min(_nx - 1, DetMath.ToIntSat(MathF.Floor((cx + ex - _ox) / OccCellM)));
+        int iz0 = Math.Max(0, DetMath.ToIntSat(MathF.Floor((cz - ez - _oz) / OccCellM)));
+        int iz1 = Math.Min(_nz - 1, DetMath.ToIntSat(MathF.Floor((cz + ez - _oz) / OccCellM)));
         for (int iz = iz0; iz <= iz1; iz++)
         {
             for (int ix = ix0; ix <= ix1; ix++)

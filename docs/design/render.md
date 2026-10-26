@@ -279,9 +279,9 @@ calls батчей, `count × треугольники меша`).
 + `--render-stats <json> --stats-frame K` (снять на кадре K и выйти). Одинаковые аргументы → побитово одинаковые счётчики детерминированных метрик.
 
 ### 8.3 Гейт и где он живёт
-- `scripts/godot-shot.sh stats <scenario>` — 3 позы × сценарий, JSON в `perf/results/godot/`. Сценарии: s1k-peds, s10k, s100k (на рампе
+- `scripts/godot-shot.sh stats <scenario>` — 3 позы × сценарий (пресет `low` по умолчанию, `PRESET=high`), JSON `stats-<сценарий>-<поза>-<пресет>.json` в `perf/results/godot/`; `scripts/godot-shot.sh gate` (каталог `perf/results/render/`) — набор `SCENARIOS` (по умолчанию `s1k-peds s10k`) + `render-compare`. Сценарии: s1k-peds, s10k, s100k (на рампе
   `--warmup-ticks 6000`).
-- `Sim.Headless render-compare --result <dir> --budget content/render-budgets.json --baseline perf/godot-baseline.json`: превышение бюджета §1.2
+- `Sim.Headless render-compare --result <dir> --budget content/render-budgets.json --baseline perf/render-baseline.json` (бюджеты кадра - `presets.*.frame` в `render-budgets.json`; ключ записи baseline `сценарий/поза/пресет`; другое окружение `driver/method/resolution` - exit 2): превышение бюджета §1.2
   (`low`) по детерминированным счётчикам → exit 1; рост > 10% к baseline клиента → exit 1; время/FPS — только печать.
   Baseline клиента — по окружению (как ADR-0007), обновляется только `render-update-baseline` (тот же порядок, что `perf/baseline.json`).
 - CI: отдельная job `render` (Godot 4.7.2 mono с зеркала SourceForge, sha512, кэш actions) — сначала `workflow_dispatch` + раз в сутки,
@@ -376,7 +376,7 @@ calls батчей, `count × треугольники меша`).
 
 ### V9. Сцена-бенч клиента и гейт
 - **Файлы:** `scripts/godot-shot.sh` (`stats` по набору), `src/Sim.Headless/Render/RenderCompare.cs` (команды `render-compare`,
-  `render-update-baseline`), `perf/godot-baseline.json` (только командой), `.github/workflows/ci.yml` (job `render`, §8.3),
+  `render-update-baseline`), `perf/render-baseline.json` (облако) и `perf/render-baseline-ci.json` (CI) (только командой), `.github/workflows/ci.yml` (job `render`, §8.3, `continue-on-error` до 5 зелёных подряд),
   `docs/plan/lessons.md` при граблях.
 - **Делает:** §8.3; чек-лист владельца для реального GPU (Vulkan): s10k и s100k × 3 позы × оба пресета → FPS, p95 кадра, GPU-время.
 - **Приёмка:** `render-compare` красный на искусственном превышении (тест на JSON-фикстурах) и зелёный на текущем клиенте; job `render`

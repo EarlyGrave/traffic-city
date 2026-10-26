@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Api;
 using Sim.Core.City;
 using Sim.Core.Network;
+using Sim.Core.Util;
 
 namespace Sim.Core.Demand;
 
@@ -187,7 +188,7 @@ internal sealed class Skims
         _wWaitQ8 = ch.WWaitQ8;
         _wWalkQ8 = ch.WWalkQ8;
         _cellsX = c.Grid.CellsX;
-        _cellCm = (int)(c.Grid.CellM * 100f);
+        _cellCm = DetMath.ToIntSat(c.Grid.CellM * 100f);
         long mw = ch.MaxWalkMm / 10;
         _maxWalkCm2 = (int)Math.Min(int.MaxValue, mw * mw);
 
@@ -236,7 +237,7 @@ internal sealed class Skims
             }
 
             int cell = SegmentCell(net, g, s);
-            vf[cell] += (int)(sd.SpeedLimit * 100f);
+            vf[cell] += DetMath.ToIntSat(sd.SpeedLimit * 100f);
             cnt[cell]++;
         }
 

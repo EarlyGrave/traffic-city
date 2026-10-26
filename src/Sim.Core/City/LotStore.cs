@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Util;
 
 namespace Sim.Core.City;
 
@@ -75,14 +76,14 @@ internal sealed class LotStore
     }
 
     /// <summary>Манхэттенское расстояние между центрами участков, целые метры (геометрия: оценка времени ноги без скима).</summary>
-    public int ManhattanM(int a, int b) => (int)(MathF.Abs(X[a] - X[b]) + MathF.Abs(Z[a] - Z[b]));
+    public int ManhattanM(int a, int b) => DetMath.ToIntSat(MathF.Abs(X[a] - X[b]) + MathF.Abs(Z[a] - Z[b]));
 
     /// <summary>Евклидово расстояние между центрами участков, целые метры (геометрия: порог пешей доступности).</summary>
     public int EuclidM(int a, int b)
     {
         float dx = X[a] - X[b];
         float dz = Z[a] - Z[b];
-        return (int)MathF.Sqrt((dx * dx) + (dz * dz));
+        return DetMath.ToIntSat(MathF.Sqrt((dx * dx) + (dz * dz)));
     }
 
     /// <summary>Резервирует следующий слот; false - ёмкость исчерпана.</summary>

@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Util;
 
 namespace Sim.Core.Api;
 
@@ -245,11 +246,11 @@ public struct CityDesc
     };
 
     /// <summary>Дробь в Q16 (округление к ближайшему целому; ADR-0022: <c>f64 -&gt; f32</c>, затем округление - то же делает загрузчик сценариев).</summary>
-    public static int Q16(double v) => (int)Math.Round((float)v * 65536.0, MidpointRounding.AwayFromZero);
+    public static int Q16(double v) => DetMath.ToIntSat(Math.Round((float)v * 65536.0, MidpointRounding.AwayFromZero));
 
     /// <summary>Q8 из дроби.</summary>
-    public static int Q8(double v) => (int)Math.Round((float)v * 256.0, MidpointRounding.AwayFromZero);
+    public static int Q8(double v) => DetMath.ToIntSat(Math.Round((float)v * 256.0, MidpointRounding.AwayFromZero));
 
     /// <summary>θ [1/с] в <c>θ64 = θ[1/дс] · 64 · 2^16</c> (zoning-demand.md §6.2).</summary>
-    public static int Theta64(double perSecond) => (int)Math.Round((float)perSecond / 10.0 * 64.0 * 65536.0, MidpointRounding.AwayFromZero);
+    public static int Theta64(double perSecond) => DetMath.ToIntSat(Math.Round((float)perSecond / 10.0 * 64.0 * 65536.0, MidpointRounding.AwayFromZero));
 }

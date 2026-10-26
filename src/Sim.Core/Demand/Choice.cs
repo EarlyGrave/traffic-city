@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Api;
 using Sim.Core.City;
+using Sim.Core.Util;
 
 namespace Sim.Core.Demand;
 
@@ -342,7 +343,7 @@ internal static class Choice
         {
             float dx = l.X[lotA] - l.X[lotB];
             float dz = l.Z[lotA] - l.Z[lotB];
-            int distCm = (int)(MathF.Sqrt((dx * dx) + (dz * dz)) * 100f);
+            int distCm = DetMath.ToIntSat(MathF.Sqrt((dx * dx) + (dz * dz)) * 100f);
             if (m == TravelMode.Walk && distCm > c.Cfg.Choice.MaxWalkMm / 10)
             {
                 return NoCost;
