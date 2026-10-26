@@ -21,6 +21,8 @@ public static class Program
         "  hash             print the state hash every K ticks (--scenario <name|path> --ticks N [--every K]; see hash --help)\n" +
         "  save             run a scenario and write a save container (--scenario <name|path> --ticks N --out <file>; see save --help)\n" +
         "  load             load a save and continue (--in <file> [--ticks N] [--every K]; see load --help)\n" +
+        "  replay           re-simulate a command log and check its hashes, or record one (--log <file> [--save <file>] [--check]; see replay --help)\n" +
+        "  bugreport        pack a save and its command log into one file (--save <file> --log <file> --out <file>)\n" +
         "  golden           write cross-language golden files for the Rust pilot (--out <dir>; see golden --help)\n" +
         "  compare          compare a result with the baseline\n" +
         "  update-baseline  replace perf/baseline.json with a result\n" +
@@ -75,6 +77,10 @@ public static class Program
                 return HasHelp(args) ? Help(SaveCommands.SaveUsage) : SaveCommands.RunSave(args, Console.Out, Console.Error);
             case "load":
                 return HasHelp(args) ? Help(SaveCommands.LoadUsage) : SaveCommands.RunLoad(args, Console.Out, Console.Error);
+            case "replay":
+                return HasHelp(args) ? Help(ReplayCommands.ReplayUsage) : ReplayCommands.RunReplay(args, Console.Out, Console.Error);
+            case "bugreport":
+                return HasHelp(args) ? Help(ReplayCommands.BugReportUsage) : ReplayCommands.RunBugReport(args, Console.Out, Console.Error);
             case "compare":
                 return HasHelp(args) ? Help(CompareCommand.Usage) : CompareCommand.Run(args, Console.Out, Console.Error);
             case "update-baseline":
