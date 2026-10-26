@@ -120,6 +120,7 @@
 | 114 | braess-z8a (worktree) | sonnet | 3.2 Z8a: парадокс Брайеса на синтетике | done, merged (перемычка 50%, время +34.5%, без правок ядра) |
 | 115 | render-v3 (worktree) | sonnet | 3.3 V3: машины — батчи по LOD, точки, вид = прямоугольник точек | done, merged (agents overview prims 303k → 75k; alloc при смене вида — только 2 первых тика, ленивый init) |
 | 116 | half-crossings (worktree) | sonnet | 3.1e: «половины» перехода — раздельные BusyUntil для XIn/XOut | wip |
-| 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | wip |
+| 117 | render-v4 (worktree) | sonnet | 3.3 V4: дороги чанками, heatmap в шейдере | done, merged (FPS llvmpipe s1k 18.8 → 63, s1k-peds 19 → 46; prims ×10–35 меньше) |
 | 118 | zoning-z2 (worktree) | sonnet | 3.2 Z2: календарь, автомат жителя, ноги в micro, s1k-res | wip |
 | 119 | zoning-z3 (worktree) | sonnet | 3.2 Z3: скимы, DetLogit, выбор, доступность | wip |
+| 120 | render-v5 (worktree) | sonnet | 3.3 V5: пешеходы — LOD и точки без раздувания | wip |

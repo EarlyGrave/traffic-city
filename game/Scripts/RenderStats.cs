@@ -50,12 +50,18 @@ public partial class RenderStats : Node
     private float _maxDrawnDist;
     private float _pointRange;
     private int _dropped;
+    private int _buildsAtFirstFrame;
     private string _preset = string.Empty;
 
     /// <summary>Записать итоги кадра слоя ТС: аллокации <c>SetRenderView</c>/обновления слоя и счётчики по уровням.</summary>
     public void RecordFrame(VehicleLayer? layer, long viewAlloc, long layerAlloc)
     {
         _frames++;
+        if (_frames == 1)
+        {
+            _buildsAtFirstFrame = ChunkStats.SurfaceBuilds;
+        }
+
         _viewAllocLast = viewAlloc;
         _layerAllocLast = layerAlloc;
         if (_frames > WarmupFrames)
@@ -231,6 +237,13 @@ public partial class RenderStats : Node
             WalkInstances(GetParent(), j, ref total);
             j.WriteNumber("total", total);
             j.WriteEndObject();
+            j.WriteEndObject();
+
+            j.WriteStartObject("static_chunks");
+            j.WriteString("note", "V4: меши чанков собираются при старте; surface_builds_after_first_frame должен быть 0 без изменений сети");
+            j.WriteNumber("chunk_nodes", ChunkStats.Chunks);
+            j.WriteNumber("surface_builds_total", ChunkStats.SurfaceBuilds);
+            j.WriteNumber("surface_builds_after_first_frame", ChunkStats.SurfaceBuilds - _buildsAtFirstFrame);
             j.WriteEndObject();
 
             j.WriteStartObject("managed_alloc");

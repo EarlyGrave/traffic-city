@@ -28,6 +28,16 @@ public sealed class LodConfig
 
     public float PointMinPx { get; private set; } = 2f;
 
+    /// <summary>Дорога (render.md §3.1): LOD0 до, LOD1 до, дальше лента до <see cref="RoadFar"/>; уже умножено на <c>lod_scale</c>.</summary>
+    public float RoadLod0 { get; private set; } = 250f;
+
+    public float RoadLod1 { get; private set; } = 1000f;
+
+    public float RoadFar { get; private set; } = 6000f;
+
+    /// <summary>Дистанция, дальше которой пешеходы - heatmap <c>PedEdgeCounts</c> (render.md §3.1, §3.5).</summary>
+    public float PedPointRange { get; private set; } = 900f;
+
     public string Preset { get; private set; } = "high";
 
     /// <summary>Откуда взяты числа (для лога).</summary>
@@ -43,6 +53,10 @@ public sealed class LodConfig
         double scale = low ? 0.7 : 1.0;
         double[] dist = _defaultDist;
         double far = 2500;
+        double roadNear = 250;
+        double roadMid = 1000;
+        double roadFar = 6000;
+        double pedFar = 900;
         int[] caps = low ? _defaultCapsLow : _defaultCapsHigh;
         try
         {
@@ -64,6 +78,23 @@ public sealed class LodConfig
                 if (kb.FarDistanceM is { } fd)
                 {
                     far = fd;
+                }
+
+                KindBudget road = rb.For(AssetKind.Road);
+                if (road.LodDistancesM is { Count: >= 2 })
+                {
+                    roadNear = road.LodDistancesM[0];
+                    roadMid = road.LodDistancesM[1];
+                }
+
+                if (road.FarDistanceM is { } rf)
+                {
+                    roadFar = rf;
+                }
+
+                if (rb.Pedestrian?.FarDistanceM is { } pf)
+                {
+                    pedFar = pf;
                 }
 
                 if (rb.Presets.TryGetValue(preset, out PresetBudget? pb))
@@ -94,6 +125,10 @@ public sealed class LodConfig
         }
 
         cfg.Bounds[3] = (float)(far * scale);
+        cfg.RoadLod0 = (float)(roadNear * scale);
+        cfg.RoadLod1 = (float)(roadMid * scale);
+        cfg.RoadFar = (float)roadFar; // дальность вида не масштабируется
+        cfg.PedPointRange = (float)(pedFar * scale);
         Array.Copy(caps, cfg.Caps, Levels);
         return cfg;
     }
