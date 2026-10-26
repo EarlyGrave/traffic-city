@@ -4,14 +4,18 @@ using System.IO;
 using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Scenarios.Mods;
+using ModAssetKind = Sim.Scenarios.Mods.AssetKind;
 
 namespace Sim.Scenarios;
 
 /// <summary>Результат загрузки: desc плюс информативные поля, которых нет в <see cref="ScenarioDesc"/>.</summary>
 public sealed class LoadedScenario
 {
-    public LoadedScenario(string name, string[] typeNames, ScenarioDesc desc)
+    public LoadedScenario(string name, string[] typeNames, ScenarioDesc desc, ContentCatalog? catalog = null, PackageSet? packages = null)
     {
+        Catalog = catalog;
+        Packages = packages;
         Name = name;
         TypeNames = typeNames;
         Desc = desc;
@@ -23,6 +27,12 @@ public sealed class LoadedScenario
     public string[] TypeNames { get; }
 
     public ScenarioDesc Desc { get; }
+
+    /// <summary>Каталог контента набора пакетов (только <c>format_version: 3</c>, иначе <c>null</c>); индекс типа ТС = индекс в <see cref="ContentCatalog.Vehicles"/>.</summary>
+    public ContentCatalog? Catalog { get; }
+
+    /// <summary>Набор пакетов в порядке загрузки (только <c>format_version: 3</c>, иначе <c>null</c>).</summary>
+    public PackageSet? Packages { get; }
 }
 
 /// <summary>
@@ -32,6 +42,7 @@ public sealed class LoadedScenario
 public static class ScenarioLoader
 {
     public const int SupportedFormatVersion = 2;
+    public const int PackagesFormatVersion = 3;
     public const int VehicleTypesFormatVersion = 1;
     private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
     private const int MaxRoutingFanout = 16;
@@ -49,51 +60,81 @@ public static class ScenarioLoader
 
     public static ScenarioDesc Load(string path) => LoadInfo(path).Desc;
 
-    public static LoadedScenario LoadInfo(string path)
+    /// <param name="path">Файл сценария.</param>
+    /// <param name="searchDirs">Каталоги пакетов для <c>format_version: 3</c> (modding.md §1.1); <c>null</c> - <c>content/</c> игры, найденный от каталога сценария/текущего.</param>
+    public static LoadedScenario LoadInfo(string path, IReadOnlyList<PackageSearchDir>? searchDirs = null)
     {
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
-        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path));
+        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir));
+    }
+
+    /// <summary>Поиск <c>content/</c> игры: вверх от <paramref name="startDir"/> и от текущего каталога (как <see cref="ScenarioLocator"/> ищет <c>scenarios/</c>).</summary>
+    public static IReadOnlyList<PackageSearchDir> DefaultSearchDirs(string startDir)
+    {
+        string? content = ScenarioLocator.FindContentDir(startDir) ?? ScenarioLocator.FindContentDir(Directory.GetCurrentDirectory());
+        return content == null ? [] : [new PackageSearchDir(content, true)];
     }
 
     /// <summary>Разбор из строк (тесты): <paramref name="vehicleTypesJson"/> подставляется вместо файла типов.</summary>
     public static LoadedScenario Parse(string scenarioJson, string vehicleTypesJson) =>
         Parse(scenarioJson, _ => vehicleTypesJson, "scenario");
 
-    public static LoadedScenario Parse(string scenarioJson, Func<string, string> readRelativeFile, string defaultName)
+    public static LoadedScenario Parse(string scenarioJson, Func<string, string> readRelativeFile, string defaultName) =>
+        Parse(scenarioJson, readRelativeFile, defaultName, null);
+
+    /// <summary>Разбор с каталогами пакетов для <c>format_version: 3</c> (<c>null</c> - v3 отвергается).</summary>
+    public static LoadedScenario Parse(
+        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs)
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root, SupportedFormatVersion);
+        bool v3 = CheckScenarioVersion(root);
 
         string name = root.Str("name", defaultName);
         ulong seed = root.ULong("seed");
         double durationS = root.Num("duration_s", min: 0);
-        string typesFile = root.Str("vehicle_types_file", DefaultVehicleTypesFile);
-
-        string typesText;
-        try
-        {
-            typesText = readRelativeFile(typesFile);
-        }
-        catch (ScenarioException e)
-        {
-            throw new ScenarioException($"$.vehicle_types_file: {e.Message}", e);
-        }
-
         VehicleTypeDesc[] types;
         string[] typeNames;
-        try
+        TypeRefs refs;
+        ContentCatalog? catalog = null;
+        PackageSet? packages = null;
+        if (v3)
         {
-            (types, typeNames) = ParseVehicleTypes(typesText);
+            (types, typeNames, refs, catalog, packages) = LoadPackageTypes(root, searchDirs);
         }
-        catch (ScenarioException e)
+        else
         {
-            throw new ScenarioException($"{typesFile}: {e.Message}", e);
+            string typesFile = root.Str("vehicle_types_file", DefaultVehicleTypesFile);
+            string typesText;
+            try
+            {
+                typesText = readRelativeFile(typesFile);
+            }
+            catch (ScenarioException e)
+            {
+                throw new ScenarioException($"$.vehicle_types_file: {e.Message}", e);
+            }
+
+            try
+            {
+                (types, typeNames) = ParseVehicleTypes(typesText);
+            }
+            catch (ScenarioException e)
+            {
+                throw new ScenarioException($"{typesFile}: {e.Message}", e);
+            }
+
+            refs = TypeRefs.ForNames(typeNames);
         }
 
         JsonObjectReader? cityR = root.OptObject("city");
         JsonObjectReader? netR = root.OptObject("network");
+        if (v3 && cityR != null)
+        {
+            CheckRoadAssets(cityR, catalog!, packages!);
+        }
+
         CityGenDesc city = ParseCity(cityR);
         NetworkDesc network = default;
         if (netR != null)
@@ -113,7 +154,7 @@ public static class ScenarioLoader
         JsonObjectReader vehR = root.ReqObject("vehicles");
         int count = vehR.Int("count", min: 0);
         int rampTicks = Ticks(vehR.Num("spawn_ramp_s", 120, min: 0));
-        float[] typeMix = ParseTypeMix(vehR, typeNames);
+        float[] typeMix = ParseTypeMix(vehR, refs);
         vehR.Finish();
 
         DemandDesc demand = ParseDemand(root.OptObject("demand"));
@@ -122,7 +163,7 @@ public static class ScenarioLoader
         demand.TypeMix = typeMix;
 
         PedDesc peds = ParsePeds(root.OptObject("peds"));
-        TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames, peds.Enabled);
+        TransitDesc transit = ParseTransit(root.OptObject("transit"), refs, peds.Enabled);
         if (peds.Enabled && peds.StuckStopTicks <= 0)
         {
             peds.StuckStopTicks = Math.Max(3 * transit.HeadwayTicks, Ticks(900));   // stuck_stop_s: max(3 · headway_s, 900)
@@ -149,7 +190,7 @@ public static class ScenarioLoader
             Rules = rules,
             VehicleTypes = types,
         };
-        return new LoadedScenario(name, typeNames, desc);
+        return new LoadedScenario(name, typeNames, desc, catalog, packages);
     }
 
     // ---------------------------------------------------------------- units
@@ -200,15 +241,229 @@ public static class ScenarioLoader
         }
     }
 
-    private static int FindType(string[] names, string name, string path)
+    private static bool CheckScenarioVersion(JsonObjectReader root)
     {
-        int i = Array.IndexOf(names, name);
-        if (i < 0)
+        if (!root.Has("format_version"))
         {
-            throw new ScenarioException($"{path}: unknown vehicle type '{name}'");
+            throw new ScenarioException("$.format_version: required key is missing");
         }
 
-        return i;
+        int v = root.Int("format_version");
+        if (v is not (SupportedFormatVersion or PackagesFormatVersion))
+        {
+            throw new ScenarioException(
+                $"$.format_version: unsupported version {v}, loader supports {SupportedFormatVersion} and {PackagesFormatVersion}");
+        }
+
+        return v == PackagesFormatVersion;
+    }
+
+    // ---------------------------------------------------------------- packages (format_version 3, modding.md §3.4, §5)
+
+    private static (VehicleTypeDesc[] Types, string[] Names, TypeRefs Refs, ContentCatalog Catalog, PackageSet Packages) LoadPackageTypes(
+        JsonObjectReader root, IReadOnlyList<PackageSearchDir>? searchDirs)
+    {
+        if (root.Has("vehicle_types_file"))
+        {
+            throw new ScenarioException("$.vehicle_types_file: unknown key in format_version 3 (use $.packages)", ModError.UnknownKey);
+        }
+
+        JsonElement[] list = root.ReqArray("packages");
+        var ids = new List<string>(list.Length);
+        string path = root.ChildPath("packages");
+        for (int i = 0; i < list.Length; i++)
+        {
+            if (list[i].ValueKind != JsonValueKind.String)
+            {
+                throw new ScenarioException($"{JsonObjectReader.Index(path, i)}: expected string", ModError.BadType);
+            }
+
+            string id = list[i].GetString()!;
+            if (ids.Contains(id))
+            {
+                throw new ScenarioException($"{JsonObjectReader.Index(path, i)}: duplicate package '{id}'", ModError.BadValue);
+            }
+
+            ids.Add(id);
+        }
+
+        if (ids.Count == 0)
+        {
+            throw new ScenarioException($"{path}: at least one package is required", ModError.BadValue);
+        }
+
+        if (searchDirs == null || searchDirs.Count == 0)
+        {
+            throw new ScenarioException($"{path}: no package directories (content/ not found)", ModError.MissingDependency);
+        }
+
+        PackageSet set = PackageLoader.Load(searchDirs, ids);
+        set.ThrowIfFailed();
+        var issues = new List<ModIssue>();
+        ContentCatalog cat = ContentCatalog.Build(set, issues);
+        if (issues.Count > 0)
+        {
+            throw new ScenarioException(issues[0].ToString(), issues[0].Code);
+        }
+
+        if (cat.Vehicles.Count == 0)
+        {
+            throw new ScenarioException($"{path}: package set has no vehicle types", ModError.BadValue);
+        }
+
+        var types = new VehicleTypeDesc[cat.Vehicles.Count];
+        var names = new string[types.Length];
+        for (int i = 0; i < types.Length; i++)
+        {
+            types[i] = cat.Vehicles[i].Desc;
+            names[i] = cat.Vehicles[i].Id.Name;
+        }
+
+        return (types, names, TypeRefs.ForCatalog(cat, set), cat, set);
+    }
+
+    /// <summary>
+    /// Ссылка из сценария (modding.md §2): полный id - пакет обязан быть в наборе (<c>packages</c> + транзитивные),
+    /// иначе <c>UndeclaredDependency</c>; сокращение <c>vehicle/car</c> - из <c>base</c>.
+    /// </summary>
+    private static bool ExpandRef(PackageSet set, string reference, List<AssetId> candidates, out ModError error)
+    {
+        error = default;
+        candidates.Clear();
+        if (AssetId.TryParse(reference, out AssetId full))
+        {
+            if (set.Find(full.Package) == null)
+            {
+                error = ModError.UndeclaredDependency;
+                return false;
+            }
+
+            candidates.Add(full);
+            return true;
+        }
+
+        if (AssetId.TryParseShort(reference, out ModAssetKind kind, out string name))
+        {
+            candidates.Add(new AssetId("base", kind, name));
+            return true;
+        }
+
+        error = ModError.BadValue;
+        return false;
+    }
+
+    // city.road_assets: визуальная метка сегментов генератора; до M4 только проверяется (modding.md §3.4).
+    private static void CheckRoadAssets(JsonObjectReader cityR, ContentCatalog cat, PackageSet set)
+    {
+        JsonObjectReader? ra = cityR.OptObject("road_assets");
+        if (ra == null)
+        {
+            return;
+        }
+
+        foreach (string key in ra.Keys)
+        {
+            string p = ra.ChildPath(key);
+            RoadKind expected = key switch
+            {
+                "street" => RoadKind.Street,
+                "arterial" => RoadKind.Arterial,
+                _ => throw new ScenarioException($"{p}: unknown key", ModError.UnknownKey),
+            };
+            JsonElement el = ra.Raw(key);
+            if (el.ValueKind != JsonValueKind.String)
+            {
+                throw new ScenarioException($"{p}: expected string", ModError.BadType);
+            }
+
+            string reference = el.GetString()!;
+            var cands = new List<AssetId>();
+            if (!ExpandRef(set, reference, cands, out ModError err))
+            {
+                throw new ScenarioException($"{p}: {err} ('{reference}')", err);
+            }
+
+            int idx = -1;
+            foreach (AssetId c in cands)
+            {
+                if (c.Kind == ModAssetKind.Road && (idx = cat.FindRoad(c)) >= 0)
+                {
+                    break;
+                }
+            }
+
+            if (idx < 0)
+            {
+                throw new ScenarioException($"{p}: {ModError.UnknownAssetRef} ('{reference}')", ModError.UnknownAssetRef);
+            }
+
+            if (cat.Roads[idx].Kind != expected)
+            {
+                throw new ScenarioException($"{p}: road '{reference}' is not of kind {key}", ModError.BadValue);
+            }
+        }
+    }
+
+    /// <summary>Разрешение ссылок на типы ТС: v2 - локальные имена файла типов; v3 - id ассетов каталога (modding.md §2).</summary>
+    internal sealed class TypeRefs
+    {
+        private Func<string, string, int> _lookup = null!;
+
+        public int Count { get; private init; }
+
+        /// <summary>Имя автобуса по умолчанию (v2: <c>bus</c>, v3: <c>base:vehicle/bus</c>).</summary>
+        public string DefaultBus { get; private init; } = "bus";
+
+        /// <summary>v3: тип по умолчанию - тип 0 набора (категории car, гарантировано каталогом); v2: тип <c>car</c> по имени.</summary>
+        public bool CarIsIndexZero { get; private init; }
+
+        public static TypeRefs ForNames(string[] names) => new()
+        {
+            Count = names.Length,
+            _lookup = (n, _) => Array.IndexOf(names, n),
+        };
+
+        public static TypeRefs ForCatalog(ContentCatalog cat, PackageSet set) => new()
+        {
+            Count = cat.Vehicles.Count,
+            DefaultBus = FormatUpgrades.BaseVehicleRef("bus"),
+            CarIsIndexZero = true,
+            _lookup = (reference, path) =>
+            {
+                var cands = new List<AssetId>();
+                if (!ExpandRef(set, reference, cands, out ModError err))
+                {
+                    throw new ScenarioException($"{path}: {err} ('{reference}')", err);
+                }
+
+                foreach (AssetId c in cands)
+                {
+                    int i = c.Kind == ModAssetKind.Vehicle ? cat.FindVehicle(c) : -1;
+                    if (i >= 0)
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            },
+        };
+
+        /// <summary>Индекс типа или -1 (ошибка формы ссылки в v3 бросает).</summary>
+        public int TryFind(string name, string path) => _lookup(name, path);
+
+        public int Find(string name, string path)
+        {
+            int i = _lookup(name, path);
+            if (i < 0)
+            {
+                throw CarIsIndexZero
+                    ? new ScenarioException($"{path}: {ModError.UnknownAssetRef} ('{name}')", ModError.UnknownAssetRef)
+                    : new ScenarioException($"{path}: unknown vehicle type '{name}'");
+            }
+
+            return i;
+        }
     }
 
     // ---------------------------------------------------------------- vehicle types
@@ -238,43 +493,53 @@ public static class ScenarioLoader
             }
 
             names[i] = name;
-            string cat = r.Str("category");
-            VehicleCategory category = cat switch
-            {
-                "car" => VehicleCategory.Car,
-                "bus" => VehicleCategory.Bus,
-                _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
-            };
-            var t = new VehicleTypeDesc
-            {
-                Category = category,
-                Length = (float)r.Num("length_m", min: 0.1),
-                Width = (float)r.Num("width_m", min: 0.1),
-                MaxSpeed = Mps(r.Num("max_speed_kmh", min: 0.1)),
-                SpeedFactor = (float)r.Num("speed_factor", min: 0.01),
-            };
-
-            JsonObjectReader idm = r.ReqObject("idm");
-            t.Accel = (float)idm.Num("a", min: 0.01);
-            t.ComfortDecel = (float)idm.Num("b", min: 0.01);
-            t.HeadwayTime = (float)idm.Num("T", min: 0);
-            t.MinGap = (float)idm.Num("s0", min: 0);
-            t.Delta = (float)idm.Num("delta", min: 0.01);
-            idm.Finish();
-
-            JsonObjectReader mobil = r.ReqObject("mobil");
-            t.Politeness = (float)mobil.Num("politeness", min: 0, max: 1);
-            t.LaneChangeThreshold = (float)mobil.Num("threshold", min: 0);
-            t.SafeDecel = (float)mobil.Num("b_safe", min: 0);
-            t.RightBias = (float)mobil.Num("right_bias");
-            t.LaneChangeDurationTicks = Ticks(mobil.Num("duration_s", min: 0));
-            mobil.Finish();
-
+            VehicleTypeDesc t = ParseVehicleFields(r, p);
             r.Finish();
             types[i] = t;
         }
 
         return (types, names);
+    }
+
+    /// <summary>
+    /// Поля типа ТС (категория, габариты, IDM, MOBIL) без <c>name</c> и без <c>Finish</c>: общий разбор для
+    /// <c>vehicle-types.json</c> v1 и <c>vehicles.json</c> пакета (modding.md §3.1).
+    /// </summary>
+    internal static VehicleTypeDesc ParseVehicleFields(JsonObjectReader r, string p)
+    {
+        string cat = r.Str("category");
+        VehicleCategory category = cat switch
+        {
+            "car" => VehicleCategory.Car,
+            "bus" => VehicleCategory.Bus,
+            _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
+        };
+        var t = new VehicleTypeDesc
+        {
+            Category = category,
+            Length = (float)r.Num("length_m", min: 0.1),
+            Width = (float)r.Num("width_m", min: 0.1),
+            MaxSpeed = Mps(r.Num("max_speed_kmh", min: 0.1)),
+            SpeedFactor = (float)r.Num("speed_factor", min: 0.01),
+        };
+
+        JsonObjectReader idm = r.ReqObject("idm");
+        t.Accel = (float)idm.Num("a", min: 0.01);
+        t.ComfortDecel = (float)idm.Num("b", min: 0.01);
+        t.HeadwayTime = (float)idm.Num("T", min: 0);
+        t.MinGap = (float)idm.Num("s0", min: 0);
+        t.Delta = (float)idm.Num("delta", min: 0.01);
+        idm.Finish();
+
+        JsonObjectReader mobil = r.ReqObject("mobil");
+        t.Politeness = (float)mobil.Num("politeness", min: 0, max: 1);
+        t.LaneChangeThreshold = (float)mobil.Num("threshold", min: 0);
+        t.SafeDecel = (float)mobil.Num("b_safe", min: 0);
+        t.RightBias = (float)mobil.Num("right_bias");
+        t.LaneChangeDurationTicks = Ticks(mobil.Num("duration_s", min: 0));
+        mobil.Finish();
+
+        return t;
     }
 
     // ---------------------------------------------------------------- city / network
@@ -469,22 +734,30 @@ public static class ScenarioLoader
 
     // ---------------------------------------------------------------- vehicles / demand
 
-    private static float[] ParseTypeMix(JsonObjectReader vehR, string[] typeNames)
+    private static float[] ParseTypeMix(JsonObjectReader vehR, TypeRefs refs)
     {
-        var mix = new float[typeNames.Length];
+        var mix = new float[refs.Count];
         if (!vehR.Has("type_mix"))
         {
-            mix[FindType(typeNames, "car", vehR.ChildPath("type_mix"))] = 1f;
+            mix[refs.CarIsIndexZero ? 0 : refs.Find("car", vehR.ChildPath("type_mix"))] = 1f;
             return mix;
         }
 
         JsonObjectReader m = vehR.ReqObject("type_mix");
         double sum = 0;
+        var seen = new bool[mix.Length];
         foreach (string k in m.Keys)
         {
             string p = m.ChildPath(k);
             double w = JsonObjectReader.NumValue(m.Raw(k), p, min: 0);
-            mix[FindType(typeNames, k, p)] = (float)w;
+            int idx = refs.Find(k, p);
+            if (seen[idx])
+            {
+                throw new ScenarioException($"{p}: vehicle type given twice");
+            }
+
+            seen[idx] = true;
+            mix[idx] = (float)w;
             sum += w;
         }
 
@@ -546,7 +819,7 @@ public static class ScenarioLoader
 
     // ---------------------------------------------------------------- transit
 
-    private static TransitDesc ParseTransit(JsonObjectReader? r, string[] typeNames, bool pedsEnabled)
+    private static TransitDesc ParseTransit(JsonObjectReader? r, TypeRefs refs, bool pedsEnabled)
     {
         var t = new TransitDesc
         {
@@ -565,7 +838,7 @@ public static class ScenarioLoader
             HoldEveryN = 1,
             PassengerModel = pedsEnabled ? PassengerModel.Agents : PassengerModel.Counter,
         };
-        string busName = "bus";
+        string busName = refs.DefaultBus;
         if (r != null)
         {
             t.Routes = r.Int("routes", 0, min: 0);
@@ -596,7 +869,7 @@ public static class ScenarioLoader
                 "bay" => StopKindMode.Bay,
                 _ => throw new ScenarioException($"{r.ChildPath("stop_kind")}: expected \"curb\", \"bay\" or \"mixed\""),
             };
-            busName = r.Str("bus_type", "bus");
+            busName = r.Str("bus_type", refs.DefaultBus);
             t.DwellBaseTicks = Ticks(r.Num("dwell_base_s", 8, min: 0));
             t.DwellPerPassengerTicks = (float)(r.Num("dwell_per_passenger_s", 1.5, min: 0) * TicksPerSecond);
             t.PassengerRatePerMin = (float)r.Num("passenger_rate_per_min", 2, min: 0);
@@ -629,11 +902,11 @@ public static class ScenarioLoader
         bool needBus = t.Routes > 0 || t.RoutesExplicit is { Length: > 0 };
         if (needBus)
         {
-            t.BusType = FindType(typeNames, busName, "$.transit.bus_type");
+            t.BusType = refs.Find(busName, "$.transit.bus_type");
         }
         else
         {
-            int i = Array.IndexOf(typeNames, busName);
+            int i = refs.TryFind(busName, "$.transit.bus_type");
             t.BusType = i >= 0 ? i : 0;
         }
 

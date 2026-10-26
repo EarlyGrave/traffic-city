@@ -49,6 +49,19 @@ public static class ScenarioLocator
         return Path.Combine(root, "scenarios");
     }
 
+    /// <summary>Каталог <c>content/</c> игры (modding.md §1.1): вверх от <paramref name="startDir"/> до корня репозитория.</summary>
+    public static string? FindContentDir(string startDir)
+    {
+        string? root = FindRepoRoot(startDir);
+        if (root == null)
+        {
+            return null;
+        }
+
+        string dir = Path.Combine(root, "content");
+        return Directory.Exists(dir) ? dir : null;
+    }
+
     private static string? FindRepoRoot(string start)
     {
         DirectoryInfo? d = new(start);

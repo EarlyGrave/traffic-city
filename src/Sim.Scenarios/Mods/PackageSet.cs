@@ -49,7 +49,7 @@ public sealed class PackageSet
     {
         if (Errors.Count > 0)
         {
-            throw new ScenarioException(Errors[0].ToString());
+            throw new ScenarioException(Errors[0].ToString(), Errors[0].Code);
         }
     }
 
