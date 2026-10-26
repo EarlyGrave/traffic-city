@@ -8,7 +8,7 @@
 
 ## 0. Решения коротко
 
-- Всё — `Enqueue(in Command)`; новые `CommandKind` 12+ добавлением, 64 Б, ссылки — handle (index + generation) (§1–2).
+- Всё — `Enqueue(in Command)`; новые `CommandKind` с 25 добавлением, 64 Б, ссылки — handle (index + generation) (§1–2).
 - Сеть с дырами: пулы слотов с поколениями + арена блоков по лестнице; производные — «по возрастанию индекса живых» (§3).
 - Правка — одним из трёх механизмов: на месте / перенос / дренаж. Никого не удаляем (§4).
 - Ошибки — `RejectReason`, без исключений; предупреждения — только в превью (§6).
@@ -33,8 +33,9 @@
 
 ## 1. Набор команд этапа 4
 
-Номера 0–11 заняты (`core-api.md` §4.1; 11 = `SetLodFocus`). Новые — только добавлением. **Внимание (Z1, 2026-10-26):** в коде номер 12 уже занят `SetPedTarget` (P2, `Command.cs`), а таблица ниже отдаёт 12 команде `RemoveRoad`;
-оркестратор волны 4.3 сдвигает `RemoveRoad` на свободный номер (в коде свободны 13-22 и от 25; 23 и 24 заняты Z1).
+Номера 0–11 заняты (`core-api.md` §4.1; 11 = `SetLodFocus`, в коде не реализован), 12 = `SetPedTarget` (P2), 23 = `PaintZone` и 24 = `SetTripExecution` (Z1).
+Команды инструментов нумеруются **с 25** (решение оркестратора 2026-10-26, `stage3-plan.md` §5a); прежние черновые номера 12–22 сдвинуты на +13.
+Новые kind — только добавлением в конец `CommandKind`; номера 13–22 остаются свободными (резерв).
 
 | Kind | Команда | Механизм (§4) | Обратная (§8) |
 |---|---|---|---|
@@ -43,17 +44,17 @@
 | 4 | `CreateBusRoute` (реализовать) | на месте | `RemoveBusRoute` |
 | 5 | `AppendBusStop` (реализовать; сырой индекс полосы — генератор и тесты) | на месте | `RemoveBusStop` |
 | 10 | `SetNodeControl` (+поколение узла) | на месте (+перестройка узла при смене приоритетов) | `SetNodeControl(прежний)` + `SetSignalPlan(прежний)` |
-| 12 | `RemoveRoad` | дренаж сегмента | `BuildRoad(RestoreOf)` + настройки узлов, полос, остановок |
-| 13 | `UpgradeRoad` (скорость, тип, полосы по направлениям) | на месте / перенос (+полосы) / дренаж (−полосы) | `UpgradeRoad(прежнее)` + `SetLaneFlags` |
-| 14 | `SplitRoad` (узел в точке оси) | перенос с дренажом «коробки» узла (§4.4) | `MergeAtNode` |
-| 15 | `SetArmControl` (приоритет/уступи/стоп на рукаве) | на месте | прежний |
-| 16 | `SetTurnBan` (запрет манёвра рукав→рукав) | перестройка узла (§5) | прежний |
-| 17 | `SetLaneFlags` (`BusOnly`, `NoLaneChangeOut`) | на месте | прежний |
-| 18 | `InsertBusStop` (сегмент + направление + `LaneNo` + `S`, позиция в маршруте) | на месте | `RemoveBusStop` |
-| 19 | `RemoveBusStop` | на месте (автобусы пропускают) | `InsertBusStop(RestoreOf)` |
-| 20 | `RemoveBusRoute` | на месте (автобусы доезжают до следующей остановки и завершают рейс) | `CreateBusRoute(RestoreOf)` + `InsertBusStop`×k |
-| 21 | `SetBusRouteParams` (интервал, тип ТС) | на месте | прежний |
-| 22 | `MergeAtNode` (узел степени 2 с одинаковыми сегментами) | перенос с тишиной узла | `SplitRoad(RestoreOf)` |
+| 25 | `RemoveRoad` | дренаж сегмента | `BuildRoad(RestoreOf)` + настройки узлов, полос, остановок |
+| 26 | `UpgradeRoad` (скорость, тип, полосы по направлениям) | на месте / перенос (+полосы) / дренаж (−полосы) | `UpgradeRoad(прежнее)` + `SetLaneFlags` |
+| 27 | `SplitRoad` (узел в точке оси) | перенос с дренажом «коробки» узла (§4.4) | `MergeAtNode` |
+| 28 | `SetArmControl` (приоритет/уступи/стоп на рукаве) | на месте | прежний |
+| 29 | `SetTurnBan` (запрет манёвра рукав→рукав) | перестройка узла (§5) | прежний |
+| 30 | `SetLaneFlags` (`BusOnly`, `NoLaneChangeOut`) | на месте | прежний |
+| 31 | `InsertBusStop` (сегмент + направление + `LaneNo` + `S`, позиция в маршруте) | на месте | `RemoveBusStop` |
+| 32 | `RemoveBusStop` | на месте (автобусы пропускают) | `InsertBusStop(RestoreOf)` |
+| 33 | `RemoveBusRoute` | на месте (автобусы доезжают до следующей остановки и завершают рейс) | `CreateBusRoute(RestoreOf)` + `InsertBusStop`×k |
+| 34 | `SetBusRouteParams` (интервал, тип ТС) | на месте | прежний |
+| 35 | `MergeAtNode` (узел степени 2 с одинаковыми сегментами) | перенос с тишиной узла | `SplitRoad(RestoreOf)` |
 | 23 | `PaintZone` — номер **закреплён** (3.2 Z1: перечисление и диспетчер есть, `Zoning.Apply` - заглушка `NotSupported`, тело - Z6); payload `PaintZoneCmd` ниже | — | — |
 | 24 | `SetTripExecution` (3.2 Z1: номер закреплён за ядром жителей; `NotSupported` до Z5) | на месте (граница суток) | прежний режим |
 
@@ -226,10 +227,10 @@ public struct PaintZoneCmd      { public float X0, Z0, X1, Z1; public byte ZoneK
 | 9 | `NodeLimit` | рукавов > 6, connector'ов > 64 |
 | 10 | `Busy` | цель уже в операции (снос закрывающегося, апгрейд дренируемого) |
 | 11 | `CreatesTrap` | односторонний сегмент в узел без выездов (локальная проверка O(1), §7.3) |
-| 12 | `InsufficientFunds` | экономика включена (4.2) и бюджета мало — пока не возникает |
-| 13 | `Unreachable` | `InsertBusStop`/`CreateBusRoute`: нет пути от соседней остановки (по текущему графу) |
-| 14 | `ZoneRule` | резерв ADR-0011 |
-| 15 | `OutOfBounds` | вне `tools.world_bounds` (по умолчанию — bounding box сети + 2 км) |
+| 25 | `InsufficientFunds` | экономика включена (4.2) и бюджета мало — пока не возникает |
+| 26 | `Unreachable` | `InsertBusStop`/`CreateBusRoute`: нет пути от соседней остановки (по текущему графу) |
+| 27 | `ZoneRule` | резерв ADR-0011 |
+| 28 | `OutOfBounds` | вне `tools.world_bounds` (по умолчанию — bounding box сети + 2 км) |
 
 Существующие: `InvalidHandle` — индекс вне диапазона, мёртвый слот или чужое поколение; `InvalidArgument` — NaN, нули, несовместимые
 параметры; `Capacity` — пул/арена (+`CapacityExhausted`); `NotSupported` — `PaintZone` до ADR-0011.

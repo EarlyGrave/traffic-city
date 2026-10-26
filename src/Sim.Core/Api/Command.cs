@@ -18,9 +18,22 @@ public enum CommandKind : int
     SetNodeControl = 10,
     // 11 зарезервирован под SetLodFocus (core-api §4, ADR-0013): в ядре пока не реализован
     SetPedTarget = 12,   // 3.1, ADR-0020: цель активных пешеходов (как SetTargetVehicleCount); без секции peds отклоняется
-    // 13..22 заняты планом инструментов (player-tools.md §1; 12 там тоже указан как RemoveRoad - конфликт с SetPedTarget решает оркестратор волны 4.3)
-    PaintZone = 23,      // 3.2, ADR-0011: зона на участках в прямоугольнике (zoning-demand.md §14); Z1 - заглушка Zoning.Apply (NotSupported), тело - Z6
+    // 13..22 свободны (резерв). Инструменты игрока (player-tools.md §1, ADR-0023) нумеруются с 25.
+    PaintZone = 23,     // 3.2, ADR-0011: зона на участках в прямоугольнике (zoning-demand.md §14); Z1 - заглушка Zoning.Apply (NotSupported), тело - Z6
     SetTripExecution = 24, // 3.2: micro/aggregate на границе суток (zoning-demand.md §9.2); Z1 - заглушка AggregateExec.ApplySwitch (NotSupported), тело - Z5
+
+    // Инструменты игрока (4.3, T1): типы и номера закреплены, поведение - в T3..T9; до тех пор диспетчер отвечает NotSupported.
+    RemoveRoad = 25,
+    UpgradeRoad = 26,
+    SplitRoad = 27,
+    SetArmControl = 28,
+    SetTurnBan = 29,
+    SetLaneFlags = 30,
+    InsertBusStop = 31,
+    RemoveBusStop = 32,
+    RemoveBusRoute = 33,
+    SetBusRouteParams = 34,
+    MergeAtNode = 35,
 }
 
 public enum SignalMode : int
@@ -90,6 +103,39 @@ public struct Command
 
     [FieldOffset(8)]
     public SetTripExecutionCmd SetTripExecution;
+
+    [FieldOffset(8)]
+    public RemoveRoadCmd RemoveRoad;
+
+    [FieldOffset(8)]
+    public UpgradeRoadCmd UpgradeRoad;
+
+    [FieldOffset(8)]
+    public SplitRoadCmd SplitRoad;
+
+    [FieldOffset(8)]
+    public SetArmControlCmd SetArmControl;
+
+    [FieldOffset(8)]
+    public SetTurnBanCmd SetTurnBan;
+
+    [FieldOffset(8)]
+    public SetLaneFlagsCmd SetLaneFlags;
+
+    [FieldOffset(8)]
+    public InsertBusStopCmd InsertBusStop;
+
+    [FieldOffset(8)]
+    public RemoveBusStopCmd RemoveBusStop;
+
+    [FieldOffset(8)]
+    public RemoveBusRouteCmd RemoveBusRoute;
+
+    [FieldOffset(8)]
+    public SetBusRouteParamsCmd SetBusRouteParams;
+
+    [FieldOffset(8)]
+    public MergeAtNodeCmd MergeAtNode;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -199,6 +245,105 @@ public struct Command
         return c;
     }
 
+    public static Command MakeRemoveRoad(in RemoveRoadCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.RemoveRoad;
+        c.Tag = tag;
+        c.RemoveRoad = payload;
+        return c;
+    }
+
+    public static Command MakeUpgradeRoad(in UpgradeRoadCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.UpgradeRoad;
+        c.Tag = tag;
+        c.UpgradeRoad = payload;
+        return c;
+    }
+
+    public static Command MakeSplitRoad(in SplitRoadCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SplitRoad;
+        c.Tag = tag;
+        c.SplitRoad = payload;
+        return c;
+    }
+
+    public static Command MakeSetArmControl(in SetArmControlCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetArmControl;
+        c.Tag = tag;
+        c.SetArmControl = payload;
+        return c;
+    }
+
+    public static Command MakeSetTurnBan(in SetTurnBanCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetTurnBan;
+        c.Tag = tag;
+        c.SetTurnBan = payload;
+        return c;
+    }
+
+    public static Command MakeSetLaneFlags(in SetLaneFlagsCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetLaneFlags;
+        c.Tag = tag;
+        c.SetLaneFlags = payload;
+        return c;
+    }
+
+    public static Command MakeInsertBusStop(in InsertBusStopCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.InsertBusStop;
+        c.Tag = tag;
+        c.InsertBusStop = payload;
+        return c;
+    }
+
+    public static Command MakeRemoveBusStop(in RemoveBusStopCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.RemoveBusStop;
+        c.Tag = tag;
+        c.RemoveBusStop = payload;
+        return c;
+    }
+
+    public static Command MakeRemoveBusRoute(in RemoveBusRouteCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.RemoveBusRoute;
+        c.Tag = tag;
+        c.RemoveBusRoute = payload;
+        return c;
+    }
+
+    public static Command MakeSetBusRouteParams(in SetBusRouteParamsCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetBusRouteParams;
+        c.Tag = tag;
+        c.SetBusRouteParams = payload;
+        return c;
+    }
+
+    public static Command MakeMergeAtNode(in MergeAtNodeCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.MergeAtNode;
+        c.Tag = tag;
+        c.MergeAtNode = payload;
+        return c;
+    }
+
     public static Command MakeSetNodeControl(int node, NodeControl control, uint tag = 0)
     {
         var c = default(Command);
@@ -216,7 +361,12 @@ public struct BuildRoadCmd
     public float SpeedLimit;          // м/с
     public byte LanesAB, LanesBA;     // полос A→B и B→A (0 допустимо для одностороннего)
     public RoadKind Kind;             // Street = 0, Arterial = 1
-    public byte Flags;                // бит0: не создавать connector'ы автоматически (тесты)
+    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5; пока NotSupported)
+
+    // player-tools.md §2 (24 -> 56 Б). Нулевая инициализация = прежнее поведение.
+    public float Cx, Cz;              // контрольная точка квадратичной Безье (Curve), иначе 0
+    public EntityRef RestoreOf;       // сегмент, который команда восстанавливает (undo); Generation == 0 - не задан
+    public EntityRef RestoreNodeA, RestoreNodeB;   // узлы концов, если их тоже пересоздать; Generation == 0 - не задан
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -245,6 +395,8 @@ public struct SetSignalPlanCmd
     public ushort CycleTicks;         // Adaptive: > 0 - координация (S3; пока команда с CycleTicks > 0 отклоняется)
     public byte Flags;                // SignalPlanFlags: бит0 Arrows
     public byte Reserved2;
+    // 4.3 (T1, player-tools.md §2): поколение узла, 0 - без проверки. Размер 46 -> 50 Б. Проверка поколения - T2 (HandlePool).
+    public int NodeGen;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -253,6 +405,7 @@ public struct CreateBusRouteCmd
     public int HeadwayTicks;
     public int VehicleType;
     public int Flags;
+    public EntityRef RestoreOf;       // 4.3 (T1): маршрут, который команда восстанавливает (undo); Generation == 0 - не задан. 12 -> 20 Б
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -288,6 +441,7 @@ public struct SetNodeControlCmd
 {
     public int Node;
     public NodeControl Control;
+    public int NodeGen;               // 4.3 (T1): поколение узла, 0 - без проверки (проверка - T2). 8 -> 12 Б
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

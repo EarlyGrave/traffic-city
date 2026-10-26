@@ -14,15 +14,15 @@ public class LayoutTests
     public static TheoryData<Type, int> FixedSizes => new()
     {
         { typeof(Command), 64 },
-        { typeof(BuildRoadCmd), 24 },
+        { typeof(BuildRoadCmd), 56 },   // 4.3 T1: 24 -> 56 (Безье, RestoreOf)
         { typeof(SpawnTripCmd), 24 },
-        { typeof(SetSignalPlanCmd), 46 },   // 2.5: 32 -> 46 (поля Adaptive, ADR-0018)
-        { typeof(CreateBusRouteCmd), 12 },
+        { typeof(SetSignalPlanCmd), 50 },   // 4.3 T1: 46 -> 50 (NodeGen)
+        { typeof(CreateBusRouteCmd), 20 },   // 4.3 T1: 12 -> 20 (RestoreOf)
         { typeof(AppendBusStopCmd), 16 },
         { typeof(SpawnBusCmd), 4 },
         { typeof(SelectVehicleCmd), 8 },
         { typeof(SetTargetVehicleCountCmd), 4 },
-        { typeof(SetNodeControlCmd), 8 },
+        { typeof(SetNodeControlCmd), 12 },   // 4.3 T1: 8 -> 12 (NodeGen)
         { typeof(VehicleRenderData), 32 },
         { typeof(SegmentLoad), 12 },
         { typeof(SignalState), 8 },

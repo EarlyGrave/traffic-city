@@ -388,6 +388,9 @@ public enum CommandKind : int
     // 13..22 заняты планом инструментов (`player-tools.md` §1)
     PaintZone = 23,             // 3.2, ADR-0011: зона на участках в прямоугольнике {X0,Z0,X1,Z1, ZoneKind, Density} (20 Б); Z1 - NotSupported (заглушка `Zoning.Apply`), тело - Z6
     SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate на границе суток; Z1 - NotSupported (заглушка `AggregateExec.ApplySwitch`), тело - Z5
+    // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера, диспетчер отвечает NotSupported до T3..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
+    RemoveRoad = 25, UpgradeRoad = 26, SplitRoad = 27, SetArmControl = 28, SetTurnBan = 29, SetLaneFlags = 30,
+    InsertBusStop = 31, RemoveBusStop = 32, RemoveBusRoute = 33, SetBusRouteParams = 34, MergeAtNode = 35,
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
@@ -681,7 +684,12 @@ public enum SimEventKind : int
     GridlockOn = 20, GridlockOff = 21,
     CapacityExhausted = 30,      // A = (int)CapacityKind, B = сколько отброшено за тик
     EventsOverflow = 31,         // всегда последний элемент, если события не влезли
+    // 4.3 (player-tools.md §7.2, §8.2; T1 - номера, события с T3..T9):
+    SegmentClosing = 40, SegmentRemoved = 41, NodeRemoved = 42, NodeRebuilt = 43, SignalPlanReset = 44, ToolOpFinished = 45,
+    DrainStalled = 46, ZoneAccessLost = 47, BusStopCreated = 48, BusStopRemoved = 49,
+    SegmentRemapped = 50, NodeRemapped = 51, BusStopRemapped = 52, BusRouteRemapped = 53,   // A = старый индекс, B = новый
 }
+// RejectReason 6..15 (4.3): TooShort, TooSharp, Overlap, NodeLimit, Busy, CreatesTrap, InsufficientFunds, Unreachable, ZoneRule, OutOfBounds.
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 24)]
 public struct SimEvent
