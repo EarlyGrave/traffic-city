@@ -19,6 +19,18 @@ public partial class SimHost : Node3D
     private const double TickSeconds = 1.0 / Simulation.TicksPerSecond;
     private const int MaxStepsPerFrame = 5;
     private const float RoutePickMinRadius = 4f;
+    private const float PedFarDistance = 900f;       // дальше - вместо капсул heatmap по PedEdgeCounts (режим Auto)
+    private const float MarkerNearDistance = 450f;   // маркеры Walk/Clear и очереди на остановках только вблизи
+    private const float VehicleScaleDistance = 500f; // на дальнем плане раздуваем ТС, иначе они меньше пикселя
+    private const float PedScaleDistance = 70f;
+    private const float MaxViewRange = 6000f;
+
+    private enum PedMode
+    {
+        Auto,
+        Heat,
+        Agents,
+    }
 
     private static readonly Color _carColor = new(0.2f, 0.85f, 1f);
     private static readonly Color _busColor = new(1f, 0.63f, 0.12f);
@@ -41,6 +53,26 @@ public partial class SimHost : Node3D
     private RtsCamera? _camera;
     private PerfHud? _hud;
     private Label? _status;
+    private Label? _inspector;
+    private PedMesh? _peds;
+    private CrosswalkMesh? _cross;
+    private PedMode _pedMode = PedMode.Auto;
+    private PedHandle _selPed;
+    private double _pedHeatTimer;
+    private double _inspectTimer;
+    private bool _pedHeatShown;
+    private int _warmupTicks;
+    private int _stopWaitCache;
+    private bool _hasCamArgs;
+    private Vector3 _camCenter;
+    private float _camDistance;
+    private float _camPitch = 55f;
+    private float _camYaw;
+    private bool _showHud;
+    private bool _hudPending;
+    private bool _selectFirstPed;
+    private float _viewX0, _viewZ0, _viewX1, _viewZ1;
+    private float _mapX0, _mapZ0, _mapX1, _mapZ1;
 
     private double _accumulator;
     private double _heatTimer;
@@ -64,18 +96,81 @@ public partial class SimHost : Node3D
 
         string name = Scenario;
         string[] args = OS.GetCmdlineUserArgs();
-        for (int i = 0; i + 1 < args.Length; i++)
-        {
-            if (args[i] == "--scenario")
-            {
-                name = args[i + 1];
-            }
-        }
+        ParseArgs(args, ref name);
 
         if (!TryStart(name, out string error))
         {
             GD.PushError(error);
             SetStatus("ERROR: " + error);
+            return;
+        }
+
+        if (_hasCamArgs)
+        {
+            _camera?.SetPose(_camCenter, _camDistance, _camPitch, _camYaw);
+        }
+
+        if (_showHud)
+        {
+            _hudPending = true; // PerfHud._Ready ещё не отработал (он ниже в сцене) и сбросит Visible
+        }
+    }
+
+    /// <summary>
+    /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
+    /// <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>.
+    /// </summary>
+    private void ParseArgs(string[] args, ref string name)
+    {
+        CultureInfo inv = CultureInfo.InvariantCulture;
+        for (int i = 0; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a == "--hud")
+            {
+                _showHud = true;
+            }
+            else if (a == "--select-ped")
+            {
+                _selectFirstPed = true;
+            }
+            else if (a == "--scenario" && i + 1 < args.Length)
+            {
+                name = args[++i];
+            }
+            else if (a == "--warmup-ticks" && i + 1 < args.Length)
+            {
+                int.TryParse(args[++i], NumberStyles.Integer, inv, out _warmupTicks);
+            }
+            else if (a == "--ped-mode" && i + 1 < args.Length)
+            {
+                _pedMode = args[++i] switch
+                {
+                    "heat" => PedMode.Heat,
+                    "agents" => PedMode.Agents,
+                    _ => PedMode.Auto,
+                };
+            }
+            else if (a == "--cam" && i + 3 < args.Length
+                && float.TryParse(args[i + 1], NumberStyles.Float, inv, out float cx)
+                && float.TryParse(args[i + 2], NumberStyles.Float, inv, out float cz)
+                && float.TryParse(args[i + 3], NumberStyles.Float, inv, out float cd))
+            {
+                _hasCamArgs = true;
+                _camCenter = new Vector3(cx, 0f, cz);
+                _camDistance = cd;
+                i += 3;
+                if (i + 1 < args.Length && float.TryParse(args[i + 1], NumberStyles.Float, inv, out float pitch))
+                {
+                    _camPitch = pitch;
+                    i++;
+                    if (i + 1 < args.Length && float.TryParse(args[i + 1], NumberStyles.Float, inv, out float yaw))
+                    {
+                        _camYaw = yaw;
+                        i++;
+                    }
+                }
+            }
         }
     }
 
@@ -92,6 +187,13 @@ public partial class SimHost : Node3D
             return;
         }
 
+        if (_hudPending && _hud != null)
+        {
+            _hud.Visible = true;
+            _hudPending = false;
+        }
+
+        UpdateRenderView(_sim);
         if (!_paused)
         {
             _accumulator += delta * _timeScale;
@@ -111,7 +213,12 @@ public partial class SimHost : Node3D
         }
 
         float alpha = _paused ? 1f : (float)(_accumulator / TickSeconds);
-        UpdateVehicles(_sim, alpha);
+        float dist = _camera?.Distance ?? 0f;
+        UpdateVehicles(_sim, alpha, MathF.Max(1f, dist / VehicleScaleDistance));
+        if (_peds != null && _cross != null)
+        {
+            UpdatePeds(_sim, alpha, dist, delta);
+        }
 
         if (_signalsOn)
         {
@@ -145,7 +252,8 @@ public partial class SimHost : Node3D
 
             _hud.Extra = string.Create(
                 CultureInfo.InvariantCulture,
-                $"sim tick {_sim.Tick}  x{_timeScale:0.##}{(_paused ? " PAUSED" : string.Empty)}\navg {_stats.AvgSpeedKmh:0.0} km/h  stuck {_stats.StuckVehicles}");
+                $"sim tick {_sim.Tick}  x{_timeScale:0.##}{(_paused ? " PAUSED" : string.Empty)}\navg {_stats.AvgSpeedKmh:0.0} km/h  stuck {_stats.StuckVehicles}")
+                + PedHudText(_sim);
         }
     }
 
@@ -181,6 +289,15 @@ public partial class SimHost : Node3D
                         _hud.Visible = !_hud.Visible;
                     }
 
+                    break;
+                case Key.F:
+                    _pedMode = _pedMode switch
+                    {
+                        PedMode.Auto => PedMode.Heat,
+                        PedMode.Heat => PedMode.Agents,
+                        _ => PedMode.Auto,
+                    };
+                    _pedHeatTimer = 0;
                     break;
                 case Key.Space:
                     _paused = !_paused;
@@ -243,7 +360,16 @@ public partial class SimHost : Node3D
         _sim = sim;
         _types = desc.VehicleTypes;
         BuildScene(sim);
-        sim.Step(1); // первый снапшот; Previous == пусто до второго тика
+        sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
+        if (_showHud)
+        {
+            LogInfo(sim);
+        }
+
+        if (_selectFirstPed)
+        {
+            SelectFirstWalkingPed(sim);
+        }
         SetStatus(string.Empty);
         return true;
     }
@@ -272,6 +398,14 @@ public partial class SimHost : Node3D
 
         float w = maxX - minX;
         float h = maxZ - minZ;
+        _mapX0 = minX;
+        _mapX1 = maxX;
+        _mapZ0 = minZ;
+        _mapZ1 = maxZ;
+        _viewX0 = minX;
+        _viewX1 = maxX;
+        _viewZ0 = minZ;
+        _viewZ1 = maxZ;
         var center = new Vector3((minX + maxX) * 0.5f, 0f, (minZ + maxZ) * 0.5f);
 
         AddChild(new MeshInstance3D
@@ -302,6 +436,27 @@ public partial class SimHost : Node3D
             _typeHeight[t] = hgt;
             _vehicleBatches[t] = new BoxBatch("Vehicles_" + t.ToString(CultureInfo.InvariantCulture), new Vector3(len, hgt, wid), false);
             AddChild(_vehicleBatches[t].Node);
+        }
+
+        if (sim.HasPeds)
+        {
+            _cross = new CrosswalkMesh(sim);
+            _peds = new PedMesh();
+            AddChild(_cross.Sidewalks);
+            AddChild(_cross.Zebras);
+            AddChild(_cross.Heat);
+            AddChild(_cross.Markers);
+            AddChild(_cross.Queues);
+            AddChild(_peds.Node);
+            _inspector = new Label
+            {
+                Name = "PedInspector",
+                Visible = false,
+                Position = new Vector2(8f, 290f),
+            };
+            _inspector.AddThemeColorOverride("font_color", new Color(1f, 1f, 0.85f));
+            _inspector.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.9f));
+            GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_inspector);
         }
 
         _signals = new BoxBatch("Signals", new Vector3(0.7f, 0.5f, 3.0f), true);
@@ -340,6 +495,68 @@ public partial class SimHost : Node3D
         _camera?.Focus(center, MathF.Max(w, h));
     }
 
+    private void LogInfo(Simulation sim)
+    {
+        NetworkView net = sim.Network;
+        int active = 0;
+        ReadOnlySpan<ushort> counts = sim.PedEdgeCounts;
+        for (int i = 0; i < counts.Length; i++)
+        {
+            if (counts[i] > 0)
+            {
+                active++;
+            }
+        }
+
+        string firstSig = "none";
+        for (int j = 0; j < net.Crossings.Length; j++)
+        {
+            if ((net.Crossings[j].Flags & 1) != 0)
+            {
+                Vec2 p = net.PedEdgePoints[net.Crossings[j].FirstPoint];
+                firstSig = string.Create(CultureInfo.InvariantCulture, $"({p.X:0.0}, {p.Z:0.0})");
+                break;
+            }
+        }
+
+        string pedAt = "none";
+        ReadOnlySpan<PedestrianRenderData> snap = sim.Pedestrians;
+        for (int i = 0; i < snap.Length; i++)
+        {
+            if ((snap[i].Flags & PedRenderFlags.Active) != 0 && (PedState)snap[i].State == PedState.Walking)
+            {
+                pedAt = string.Create(CultureInfo.InvariantCulture, $"({snap[i].X:0.0}, {snap[i].Z:0.0})");
+                break;
+            }
+        }
+
+        GD.Print(string.Create(
+            CultureInfo.InvariantCulture,
+            $"[info] first walking ped {pedAt}; map x {_mapX0:0}..{_mapX1:0} z {_mapZ0:0}..{_mapZ1:0}; vehicles {sim.ActiveVehicleCount}; peds {sim.ActivePedCount}; snapshot slots {sim.Pedestrians.Length}; sidewalks {net.Sidewalks.Length} crossings {net.Crossings.Length}; edges with peds {active}/{counts.Length}; first signal crossing {firstSig}"));
+    }
+
+    /// <summary>Для скриншотов (<c>--select-ped</c>): выбрать первого идущего пешехода, как кликом, и поставить камеру на него, если нет <c>--cam</c>.</summary>
+    private void SelectFirstWalkingPed(Simulation sim)
+    {
+        ReadOnlySpan<PedestrianRenderData> snap = sim.Pedestrians;
+        for (int i = 0; i < snap.Length; i++)
+        {
+            if ((snap[i].Flags & PedRenderFlags.Active) != 0 && (PedState)snap[i].State == PedState.Walking
+                && sim.TryPickPedestrian(snap[i].X, snap[i].Z, 0.5f, out PedHandle h))
+            {
+                _selPed = h;
+                if (!_hasCamArgs)
+                {
+                    _hasCamArgs = true;
+                    _camCenter = new Vector3(snap[i].X, 0f, snap[i].Z);
+                    _camDistance = 40f;
+                }
+
+                return;
+            }
+        }
+    }
+
     private void StepOnce()
     {
         if (_sim == null)
@@ -355,7 +572,145 @@ public partial class SimHost : Node3D
         _hud?.RecordTick((t1 - t0) * 1000.0 / Stopwatch.Frequency, a1 - a0, 1);
     }
 
-    private void UpdateVehicles(Simulation sim, float alpha)
+    /// <summary>
+    /// Вид снапшота по камере (общий для машин и пешеходов): ограничивающий прямоугольник проекций углов окна на землю,
+    /// с запасом. Почти вся карта в кадре - вид «всё» (дешевле, чем собирать вид).
+    /// </summary>
+    private void UpdateRenderView(Simulation sim)
+    {
+        if (_camera == null)
+        {
+            return;
+        }
+
+        Camera3D cam = _camera.Camera;
+        Vector2 size = GetViewport().GetVisibleRect().Size;
+        float x0 = float.MaxValue;
+        float z0 = float.MaxValue;
+        float x1 = float.MinValue;
+        float z1 = float.MinValue;
+        for (int k = 0; k < 4; k++)
+        {
+            var corner = new Vector2((k & 1) * size.X, (k >> 1) * size.Y);
+            Vector3 o = cam.ProjectRayOrigin(corner);
+            Vector3 d = cam.ProjectRayNormal(corner);
+            float t = d.Y < -1e-3f ? MathF.Min(-o.Y / d.Y, MaxViewRange) : MaxViewRange;
+            x0 = MathF.Min(x0, o.X + (d.X * t));
+            x1 = MathF.Max(x1, o.X + (d.X * t));
+            z0 = MathF.Min(z0, o.Z + (d.Z * t));
+            z1 = MathF.Max(z1, o.Z + (d.Z * t));
+        }
+
+        float padX = ((x1 - x0) * 0.05f) + 20f;
+        float padZ = ((z1 - z0) * 0.05f) + 20f;
+        x0 -= padX;
+        x1 += padX;
+        z0 -= padZ;
+        z1 += padZ;
+        _viewX0 = x0;
+        _viewZ0 = z0;
+        _viewX1 = x1;
+        _viewZ1 = z1;
+        bool coversMap = x0 <= _mapX0 && x1 >= _mapX1 && z0 <= _mapZ0 && z1 >= _mapZ1;
+        if (coversMap)
+        {
+            sim.SetRenderViewAll();
+        }
+        else
+        {
+            sim.SetRenderView(x0, z0, x1, z1);
+        }
+    }
+
+    private bool PedsAsAgents(float dist) => _pedMode == PedMode.Agents || (_pedMode == PedMode.Auto && dist <= PedFarDistance);
+
+    private void UpdatePeds(Simulation sim, float alpha, float dist, double delta)
+    {
+        if (_peds == null || _cross == null)
+        {
+            return;
+        }
+
+        bool agents = PedsAsAgents(dist);
+        _peds.Node.Visible = agents;
+        _cross.Sidewalks.Visible = agents;
+        _cross.Zebras.Visible = agents;
+        _cross.Heat.Visible = !agents;
+        bool near = agents && dist <= MarkerNearDistance;
+        _cross.Markers.Visible = near;
+        _cross.Queues.Visible = agents;
+
+        if (agents)
+        {
+            _peds.Update(sim, alpha, MathF.Max(1f, dist / PedScaleDistance), _selPed.IsNull ? -1 : _selPed.Index, (ushort)_selPed.Generation);
+            _cross.UpdateQueues(sim);
+            if (near)
+            {
+                _cross.UpdateMarkers(sim, _viewX0, _viewZ0, _viewX1, _viewZ1);
+            }
+        }
+        else
+        {
+            _pedHeatTimer -= delta;
+            if (_pedHeatTimer <= 0)
+            {
+                _pedHeatTimer = 0.5;
+                _cross.RefreshHeat(sim);
+            }
+        }
+
+        _pedHeatShown = !agents;
+        UpdateInspector(sim, delta);
+    }
+
+    private void UpdateInspector(Simulation sim, double delta)
+    {
+        if (_inspector == null)
+        {
+            return;
+        }
+
+        if (_selPed.IsNull)
+        {
+            _inspector.Visible = false;
+            return;
+        }
+
+        _inspectTimer -= delta;
+        if (_inspectTimer > 0)
+        {
+            return;
+        }
+
+        _inspectTimer = 0.25;
+        if (!sim.TryGetPedInfo(_selPed, out PedInfo info))
+        {
+            _selPed = PedHandle.Null;
+            _inspector.Visible = false;
+            return;
+        }
+
+        const double dt = 1.0 / Simulation.TicksPerSecond;
+        _inspector.Visible = true;
+        _inspector.Text = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Pedestrian #{_selPed.Index} (gen {_selPed.Generation})\nstate {info.State}  leg {info.Leg}\nresident {info.Resident}  edge {info.Edge}\nwaiting {info.WaitTicks * dt:0.0} s  trip {info.TripTicks * dt:0.0} s\nsteps left {info.StepsLeft}  at ({info.X:0.0}, {info.Z:0.0})");
+    }
+
+    private string PedHudText(Simulation sim)
+    {
+        if (_peds == null || _cross == null)
+        {
+            return string.Empty;
+        }
+
+        _stopWaitCache = _cross.StopWaitingTotal;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"\npeds {sim.ActivePedCount}/{sim.PedTarget}  mode {_pedMode}{(_pedHeatShown ? " (heat)" : string.Empty)}\nin view: walk {_peds.CountOf(PedState.Walking)}  at crossing {_peds.CountOf(PedState.AtCrossing)}  crossing {_peds.CountOf(PedState.Crossing)}  at stop {_peds.CountOf(PedState.AtStop)}\nbus stops waiting {_stopWaitCache}");
+    }
+
+    private void UpdateVehicles(Simulation sim, float alpha, float scale)
     {
         ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
         ReadOnlySpan<VehicleRenderData> prev = sim.PreviousVehicles;
@@ -403,7 +758,7 @@ public partial class SimHost : Node3D
             }
 
             int type = Math.Min((int)c.Type, types - 1);
-            _vehicleBatches[type].Add(x, c.Y + (_typeHeight[type] * 0.5f) + 0.05f, z, heading, VehicleColor(c.Flags, _types[type].Category));
+            _vehicleBatches[type].Add(x, c.Y + (_typeHeight[type] * 0.5f * scale) + 0.05f, z, heading, VehicleColor(c.Flags, _types[type].Category), scale);
         }
 
         for (int t = 0; t < types; t++)
@@ -505,6 +860,19 @@ public partial class SimHost : Node3D
         float t = -origin.Y / dir.Y;
         Vector3 hit = origin + (dir * t);
         float radius = MathF.Max(RoutePickMinRadius, origin.DistanceTo(hit) * 0.012f);
+        float dist = _camera.Distance;
+        if (_peds != null && PedsAsAgents(dist)
+            && _sim.TryPickPedestrian(hit.X, hit.Z, MathF.Max(1.5f, origin.DistanceTo(hit) * 0.01f), out PedHandle ph))
+        {
+            _selPed = ph;
+            _inspectTimer = 0;
+            _sim.Enqueue(Command.MakeClearSelection());
+            _routeDirty = true;
+            _routeTick = -1;
+            return;
+        }
+
+        _selPed = PedHandle.Null;
         if (_sim.TryPickVehicle(hit.X, hit.Z, radius, out VehicleHandle h))
         {
             _sim.Enqueue(Command.MakeSelectVehicle(h));
@@ -521,6 +889,7 @@ public partial class SimHost : Node3D
     private void ClearSelection()
     {
         _sim?.Enqueue(Command.MakeClearSelection());
+        _selPed = PedHandle.Null;
         _routeDirty = true;
     }
 

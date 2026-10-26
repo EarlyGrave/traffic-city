@@ -3,6 +3,7 @@
 #   scripts/godot-shot.sh install                       # скачать Godot 4.7.2 mono (SourceForge-зеркало) в $GODOT_DIR
 #   scripts/godot-shot.sh shot [scenario] [frames]      # PNG последнего кадра (movie maker, фикс. 30 fps)
 #   scripts/godot-shot.sh fps  [scenario] [frames]      # средний FPS за N кадров (--print-fps, vsync выкл.)
+# Доп. аргументы клиента: GAME_ARGS="--cam X Z DIST [PITCH [YAW]] --warmup-ticks N --hud --ped-mode heat|agents"; имя PNG: OUT_NAME (по умолчанию = сценарий).
 # Результаты: $OUT (по умолчанию perf/results/godot): <scenario>.png, <scenario>-fps.txt.
 # FPS здесь - программный рендер на CPU (llvmpipe), абсолют не равен GPU; годится для сравнения до/после.
 set -euo pipefail
@@ -36,7 +37,7 @@ need_godot() {
 run() { # run <extra godot args...>
   dotnet build game/TrafficCity.csproj -v q -nologo >&2
   (cd game && xvfb-run -a -s "-screen 0 ${RES}x24" "$BIN" --path . --rendering-driver opengl3 \
-    --resolution "$RES" "$@" -- --scenario "$scenario")
+    --resolution "$RES" "$@" -- --scenario "$scenario" ${GAME_ARGS:-})
 }
 
 case $cmd in
@@ -48,9 +49,9 @@ case $cmd in
     frames=${frames:-120}
     run --write-movie "$d/f.png" --fixed-fps 30 --quit-after "$frames" >/dev/null
     last=$(ls "$d" | tail -1)
-    cp "$d/$last" "$OUT/$scenario.png"
+    cp "$d/$last" "$OUT/${OUT_NAME:-$scenario}.png"
     rm -rf "$d"
-    echo "$OUT/$scenario.png (кадр $((frames - 1)))"
+    echo "$OUT/${OUT_NAME:-$scenario}.png (кадр $((frames - 1)))"
     ;;
   fps)
     need_godot
