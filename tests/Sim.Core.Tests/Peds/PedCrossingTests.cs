@@ -72,9 +72,11 @@ public sealed class PedCrossingTests
         return p;
     }
 
-    private static bool RearInZone(World w, int vehicle, int x)
+    private static bool RearInZone(World w, int vehicle, int x) => ZoneHalves(w, vehicle, x) != 0;
+
+    /// <summary>Какие половины перехода накрывает машина: бит 0 - входная, бит 1 - выходная (приближение для проверок).</summary>
+    private static int ZoneHalves(World w, int vehicle, int x)
     {
-        // Машина на connector'е или выходной полосе, чьё тело накрывает полосу перехода узла x (приближение для проверок).
         PedWorld pw = w.Peds!;
         PedNetwork pn = pw.Net;
         VehicleStore v = w.Vehicles;
@@ -83,6 +85,7 @@ public sealed class PedCrossingTests
         float zone = pn.CrosswalkWidthM;
         ulong inMask = pn.XIn[x];
         ulong outMask = pn.XOut[x];
+        int bits = 0;
         if (w.Net.Lanes[lane].Kind == LaneKind.Connector && w.Net.Lanes[lane].Node == w.Net.Lanes[nd.FirstConnector].Node)
         {
             int b = lane - nd.FirstConnector;
@@ -91,15 +94,15 @@ public sealed class PedCrossingTests
             float rear = s - v.Length[vehicle];
             if (((inMask >> b) & 1UL) != 0UL && s > 0f && rear < zone)
             {
-                return true;
+                bits |= 1;
             }
 
             if (((outMask >> b) & 1UL) != 0UL && s > w.Connectors.Length[g] - zone)
             {
-                return true;
+                bits |= 2;
             }
 
-            return false;
+            return bits;
         }
 
         for (int b = 0; b < 64; b++)
@@ -109,12 +112,12 @@ public sealed class PedCrossingTests
                 int g = w.Net.Lanes[nd.FirstConnector + b].ConflictGroup;
                 if (g >= 0 && w.Connectors.OutLane[g] == lane && v.S[vehicle] - v.Length[vehicle] < 0f)
                 {
-                    return true;
+                    bits |= 2;
                 }
             }
         }
 
-        return false;
+        return bits;
     }
 
     // ------------------------------------------------------------ автомат
@@ -249,7 +252,7 @@ public sealed class PedCrossingTests
         for (int t = 0; t < 900; t++)
         {
             sim.Step(1);
-            if (w.Peds.P.State.Length > p && w.Peds.P.Pool.IsAlive(p) && w.Peds.P.State[p] == (byte)PedState.Crossing)
+            if (w.Peds.P.State.Length > p && w.Peds.P.Pool.IsAlive(p) && w.Peds.P.State[p] == (byte)PedState.Crossing && (w.Peds.X.HalfMask[x] & 1) != 0)   // пока закрыта входная половина (пешеход идёт первой или обе)
             {
                 Assert.True(w.Vehicles.Lane[car] == inLane, "машина въехала в узел, пока пешеход на переходе");
                 Assert.True(w.Vehicles.S[car] <= len - 0.5f + 0.01f);
@@ -263,6 +266,11 @@ public sealed class PedCrossingTests
         }
 
         Assert.True(carMovedOn, "после прохода пешехода машина должна проехать");
+        for (int t = 0; t < 400 && w.Peds.P.AliveCount > 0; t++)
+        {
+            sim.Step(1);   // машина может уйти, пока пешеход на второй половине
+        }
+
         Assert.Equal(0, w.Peds.P.AliveCount);
     }
 
@@ -432,13 +440,14 @@ public sealed class PedCrossingTests
         PedNetwork pn = pw.Net;
         VehicleStore v = w.Vehicles;
         int xn = PedWorld.XCount(w);
-        var baseline = new HashSet<int>[xn];
-        var prev = new HashSet<int>[xn];
-        var released = new bool[xn];
-        var state = new byte[xn];
-        for (int x = 0; x < xn; x++)
+        // По половинам перехода (pedestrians.md 5.9): индекс 2·x + h, h = 0 входная, 1 выходная.
+        var baseline = new HashSet<int>[2 * xn];
+        var prev = new HashSet<int>[2 * xn];
+        var released = new bool[2 * xn];
+        var halfWas = new byte[xn];
+        for (int k = 0; k < 2 * xn; k++)
         {
-            prev[x] = new HashSet<int>();
+            prev[k] = new HashSet<int>();
         }
 
         long busyTicks = 0;
@@ -446,7 +455,7 @@ public sealed class PedCrossingTests
         {
             sim.Step(1);
             // Занятость зон переходов узлов на конец тика: машины на connector'ах и в начале выходных полос.
-            var cur = new HashSet<int>[xn];
+            var cur = new HashSet<int>[2 * xn];
             int hw = v.HighWater;
             for (int i = 0; i < hw; i++)
             {
@@ -466,9 +475,16 @@ public sealed class PedCrossingTests
                 for (int a = 0; a < nd.ArmCount; a++)
                 {
                     int x = nd.FirstArm + a;
-                    if (pn.XEdge[x] >= 0 && RearInZone(w, i, x))
+                    if (pn.XEdge[x] >= 0)
                     {
-                        (cur[x] ??= new HashSet<int>()).Add(i);
+                        int bits = ZoneHalves(w, i, x);
+                        for (int h = 0; h < 2; h++)
+                        {
+                            if ((bits >> h & 1) != 0)
+                            {
+                                (cur[(2 * x) + h] ??= new HashSet<int>()).Add(i);
+                            }
+                        }
                     }
                 }
             }
@@ -476,31 +492,38 @@ public sealed class PedCrossingTests
             for (int x = 0; x < pn.MidXBase; x++)
             {
                 byte st = pw.X.XState[x];
-                HashSet<int> now = cur[x] ?? new HashSet<int>();
-                if (st != XStateCode.Free && state[x] == XStateCode.Free)
+                byte hm = pw.X.HalfMask[x];
+                for (int h = 0; h < 2; h++)
                 {
-                    baseline[x] = new HashSet<int>(prev[x]);   // закрытие: кто накрывал зону на начало этого тика
-                    released[x] = false;
-                }
-
-                if (st != XStateCode.Free && pw.X.OnCross[x] > 0)
-                {
-                    if (!released[x])
+                    int k = (2 * x) + h;
+                    HashSet<int> now = cur[k] ?? new HashSet<int>();
+                    bool closed = (hm >> h & 1) != 0;
+                    if (closed && (halfWas[x] >> h & 1) == 0)
                     {
-                        released[x] = true;
-                        baseline[x].UnionWith(now);   // в момент выпуска в зоне могут стоять не обязавшиеся (исключение 3 с)
+                        baseline[k] = new HashSet<int>(prev[k]);   // закрытие: кто накрывал зону на начало этого тика
+                        released[k] = false;
                     }
 
-                    foreach (int i in now)
+                    if (closed && st == XStateCode.Busy)
                     {
-                        Assert.True(baseline[x].Contains(i), $"тик {sim.Tick}: машина {i} въехала в зону перехода {x} при {pw.X.OnCross[x]} пешеходах на нём");
+                        if (!released[k])
+                        {
+                            released[k] = true;
+                            baseline[k].UnionWith(now);   // в момент выпуска в зоне могут стоять не обязавшиеся (исключение 3 с)
+                        }
+
+                        foreach (int i in now)
+                        {
+                            Assert.True(baseline[k].Contains(i), $"тик {sim.Tick}: машина {i} въехала в половину {h} перехода {x} при {pw.X.OnCross[x]} пешеходах на нём");
+                        }
+
+                        busyTicks++;
                     }
 
-                    busyTicks++;
+                    prev[k] = now;
                 }
 
-                state[x] = st;
-                prev[x] = now;
+                halfWas[x] = hm;
             }
         }
 

@@ -267,7 +267,7 @@ internal static partial class SaveValidator
         {
             if (x >= xn)
             {
-                if (xs.XState[x] != 0 || xs.QHead[x] != -1 || xs.QTail[x] != -1 || xs.QCount[x] != 0 || xs.OnCross[x] != 0)
+                if (xs.XState[x] != 0 || xs.QHead[x] != -1 || xs.QTail[x] != -1 || xs.QCount[x] != 0 || xs.OnCross[x] != 0 || xs.BusyUntilIn[x] != 0 || xs.BusyUntilOut[x] != 0)
                 {
                     return Bad(c, x, 151);
                 }
@@ -275,7 +275,8 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if (xs.XState[x] > XStateCode.Busy || xs.OnCross[x] < 0 || xs.Releases[x] < 0 || xs.WaitSum[x] < 0)
+            if (xs.XState[x] > XStateCode.Busy || xs.OnCross[x] < 0 || xs.Releases[x] < 0 || xs.WaitSum[x] < 0
+                || xs.BusyUntilIn[x] < 0 || xs.BusyUntilOut[x] < 0 || xs.BusyUntilIn[x] > xs.BusyUntil[x] || xs.BusyUntilOut[x] > xs.BusyUntil[x])
             {
                 return Bad(c, x, 152);
             }

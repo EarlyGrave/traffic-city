@@ -212,7 +212,8 @@ internal static class GatePhase
             }
 
             ref readonly NodeData nd = ref net.Nodes[pn.Edges[pn.XEdge[x]].Node];
-            ulong mask = pn.XIn[x] | pn.XOut[x];
+            byte closed = xs.XClosedNowBits[k];
+            ulong mask = ((closed & 1) != 0 ? pn.XIn[x] : 0UL) | ((closed & 2) != 0 ? pn.XOut[x] : 0UL);
             ulong rest = mask;
             int done = 0;
             while (rest != 0UL)

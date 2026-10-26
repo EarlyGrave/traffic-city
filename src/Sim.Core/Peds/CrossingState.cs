@@ -25,6 +25,8 @@ internal sealed class CrossingState
     public readonly int[] QCount;
     public readonly int[] OnCross;          // пешеходов на полосе перехода
     public readonly long[] BusyUntil;       // последний пешеход сходит
+    public readonly long[] BusyUntilIn;     // половины перехода (§5.9): входная половина (над полосами въезда в узел) занята пешеходом/идущим на неё до этого тика
+    public readonly long[] BusyUntilOut;    // выходная половина (над полосами выезда из узла)
     public readonly long[] ClosedSince;
     public readonly long[] CarWindowUntil;
     public readonly byte[] CarsWaiting;     // пишет фаза 4b
@@ -37,7 +39,9 @@ internal sealed class CrossingState
     public readonly ulong[] NodeXOut;
     public readonly byte[] MidClosed;       // [MidCap]
     public readonly ulong[] XActive;        // битовая маска: QCount > 0 или не Free; обход по возрастанию индекса
-    public readonly int[] XClosedNow;       // переходы, закрывшиеся в этом тике (для снятия допусков в 4b)
+    public readonly int[] XClosedNow;       // переходы, у которых в этом тике закрылась половина (для снятия допусков в 4b)
+    public readonly byte[] XClosedNowBits;  // параллелен XClosedNow: какие половины закрылись (бит 0 - входная, бит 1 - выходная)
+    public readonly byte[] HalfMask;        // [XCount] закрытые половины на конец последнего шага автомата: бит 0 - входная, бит 1 - выходная
     public int XClosedNowCount;
     public int ObservedCount;               // переходов с хотя бы одним выпуском (Releases > 0): знаменатель crossing_closed_share
     public readonly byte[] CrossingSignals; // опубликованное: бит 0-1 XState, бит 2-3 сигнал (0 DontWalk, 1 Walk, 2 Clear); P3 обновляет при смене
@@ -51,6 +55,8 @@ internal sealed class CrossingState
         QCount = new int[capacity];
         OnCross = new int[capacity];
         BusyUntil = new long[capacity];
+        BusyUntilIn = new long[capacity];
+        BusyUntilOut = new long[capacity];
         ClosedSince = new long[capacity];
         CarWindowUntil = new long[capacity];
         CarsWaiting = new byte[capacity];
@@ -62,6 +68,8 @@ internal sealed class CrossingState
         MidClosed = new byte[Math.Max(1, midCapacity)];
         XActive = new ulong[(capacity + 63) >> 6];
         XClosedNow = new int[Math.Max(1, capacity)];
+        XClosedNowBits = new byte[Math.Max(1, capacity)];
+        HalfMask = new byte[capacity];
         CrossingSignals = new byte[capacity];
         Array.Fill(QHead, -1);
         Array.Fill(QTail, -1);
@@ -76,6 +84,9 @@ internal sealed class CrossingState
         Array.Clear(QCount);
         Array.Clear(OnCross);
         Array.Clear(BusyUntil);
+        Array.Clear(BusyUntilIn);
+        Array.Clear(BusyUntilOut);
+        Array.Clear(HalfMask);
         Array.Clear(ClosedSince);
         Array.Clear(CarWindowUntil);
         Array.Clear(CarsWaiting);
