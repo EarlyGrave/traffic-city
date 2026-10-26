@@ -18,9 +18,12 @@ public static class RunCommand
 
     public const string Usage =
         "Usage: Sim.Headless run --scenario <name|path> --ticks N [--every K] [--threads N] [--seed S] [--scenarios-dir <dir>]\n" +
-        "  prints vehicle and pedestrian counters every K ticks (default: only after the last one)\n";
+        "  prints vehicle and pedestrian counters every K ticks (default: only after the last one)\n" +
+        "Usage: Sim.Headless run --scenario <name|path> (--days N | --years N) [--exec micro|aggregate] [--calibrate-days C] [--micro-sample-every-days K] [--save-every-days S] [--out <file.json>] [--threads N] [--seed S]\n" +
+        "  city run by game days (residents scenarios): aggregate executes legs without agents after C micro days (default 1), every K days one micro day re-calibrates;\n" +
+        "  prints a line per 30 days, writes the 'city' JSON block (series, day_hashes) to --out, saves <out>-day<N>.tcsave every S days\n";
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed" };
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--every", "--scenarios-dir", "--threads", "--signal-mode", "--signal-coordination", "--seed", "--days", "--years", "--exec", "--calibrate-days", "--micro-sample-every-days", "--save-every-days", "--out" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -32,6 +35,11 @@ public static class RunCommand
             error.WriteLine($"run: {a.Error}");
             error.Write(Usage);
             return ExitUsage;
+        }
+
+        if (a.Has("--days") || a.Has("--years"))
+        {
+            return CityRunCommand.Run(a, output, error, Usage);
         }
 
         string? scenario = a.Get("--scenario");
