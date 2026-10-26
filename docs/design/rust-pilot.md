@@ -148,6 +148,10 @@ connector `i` → поля раздела 7 в перечисленном пор
 `desc_hash`: `Add(1)`, `Seed` (ulong), `SimCapacities` — 24 int-поля в порядке объявления (`MaxVehicles … SkimObsCapacity`, значения как в разобранном desc, до дефолтов `Create`), число узлов (int), по узлу `X, Z` (float), `Control` (int); число сегментов, по сегменту `A, B, LanesAB, LanesBA` (int), `SpeedLimit` (float), `Kind` (byte); затем `NetworkOptions.Default`: `LaneWidth, SnapRadius, NodeSetback` (float), `ConnectorSamples` (int), `MinLaneLength` (float).
 Файл сценария при `create_status != 0` содержит `load_ok`, `create_status`, `desc_hash` (без `network_hash`/`conflicts_hash`/`headings_hash`/`counts`). `util.json`: PCG32 (16 комбинаций, `NextInt(-5, 100)`), `fnv1a64`, `xxh64`, `minmax`, `float_int`, `denormal`; u64 — hex-строки.
 
+**Уточнения R3 (реализация `tc-scenarios`).** `desc_hash`, `ScenarioDesc`, `SimCapacities`, `NetworkOptions::DEFAULT` — в `tc-core::api::desc`; загрузчик `tc_scenarios::load_str(&str)` (без I/O).
+Из golden-каталога сценарными считаются файлы с ключом `scenario` (`detlogit.json` и др. — нет). `create_status` в R3 не сверяется (нужен `Sim::create`, R4);
+`load_ok: false` у `err-json` — синтаксис. Подмножество и границы — ADR-0022 «Реализация R3».
+
 Изменение порядка/состава — правка этого раздела, `golden_version++`, перегенерация golden.
 
 ### 5.3 Как сверяется
