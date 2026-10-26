@@ -19,6 +19,7 @@ public struct ScenarioDesc
     public RulesDesc Rules;
     public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
     public PedDesc Peds;                   // пешеходы и жители (ADR-0020, pedestrians.md); Enabled = false (по умолчанию) - ничего не выделяется и не меняется
+    public ToolsDesc Tools;                // инструменты игрока: стоимости и границы мира (player-tools.md §11); нули - бесплатно, границы по умолчанию
     public CityDesc Town;                  // режим жителей (ADR-0011, zoning-demand.md §16): читается только при Demand.Model = Residents; иначе нули и ничего не выделяется
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
 }

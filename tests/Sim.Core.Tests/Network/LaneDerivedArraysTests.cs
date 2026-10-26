@@ -51,6 +51,7 @@ public class LaneDerivedArraysTests
     {
         ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(1), Arm.S(1), Arm.W(1), Arm.N(1));
         using Simulation sim = Simulation.Create(in d);
+        sim.SetToolsConfig(Tools.ToolsFixture.Unbounded);
         int before = AssertConsistent(sim.World.Net);
         int lanesBefore = sim.World.Net.LaneCount;
         var r = new BuildRoadCmd { Ax = 5000, Az = 5000, Bx = 5200, Bz = 5000, SpeedLimit = 13.9f, LanesAB = 2, LanesBA = 1, Kind = RoadKind.Street };

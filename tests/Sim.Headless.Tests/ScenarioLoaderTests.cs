@@ -553,4 +553,32 @@ public class ScenarioLoaderTests
         LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
         Assert.Equal(LodMode.Off, sc.Desc.Lod.Mode);
     }
+
+    [Fact]
+    public void ToolsSection_DefaultsAndOverrides()
+    {
+        // Нет секции: заглушки таблицы стоимостей и границы по умолчанию (bbox сети + 2 км).
+        ScenarioDesc d = Load(Minimal());
+        Assert.False(d.Tools.HasWorldBounds);
+        Assert.Equal(10L, d.Tools.Costs.RoadPerMLaneStreet);
+        Assert.Equal(20L, d.Tools.Costs.RoadPerMLaneArterial);
+        Assert.Equal(50, d.Tools.Costs.DemolishRefundPct);
+
+        d = Load(Minimal("\"tools\": { \"costs\": { \"road_per_m_lane\": { \"street\": 7 }, \"turn_ban\": 3, \"demolish_refund_pct\": 80 }, "
+            + "\"world_bounds\": { \"min_x\": -100, \"min_z\": -200, \"max_x\": 300, \"max_z\": 400 } }"));
+        Assert.Equal(7L, d.Tools.Costs.RoadPerMLaneStreet);
+        Assert.Equal(20L, d.Tools.Costs.RoadPerMLaneArterial);
+        Assert.Equal(3L, d.Tools.Costs.TurnBan);
+        Assert.Equal(80, d.Tools.Costs.DemolishRefundPct);
+        Assert.True(d.Tools.HasWorldBounds);
+        Assert.Equal(-200f, d.Tools.BoundsMinZ);
+        Assert.Equal(300f, d.Tools.BoundsMaxX);
+
+        ScenarioException e = Fails(Minimal("\"tools\": { \"costs\": { \"demolish_refund_pct\": 101 } }"));
+        Assert.Contains("$.tools.costs.demolish_refund_pct", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"tools\": { \"world_bounds\": { \"min_x\": 5, \"min_z\": 0, \"max_x\": 1, \"max_z\": 1 } }"));
+        Assert.Contains("$.tools.world_bounds", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"tools\": { \"unknown\": 1 }"));
+        Assert.Contains("$.tools.unknown", e.Message, StringComparison.Ordinal);
+    }
 }

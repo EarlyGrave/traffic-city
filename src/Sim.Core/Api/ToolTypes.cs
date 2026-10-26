@@ -14,6 +14,7 @@ public enum EntityKind : byte
     Segment = 2,
     BusStop = 3,
     BusRoute = 4,
+    Zone = 5,            // только для PreviewIssue.Obj: индекс зоны (без поколения)
 }
 
 /// <summary>

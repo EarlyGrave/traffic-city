@@ -45,6 +45,7 @@ internal static class ToolStateFixture
     public static (int First, int Second) BuildDetached(Simulation sim, float x = 3000f)
     {
         World w = sim.World;
+        sim.SetToolsConfig(Tools.ToolsFixture.Unbounded);   // «вдали от города»: вне границ по умолчанию (bbox + 2 км)
         long rejected = sim.Counters.CommandsRejected;
         Assert.True(sim.Enqueue(Command.MakeBuildRoad(Road(x, 3000f, x + 100f, 3000f))));
         sim.Step(1);

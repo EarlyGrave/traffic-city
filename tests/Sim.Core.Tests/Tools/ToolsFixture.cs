@@ -9,6 +9,9 @@ namespace Sim.Core.Tests.Tools;
 /// <summary>Общие помощники тестов инструментов игрока (4.3, T3/T4): малый мир сохранения с оверлеем, поиск узлов, постановка команд и сверки.</summary>
 internal static class ToolsFixture
 {
+    /// <summary>Границы мира «без ограничений»: тесты строят дороги «вдали от города», за пределами границ по умолчанию (bbox сети + 2 км, <c>OutOfBounds</c>).</summary>
+    public static readonly ToolsDesc Unbounded = new() { HasWorldBounds = true, BoundsMinX = -1e6f, BoundsMinZ = -1e6f, BoundsMaxX = 1e6f, BoundsMaxZ = 1e6f };
+
     /// <summary>Описание малого мира (город 1.2 x 1.2 км, ~100 машин, оверлей, светофоры, автобусы); <paramref name="peds"/> - с пешеходами.</summary>
     public static ScenarioDesc SmallDesc(bool buses = true, bool peds = false)
     {

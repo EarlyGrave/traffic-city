@@ -1,5 +1,6 @@
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Tools;
 
 namespace Sim.Core.Api;
 
@@ -14,20 +15,17 @@ internal static partial class CommandDispatcher
     private static void SetArmControl(World w, in Command cmd)
     {
         SetArmControlCmd c = cmd.SetArmControl;
-        if (!CheckEntity(w, in cmd, EntityKind.Node, in c.Node))
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
+            RejectTool(w, in cmd, why);
             return;
         }
 
         NetworkStore n = w.Net;
         int node = c.Node.Index;
         ref NodeData nd = ref n.Nodes[node];
-        if (nd.FirstArm < 0 || c.ArmSlot >= nd.ArmCount || c.Control > 3 || c.R != 0)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
         if (w.Builder.ArmOverrideOf(node, c.ArmSlot) == c.Control)
         {
             Applied(w, in cmd);
@@ -52,26 +50,17 @@ internal static partial class CommandDispatcher
     private static void SetTurnBan(World w, in Command cmd)
     {
         SetTurnBanCmd c = cmd.SetTurnBan;
-        if (!CheckEntity(w, in cmd, EntityKind.Node, in c.Node))
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
+            RejectTool(w, in cmd, why);
             return;
         }
 
         NetworkStore n = w.Net;
         int node = c.Node.Index;
         ref NodeData nd = ref n.Nodes[node];
-        if (nd.FirstArm < 0 || c.FromArm >= nd.ArmCount || c.ToArm >= nd.ArmCount || c.FromArm >= 8 || c.ToArm >= 8 || c.Banned > 1 || c.R != 0)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        if (w.Queue != null)
-        {
-            Rejected(w, in cmd, RejectReason.NotSupported);
-            return;
-        }
-
         ulong bit = 1UL << ((c.FromArm * 8) + c.ToArm);
         ulong old = nd.TurnBan;
         ulong want = c.Banned == 1 ? old | bit : old & ~bit;
@@ -114,37 +103,16 @@ internal static partial class CommandDispatcher
     private static void RemoveRoad(World w, in Command cmd)
     {
         RemoveRoadCmd c = cmd.RemoveRoad;
-        if ((c.Flags & ~1) != 0)
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        if (!CheckEntity(w, in cmd, EntityKind.Segment, in c.Seg))
-        {
+            RejectTool(w, in cmd, why);
             return;
         }
 
         NetworkStore n = w.Net;
         int seg = c.Seg.Index;
-        if ((n.Segments[seg].Flags & SegmentFlags.Closing) != 0)
-        {
-            Rejected(w, in cmd, RejectReason.Busy);
-            return;
-        }
-
-        if (w.Queue != null || HasBusStop(n, seg))
-        {
-            Rejected(w, in cmd, RejectReason.NotSupported);
-            return;
-        }
-
-        if (w.Ops.Count >= w.Ops.Capacity)
-        {
-            Rejected(w, in cmd, RejectReason.Capacity);
-            return;
-        }
-
         n.ToolsTouched = 1;
         w.Ops.TryAdd(ToolOpKind.RemoveSegment, seg, n.Segments[seg].Generation, (byte)(c.Flags & 1), w.Tick, ToolOpsPhase.CountOn(w, seg), out _);
         SegmentClosure.Close(w, seg, cmd.Tag);
@@ -164,19 +132,6 @@ internal static partial class CommandDispatcher
         Applied(w, in cmd);
     }
 
-    private static bool HasBusStop(NetworkStore n, int seg)
-    {
-        for (int s = 0; s < n.BusStopCount; s++)
-        {
-            if (n.BusStopAlive(s) && n.BusStops[s].Lane >= 0 && n.Lanes[n.BusStops[s].Lane].Segment == seg)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// <c>SetLaneFlags</c> (на месте): биты <c>BusOnly</c>, <c>NoLaneChangeOut</c> полосы <c>LaneNo</c> направления <c>Dir</c> сегмента по маске <c>Mask</c>
     /// (<c>Closed/Draining</c> ставит только ядро при закрытии). Читает MOBIL (<c>Mobil.Evaluate</c>).
@@ -184,21 +139,16 @@ internal static partial class CommandDispatcher
     private static void SetLaneFlags(World w, in Command cmd)
     {
         SetLaneFlagsCmd c = cmd.SetLaneFlags;
-        if (!CheckEntity(w, in cmd, EntityKind.Segment, in c.Seg))
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
+            RejectTool(w, in cmd, why);
             return;
         }
 
         NetworkStore n = w.Net;
         ref readonly SegmentData sd = ref n.Segments[c.Seg.Index];
-        int lanes = c.Dir == 0 ? sd.LanesAB : c.Dir == 1 ? sd.LanesBA : 0;
-        const byte writable = LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut;
-        if (c.Dir > 1 || c.LaneNo >= lanes || (c.Mask & ~writable) != 0 || (c.Flags & ~c.Mask) != 0)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
         int lane = (c.Dir == 0 ? sd.FirstLaneAB : sd.FirstLaneBA) + c.LaneNo;
         byte old = n.Lanes[lane].Flags;
         var want = (byte)((old & ~c.Mask) | (c.Flags & c.Mask));

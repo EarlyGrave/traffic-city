@@ -32,6 +32,8 @@ internal sealed class World : IDisposable
     public readonly TransitDesc TransitCfg;
     public readonly PedDesc PedCfg;            // с применёнными дефолтами (PedNetwork.WithDefaults); Enabled = false - пешеходов нет, ничего не выделено
     public readonly LodDesc LodCfg;            // с применёнными дефолтами (WorldBuilder.WithDefaults); Mode = Off - LOD нет
+    public ToolsDesc ToolsCfg;                 // стоимости и границы инструментов игрока (конфигурация хоста: вне сейва и хэша)
+    public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
     public readonly CityDesc Town;             // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
 
     // ---- хранилища ----
@@ -187,6 +189,7 @@ internal sealed class World : IDisposable
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);
+        ToolsCfg = desc.Tools;
         Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
