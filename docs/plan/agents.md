@@ -147,4 +147,5 @@
 | 141 | client-dead-slots (worktree) | sonnet | 4.3 клиент: мёртвые слоты (`Alive = 0`) и `Closing` сети в мешах после сноса | done, merged (RoadChunks/NodePicker/NodePanel/SimHost; пересборка по Network.Version; CrosswalkMesh/остановки — нет) |
 | 142 | zoning-z6 (worktree) | sonnet | 3.2 Z6: PaintZone, участки на BuildRoad, Lost на сносе | done, merged (7 тестов ZoningPaint; событие ZoneLotsLost = 54; фикс кэша Market._rowCost после правки сети; Lost-участок пропускается без ZoneRule — координат нет в сейве) |
 | 143 | scale-s0 (worktree) | haiku | 4.1 S0: замер «до» s100k off/all_meso 1/2/4 потока, s1m Create/память | done, merged (s100k p95 off 1/4 пот. 52.1/21.8 мс, queue 21.7/15.9; s1m 728 МБ; load 6–12, repeat 1; ~95 фоновых ожидалок — урок) |
-| 144 | tools-t10 (worktree) | sonnet | 4.3 T10: журнал команд и реплей, replay/bugreport в Headless | running |
+| 144 | tools-t10 (worktree) | sonnet | 4.3 T10: журнал команд и реплей, replay/bugreport в Headless | done, merged (ReplayTests 9/9; s1k 2000 тиков 50 команд exit 0; контейнер TCRP; точный тик — через --interval 1) |
+| 145 | tools-t7 (worktree) | sonnet | 4.3 T7: валидатор и превью, стоимость, кэш компонент | running |
