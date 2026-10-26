@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Sim.Host.Tests</RootNamespace>
+    <!-- Тесты 0 B читают GC.GetAllocatedBytesForCurrentThread: фоновый GC обнуляет allocation context без видимого CollectionCount (см. Sim.Core.Tests). -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <ProjectReference Include="../../src/Sim.Host/Sim.Host.csproj" />
+    <ProjectReference Include="../../src/Sim.Scenarios/Sim.Scenarios.csproj" />
+  </ItemGroup>
+
+</Project>

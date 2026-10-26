@@ -31,6 +31,9 @@ internal sealed class RenderViewState
 
     public float X0, Z0, X1, Z1;
 
+    /// <summary>Растёт при каждом <see cref="Set"/>/<see cref="SetAll"/> (клиент сверяет, какой вид отражён в кадре); на состояние не влияет.</summary>
+    public int Version;
+
     // ---- сетка полос (производное сети, вне хэша) ----
     private int _lanesIndexed = -1;
     private int _indexVersion = -1;   // версия сети индекса: после правок (дыры) число полос не показывает изменения
@@ -50,6 +53,7 @@ internal sealed class RenderViewState
     /// <summary>Задаёт вид. Нечисловые координаты дают вид «всё»; границы упорядочиваются.</summary>
     public void Set(float x0, float z0, float x1, float z1)
     {
+        Version++;
         if (!float.IsFinite(x0) || !float.IsFinite(z0) || !float.IsFinite(x1) || !float.IsFinite(z1))
         {
             All = true;
@@ -63,7 +67,11 @@ internal sealed class RenderViewState
         Z1 = MathF.Max(z0, z1);
     }
 
-    public void SetAll() => All = true;
+    public void SetAll()
+    {
+        Version++;
+        All = true;
+    }
 
     /// <summary>Вид «всё» записал буфер <paramref name="b"/> целиком (префикс до <c>SnapshotSlots</c>): обнулять придётся диапазоном.</summary>
     public void MarkWrittenAll(int b)
