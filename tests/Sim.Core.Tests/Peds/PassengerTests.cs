@@ -572,8 +572,7 @@ public sealed class PassengerTests
         }
 
         Assert.True(maxWait < thr, $"max stop wait {maxWait} >= {thr}");
-        // Одиночное ожидание >= stuck_cross_s допустимо: на светофоре Walk (5 с) может пройти мимо из-за обязавшихся машин (pedestrians.md 5.9, лестница хаотична по seed); системного голодания нет.
-        Assert.True(sim.Counters.PedStuckEvents <= 2, $"ped_stuck_events {sim.Counters.PedStuckEvents}");
+        Assert.True(sim.Counters.PedStuckEvents == 0, $"ped_stuck_events {sim.Counters.PedStuckEvents}");
         Assert.Equal(0, sim.Counters.PedNoPath);
         Assert.Equal(0, sim.Counters.StuckVehicles);
         Assert.Equal(pw.R.IdleCount() + pw.P.AliveCount, pw.R.Count);

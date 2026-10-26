@@ -238,7 +238,11 @@ internal static class PedSignals
 
                 if (walk > 0)
                 {
-                    walk--;
+                    if (walk > 1 || !ExtendWalk(w, s, slot, idx, x, in cfg))
+                    {
+                        walk--;
+                    }
+
                     if (walk == 0)
                     {
                         clear = s.SigXClear[idx];
@@ -266,6 +270,29 @@ internal static class PedSignals
         }
 
         s.XServed[slot] = served;
+    }
+
+    /// <summary>
+    /// true: последний тик <c>Walk</c> продлевается (pedestrians.md §5.10). Переход заявлен (<c>Claimed</c>: новые машины не допускаются), но на нём ещё есть обязавшиеся - допущенные до начала <c>Walk</c> медленные
+    /// машины не успевают освободить зону за 5 с, и пешеход иначе ждёт следующего зелёного (голодание). Продление ограничено <c>2 * Walk</c> от заявки; <c>Fixed</c> - только если до конца зелёного остаётся <c>Clear</c>.
+    /// </summary>
+    private static bool ExtendWalk(World w, SignalStore s, int slot, int idx, int x, in PedDesc cfg)
+    {
+        CrossingState xs = w.Peds!.X;
+        if (xs.XState[x] != XStateCode.Claimed || xs.QCount[x] == 0 || w.Tick - xs.ClosedSince[x] >= 2L * cfg.WalkTicks)
+        {
+            return false;
+        }
+
+        if (s.Mode[slot] == SignalMode.Adaptive)
+        {
+            return true;   // Hold держит Main, пока идёт Walk
+        }
+
+        int left = s.Machine[slot] != 0
+            ? s.GreenTicks[(slot * SignalStore.MaxPhases) + s.Phase[slot]] - s.GreenElapsed[slot]
+            : s.TicksLeft[slot];
+        return left > s.SigXClear[idx] + 1;
     }
 
     /// <summary>Длительность <c>Walk</c>, которую можно начать сейчас, или 0 (нельзя).</summary>
