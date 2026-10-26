@@ -29,8 +29,17 @@ public static class GltfValidator
     private const int MaxNodes = 4096;
     private const int MaxPrimitives = 1024;
 
-    /// <summary>Проверить файл <paramref name="file"/> пакета; <paramref name="kind"/> выбирает бюджет LOD.</summary>
-    public static void Validate(
+    /// <summary>Предупреждение <see cref="ModError.TextureMemory"/>: оценка VRAM текстур пакета больше 128 МиБ (render.md §4.2).</summary>
+    public const long TextureMemoryWarnBytes = 128L * 1024 * 1024;
+
+    private const double ProfileTolerance = 0.05;
+    private const double ProfileMaxWidthM = 64;
+
+    /// <summary>
+    /// Проверить файл <paramref name="file"/> пакета; <paramref name="kind"/> выбирает бюджет LOD.
+    /// Возвращает оценку VRAM изображений файла в байтах (render.md §4.2: PNG/JPEG - 1 Б/px как BC7, ×4/3 на мипы).
+    /// </summary>
+    public static long Validate(
         LoadedPackage pkg, string file, AssetKind kind, RenderBudgets budgets, List<ModIssue> errors, List<ModIssue> warnings)
     {
         var c = new Ctx(pkg, file, errors, warnings);
@@ -42,6 +51,8 @@ public static class GltfValidator
         {
             c.Error("$", ModError.GltfInvalid, e.GetType().Name);
         }
+
+        return c.VramBytes;
     }
 
     private static void Run(Ctx c, AssetKind kind, RenderBudgets budgets)
@@ -79,12 +90,14 @@ public static class GltfValidator
             List<AccInfo> accessors = CheckAccessors(c, root, views);
             CheckImages(c, root, buffers, views);
             CheckTextures(c, root);
+            CheckMaterials(c, root);
             List<long> meshTris = CheckMeshes(c, root, accessors);
             CheckExtras(c, root);
             List<NodeInfo> nodes = CheckNodes(c, root, meshTris.Count);
             if (c.ErrorCount == 0)
             {
-                CheckLods(c, root, nodes, meshTris, kind, budgets);
+                CheckTextureBudget(c, budgets.For(kind));
+                CheckLods(c, root, nodes, meshTris, kind, budgets, accessors);
             }
         }
     }
@@ -399,10 +412,32 @@ public static class GltfValidator
                 }
             }
 
-            list[i] = new AccInfo(true, (int)ct, comps, count);
+            list[i] = new AccInfo(true, (int)ct, comps, count, ReadBounds(e, "min", comps), ReadBounds(e, "max", comps));
         }
 
         return list;
+    }
+
+    private static double[]? ReadBounds(JsonElement acc, string key, int comps)
+    {
+        if (!acc.TryGetProperty(key, out JsonElement a) || a.ValueKind != JsonValueKind.Array || a.GetArrayLength() != comps)
+        {
+            return null;
+        }
+
+        var r = new double[comps];
+        int i = 0;
+        foreach (JsonElement x in a.EnumerateArray())
+        {
+            if (x.ValueKind != JsonValueKind.Number || !x.TryGetDouble(out r[i]) || !double.IsFinite(r[i]))
+            {
+                return null;
+            }
+
+            i++;
+        }
+
+        return r;
     }
 
     private static int ComponentSize(long componentType) => componentType switch
@@ -435,6 +470,7 @@ public static class GltfValidator
 
         for (int i = 0; i < arr.Length; i++)
         {
+            c.Images.Add(null);
             string path = Idx("$.images", i);
             JsonElement e = arr[i];
             if (e.ValueKind != JsonValueKind.Object)
@@ -511,6 +547,8 @@ public static class GltfValidator
                     continue;
                 }
 
+                c.Images[i] = new ImageInfo(fmt, w, h);
+                c.VramBytes += EstimateVram(w, h);
                 if (w > ModLimits.MaxTextureSide || h > ModLimits.MaxTextureSide)
                 {
                     c.Error(path, ModError.TooLarge, $"{fmt} {N(w)}x{N(h)}, limit {N(ModLimits.MaxTextureSide)}x{N(ModLimits.MaxTextureSide)}");
@@ -535,16 +573,93 @@ public static class GltfValidator
         {
             string path = Idx("$.textures", i);
             JsonElement e = arr[i];
+            c.TexImage.Add(-1);
             if (e.ValueKind != JsonValueKind.Object)
             {
                 c.Error(path, ModError.GltfInvalid, "expected object");
                 continue;
             }
 
-            if (e.TryGetProperty("source", out _) && (!GetLong(e, "source", out long s) || s < 0 || s >= images))
+            JsonElement holder = e;
+            string spath = path + ".source";
+            if (!e.TryGetProperty("source", out _)
+                && e.TryGetProperty("extensions", out JsonElement ext) && ext.ValueKind == JsonValueKind.Object
+                && ext.TryGetProperty("KHR_texture_basisu", out JsonElement basis) && basis.ValueKind == JsonValueKind.Object)
             {
-                c.Error(path + ".source", ModError.GltfInvalid, "invalid image index");
+                holder = basis;
+                spath = path + ".extensions.KHR_texture_basisu.source";
             }
+
+            if (holder.TryGetProperty("source", out _))
+            {
+                if (GetLong(holder, "source", out long s) && s >= 0 && s < images)
+                {
+                    c.TexImage[i] = (int)s;
+                }
+                else
+                {
+                    c.Error(spath, ModError.GltfInvalid, "invalid image index");
+                }
+            }
+        }
+    }
+
+    // Оценка VRAM одного изображения: w*h*1 Б (BC7 после сжатия клиентом) * 4/3 на мипы (render.md §4.2). KTX2 - так же (формат не разбираем).
+    private static long EstimateVram(long w, long h) => Math.Min(w * h, 1L << 30) * 4 / 3;
+
+    private static readonly string[] _textureSlots = ["baseColorTexture", "metallicRoughnessTexture", "normalTexture", "occlusionTexture", "emissiveTexture"];
+
+    private static void CheckMaterials(Ctx c, JsonElement root)
+    {
+        if (!TryArray(c, root, "materials", out JsonElement[] arr))
+        {
+            return;
+        }
+
+        for (int i = 0; i < arr.Length; i++)
+        {
+            string path = Idx("$.materials", i);
+            string? slot = null;
+            var images = new List<int>();
+            JsonElement m = arr[i];
+            if (m.ValueKind != JsonValueKind.Object)
+            {
+                c.Error(path, ModError.GltfInvalid, "expected object");
+                c.Mats.Add(new MatInfo(null, []));
+                continue;
+            }
+
+            JsonElement pbr = default;
+            bool hasPbr = m.TryGetProperty("pbrMetallicRoughness", out pbr) && pbr.ValueKind == JsonValueKind.Object;
+            for (int si = 0; si < _textureSlots.Length; si++)
+            {
+                string name = _textureSlots[si];
+                bool inPbr = si < 2;
+                if (inPbr && !hasPbr)
+                {
+                    continue;
+                }
+
+                if (!(inPbr ? pbr : m).TryGetProperty(name, out JsonElement info) || info.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                string tpath = path + (inPbr ? ".pbrMetallicRoughness." : ".") + name + ".index";
+                if (!GetLong(info, "index", out long ti) || ti < 0 || ti >= c.TexImage.Count)
+                {
+                    c.Error(tpath, ModError.GltfInvalid, "invalid texture index");
+                    continue;
+                }
+
+                slot ??= name;
+                if (c.TexImage[(int)ti] >= 0)
+                {
+                    images.Add(c.TexImage[(int)ti]);
+                }
+            }
+
+            c.Mats.Add(new MatInfo(slot, [.. images]));
         }
     }
 
@@ -565,6 +680,8 @@ public static class GltfValidator
             string path = Idx("$.meshes", i);
             long meshTris = 0;
             tris.Add(0);
+            var info = new MeshInfo();
+            c.Meshes.Add(info);
             JsonElement e = arr[i];
             if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("primitives", out JsonElement prims) || prims.ValueKind != JsonValueKind.Array || prims.GetArrayLength() == 0)
             {
@@ -583,12 +700,35 @@ public static class GltfValidator
                 }
 
                 meshTris += CheckPrimitive(c, p, ppath, accessors, materials);
+                info.Prims.Add(PrimitiveRefs(p));
             }
 
             tris[i] = meshTris;
         }
 
         return tris;
+    }
+
+    // Материал (-1 - по умолчанию) и аксессор POSITION (-1 - нет) примитива; битые значения уже сообщены CheckPrimitive.
+    private static (int Material, int Position) PrimitiveRefs(JsonElement p)
+    {
+        int material = -1;
+        int position = -1;
+        if (p.ValueKind == JsonValueKind.Object)
+        {
+            if (GetLong(p, "material", out long m) && m >= 0 && m < int.MaxValue)
+            {
+                material = (int)m;
+            }
+
+            if (p.TryGetProperty("attributes", out JsonElement attrs) && attrs.ValueKind == JsonValueKind.Object
+                && GetLong(attrs, "POSITION", out long a) && a >= 0 && a < int.MaxValue)
+            {
+                position = (int)a;
+            }
+        }
+
+        return (material, position);
     }
 
     private static long CheckPrimitive(Ctx c, JsonElement p, string path, List<AccInfo> accessors, int materials)
@@ -807,7 +947,7 @@ public static class GltfValidator
 
     // ------------------------------------------------------------------ LOD (§4.3)
 
-    private static void CheckLods(Ctx c, JsonElement root, List<NodeInfo> nodes, List<long> meshTris, AssetKind kind, RenderBudgets budgets)
+    private static void CheckLods(Ctx c, JsonElement root, List<NodeInfo> nodes, List<long> meshTris, AssetKind kind, RenderBudgets budgets, List<AccInfo> accessors)
     {
         KindBudget budget = budgets.For(kind);
         int sceneIndex = 0;
@@ -905,12 +1045,143 @@ public static class GltfValidator
             }
         }
 
-        for (int i = 0; i < count && i < budget.MaxTris.Count; i++)
+        for (int i = 0; i < count; i++)
         {
-            int? max = budget.MaxTris[i];
-            if (max is int limit && tris[i] > limit)
+            if (budget.TrisLimit(i) is int limit && tris[i] > limit)
             {
                 c.Error("$.scenes", ModError.LodOverBudget, $"LOD{N(i)} has {N(tris[i])} triangles, budget {N(limit)}");
+            }
+        }
+
+        bool profile = kind == AssetKind.Road && budget.ProfileTileM.HasValue;
+        foreach (KeyValuePair<int, int> kv in levelNodes)
+        {
+            int level = kv.Key;
+            var mats = new SortedSet<int>();
+            var positions = new List<int>();
+            CollectLevel(c, nodes, kv.Value, mats, positions);
+
+            if (budget.SurfacesLimit(level) is int maxSurfaces && mats.Count > maxSurfaces)
+            {
+                c.Error("$.scenes", ModError.LodSurfaces, $"LOD{N(level)} has {N(mats.Count)} surfaces, budget {N(maxSurfaces)}");
+            }
+
+            if (budget.UntexturedFromLod is int from && level >= from)
+            {
+                foreach (int m in mats)
+                {
+                    if (m >= 0 && m < c.Mats.Count && c.Mats[m].TextureSlot is string slot)
+                    {
+                        c.Error(Idx("$.materials", m), ModError.LodTextured, $"LOD{N(level)} material {N(m)} uses {slot}");
+                    }
+                }
+            }
+
+            if (profile)
+            {
+                CheckProfile(c, level, positions, accessors, budget.ProfileTileM!.Value);
+            }
+        }
+    }
+
+    // Материалы (-1 - по умолчанию) и аксессоры POSITION мешей поддерева уровня; трансформации узлов не учитываются.
+    private static void CollectLevel(Ctx c, List<NodeInfo> nodes, int root, SortedSet<int> mats, List<int> positions)
+    {
+        var seen = new bool[nodes.Count];
+        var stack = new Stack<int>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            int n = stack.Pop();
+            if (seen[n])
+            {
+                continue;
+            }
+
+            seen[n] = true;
+            if (nodes[n].Mesh >= 0)
+            {
+                foreach ((int material, int position) in c.Meshes[nodes[n].Mesh].Prims)
+                {
+                    mats.Add(material);
+                    if (position >= 0)
+                    {
+                        positions.Add(position);
+                    }
+                }
+            }
+
+            foreach (int child in nodes[n].Children)
+            {
+                stack.Push(child);
+            }
+        }
+    }
+
+    // Профиль дороги - плитка: протяжённость POSITION по Z в [0.95, 1.05] * tile, по X не больше 64 м (render.md §4.2).
+    private static void CheckProfile(Ctx c, int level, List<int> positions, List<AccInfo> accessors, double tile)
+    {
+        double minX = double.PositiveInfinity;
+        double maxX = double.NegativeInfinity;
+        double minZ = double.PositiveInfinity;
+        double maxZ = double.NegativeInfinity;
+        foreach (int p in positions)
+        {
+            AccInfo a = accessors[p];
+            if (a.Min is not { Length: 3 } lo || a.Max is not { Length: 3 } hi)
+            {
+                c.Error("$.accessors[" + N(p) + "]", ModError.ProfileBounds, $"LOD{N(level)} POSITION accessor has no min/max, cannot check the profile tile");
+                return;
+            }
+
+            minX = Math.Min(minX, lo[0]);
+            maxX = Math.Max(maxX, hi[0]);
+            minZ = Math.Min(minZ, lo[2]);
+            maxZ = Math.Max(maxZ, hi[2]);
+        }
+
+        if (positions.Count == 0)
+        {
+            return;
+        }
+
+        double z = maxZ - minZ;
+        double x = maxX - minX;
+        if (z < (1 - ProfileTolerance) * tile || z > (1 + ProfileTolerance) * tile)
+        {
+            c.Error("$.scenes", ModError.ProfileBounds, $"LOD{N(level)} Z extent {M(z)} m, tile {M(tile)} m");
+        }
+
+        if (x > ProfileMaxWidthM)
+        {
+            c.Error("$.scenes", ModError.ProfileBounds, $"LOD{N(level)} X extent {M(x)} m, limit {M(ProfileMaxWidthM)} m");
+        }
+    }
+
+    private static string M(double v) => v.ToString("0.0##", CultureInfo.InvariantCulture);
+
+    // Сторона изображений, на которые ссылаются материалы, не больше max_texture_side вида (render.md §4.2).
+    private static void CheckTextureBudget(Ctx c, KindBudget budget)
+    {
+        if (budget.MaxTextureSide is not int side)
+        {
+            return;
+        }
+
+        var done = new HashSet<int>();
+        foreach (MatInfo m in c.Mats)
+        {
+            foreach (int img in m.Images)
+            {
+                if (!done.Add(img) || c.Images[img] is not ImageInfo info)
+                {
+                    continue;
+                }
+
+                if (info.Width > side || info.Height > side)
+                {
+                    c.Error(Idx("$.images", img), ModError.TextureOverBudget, $"{info.Format.ToString().ToUpperInvariant()} {N(info.Width)}x{N(info.Height)}, budget {N(side)}");
+                }
             }
         }
     }
@@ -1143,6 +1414,18 @@ public static class GltfValidator
 
         public long Embedded { get; set; }
 
+        public long VramBytes { get; set; }
+
+        /// <summary>Изображения по индексу <c>images[]</c>; <c>null</c> - заголовок не прочитан (ошибка уже сообщена).</summary>
+        public List<ImageInfo?> Images { get; } = [];
+
+        /// <summary>Индекс изображения по индексу <c>textures[]</c> (-1 - нет источника).</summary>
+        public List<int> TexImage { get; } = [];
+
+        public List<MatInfo> Mats { get; } = [];
+
+        public List<MeshInfo> Meshes { get; } = [];
+
         public int ErrorCount { get; private set; }
 
         public void Error(string jsonPath, ModError code, string detail)
@@ -1176,7 +1459,16 @@ public static class GltfValidator
 
     private readonly record struct ViewInfo(int Buffer, long Offset, long Length, long Stride);
 
-    private readonly record struct AccInfo(bool Valid, int ComponentType, int Components, long Count);
+    private readonly record struct AccInfo(bool Valid, int ComponentType, int Components, long Count, double[]? Min = null, double[]? Max = null);
+
+    private readonly record struct ImageInfo(ImageFormat Format, long Width, long Height);
+
+    private readonly record struct MatInfo(string? TextureSlot, int[] Images);
+
+    private sealed class MeshInfo
+    {
+        public List<(int Material, int Position)> Prims { get; } = [];
+    }
 
     private sealed record NodeInfo(string? Name, int Mesh, int[] Children);
 }
