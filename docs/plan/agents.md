@@ -110,3 +110,5 @@
 | 104 | peds-p5 (worktree) | sonnet | 3.1 P5: Godot-клиент — пешеходы, зебры, HUD | done, merged (машины теперь видны: раздувание по дистанции + прогрев; FPS llvmpipe 15–33) |
 | 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | done, merged (v3 ≡ v2 побайтно, golden равны) |
 | 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | done, merged (55 новых тестов; base ok) |
+| 107 | zoning-demand-spec (worktree) | opus | 3.2: ADR-0011 жители/экономика + ADR-0021 эластичный спрос + zoning-demand.md | wip |
+| 108 | render-spec (worktree) | opus | 3.3: ADR-0014 бюджет рендера и LOD + render.md | wip |
