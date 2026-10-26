@@ -30,7 +30,13 @@ check_deps() {
   if command -v jq >/dev/null 2>&1; then
     bad=$(printf '%s' "$meta" | jq -r '.packages[] | select(.source != null) | .name')
   else
-    bad=$(printf '%s' "$meta" | python3 -I -c 'import sys,json; [print(p["name"]) for p in json.load(sys.stdin)["packages"] if p.get("source") is not None]')
+    # На Windows python3 часто заглушка Store (exit 49), тогда берём python.
+    local py="" cand
+    for cand in python3 python; do
+      if "$cand" -c 'import sys' >/dev/null 2>&1; then py=$cand; break; fi
+    done
+    [ -n "$py" ] || { echo "rust-check: не найден рабочий python3/python (нужен для разбора cargo metadata без jq)" >&2; exit 1; }
+    bad=$(printf '%s' "$meta" | "$py" -I -c 'import sys,json; [print(p["name"]) for p in json.load(sys.stdin)["packages"] if p.get("source") is not None]')
   fi
   local fail=0 name
   for name in $bad; do
