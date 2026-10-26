@@ -21,7 +21,6 @@ public partial class SimHost : Node3D
     private const float RoutePickMinRadius = 4f;
     private const float PedFarDistance = 900f;       // дальше - вместо капсул heatmap по PedEdgeCounts (режим Auto)
     private const float MarkerNearDistance = 450f;   // маркеры Walk/Clear и очереди на остановках только вблизи
-    private const float VehicleScaleDistance = 500f; // на дальнем плане раздуваем ТС, иначе они меньше пикселя
     private const float PedScaleDistance = 70f;
     private const float MaxViewRange = 6000f;
 
@@ -32,19 +31,16 @@ public partial class SimHost : Node3D
         Agents,
     }
 
-    private static readonly Color _carColor = new(0.2f, 0.85f, 1f);
-    private static readonly Color _busColor = new(1f, 0.63f, 0.12f);
-    private static readonly Color _stuckColor = new(1f, 0.18f, 0.18f);
-    private static readonly Color _selectedColor = new(1f, 1f, 1f);
     private static readonly Color _signalRed = new(1f, 0.2f, 0.2f);
     private static readonly Color _signalYellow = new(1f, 0.86f, 0.15f);
     private static readonly Color _signalGreen = new(0.24f, 0.9f, 0.35f);
 
     private Simulation? _sim;
     private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
-    private BoxBatch[] _vehicleBatches = Array.Empty<BoxBatch>();
-    private int[] _typeCounts = Array.Empty<int>();
-    private float[] _typeHeight = Array.Empty<float>();
+    private VehicleLayer? _vehicles;
+    private LodConfig _lod = LodConfig.Load(string.Empty, "high");
+    private string _renderPreset = "high";
+    private bool _logStepAlloc;
     private RoadMesh? _roads;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
@@ -165,6 +161,14 @@ public partial class SimHost : Node3D
             {
                 _showHud = true;
             }
+            else if (a == "--render-preset" && i + 1 < args.Length)
+            {
+                _renderPreset = args[++i] == "low" ? "low" : "high";
+            }
+            else if (a == "--log-step-alloc")
+            {
+                _logStepAlloc = true;
+            }
             else if (a == "--pose" && i + 1 < args.Length)
             {
                 _pose = args[++i];
@@ -259,7 +263,9 @@ public partial class SimHost : Node3D
             _hudPending = false;
         }
 
+        long allocA = GC.GetAllocatedBytesForCurrentThread();
         UpdateRenderView(_sim);
+        long allocView = GC.GetAllocatedBytesForCurrentThread() - allocA;
         if (!_paused)
         {
             _accumulator += delta * _timeScale;
@@ -280,7 +286,18 @@ public partial class SimHost : Node3D
 
         float alpha = _paused ? 1f : (float)(_accumulator / TickSeconds);
         float dist = _camera?.Distance ?? 0f;
-        UpdateVehicles(_sim, alpha, MathF.Max(1f, dist / VehicleScaleDistance));
+        long allocB = GC.GetAllocatedBytesForCurrentThread();
+        if (_vehicles != null && _camera != null)
+        {
+            _vehicles.Update(_sim, alpha, _camera.Camera.GlobalPosition);
+        }
+
+        long allocLayer = GC.GetAllocatedBytesForCurrentThread() - allocB;
+        _renderStats?.RecordFrame(_vehicles, allocView, allocLayer);
+        if (_logStepAlloc && allocView + allocLayer > 0)
+        {
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"[frame-alloc] tick {_sim.Tick} SetRenderView {allocView} B, vehicle layer {allocLayer} B"));
+        }
         if (_peds != null && _cross != null)
         {
             UpdatePeds(_sim, alpha, dist, delta);
@@ -320,6 +337,7 @@ public partial class SimHost : Node3D
             _hud.Extra = string.Create(
                 CultureInfo.InvariantCulture,
                 $"sim tick {_sim.Tick}  x{_timeScale:0.##}{(_paused ? " PAUSED" : string.Empty)}\navg {_stats.AvgSpeedKmh:0.0} km/h  stuck {_stats.StuckVehicles}")
+                + (_vehicles != null ? "\n" + _vehicles.HudText() : string.Empty)
                 + PedHudText(_sim)
                 + (_renderStats != null && _renderStats.HudText.Length > 0 ? "\n" + _renderStats.HudText : string.Empty);
         }
@@ -427,6 +445,11 @@ public partial class SimHost : Node3D
 
         _sim = sim;
         _types = desc.VehicleTypes;
+        string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
+        _lod = LodConfig.Load(contentDir, _renderPreset);
+        GD.Print(string.Create(
+            CultureInfo.InvariantCulture,
+            $"[lod] preset {_lod.Preset}: bounds {_lod.Bounds[0]:0}/{_lod.Bounds[1]:0}/{_lod.Bounds[2]:0} m, points to {_lod.Bounds[3]:0} m, caps {_lod.Caps[0]}/{_lod.Caps[1]}/{_lod.Caps[2]}/{_lod.Caps[3]}, min point {_lod.PointMinPx:0.#} px ({_lod.Source})"));
         BuildScene(sim);
         sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
         if (_showHud)
@@ -492,19 +515,7 @@ public partial class SimHost : Node3D
         _roads = new RoadMesh(sim);
         AddChild(_roads.Instance);
 
-        _vehicleBatches = new BoxBatch[_types.Length];
-        _typeHeight = new float[_types.Length];
-        _typeCounts = new int[_types.Length];
-        for (int t = 0; t < _types.Length; t++)
-        {
-            VehicleTypeDesc td = _types[t];
-            float len = td.Length > 0f ? td.Length : 4.5f;
-            float wid = td.Width > 0f ? td.Width : 1.8f;
-            float hgt = td.Category == VehicleCategory.Bus ? 3.0f : 1.5f;
-            _typeHeight[t] = hgt;
-            _vehicleBatches[t] = new BoxBatch("Vehicles_" + t.ToString(CultureInfo.InvariantCulture), new Vector3(len, hgt, wid), false);
-            AddChild(_vehicleBatches[t].Node);
-        }
+        _vehicles = new VehicleLayer(this, _types, _lod);
 
         if (sim.HasPeds)
         {
@@ -638,6 +649,13 @@ public partial class SimHost : Node3D
         long t1 = Stopwatch.GetTimestamp();
         long a1 = GC.GetAllocatedBytesForCurrentThread();
         _hud?.RecordTick((t1 - t0) * 1000.0 / Stopwatch.Frequency, a1 - a0, 1);
+        _renderStats?.RecordStep(a1 - a0);
+        if (_logStepAlloc && a1 != a0)
+        {
+            GD.Print(string.Create(
+                CultureInfo.InvariantCulture,
+                $"[step-alloc] tick {_sim.Tick} bytes {a1 - a0} view ({_viewX0:0.0},{_viewZ0:0.0})-({_viewX1:0.0},{_viewZ1:0.0})"));
+        }
     }
 
     /// <summary>
@@ -675,6 +693,24 @@ public partial class SimHost : Node3D
         x1 += padX;
         z0 -= padZ;
         z1 += padZ;
+
+        // render.md §3.4: след фрустума на земле, обрезанный дистанцией точек (круг вокруг проекции камеры; радиус на земле
+        // из дистанции по прямой). Машин за ним ядро не пишет, клиент не рисует.
+        Vector3 cp = cam.GlobalPosition;
+        float range = _lod.PointRange;
+        float ground2 = (range * range) - (cp.Y * cp.Y);
+        float rg = ground2 > 0f ? MathF.Sqrt(ground2) + 20f : 0f;
+        x0 = MathF.Max(x0, cp.X - rg);
+        x1 = MathF.Min(x1, cp.X + rg);
+        z0 = MathF.Max(z0, cp.Z - rg);
+        z1 = MathF.Min(z1, cp.Z + rg);
+        if (rg <= 0f || x0 > x1 || z0 > z1)
+        {
+            // в радиусе точек земли нет: пустой вид (нулевой прямоугольник под камерой), не «всё»
+            x0 = x1 = cp.X;
+            z0 = z1 = cp.Z;
+        }
+
         _viewX0 = x0;
         _viewZ0 = z0;
         _viewX1 = x1;
@@ -776,94 +812,6 @@ public partial class SimHost : Node3D
         return string.Create(
             CultureInfo.InvariantCulture,
             $"\npeds {sim.ActivePedCount}/{sim.PedTarget}  mode {_pedMode}{(_pedHeatShown ? " (heat)" : string.Empty)}\nin view: walk {_peds.CountOf(PedState.Walking)}  at crossing {_peds.CountOf(PedState.AtCrossing)}  crossing {_peds.CountOf(PedState.Crossing)}  at stop {_peds.CountOf(PedState.AtStop)}\nbus stops waiting {_stopWaitCache}");
-    }
-
-    private void UpdateVehicles(Simulation sim, float alpha, float scale)
-    {
-        ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
-        ReadOnlySpan<VehicleRenderData> prev = sim.PreviousVehicles;
-        int types = _vehicleBatches.Length;
-        if (types == 0)
-        {
-            return;
-        }
-
-        Array.Clear(_typeCounts);
-        for (int i = 0; i < cur.Length; i++)
-        {
-            if ((cur[i].Flags & (byte)VehicleRenderFlags.Active) != 0)
-            {
-                _typeCounts[Math.Min((int)cur[i].Type, types - 1)]++;
-            }
-        }
-
-        for (int t = 0; t < types; t++)
-        {
-            _vehicleBatches[t].Begin(_typeCounts[t]);
-        }
-
-        float a = Math.Clamp(alpha, 0f, 1f);
-        for (int i = 0; i < cur.Length; i++)
-        {
-            ref readonly VehicleRenderData c = ref cur[i];
-            if ((c.Flags & (byte)VehicleRenderFlags.Active) == 0)
-            {
-                continue;
-            }
-
-            float x = c.X;
-            float z = c.Z;
-            float heading = c.Heading;
-            if (i < prev.Length)
-            {
-                ref readonly VehicleRenderData p = ref prev[i];
-                if ((p.Flags & (byte)VehicleRenderFlags.Active) != 0 && p.Index == c.Index && p.Generation == c.Generation)
-                {
-                    x = p.X + ((c.X - p.X) * a);
-                    z = p.Z + ((c.Z - p.Z) * a);
-                    heading = LerpAngle(p.Heading, c.Heading, a);
-                }
-            }
-
-            int type = Math.Min((int)c.Type, types - 1);
-            _vehicleBatches[type].Add(x, c.Y + (_typeHeight[type] * 0.5f * scale) + 0.05f, z, heading, VehicleColor(c.Flags, _types[type].Category), scale);
-        }
-
-        for (int t = 0; t < types; t++)
-        {
-            _vehicleBatches[t].End();
-        }
-    }
-
-    private static Color VehicleColor(byte flags, VehicleCategory category)
-    {
-        if ((flags & (byte)VehicleRenderFlags.Selected) != 0)
-        {
-            return _selectedColor;
-        }
-
-        if ((flags & (byte)VehicleRenderFlags.Stuck) != 0)
-        {
-            return _stuckColor;
-        }
-
-        return category == VehicleCategory.Bus ? _busColor : _carColor;
-    }
-
-    private static float LerpAngle(float from, float to, float t)
-    {
-        float d = to - from;
-        while (d > MathF.PI)
-        {
-            d -= 2f * MathF.PI;
-        }
-
-        while (d < -MathF.PI)
-        {
-            d += 2f * MathF.PI;
-        }
-
-        return from + (d * t);
     }
 
     private void UpdateSignals(Simulation sim)

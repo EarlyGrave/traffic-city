@@ -16,6 +16,7 @@ public partial class RenderStats : Node
 {
     private const int FormatVersion = 1;
     private const int DefaultStatsFrame = 10;
+    private const int WarmupFrames = 8; // первые кадры - JIT/ленивая инициализация, не стационар
 
     private string _outPath = string.Empty;
     private int _statsFrame = DefaultStatsFrame;
@@ -34,6 +35,56 @@ public partial class RenderStats : Node
 
     /// <summary>Режим записи JSON включён (<c>--render-stats</c>).</summary>
     public bool Recording => _outPath.Length > 0;
+
+    // Управляемые аллокации главного потока (GC.GetAllocatedBytesForCurrentThread), V3: за кадр, без Step; Step - отдельно.
+    private long _viewAllocLast;
+    private long _layerAllocLast;
+    private long _frameAllocMax;
+    private long _stepAllocMax;
+    private long _stepAllocTotal;
+    private long _stepCount;
+    private int _frames;
+    private int[] _placed = new int[LodConfig.Levels];
+    private int[] _desired = new int[LodConfig.Levels];
+    private int[] _caps = new int[LodConfig.Levels];
+    private float _maxDrawnDist;
+    private float _pointRange;
+    private int _dropped;
+    private string _preset = string.Empty;
+
+    /// <summary>Записать итоги кадра слоя ТС: аллокации <c>SetRenderView</c>/обновления слоя и счётчики по уровням.</summary>
+    public void RecordFrame(VehicleLayer? layer, long viewAlloc, long layerAlloc)
+    {
+        _frames++;
+        _viewAllocLast = viewAlloc;
+        _layerAllocLast = layerAlloc;
+        if (_frames > WarmupFrames)
+        {
+            _frameAllocMax = Math.Max(_frameAllocMax, viewAlloc + layerAlloc);
+        }
+
+        if (layer != null)
+        {
+            layer.Placed.CopyTo(_placed);
+            layer.Desired.CopyTo(_desired);
+            layer.Config.Caps.CopyTo(_caps, 0);
+            _maxDrawnDist = layer.MaxDrawnDistance;
+            _pointRange = layer.Config.PointRange;
+            _dropped = layer.DroppedByCap;
+            _preset = layer.Config.Preset;
+        }
+    }
+
+    /// <summary>Записать аллокации одного <c>Simulation.Step</c> (байты на главном потоке).</summary>
+    public void RecordStep(long bytes)
+    {
+        _stepCount++;
+        _stepAllocTotal += bytes;
+        if (_frames > WarmupFrames)
+        {
+            _stepAllocMax = Math.Max(_stepAllocMax, bytes);
+        }
+    }
 
     /// <summary>Строки для HUD F3: draw calls / примитивы / объекты (основной проход / тени) и память.</summary>
     public string HudText { get; private set; } = string.Empty;
@@ -159,11 +210,37 @@ public partial class RenderStats : Node
             j.WriteNumber("texture", Mon(Performance.Monitor.RenderTextureMemUsed));
             j.WriteNumber("buffer", Mon(Performance.Monitor.RenderBufferMemUsed));
             j.WriteEndObject();
+            j.WriteStartObject("vehicle_layer");
+            j.WriteString("preset", _preset);
+            j.WriteNumber("point_range_m", _pointRange);
+            j.WriteNumber("max_drawn_distance_m", Math.Round(_maxDrawnDist, 1));
+            j.WriteNumber("dropped_by_cap", _dropped);
+            string[] names = ["lod0", "lod1", "lod2", "points"];
+            for (int k = 0; k < LodConfig.Levels; k++)
+            {
+                j.WriteStartObject(names[k]);
+                j.WriteNumber("placed", _placed[k]);
+                j.WriteNumber("wanted", _desired[k]);
+                j.WriteNumber("cap", _caps[k]);
+                j.WriteEndObject();
+            }
+
+            j.WriteEndObject();
             j.WriteStartObject("instances");
             long total = 0;
             WalkInstances(GetParent(), j, ref total);
             j.WriteNumber("total", total);
             j.WriteEndObject();
+            j.WriteEndObject();
+
+            j.WriteStartObject("managed_alloc");
+            j.WriteString("note", "GC.GetAllocatedBytesForCurrentThread, главный поток; max - по кадрам после прогрева (8 кадров: JIT, первое выделение буферов)");
+            j.WriteNumber("set_render_view_last_frame_bytes", _viewAllocLast);
+            j.WriteNumber("vehicle_layer_last_frame_bytes", _layerAllocLast);
+            j.WriteNumber("view_plus_layer_max_bytes", _frameAllocMax);
+            j.WriteNumber("step_calls", _stepCount);
+            j.WriteNumber("step_max_bytes", _stepAllocMax);
+            j.WriteNumber("step_total_bytes", _stepAllocTotal);
             j.WriteEndObject();
 
             j.WriteStartObject("timing");
