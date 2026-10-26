@@ -138,7 +138,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `SDYN` | C | `SegmentCount` | `SegmentLoads` по полям |
 | `BDYN` | C | остановки / маршруты | `Waiting`, `LastArrivalTick`, `LastDepartTick`; `ActiveBuses`, `LastDispatchTick`; `BusRouteStats` по полям |
 | `VEHC` | C | `HighWater` | `HighWater`, `FreeList` (снизу вверх), `Generation`, поля §1 |
-| `TRIP` | C | очередь | `PendingTrip` по полям в порядке FIFO, `Unrouted` |
+| `TRIP` | C | очередь | `PendingTrip` по полям в порядке FIFO (Z2: `ResidentRef` - индекс жителя города + 1 или 0), `Unrouted` |
 | `QUES` | C | очереди | `Rerouting (Index, Generation, ReadyTick, Kind)`, `Refill (Index, Generation)`, `Commands` (`raw`, 64 Б) |
 | `ROUT` | C | слоты / шаги | `HighWater`, `FreeList`, `Generation`, `WinCount`, `PlanFirst/Count/Cap`, `PlanCost`, `PlanTick`, `WindowSteps` (проверка), `WinLane/WinNode` (окна живых слотов подряд), `PlanArena[PlanUsed]`, `Compactions` |
 | `RGRP` | C | `DirSegCount` | `SegCost`, `WeightsVersion` |
@@ -152,7 +152,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `BTYP` | C | типы зданий | (v3, ADR-0011, PreWorld как `VTYP`) есть ⇔ `demand.model = residents`: таблица типов зданий по полям (`Kind`, `Density`, `Capacity`, `ShopCapacity`, `ShiftStartSlot`, `ShiftSlots`, `ConstructDays`, `AttractQ8`, `VisualRow`); строки только дописываются |
 | `LOTS` | C | `Count` участков | (v3) участки: `Seg`, `SegGen`, `Side`, `S0Mm`, `S1Mm`, `Zone`, `Density`, `Building`, `Flags`; геометрия, ячейка, точки доступа машины и пешехода, компоненты - производные |
 | `BLDG` | C | `HighWater` зданий | (v3) пул зданий (`HighWater`, `FreeList`, `Generation`) и поля (`Lot`, `Type`, `State`, `StateTick`, `Occupants`, `Jobs`, `HeadRes`, `HeadWork`, `Account`, `RevenueEwma`, `ProfitEwma`, пары «сегодня/вчера» `VisitsDay`/`RevenueDay`/`CostDay`, `LossDays`, `VacantDays`); мёртвые слоты - канон |
-| `RESD` | C | `HighWater` жителей | (v3) пул жителей, поля (`Home`, `Work`, `NextHome/NextWork`, `Flags`, `State`, `StateTick`, `EvTick`, `EvKind`), план дня (`PlanCount/Cursor` и по 3 тура `PlanKind/Mode/Dest/Slot`), нога (`LegMode/O/D/Req/Walk/Wait/Ride`), `Agent/AgentGen`, `Account`, `IncomeEwma`, `SeekDays`, `EvictDays`, `Seq`, `NextSeq`, очередь ищущих работу (индекс, поколение) |
+| `RESD` | C | `HighWater` жителей | (v3) пул жителей, поля (`Home`, `Work`, `NextHome/NextWork`, `Flags`, `State`, `StateTick`, `EvTick`, `EvKind`), план дня (`PlanCount/Cursor` и по 3 тура `PlanKind/Mode/Dest/Slot`), нога (`LegMode/O/D/Req/Walk/Wait/Ride`, Z2: `LegDest`, `LegStopA/B`), `Agent/AgentGen`, `Account`, `IncomeEwma`, `SeekDays`, `EvictDays`, `Seq`, `NextSeq`, очередь ищущих работу (индекс, поколение) |
 | `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
 | `LEDG` | C | 1 | (v3) `External`, `City`, потоки по 13 видам (`FlowDay/Yesterday/Total`), курсоры дневных проходов, сглаженный спрос R/C/I, суточные накопители туров и ног, `CellLoads` |
 
@@ -425,7 +425,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`). Дополнен в рамках 2.5 S2 (адаптивные светофоры, ADR-0018) без `world_version++`: `PARM` 76-82 (дефолты `RulesDesc.Signal*`), `SIGS` 18-37, `SMET` 6 (`ConnDelay`), `VEHC` 40 (`DenyReason`) | — |
 
 | 2 | 3.1, ADR-0020, задача P2: пешеходы. Блоки `PEDS`, `PPTH`, `RESI`, `XING`, `PQUE` (только при `peds.enabled`); столбцы `PARM` 86-112, `WRLD` 11-13, `CNTR` 96-117, `SIGS` 39-41; `hash_version` 2 (секции пешеходов в хэше только при `peds`) | `MigrationV2` (`Save/MigrationV2.cs`): добавляет столбцы с дефолтами «пешеходов нет, пассажиры - счётчик», блоков не создаёт; w1 продолжается тем же хэшем |
-| 3 | 3.2, ADR-0011/0021, задача Z1: жители, зоны, экономика, скимы. Блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`); столбцы `PARM` 113-184, `WRLD` 14-18, `CNTR` 118-149, `VEHC` 41; `hash_version` 3 (секции города в хэше только при `residents`). Номера занял Z1 (решение оркестратора 2026-10-26): запланированные T2 и M4 сдвигаются на следующие свободные (`w4`, `w5`) | `MigrationV3` (`Save/MigrationV3.cs`): добавляет столбцы с дефолтами «города нет», `VEHC.Resident = -1`, блоков не создаёт; w1 и w2 продолжаются тем же хэшем |
+| 3 | 3.2, ADR-0011/0021, задача Z1: жители, зоны, экономика, скимы. Блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`); столбцы `PARM` 113-184, `WRLD` 14-18, `CNTR` 118-149, `VEHC` 41; `hash_version` 3 (секции города в хэше только при `residents`). Номера занял Z1 (решение оркестратора 2026-10-26): запланированные T2 и M4 сдвигаются на следующие свободные (`w4`, `w5`). Дополнено задачей Z2 (до закрытия w3): `RESD` 38-40 (`LegDest`, `LegStopA`, `LegStopB`), `TRIP` 11 (`ResidentRef`, 0 = поездка не жителя; в хэш только при `residents`) | `MigrationV3` (`Save/MigrationV3.cs`): добавляет столбцы с дефолтами «города нет», `VEHC.Resident = -1`, `TRIP.ResidentRef = 0`, блоков не создаёт; w1 и w2 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -1046,6 +1046,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `TRIP` | 8 | DestS | f32 | Count | 0 |
 | `TRIP` | 9 | Route | i32 | Count | 0 |
 | `TRIP` | 10 | RouteGen | i32 | Count | 0 |
+| `TRIP` | 11 | ResidentRef | i32 | Count | 0 |
 | `QUES` | 1 | ReroutingCount | i32 | 1 | 0 |
 | `QUES` | 2 | RefillCount | i32 | 1 | 0 |
 | `QUES` | 3 | CommandCount | i32 | 1 | 0 |
@@ -1268,6 +1269,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `RESD` (demand.model = residents) | 35 | SeekCount | i32 | 1 | 0 |
 | `RESD` (demand.model = residents) | 36 | SeekIndex | i32 | SeekCount | 0 |
 | `RESD` (demand.model = residents) | 37 | SeekGeneration | i32 | SeekCount | 0 |
+| `RESD` (demand.model = residents) | 38 | LegDest | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 39 | LegStopA | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 40 | LegStopB | i32 | HighWater | -1 |
 | `SKIM` (demand.model = residents) | 1 | Skim | i32 | NC * NC * 3 * P | 0 |
 | `SKIM` (demand.model = residents) | 2 | K | i32 | NC * NC * P | 0 |
 | `SKIM` (demand.model = residents) | 3 | LsRef | i32 | 1 | 0 |

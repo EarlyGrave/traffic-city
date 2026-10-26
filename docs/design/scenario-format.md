@@ -378,6 +378,8 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 `choice.theta_*_per_s` -> `θ64 = θ/10 · 64 · 2^16`. `calendar.day_s * 20` кратно 288 (слот = 1/288 суток; дефолт 3 600 с = 72 000 тиков). Ключи сверх первой редакции спеки: `zoning.max_paint_m2`, `residents.match_per_tick`,
 `residents.vacate_days`, `residents.switch_ratio`, `residents.r_bias`, `economy.c_target_pct`, `choice.asc_nonworker_s`; `zoning.auto` - объект долей, `true` (доли по умолчанию) или `false`. `peds.source` (`"preform"`, дефолт, или
 `"city"`) задаёт источник поездок пешеходов; `"city"` требует `residents` и `peds`. Таблица типов зданий - из `buildings.json` пакетов (`format_version: 3`) либо базовая (`format_version: 2`).
+При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
+`peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
 
 ### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
 
