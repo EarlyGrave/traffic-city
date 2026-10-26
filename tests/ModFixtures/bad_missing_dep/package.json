@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "id": "bad_missing_dep",
+  "version": "1.0.0",
+  "content_format": 1,
+  "requires": [
+    {
+      "id": "no_such_pkg",
+      "version": "^1.0.0"
+    }
+  ]
+}

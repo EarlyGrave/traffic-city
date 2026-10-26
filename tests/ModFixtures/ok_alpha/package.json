@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "id": "ok_alpha",
+  "version": "1.2.0",
+  "content_format": 1,
+  "title": "Alpha",
+  "content": {
+    "vehicles": [
+      "vehicles.json"
+    ],
+    "roads": [
+      "roads.json"
+    ],
+    "buildings": [],
+    "props": []
+  }
+}

@@ -1,0 +1,35 @@
+namespace Sim.Scenarios.Mods;
+
+/// <summary>Коды ошибок пакетов (modding.md §9). Часть кодов выдают поздние задачи (M2+), перечень общий.</summary>
+public enum ModError
+{
+    UnknownKey,
+    BadType,
+    BadValue,
+    OutOfRange,
+    MissingKey,
+    DuplicateId,
+    DuplicatePackage,
+    DirNameMismatch,
+    UndeclaredDependency,
+    MissingDependency,
+    VersionConflict,
+    DependencyCycle,
+    UnsupportedFormatVersion,
+    UnsupportedContent,
+    UnknownAssetRef,
+    CapacityExceeded,
+    FileNotAllowed,
+    PathEscape,
+    TooLarge,
+    TooDeep,
+    GltfInvalid,
+    GltfExtension,
+    GltfFeature,
+    LodMissing,
+    LodOrder,
+    LodOverBudget,
+    TimelineUnsorted,
+    ApiVersionMismatch,
+    FingerprintMismatch,
+}
