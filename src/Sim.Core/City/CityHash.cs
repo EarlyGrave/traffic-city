@@ -23,12 +23,19 @@ internal static class CityHash
         h.Add(c.CursorResidents);
         h.Add(c.CursorBuildings);
         h.Add(c.CursorAccess);
+        h.Add(c.DayStage);
         h.Add(c.DemandR);
         h.Add(c.DemandC);
         h.Add(c.DemandI);
         for (int i = 0; i < c.ToursDay.Length; i++)
         {
             h.Add(c.ToursDay[i]);
+        }
+
+        for (int i = 0; i < c.VisitsDayTotal.Length; i++)
+        {
+            h.Add(c.VisitsDayTotal[i]);
+            h.Add(c.UnservedDayTotal[i]);
         }
 
         for (int i = 0; i < c.LegsDay.Length; i++)

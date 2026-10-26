@@ -127,7 +127,7 @@
 | 121 | ped-starve-n (worktree) | sonnet | 3.1f: голодание пешехода на светофоре (тест обратно == 0) + подбор peds.count s10k-peds ≥ 90% | done: Walk продлевается при заявке; N = 12 000 (90.4–92.1%) |
 | 122 | render-v6 (worktree) | sonnet | 3.3 V6: тени, свет, пресеты low/high (визуал — плейсхолдеры) | done, merged (VisualPreset.cs; тени только ТС LOD0; Forward+ проверить на GPU) |
 | 123 | render-v9 (worktree) | sonnet | 3.3 V9: бенч клиента, render-compare/update-baseline, CI job render | done, merged (гейт ловит регрессию exit 1; job render необязательный) |
-| 124 | zoning-z4 (worktree) | sonnet | 3.2 Z4: экономика, рынки, рост; вернуть res_stuck == 0 | wip |
+| 124 | zoning-z4 (worktree) | sonnet | 3.2 Z4: экономика, рынки, рост; вернуть res_stuck == 0 | done, merged (res_stuck 0 за 30 суток; Σ счетов = 0; проверки возвращены) |
 | 125 | float-int-audit (worktree) | sonnet | 3.1c: аудит приведений float→int (net8 ≠ net10), помощник насыщения | done, merged (54 места через DetMath.ToIntSat; хэши не изменились) |
 | 126 | scale-spec (worktree) | opus | 4.1: scale.md + ADR-0024 поток симуляции | done, merged (S0–S13; K1 s100k auto ≤ 15 мс при 4 потоках) |
 | 127 | economy-spec (worktree) | opus | 4.2: ADR-0025 экономика города + city-economy.md | done, merged (E1–E8) |

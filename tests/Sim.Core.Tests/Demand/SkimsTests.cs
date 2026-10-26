@@ -194,6 +194,7 @@ public sealed class SkimsTests
     public void SaveLoad_InTheMiddleOfAnUpdate_ContinuesIdentically()
     {
         ScenarioDesc d = Fixture(updatePerTick: 2);
+        d.Town.Residents.PlanSlot = 200;   // первые события жителей после ручных прыжков Tick (сейв требует, чтобы события не были в прошлом)
         using Simulation a = Make(d);
         World w = a.World;
         Skims s = w.City!.Skims;

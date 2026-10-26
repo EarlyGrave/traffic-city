@@ -81,7 +81,7 @@ internal static class DayPlanner
 
         int travel = TravelSlots(c, homeLot, destLot, mode, period);
         int desired = desiredBase > cursor + travel ? desiredBase : cursor + travel;
-        int depart = Choice.ChooseDepartSlot(w, r, desired, travel);
+        int depart = Choice.ChooseDepartSlot(w, r, desired, travel, c.Lots.Cell[homeLot], c.Lots.Cell[destLot], mode);   // время ноги кандидата - из скима его периода
         if (depart < cursor)
         {
             depart = cursor;
