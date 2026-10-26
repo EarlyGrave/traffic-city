@@ -1,6 +1,7 @@
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Peds;
 using Sim.Core.Routing;
 
 namespace Sim.Core.Transit;
@@ -25,7 +26,16 @@ internal static class BusStopPhase
 
     public static void Run(World w)
     {
-        GeneratePassengers(w);
+        bool agents = IsAgents(w);
+        if (agents)
+        {
+            Stops.CheckStuck(w);
+        }
+        else
+        {
+            GeneratePassengers(w);
+        }
+
         VehicleStore v = w.Vehicles;
         if (w.Net.BusRouteCount == 0)
         {
@@ -40,6 +50,11 @@ internal static class BusStopPhase
                 continue;
             }
 
+            if (agents)
+            {
+                w.Counters.BusPaxOnBoardTicks += v.Passengers[i];
+            }
+
             if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
             {
                 Dwell(w, i);
@@ -50,6 +65,9 @@ internal static class BusStopPhase
             }
         }
     }
+
+    /// <summary>Модель пассажиров <c>agents</c> (ADR-0020): очереди и пассажиры - пешеходы (<c>Peds/Stops.cs</c>), счётчик ADR-0008 не работает.</summary>
+    private static bool IsAgents(World w) => w.Peds != null && w.TransitCfg.PassengerModel == PassengerModel.Agents;
 
     private static void GeneratePassengers(World w)
     {
@@ -110,19 +128,36 @@ internal static class BusStopPhase
         ref BusRouteData br = ref net.BusRoutes[r];
         bool terminal = v.BusNextStop[i] >= br.StopCount - 1;
         int pax = v.Passengers[i];
-        int alight = terminal ? pax : (pax + 2) / 3;
+        int alight;
         int board = 0;
-        if (!terminal)
+        if (IsAgents(w))
         {
-            board = BusCapacity - (pax - alight);
-            if (board > stop.Waiting)
+            // Агенты (pedestrians.md §7): выходят все с остановкой высадки не дальше текущей (на конечной - все), затем садятся из головы очереди.
+            alight = Stops.Alight(w, i, si, terminal);
+            pax -= alight;
+            if (!terminal)
             {
-                board = stop.Waiting;
+                board = Stops.Board(w, i, si, BusCapacity - pax);
             }
+
+            v.Passengers[i] = (ushort)(pax + board);
+        }
+        else
+        {
+            alight = terminal ? pax : (pax + 2) / 3;
+            if (!terminal)
+            {
+                board = BusCapacity - (pax - alight);
+                if (board > stop.Waiting)
+                {
+                    board = stop.Waiting;
+                }
+            }
+
+            stop.Waiting = (ushort)(stop.Waiting - board);
+            v.Passengers[i] = (ushort)(pax - alight + board);
         }
 
-        stop.Waiting = (ushort)(stop.Waiting - board);
-        v.Passengers[i] = (ushort)(pax - alight + board);
         float oldSpeed = v.Speed[i];
         v.Speed[i] = 0f;
         w.Masks.Retune(v, i, oldSpeed, v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0);   // накопители метрик фазы 9 (ADR-0019, A4)
@@ -234,11 +269,24 @@ internal static class BusStopPhase
         Remove(w, i, r, ref br);
     }
 
+    /// <summary>Остановка, на которой высаживаются оставшиеся пассажиры исчезающего автобуса: целевая (или последняя маршрута).</summary>
+    private static int TargetStopOrLast(World w, int i, in BusRouteData br)
+    {
+        int k = w.Vehicles.BusNextStop[i];
+        k = (uint)k < (uint)br.StopCount ? k : br.StopCount - 1;
+        return br.FirstStop + k;
+    }
+
     private static void Remove(World w, int i, int r, ref BusRouteData br)
     {
         VehicleStore v = w.Vehicles;
         br.ActiveBuses--;
         w.BusRouteStats[r].ActiveBuses = br.ActiveBuses;
+        if (w.Peds != null && w.Peds.PaxHead[i] >= 0)
+        {
+            Stops.DropAll(w, i, TargetStopOrLast(w, i, in br));
+        }
+
         w.Occupancy.UnlinkAll(i);
         if (v.Route[i] >= 0)
         {
