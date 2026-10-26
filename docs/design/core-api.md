@@ -673,6 +673,13 @@ public readonly ref struct NetworkView
 Это те же массивы, что использует ядро (§6), отданные read-only. Клиент перестраивает меши
 дорог только при смене `Version`.
 
+**Сеть с дырами (4.3, T2, `player-tools.md` §3, ADR-0023).** `Nodes/Segments/BusStops/BusRoutes` идут до `HighWater` своего пула, а не до числа живых: в них бывают мёртвые слоты.
+Признак - поле `Generation` в `*Data` (**нечётное = занят, чётное = свободен**; отдельного массива `Alive` нет - то же поле, что в handle'ах). Мёртвый слот
+хранит канонические значения (ссылки -1, остальное 0): клиент его пропускает. У полосы `Generation` = 1 (живая) или 0 (мёртвая и запасная полоса блока). Хелперы `NetworkView`:
+`IsNodeAlive/IsSegmentAlive/IsLaneAlive/IsBusStopAlive/IsBusRouteAlive(i)` и `NodeRef/SegmentRef/BusStopRef/BusRouteRef(i)` -> `EntityRef` (индекс + текущее поколение; для
+команд и для правки handle'ов после `*Remapped`: поколение нового слота читается отсюда). `SegmentData.Flags` (бит0 `Closing`, бит1 `Curve`, `Cx/Cz` - контрольная точка),
+`NodeData.Flags` (бит0 `Quiesce`), `NodeData.TurnBan`, `LaneData.Flags` (бит2 `Closed`, бит3 `Draining`), `BusStopData.Generation` - у сети без правок нули/единицы как прежде.
+
 ### 5.7 События
 
 ```csharp
@@ -700,6 +707,10 @@ public struct SimEvent
     public int A, B;             // зависят от Kind: индексы/поколения/коды
 }
 ```
+
+**Проверка handle'ов (4.3, T2).** Команда со ссылкой на узел (`SetSignalPlan.Node/NodeGen`, `SetNodeControl.Node/NodeGen`; `EntityRef` в командах T3..T9) отклоняется
+`RejectReason.InvalidHandle` (`Counters.InvalidHandleOps++`), если слот мёртв либо `Generation != 0` и не равна поколению слота. `Generation == 0` - без проверки поколения
+(генератор, тесты); индекс вне `[0, HighWater)` - по-прежнему `InvalidArgument`. Правила для `Restore*`-полей - `ToolTypes.cs`.
 
 Буфер `EventCapacity` очищается в начале каждого `Step`. Переполнение — последняя запись
 `EventsOverflow`, остальные теряются (`Counters.EventsDropped += n`).
@@ -1174,6 +1185,11 @@ public struct Fnv1a64
 12. Город (только при `demand.model = residents`, `hash_version` 3; `City/CityHash.cs`): `Demand`-PRNG, сутки и режим исполнения, курсоры, сглаженный спрос; участки (состояние), здания и жители (живые слоты, планы, ноги),
     очередь ищущих работу; `External`/`City` и потоки; скимы (данные, `K`, накопители отсортированным слепком, `LS_ref`), `CellLoads`; `Resident` живых машин; счётчики группы «город». Геометрия участков, колесо жителей, сетка занятости
     нарезки - производные, не хэшируются.
+
+13. Состояние инструментов (4.3, T2; только при `World.ToolsTouched = 1` - после первой структурной правки сети; `NetworkStore.AddToolStateToHash`): `ToolsTouched`; пулы узлов, сегментов, остановок и
+    маршрутов (`HighWater`, длина и содержимое free-list); арены `Lanes, LanePoints, SegmentPoints, NodeArms, LaneNext, ZoneLanes, BusRouteStops` и строк/конфликтов connector'ов (хвост, потери,
+    дыры по классам сверху вниз, битовая карта «блок по лестнице»); по узлам `Generation, Flags, TurnBan`, по сегментам `Generation, Flags, Cx, Cz`, поколения остановок и маршрутов, `LaneData.Flags` полос.
+    Без правок раздела нет - хэш прежний (TL1); `hash_version` не меняется.
 
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
 seed'ом; отдельный `ComputeNetworkHash()` (4.6, R2) — состав и порядок в `rust-pilot.md` §5.2, в хэш состояния не входит).

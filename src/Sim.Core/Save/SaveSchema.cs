@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 3;
+    public const int WorldVersion = 4;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 3;
@@ -29,7 +29,7 @@ internal static partial class SaveSchema
     /// <summary>Блоки мира в каноническом порядке записи.</summary>
     public static BlockDef[] Blocks => _blocks ??= BuildBlocks();
 
-    private static BlockDef[] BuildBlocks() => new[]
+    private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
         Extend(Params(), PedParams(), CityParams()),
         Demand(),
@@ -72,7 +72,7 @@ internal static partial class SaveSchema
         SkimsBlock(),
         LedgerBlock(),
         Manifest(),
-    };
+    });
 
     /// <summary>FourCC всех блоков мира (читателю контейнера: остальные необязательные блоки уходят в <c>kept</c>).</summary>
     public static uint[] KnownBlockIds()

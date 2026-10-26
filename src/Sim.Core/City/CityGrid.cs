@@ -45,11 +45,18 @@ internal readonly struct CityGrid
         }
 
         float minX = 0f, minZ = 0f, maxX = 0f, maxZ = 0f;
+        bool any = false;
         for (int n = 0; n < net.NodeCount; n++)
         {
-            Vec2 p = net.Nodes[n].Position;
-            if (n == 0)
+            if (!net.NodeAlive(n))
             {
+                continue;
+            }
+
+            Vec2 p = net.Nodes[n].Position;
+            if (!any)
+            {
+                any = true;
                 minX = maxX = p.X;
                 minZ = maxZ = p.Z;
                 continue;

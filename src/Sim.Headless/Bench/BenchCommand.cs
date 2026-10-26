@@ -11,6 +11,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -134,7 +135,7 @@ public static class BenchCommand
             d.City.SignalCoordination = ScenarioLoader.ParseSignalCoordination(coord, "--signal-coordination");
         }
 
-        return new LoadedScenario(sc.Name, sc.TypeNames, d);
+        return new LoadedScenario(sc.Name, sc.TypeNames, d, sc.Catalog, sc.Packages, sc.Timeline);
     }
 
     /// <summary>
@@ -196,13 +197,14 @@ public static class BenchCommand
         long memBefore = GC.GetTotalMemory(true);
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         view.Apply(sim);
+        var timeline = new TimelineRunner(sc.Timeline);   // команды сценария в абсолютных тиках симуляции, в том числе в прогреве
         if (warmup > 0)
         {
-            sim.Step(warmup);
+            timeline.Step(sim, warmup);
         }
 
         int target = sc.Desc.Demand.TargetVehicles;
-        int warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax);
+        int warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax, timeline);
 
         r.WarmupTicksActual = warmedUp;
         r.TargetVehicles = target;
@@ -228,6 +230,7 @@ public static class BenchCommand
         {
             long t0 = Stopwatch.GetTimestamp();
             timer?.BeginTick(t0);
+            timeline.Feed(sim);
             sim.Step(1);
             samples[i] = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
         }
@@ -305,13 +308,21 @@ public static class BenchCommand
     /// После <paramref name="warmup"/> тиков (уже выполненных) догоняет рампу чанками по <see cref="WarmupChunkTicks"/> до
     /// <see cref="IsFull"/>, но не дальше <paramref name="warmupMax"/> всего (0 = не догонять). Возвращает число тиков прогрева.
     /// </summary>
-    internal static int WarmUpUntilFull(Simulation sim, int target, int warmup, int warmupMax)
+    internal static int WarmUpUntilFull(Simulation sim, int target, int warmup, int warmupMax, TimelineRunner? timeline = null)
     {
         int warmedUp = warmup;
         while (warmupMax > 0 && warmedUp < warmupMax && !IsFull(sim.ActiveVehicleCount, target))
         {
             int chunk = Math.Min(WarmupChunkTicks, warmupMax - warmedUp);
-            sim.Step(chunk);
+            if (timeline != null)
+            {
+                timeline.Step(sim, chunk);
+            }
+            else
+            {
+                sim.Step(chunk);
+            }
+
             warmedUp += chunk;
         }
 

@@ -139,11 +139,18 @@ internal sealed class LodCells
         }
 
         float minX = 0f, minZ = 0f, maxX = 0f, maxZ = 0f;
+        bool any = false;
         for (int n = 0; n < net.NodeCount; n++)
         {
-            Vec2 p = net.Nodes[n].Position;
-            if (n == 0)
+            if (!net.NodeAlive(n))
             {
+                continue;
+            }
+
+            Vec2 p = net.Nodes[n].Position;
+            if (!any)
+            {
+                any = true;
                 minX = maxX = p.X;
                 minZ = maxZ = p.Z;
                 continue;
@@ -215,16 +222,32 @@ internal sealed class LodCells
     public void OnNetworkGrown()
     {
         NetworkStore net = _net;
-        for (int n = _nodesMapped; n < net.NodeCount; n++)
+
+        // Сеть без правок только растёт: привязываем новое. После правок (дыры, слоты занимают заново) - все живые слоты по возрастанию индекса, мёртвые - в -1.
+        bool full = net.ToolsTouched != 0;
+        for (int n = full ? 0 : _nodesMapped; n < net.NodeCount; n++)
         {
+            if (!net.NodeAlive(n))
+            {
+                NodeCell[n] = -1;
+                continue;
+            }
+
             Vec2 p = net.Nodes[n].Position;
             NodeCell[n] = CellOf(p.X, p.Z);
         }
 
         _nodesMapped = net.NodeCount;
 
-        for (int l = _lanesMapped; l < net.LaneCount; l++)
+        for (int l = full ? 0 : _lanesMapped; l < net.LaneCount; l++)
         {
+            if (!net.LaneAlive(l))
+            {
+                LaneCell[l] = -1;
+                LaneColor[l] = 0;
+                continue;
+            }
+
             ref readonly LaneData ld = ref net.Lanes[l];
             int node = ld.Kind == LaneKind.Connector
                 ? ld.Node
@@ -243,7 +266,10 @@ internal sealed class LodCells
         Array.Clear(CellLaneStart);
         for (int l = 0; l < lanes; l++)
         {
-            CellLaneStart[LaneCell[l] + 1]++;
+            if (LaneCell[l] >= 0)
+            {
+                CellLaneStart[LaneCell[l] + 1]++;
+            }
         }
 
         for (int c = 0; c < Cells; c++)
@@ -255,7 +281,10 @@ internal sealed class LodCells
         for (int l = 0; l < lanes; l++)
         {
             int c = LaneCell[l];
-            CellLaneList[CellLaneStart[c]++] = l;
+            if (c >= 0)
+            {
+                CellLaneList[CellLaneStart[c]++] = l;
+            }
         }
 
         // Возвращаем начала сдвигом (Start[Cells] = всего полос не трогали).

@@ -3,6 +3,7 @@ using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -57,9 +58,10 @@ public static class HashCommand
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
+        var timeline = new TimelineRunner(sc.Timeline);
         if (a.Has("--warmup-until-full"))
         {
-            BenchCommand.WarmUpUntilFull(sim, sc.Desc.Demand.TargetVehicles, 0, warmupMax);
+            BenchCommand.WarmUpUntilFull(sim, sc.Desc.Demand.TargetVehicles, 0, warmupMax, timeline);
         }
 
         int step = every > 0 ? every : ticks;
@@ -67,13 +69,14 @@ public static class HashCommand
         while (done < ticks)
         {
             int n = System.Math.Min(step, ticks - done);
-            sim.Step(n);
+            timeline.Step(sim, n);
             done += n;
             output.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
                 $"tick={sim.Tick} hash={sim.ComputeStateHash():x16} active={sim.ActiveVehicleCount}"));
         }
 
+        timeline.WriteSummary(output);
         return ExitOk;
     }
 }

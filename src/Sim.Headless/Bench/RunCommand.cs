@@ -58,6 +58,7 @@ public static class RunCommand
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         bool json = a.Has("--json");
+        var timeline = new TimelineRunner(sc.Timeline);
         int step = every > 0 ? every : ticks;
         int done = 0;
         long[] prevHist = new long[Simulation.PedWaitBuckets];
@@ -67,7 +68,7 @@ public static class RunCommand
         while (done < ticks)
         {
             int n = System.Math.Min(step, ticks - done);
-            sim.Step(n);
+            timeline.Step(sim, n);
             done += n;
             if (!json)
             {
@@ -81,6 +82,10 @@ public static class RunCommand
         if (json)
         {
             output.WriteLine(ToJson(sc, sim, ticks));
+        }
+        else
+        {
+            timeline.WriteSummary(output);
         }
 
         return ExitOk;

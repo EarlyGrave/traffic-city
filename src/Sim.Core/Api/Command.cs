@@ -344,6 +344,16 @@ public struct Command
         return c;
     }
 
+    /// <summary>С полным payload: <see cref="SetNodeControlCmd.NodeGen"/> задаёт поколение узла (4.3, T2: чужое поколение или мёртвый узел - <c>InvalidHandle</c>).</summary>
+    public static Command MakeSetNodeControl(in SetNodeControlCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetNodeControl;
+        c.Tag = tag;
+        c.SetNodeControl = payload;
+        return c;
+    }
+
     public static Command MakeSetNodeControl(int node, NodeControl control, uint tag = 0)
     {
         var c = default(Command);
@@ -441,7 +451,7 @@ public struct SetNodeControlCmd
 {
     public int Node;
     public NodeControl Control;
-    public int NodeGen;               // 4.3 (T1): поколение узла, 0 - без проверки (проверка - T2). 8 -> 12 Б
+    public int NodeGen;               // 4.3 (T1): поколение узла, 0 - без проверки; мёртвый слот или чужое поколение -> InvalidHandle (T2). 8 -> 12 Б
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

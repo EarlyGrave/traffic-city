@@ -45,7 +45,10 @@ internal sealed class LotBuilder
         bool ok = true;
         for (int seg = 0; seg < w.Net.SegmentCount && ok; seg++)
         {
-            ok = AppendSegment(w, c, seg, derive: false);
+            if (w.Net.SegmentAlive(seg))   // дыры сети (4.3, T2): мёртвый слот сегмента не нарезается
+            {
+                ok = AppendSegment(w, c, seg, derive: false);
+            }
         }
 
         RestoreDerived(w);
@@ -139,6 +142,11 @@ internal sealed class LotBuilder
 
         for (int s = 0; s < net.SegmentCount; s++)
         {
+            if (!net.SegmentAlive(s))
+            {
+                continue;
+            }
+
             int a = Find(parent, net.Segments[s].NodeA);
             int b = Find(parent, net.Segments[s].NodeB);
             if (a != b)

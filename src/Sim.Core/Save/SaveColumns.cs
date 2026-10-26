@@ -15,6 +15,34 @@ internal delegate void ColumnCopy(World w, long first, int count, Span<byte> dst
 internal delegate LoadStatus ColumnStore(LoadContext c, long count, ReadOnlySpan<byte> src);
 
 /// <summary>
+/// Вид сущности сети, на которую ссылается значение столбца (player-tools.md §4.2, TL8). Реестр тегов - <c>SaveSchema.Refs</c>; по нему <c>SaveValidator.ValidateRefs</c>
+/// проверяет диапазон ссылок, а тест полноты требует для каждого тега обработчик переноса (<c>Relocate</c>, T3): новая задача, добавляющая столбец с индексом полосы,
+/// connector'а, сегмента, узла или остановки, обязана добавить тег и обработчик.
+/// </summary>
+internal enum RefKind : byte
+{
+    None = 0,
+
+    /// <summary>Индекс в <c>Net.Lanes</c> (в том числе полоса-connector).</summary>
+    Lane = 1,
+
+    /// <summary>Строка <c>ConnectorStore</c> (<c>LaneData.ConflictGroup</c>).</summary>
+    Connector = 2,
+
+    /// <summary>Индекс в <c>Net.Segments</c>.</summary>
+    Segment = 3,
+
+    /// <summary>Направленный сегмент <c>2 * seg + dir</c>.</summary>
+    DirSeg = 4,
+
+    /// <summary>Индекс в <c>Net.Nodes</c>.</summary>
+    Node = 5,
+
+    /// <summary>Индекс в <c>Net.BusStops</c>.</summary>
+    Stop = 6,
+}
+
+/// <summary>
 /// Описание одного столбца блока сейва (save-format.md §3, приложение A): id (никогда не переиспользуется), имя, тип элемента, длина как функция состояния мира,
 /// копирование в файл и приём из файла. Реестр столбцов - <see cref="SaveSchema"/>.
 /// </summary>
@@ -59,6 +87,12 @@ internal sealed class ColumnDef
 
     /// <summary>Столбца может не быть в файле (старые версии мира): значение остаётся по умолчанию.</summary>
     public bool Optional { get; init; }
+
+    /// <summary>Вид сущности, на которую ссылаются значения столбца (i32), или <see cref="RefKind.None"/>; ставит <c>SaveSchema.Refs</c>.</summary>
+    public RefKind Ref { get; internal set; }
+
+    /// <summary>Значение -1 допустимо («нет»).</summary>
+    public bool RefNullable { get; internal set; }
 }
 
 /// <summary>Блок сейва: FourCC, версия схемы, условие присутствия и столбцы по возрастанию id.</summary>

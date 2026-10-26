@@ -1,7 +1,7 @@
 namespace Sim.Core;
 
-/// <summary>Заглушка каркаса; публичный API ядра проектируется отдельно.</summary>
+/// <summary>Версия API команд ядра (MAJOR; проверяется таймлайном сценария, modding.md §3.5). 1 - команды ADR-0023 (номера 1..35).</summary>
 public static class CoreInfo
 {
-    public const int ApiVersion = 0;
+    public const int ApiVersion = 1;
 }
