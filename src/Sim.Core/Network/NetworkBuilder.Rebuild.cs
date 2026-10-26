@@ -354,6 +354,43 @@ internal sealed partial class NetworkBuilder
         return NetworkStatus.Ok;
     }
 
+    /// <summary>
+    /// После <see cref="PlanRebuild"/> с отказом <see cref="NetworkStatus.Busy"/> (4.3, T4): все обречённые перестройкой connector'ы узла закрываются для въезда (<c>Closed</c>), занятые
+    /// доезжают и ждут опустения. Возвращает число занятых машинами обречённых connector'ов.
+    /// </summary>
+    internal int CloseDoomedConnectors(World w, in RebuildPlan rp)
+    {
+        int busy = 0;
+        bool changed = false;
+        for (int q = 0; q < rp.OConnN; q++)
+        {
+            if (_oldKept[q])
+            {
+                continue;
+            }
+
+            int lane = rp.OConn + q;
+            if ((_s.Lanes[lane].Flags & LaneFlags.Closed) == 0)
+            {
+                _s.Lanes[lane].Flags |= LaneFlags.Closed;
+                changed = true;
+            }
+
+            if (w.Occupancy.LaneCount[lane] > 0)
+            {
+                busy++;
+            }
+        }
+
+        if (changed)
+        {
+            _s.Version++;
+            w.Gate.FullScan = true;
+        }
+
+        return busy;
+    }
+
     // Кэш NextConn машин на подходах к узлу: выживший connector мог перестать быть «первым ходом» (порядок и состав connector'ов полосы другие). Пересчитает FirstHop/AssignConnectors.
     private void InvalidateNextConn(World w, int oldArms, int arms)
     {
@@ -368,21 +405,18 @@ internal sealed partial class NetworkBuilder
                 continue;
             }
 
+            // Подходы к узлу (полоса - рукав) и подходы к подходам: connector по умолчанию зависит от того, есть ли выезды у полосы, в которую он ведёт.
             int seg = _s.Lanes[lane].Segment;
-            if (seg < 0)
-            {
-                continue;
-            }
-
+            int toSeg = _s.Lanes[_s.Lanes[nc].ToLane].Segment;
             bool arm = false;
             for (int a = 0; a < arms && !arm; a++)
             {
-                arm = _armSeg[a] == seg;
+                arm = _armSeg[a] == seg || _armSeg[a] == toSeg;
             }
 
             for (int a = 0; a < oldArms && !arm; a++)
             {
-                arm = _oldArmSeg[a] == seg;
+                arm = _oldArmSeg[a] == seg || _oldArmSeg[a] == toSeg;
             }
 
             if (arm)

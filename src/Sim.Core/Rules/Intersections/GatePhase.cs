@@ -956,6 +956,12 @@ internal static class GatePhase
         float li = v.Length[i];
         int g = cl.ConflictGroup;
 
+        // 0. Закрытие дренажем (4.3, T4): въезд на connector или на его выходную полосу закрыт - ждать нельзя, пока не сменится маршрут/connector по умолчанию.
+        if (net.ToolsTouched != 0 && ((cl.Flags & LaneFlags.Closed) != 0 || (net.Lanes[cl.ToLane].Flags & LaneFlags.Closed) != 0))
+        {
+            return GateDeny.Closed;
+        }
+
         // 1. Сигнал.
         int slot = nd.Signal;
         bool fixedSignal = nd.Control == NodeControl.Signal && slot >= 0 && slot < w.Signals.Count && IsColored(w.Signals.Mode[slot]);

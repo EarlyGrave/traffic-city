@@ -310,7 +310,8 @@ internal sealed class Router
             prev = u;
         }
 
-        return cost;
+        // Закрытый дренажем сегмент (4.3, T4) весит +inf: остаток конечен (сейв требует конечного PlanCost), но очень большой - плановая проверка предпочтёт любой другой путь.
+        return float.IsFinite(cost) ? cost : 1e6f;
     }
 
     private float ArcOf(int a, int b)

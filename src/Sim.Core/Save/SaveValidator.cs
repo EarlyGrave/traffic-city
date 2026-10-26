@@ -170,6 +170,12 @@ internal static partial class SaveValidator
         // Статика светофоров (рукава, оси, входные полосы Adaptive): производное от сети, строится тем же кодом, что при TryAdd.
         w.Signals.RebuildStatics(w);
 
+        // Прогресс операций дренажа - производное: считается по загруженным занятости и сети.
+        for (int k = 0; k < w.Ops.Count; k++)
+        {
+            w.Ops.Remaining[k] = Sim.Core.Network.ToolOpsPhase.CountOn(w, w.Ops.TargetIndex[k]);
+        }
+
         return LoadStatus.Ok;
     }
 
@@ -664,7 +670,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 334);
             }
 
-            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Ped)
+            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Closed)
             {
                 return Bad(c, i, 340);
             }

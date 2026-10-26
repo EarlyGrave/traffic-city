@@ -15,7 +15,7 @@ public sealed class EditFuzzTests
 {
     private static readonly RejectReason[] _allowed =
     {
-        RejectReason.None, RejectReason.Busy, RejectReason.CreatesTrap, RejectReason.NodeLimit, RejectReason.Capacity, RejectReason.InvalidArgument,
+        RejectReason.None, RejectReason.Busy, RejectReason.CreatesTrap, RejectReason.NodeLimit, RejectReason.NotSupported, RejectReason.InvalidHandle, RejectReason.Capacity, RejectReason.InvalidArgument,
     };
 
     [Theory]
@@ -40,6 +40,11 @@ public sealed class EditFuzzTests
         for (int seed = 100; seed < 112; seed++)
         {
             Run(seed, threads: 1, commands: 400, roundTrips: true);
+        }
+
+        for (int seed = 200; seed < 204; seed++)
+        {
+            Run(seed, threads: 1, commands: 150, roundTrips: true, peds: true);
         }
     }
 
@@ -76,8 +81,17 @@ public sealed class EditFuzzTests
                     Console.WriteLine($"seed {seed} step {step} tick {sim.World.Tick}: {cmd.Kind}");
                 }
 
-                RejectReason r = ToolsFixture.Run(sim, in cmd);
-                Assert.Contains(r, _allowed);
+                RejectReason r;
+                try
+                {
+                    r = ToolsFixture.Run(sim, in cmd);
+                }
+                catch (Exception ex) when (ex.GetType().Name.Contains("DebugAssert", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException($"seed {seed} step {step} ({cmd.Kind}): {NextConnMismatch(w)}", ex);
+                }
+
+                Assert.True(Array.IndexOf(_allowed, r) >= 0, $"seed {seed} step {step}: {cmd.Kind} отклонена {r}");
                 applied += r == RejectReason.None ? 1 : 0;
                 Assert.Null(w.VerifyDerived());
                 Assert.Null(NextConnMismatch(w));
@@ -104,10 +118,32 @@ public sealed class EditFuzzTests
 
         sim.Step(300);
         Assert.Null(w.VerifyDerived());
+
+        // Дренаж завершается либо о застрявшем сообщено: за разумное время операций не остаётся, а те, что остались, дали DrainStalled.
+        var stalled = new System.Collections.Generic.HashSet<int>();
+        for (int t = 0; t < 5000 && w.Ops.Count > 0; t += 50)
+        {
+            sim.Step(50);
+            foreach (SimEvent e in sim.Events)
+            {
+                if (e.Kind == SimEventKind.DrainStalled)
+                {
+                    stalled.Add(e.A);
+                }
+            }
+        }
+
+        for (int k = 0; k < w.Ops.Count; k++)
+        {
+            Assert.True(stalled.Contains(w.Ops.Id[k]) || w.Tick - w.Ops.StartTick[k] < ToolOps.StallTicks * 2, $"операция {w.Ops.Id[k]} не кончилась и не сообщила о застревании");
+        }
+
+        Assert.Null(w.VerifyDerived());
         Assert.True(applied > 5, $"применилось всего {applied} команд из {commands}");
         Assert.True(n.ToolsTouched == 1);
         Assert.True(w.Work.NodeRebuilds >= 8, $"перестроек узлов {w.Work.NodeRebuilds}");
         Assert.True(w.Work.ToolCommandsApplied >= 8);
+        Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, сносов начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}");
         return sim.ComputeStateHash();
     }
 
@@ -166,7 +202,13 @@ public sealed class EditFuzzTests
 
         ref readonly NodeData nd = ref n.Nodes[node];
         int kind = rng.Next(100);
-        if (kind < 40)
+        if (kind >= 90 && n.AliveSegments > 12)
+        {
+            return PickRoadOp(sim, rng, tag);
+        }
+
+        kind %= 90;
+        if (kind < 36)
         {
             int from = rng.Next(nd.ArmCount);
             int to = rng.Next(nd.ArmCount);
@@ -174,12 +216,12 @@ public sealed class EditFuzzTests
             return Command.MakeSetTurnBan(new SetTurnBanCmd { Node = ToolsFixture.Node(sim, node), FromArm = (byte)from, ToArm = (byte)to, Banned = (byte)(ban ? 1 : 0) }, tag);
         }
 
-        if (kind < 65)
+        if (kind < 58)
         {
             return Command.MakeSetArmControl(new SetArmControlCmd { Node = ToolsFixture.Node(sim, node), ArmSlot = (byte)rng.Next(nd.ArmCount), Control = (byte)rng.Next(4) }, tag);
         }
 
-        if (kind < 80)
+        if (kind < 72)
         {
             int seg = n.NodeArms[nd.FirstArm + rng.Next(nd.ArmCount)];
             int dir = rng.Next(2);
@@ -205,6 +247,41 @@ public sealed class EditFuzzTests
             {
                 BuildRoadCmd road = ToolsFixture.Road(p, q, 1 + rng.Next(2));
                 return Command.MakeBuildRoad(in road, tag);
+            }
+        }
+
+        return default;
+    }
+
+    // Снос случайного сегмента без остановок (или отмена идущего сноса).
+    private static Command PickRoadOp(Simulation sim, Random rng, uint tag)
+    {
+        World w = sim.World;
+        NetworkStore n = w.Net;
+        if (w.Ops.Count > 0 && rng.Next(3) == 0)
+        {
+            int k = rng.Next(w.Ops.Count);
+            var undo = new BuildRoadCmd { RestoreOf = new EntityRef(w.Ops.TargetIndex[k], w.Ops.TargetGen[k]), SpeedLimit = 1f, LanesAB = 1 };
+            return Command.MakeBuildRoad(in undo, tag);
+        }
+
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            int seg = rng.Next(n.SegmentCount);
+            if (!n.SegmentAlive(seg) || (n.Segments[seg].Flags & SegmentFlags.Closing) != 0)
+            {
+                continue;
+            }
+
+            bool stop = false;
+            for (int i = 0; i < n.BusStopCount && !stop; i++)
+            {
+                stop = n.BusStopAlive(i) && n.Lanes[n.BusStops[i].Lane].Segment == seg;
+            }
+
+            if (!stop)
+            {
+                return Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = ToolsFixture.Segment(sim, seg), Flags = rng.Next(4) == 0 ? 1 : 0 }, tag);
             }
         }
 

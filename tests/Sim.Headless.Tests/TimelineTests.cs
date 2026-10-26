@@ -178,11 +178,11 @@ public class TimelineTests
     [Fact]
     public void Timeline_ToolWithoutImplementation_IsRejectedNotSupported_NoThrow()
     {
-        string json = Doc("\"api_version\": 1, \"timeline\": [ { \"tick\": 20, \"cmd\": { \"kind\": \"remove_road\", \"seg\": { \"index\": 0, \"generation\": 1 } } } ]");
+        string json = Doc("\"api_version\": 1, \"timeline\": [ { \"tick\": 20, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 30 } } ]");
         ulong h = RunTimeline(json, 1, 60, out TimelineRunner r);
         Assert.NotEqual(0UL, h);
         TimelineReject rej = Assert.Single(r.Rejects);
-        Assert.Equal(CommandKind.RemoveRoad, rej.Kind);
+        Assert.Equal(CommandKind.SplitRoad, rej.Kind);
         Assert.Equal(RejectReason.NotSupported, rej.Reason);
         Assert.Equal(20, rej.Tick);
         var w = new StringWriter();
@@ -320,14 +320,14 @@ public class TimelineTests
         {
             File.WriteAllText(Path.Combine(dir, "vehicle-types.json"), Types);
             string json = TimelineDoc().TrimEnd().TrimEnd('}').TrimEnd().TrimEnd(']')
-                + ", { \"tick\": 350, \"cmd\": { \"kind\": \"remove_road\", \"seg\": { \"index\": 0, \"generation\": 1 } } } ] }";
+                + ", { \"tick\": 350, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 30 } } ] }";
             File.WriteAllText(Path.Combine(dir, "tl.json"), json);
             var output = new StringWriter();
             var error = new StringWriter();
             int code = Sim.Headless.Bench.RunCommand.Run(["run", "--scenario", Path.Combine(dir, "tl.json"), "--ticks", "400"], output, error);
             Assert.True(code == 0, error.ToString());
             Assert.Contains("timeline: 4/4 commands enqueued, 1 rejected, 0 dropped", output.ToString(), StringComparison.Ordinal);
-            Assert.Contains("kind=RemoveRoad reason=NotSupported", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains("kind=SplitRoad reason=NotSupported", output.ToString(), StringComparison.Ordinal);
 
             var hash = new StringWriter();
             Assert.Equal(0, Sim.Headless.Bench.HashCommand.Run(["hash", "--scenario", Path.Combine(dir, "tl.json"), "--ticks", "700", "--threads", "2"], hash, error));

@@ -15,6 +15,7 @@ internal static partial class CommandDispatcher
 {
     public static void Run(World w)
     {
+        ToolOpsPhase.Run(w);   // 1а: финалы дренажа по состоянию конца прошлого тика (player-tools.md §12)
         while (w.Commands.TryDequeue(out Command cmd))
         {
             Apply(w, in cmd);
@@ -90,6 +91,8 @@ internal static partial class CommandDispatcher
                 SetLaneFlags(w, in cmd);
                 break;
             case CommandKind.RemoveRoad:
+                RemoveRoad(w, in cmd);
+                break;
             case CommandKind.UpgradeRoad:
             case CommandKind.SplitRoad:
             case CommandKind.InsertBusStop:
@@ -135,9 +138,16 @@ internal static partial class CommandDispatcher
     {
         BuildRoadCmd b = cmd.BuildRoad;
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
+        if ((b.Flags & ~BuildRoadFlags.Supported) == 0 && b.RestoreOf.Generation != 0 && b.RestoreNodeA.Generation == 0 && b.RestoreNodeB.Generation == 0 &&
+            w.Net.ResolveSegment(in b.RestoreOf) && w.Ops.FindSegment(b.RestoreOf.Index) >= 0)
+        {
+            ReopenRoad(w, in cmd, b.RestoreOf.Index);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
+            return;
+        }
+
         if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || b.RestoreOf.Generation != 0 || b.RestoreNodeA.Generation != 0 || b.RestoreNodeB.Generation != 0)
         {
-            // AutoSplit / Curve / RestoreOf - T4, T5.
+            // AutoSplit / Curve (T5), пересоздание по RestoreOf (T8).
             Rejected(w, in cmd, RejectReason.NotSupported);
             return;
         }
@@ -471,7 +481,7 @@ internal static partial class CommandDispatcher
         if (fromLane)
         {
             ref readonly LaneData l = ref w.Net.Lanes[t.FromLane];
-            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length;
+            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length && (l.Flags & LaneFlags.Closed) == 0;
         }
 
         if (!zoneOk || (!fromZone && !fromLane) || (uint)t.VehicleType >= (uint)w.Types.Length || t.Count < 1)

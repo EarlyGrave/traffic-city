@@ -152,14 +152,13 @@ public class ToolPayloadSizesTests
         var seg = new EntityRef(0, 1);
         Command[] cmds =
         {
-            Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = seg }, 1),
-            Command.MakeUpgradeRoad(new UpgradeRoadCmd { Seg = seg }, 2),
-            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 3),
-            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 4),
-            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 5),
-            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 6),
-            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 7),
-            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 8),
+            Command.MakeUpgradeRoad(new UpgradeRoadCmd { Seg = seg }, 1),
+            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 2),
+            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 3),
+            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 4),
+            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 5),
+            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 6),
+            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 7),
         };
         foreach (Command c in cmds)
         {
@@ -170,7 +169,7 @@ public class ToolPayloadSizesTests
         int rejected = 0;
         foreach (SimEvent e in sim.Events)
         {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 8)
+            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 7)
             {
                 rejected++;
                 Assert.Equal((int)RejectReason.NotSupported, e.A);

@@ -72,7 +72,7 @@ internal static class Spawner
         for (int z = 0; z < net.ZoneCount; z++)
         {
             ref readonly ZoneData zd = ref net.Zones[z];
-            if (zd.SpawnLaneCount <= 0)
+            if (net.OpenZoneLaneCount(z) <= 0)   // 4.3, T4: полосы, закрытые дренажем, не считаются
             {
                 continue;
             }
@@ -175,7 +175,7 @@ internal static class Spawner
 
             from = pairs[pick].FromZone;
             to = pairs[pick].ToZone;
-            if ((uint)from >= (uint)net.ZoneCount || (uint)to >= (uint)net.ZoneCount || net.Zones[from].SpawnLaneCount <= 0)
+            if ((uint)from >= (uint)net.ZoneCount || (uint)to >= (uint)net.ZoneCount || net.OpenZoneLaneCount(from) <= 0)
             {
                 return false;
             }
@@ -202,8 +202,7 @@ internal static class Spawner
             }
         }
 
-        ref readonly ZoneData zf = ref net.Zones[from];
-        int lane = net.ZoneLanes[zf.FirstSpawnLane + (int)w.RngSpawn.NextBelow((uint)zf.SpawnLaneCount)];
+        int lane = net.OpenZoneLane(from, (int)w.RngSpawn.NextBelow((uint)net.OpenZoneLaneCount(from)));
         trip = new PendingTrip
         {
             FromZone = from,
@@ -253,7 +252,7 @@ internal static class Spawner
         for (int z = 0; z < zc; z++)
         {
             ref readonly ZoneData zd = ref net.Zones[z];
-            float v = zd.SpawnLaneCount > 0 && ClassMatches(in zd, originClass) ? zd.Weight : 0f;
+            float v = net.OpenZoneLaneCount(z) > 0 && ClassMatches(in zd, originClass) ? zd.Weight : 0f;
             wt[z] = v;
             total += v;
         }
@@ -274,7 +273,7 @@ internal static class Spawner
             {
                 ref readonly ZoneData zd = ref net.Zones[z];
                 float v = 0f;
-                if (z != from && zd.SpawnLaneCount > 0 && ClassMatches(in zd, destClass))
+                if (z != from && net.OpenZoneLaneCount(z) > 0 && ClassMatches(in zd, destClass))
                 {
                     float dx = zd.Center.X - c0.X;
                     float dz = zd.Center.Z - c0.Z;
@@ -425,6 +424,11 @@ internal static class Spawner
                 if (routeDirSeg >= 0 && RuleEnv.DirSegOf(net, lane) != routeDirSeg)
                 {
                     continue; // маршрут начинается с этого направленного сегмента: соседние полосы зоны на других сегментах не подходят
+                }
+
+                if (net.LaneClosed(lane))
+                {
+                    continue; // полоса закрыта дренажем (4.3, T4): въезд запрещён и для появления
                 }
 
                 if (TryPlace(w, in trip, in t, lane, s, z.IsExternal != 0))

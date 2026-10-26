@@ -183,4 +183,42 @@ internal static class ToolsFixture
         LanesBA = (byte)lanes,
         Kind = RoadKind.Street,
     };
+
+    // Самый загруженный сегмент без остановок: на нём машин больше всего (снос заведомо ждёт).
+    public static int BusiestSegment(Simulation sim)
+    {
+        World w = sim.World;
+        NetworkStore n = w.Net;
+        int best = -1;
+        int bestCount = -1;
+        for (int s = 0; s < n.SegmentCount; s++)
+        {
+            if (!n.SegmentAlive(s) || HasStop(n, s))
+            {
+                continue;
+            }
+
+            int c = ToolOpsPhase.CountOn(w, s);
+            if (c > bestCount)
+            {
+                bestCount = c;
+                best = s;
+            }
+        }
+
+        return best;
+    }
+
+    public static bool HasStop(NetworkStore n, int seg)
+    {
+        for (int i = 0; i < n.BusStopCount; i++)
+        {
+            if (n.BusStopAlive(i) && n.Lanes[n.BusStops[i].Lane].Segment == seg)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

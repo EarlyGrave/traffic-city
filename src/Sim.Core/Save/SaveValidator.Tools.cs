@@ -82,6 +82,12 @@ internal static partial class SaveValidator
             }
         }
 
+        st = ValidateOps(c, w, n);
+        if (st != LoadStatus.Ok)
+        {
+            return st;
+        }
+
         if (n.ToolsTouched == 0 && (n.AliveNodes != n.NodeCount || n.AliveSegments != n.SegmentCount || n.AliveBusStops != n.BusStopCount || n.AliveBusRoutes != n.BusRouteCount))
         {
             return Bad(c, 0, 13);   // дыры в сети, не отмеченной правками
@@ -100,6 +106,44 @@ internal static partial class SaveValidator
                 w.Connectors.Conflicts[i].SOtherCm == 0 && w.Connectors.Conflicts[i].Reserved == 0))
         {
             return Bad(c, 0, 22);
+        }
+
+        return LoadStatus.Ok;
+    }
+
+    /// <summary>
+    /// Операции дренажа (T4): без правок их нет, <c>NextId = 1</c>; id строго растут и меньше <c>NextId</c>; цель - живой сегмент того же поколения в состоянии «закрывается»,
+    /// по одной операции на сегмент; каждый закрывающийся сегмент имеет операцию.
+    /// </summary>
+    private static LoadStatus ValidateOps(LoadContext c, World w, NetworkStore n)
+    {
+        ToolOps ops = w.Ops;
+        if (ops.Count < 0 || ops.Count > ops.Capacity || ops.NextId < 1 || (n.ToolsTouched == 0 && (ops.Count != 0 || ops.NextId != 1)))
+        {
+            return Bad(c, 0, 50);
+        }
+
+        int prev = 0;
+        for (int k = 0; k < ops.Count; k++)
+        {
+            int seg = ops.TargetIndex[k];
+            if (ops.Id[k] <= prev || ops.Id[k] >= ops.NextId || ops.Kind[k] != (byte)ToolOpKind.RemoveSegment || (ops.Flags[k] & ~ToolOpFlags.KeepNodes) != 0 ||
+                !n.ResolveSegment(seg, ops.TargetGen[k]) || ops.TargetGen[k] == 0 || (n.Segments[seg].Flags & SegmentFlags.Closing) == 0 ||
+                ops.FindSegment(seg) != k || ops.StartTick[k] > w.Tick || ops.LastProgressTick[k] < ops.StartTick[k] || ops.LastProgressTick[k] > w.Tick ||
+                ops.LastStallTick[k] < ops.StartTick[k] || ops.LastStallTick[k] > w.Tick || ops.BestRemaining[k] < 0)
+            {
+                return Bad(c, k, 51);
+            }
+
+            prev = ops.Id[k];
+        }
+
+        for (int s = 0; s < n.SegmentCount; s++)
+        {
+            if (n.SegmentAlive(s) && (n.Segments[s].Flags & SegmentFlags.Closing) != 0 && ops.FindSegment(s) < 0)
+            {
+                return Bad(c, s, 52);
+            }
         }
 
         return LoadStatus.Ok;

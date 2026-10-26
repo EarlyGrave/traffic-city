@@ -401,15 +401,14 @@ internal static class RoutePhase
             int fromZone = t.FromZone;
             if (t.FromLane < 0)
             {
-                if ((uint)fromZone >= (uint)net.ZoneCount || net.Zones[fromZone].SpawnLaneCount <= 0)
+                if ((uint)fromZone >= (uint)net.ZoneCount || net.OpenZoneLaneCount(fromZone) <= 0)
                 {
                     trips.Set(k, in t);
                     k++;
                     continue;
                 }
 
-                ref readonly ZoneData z = ref net.Zones[fromZone];
-                t.FromLane = net.ZoneLanes[z.FirstSpawnLane + (int)((w.Tick + t.ToZone) % z.SpawnLaneCount)];
+                t.FromLane = net.OpenZoneLane(fromZone, (int)((w.Tick + t.ToZone) % net.OpenZoneLaneCount(fromZone)));
             }
 
             if (!budget.Has(rt))

@@ -110,6 +110,12 @@ internal sealed class OverlaySearcher
         int goal = RouteGraph.DirSegOfLane(_net, destLane);
         float segLen = _net.Segments[u0 >> 1].Length;
         float frac = segLen > 0f ? Math.Clamp(startS / segLen, 0f, 1f) : 0f;
+        float c0 = _g.SegCost[u0];
+        if (!float.IsFinite(c0))
+        {
+            c0 = 0f;   // стартовый сегмент закрыт дренажем (4.3, T4): машина уже на нём, цена остатка не должна делать все пути бесконечными
+        }
+
         if (u0 == goal)
         {
             if (startS > destS || plan.Length < 1)
@@ -119,12 +125,12 @@ internal sealed class OverlaySearcher
 
             plan[0] = u0;
             planLen = 1;
-            PlanCost = _g.SegCost[u0] * Math.Max(0f, (destS - startS) / Math.Max(segLen, 1e-3f));
+            PlanCost = c0 * Math.Max(0f, (destS - startS) / Math.Max(segLen, 1e-3f));
             Queries++;
             return SearchStatus.Found;
         }
 
-        return Search(u0, _g.SegCost[u0] * (1f - frac), goal, plan, out planLen);
+        return Search(u0, c0 * (1f - frac), goal, plan, out planLen);
     }
 
     /// <summary>
@@ -435,9 +441,9 @@ internal sealed class OverlaySearcher
 
     private void Relax(int w, float ng, int parent, byte level, uint id, Vec2 goalPos, float invV)
     {
-        if (_closed[w] == id)
+        if (_closed[w] == id || float.IsPositiveInfinity(ng))
         {
-            return;
+            return;   // закрытые дренажем сегменты (SegCost +inf, 4.3 T4) и пути через них не раскрываются
         }
 
         if (_seen[w] == id && ng >= _gs[w])

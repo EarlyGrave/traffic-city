@@ -108,6 +108,76 @@ internal static partial class CommandDispatcher
     }
 
     /// <summary>
+    /// <c>RemoveRoad</c> (дренаж, player-tools.md §4.3): сегмент закрывается для въезда (<c>SegmentClosure.Close</c>), заводится операция; удаление - в фазе 1а, когда он опустеет.
+    /// Цель уже закрывается - <c>Busy</c> (отмена - <c>BuildRoad(RestoreOf)</c>); остановка автобуса на сегменте - <c>NotSupported</c> до T9; Q-meso - <c>NotSupported</c>.
+    /// </summary>
+    private static void RemoveRoad(World w, in Command cmd)
+    {
+        RemoveRoadCmd c = cmd.RemoveRoad;
+        if ((c.Flags & ~1) != 0)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        if (!CheckEntity(w, in cmd, EntityKind.Segment, in c.Seg))
+        {
+            return;
+        }
+
+        NetworkStore n = w.Net;
+        int seg = c.Seg.Index;
+        if ((n.Segments[seg].Flags & SegmentFlags.Closing) != 0)
+        {
+            Rejected(w, in cmd, RejectReason.Busy);
+            return;
+        }
+
+        if (w.Queue != null || HasBusStop(n, seg))
+        {
+            Rejected(w, in cmd, RejectReason.NotSupported);
+            return;
+        }
+
+        if (w.Ops.Count >= w.Ops.Capacity)
+        {
+            Rejected(w, in cmd, RejectReason.Capacity);
+            return;
+        }
+
+        n.ToolsTouched = 1;
+        w.Ops.TryAdd(ToolOpKind.RemoveSegment, seg, n.Segments[seg].Generation, (byte)(c.Flags & 1), w.Tick, ToolOpsPhase.CountOn(w, seg), out _);
+        SegmentClosure.Close(w, seg, cmd.Tag);
+        NetworkEdit.RefreshDerived(w, pedsChanged: false);
+        w.Work.ToolOpsStarted++;
+        w.Work.ToolCommandsApplied++;
+        Applied(w, in cmd);
+    }
+
+    /// <summary>Отмена сноса: сегмент открывается, операция снимается (граф и оверлей пересчитываются: вес снова конечный).</summary>
+    private static void ReopenRoad(World w, in Command cmd, int seg)
+    {
+        SegmentClosure.Reopen(w, seg);
+        w.Ops.RemoveAt(w.Ops.FindSegment(seg));
+        NetworkEdit.RefreshDerived(w, pedsChanged: false);
+        w.Work.ToolCommandsApplied++;
+        Applied(w, in cmd);
+    }
+
+    private static bool HasBusStop(NetworkStore n, int seg)
+    {
+        for (int s = 0; s < n.BusStopCount; s++)
+        {
+            if (n.BusStopAlive(s) && n.BusStops[s].Lane >= 0 && n.Lanes[n.BusStops[s].Lane].Segment == seg)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// <c>SetLaneFlags</c> (на месте): биты <c>BusOnly</c>, <c>NoLaneChangeOut</c> полосы <c>LaneNo</c> направления <c>Dir</c> сегмента по маске <c>Mask</c>
     /// (<c>Closed/Draining</c> ставит только ядро при закрытии). Читает MOBIL (<c>Mobil.Evaluate</c>).
     /// </summary>

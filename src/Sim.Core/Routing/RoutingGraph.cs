@@ -196,6 +196,14 @@ internal sealed class RouteGraph
                 continue;
             }
 
+            if ((sd.Flags & SegmentFlags.Closing) != 0)
+            {
+                // Закрыт дренажем (4.3, T4): вес +inf, A* и кастомизация оверлея его не раскрывают.
+                SegCost[s * 2] = float.PositiveInfinity;
+                SegCost[(s * 2) + 1] = float.PositiveInfinity;
+                continue;
+            }
+
             float ratio = Math.Clamp(loads[s].SpeedRatio, MinSpeedRatio, 1f);
             float cost = sd.Length / (sd.SpeedLimit * ratio);
             SegCost[s * 2] = cost;
@@ -239,7 +247,7 @@ internal sealed class RouteGraph
                 StartNode[u] = a;
                 EndNode[u] = b;
                 EndPos[u] = n.Nodes[b].Position;
-                SegCost[u] = sd.Length / sd.SpeedLimit;
+                SegCost[u] = (sd.Flags & SegmentFlags.Closing) != 0 ? float.PositiveInfinity : sd.Length / sd.SpeedLimit;
             }
         }
 

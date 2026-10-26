@@ -388,7 +388,7 @@ public enum CommandKind : int
     // 13..22 заняты планом инструментов (`player-tools.md` §1)
     PaintZone = 23,             // 3.2, ADR-0011: зона на участках в прямоугольнике {X0,Z0,X1,Z1, ZoneKind, Density} (20 Б); Z1 - NotSupported (заглушка `Zoning.Apply`), тело - Z6
     SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate на границе суток; Z1 - NotSupported (заглушка `AggregateExec.ApplySwitch`), тело - Z5
-    // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера; T3: 28-30 работают; остальные - NotSupported до T4..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
+    // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера; T3: 28-30, T4: 25 и отмена `BuildRoad(RestoreOf)` работают; остальные - NotSupported до T5..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
     RemoveRoad = 25, UpgradeRoad = 26, SplitRoad = 27, SetArmControl = 28, SetTurnBan = 29, SetLaneFlags = 30,
     InsertBusStop = 31, RemoveBusStop = 32, RemoveBusRoute = 33, SetBusRouteParams = 34, MergeAtNode = 35,
 }
@@ -498,6 +498,10 @@ public struct SetNodeControlCmd { public int Node; public NodeControl Control; }
 - **`SetTurnBan` {Node, FromArm, ToArm, Banned}** (перестройка узла): запрет манёвра рукав -> рукав (слоты 0..7; `FromArm == ToArm` - разворот). Запрет, оставляющий входную полосу,
   у которой были выезды, без выезда, - `CreatesTrap`; занятый исчезающий connector - `Busy`. Запрет хранится в `NodeData.TurnBan` по слотам и переносится при перестройке по сегментам рукавов.
 - **`SetLaneFlags` {Seg, Dir, LaneNo, Flags, Mask}** (на месте): биты `BusOnly`/`NoLaneChangeOut` по маске; `Closed/Draining` ядро ставит само (в маске - `InvalidArgument`). Читает MOBIL.
+- **`RemoveRoad` {Seg, Flags}** (дренаж, T4; `player-tools.md` §4.3): сегмент закрывается для въезда (`SegmentClosing`), заводится операция (`Simulation.ToolOps`: `Id`, цель, `Remaining`, `StartTick`), удаление - в фазе 1а, когда сегмент и его connector'ы
+  опустеют (`SegmentRemoved`, `NodeRemoved` для осиротевших узлов без `Flags` бит0 `KeepNodes`, `ToolOpFinished`). Машины и пешеходы не удаляются; застрявший дренаж - `DrainStalled(id, Remaining)` раз в 60 с, цель остаётся закрытой.
+  Отказы: `InvalidHandle`, `Busy` (уже закрывается), `NotSupported` (остановка автобуса на сегменте - до T9; Q-meso), `Capacity` (256 операций), `InvalidArgument` (неизвестные биты `Flags`). Отмена: `BuildRoad` с `RestoreOf` = handle закрывающегося сегмента переоткрывает его.
+  Клиент: закрывающийся сегмент (`SegmentData.Flags` бит0, полосы `Closed`) рисовать «перекрыто»; после финала слот сегмента мёртв (`Generation` чётное).
 - Метрики инструментов (`SimWork.NodeRebuilds`, `ToolCommandsApplied`, ...) - вне хэша и сейва.
 
 ## 5. Снапшоты

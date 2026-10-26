@@ -23,13 +23,13 @@ internal static class Destinations
             return false;
         }
 
-        ref readonly ZoneData z = ref net.Zones[zone];
-        if (z.SpawnLaneCount <= 0)
+        int open = net.OpenZoneLaneCount(zone);   // 4.3, T4: полосы, закрытые дренажем, не годятся; у сети без правок это SpawnLaneCount
+        if (open <= 0)
         {
             return false;
         }
 
-        int spawn = net.ZoneLanes[z.FirstSpawnLane + (int)rng.NextBelow((uint)z.SpawnLaneCount)];
+        int spawn = net.OpenZoneLane(zone, (int)rng.NextBelow((uint)open));
         lane = OppositeLane(net, spawn);
         s = net.Lanes[lane].Length * ArrivalFraction;
         return true;

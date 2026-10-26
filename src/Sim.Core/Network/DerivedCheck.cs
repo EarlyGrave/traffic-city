@@ -493,6 +493,11 @@ internal static class DerivedCheck
     private static string? Window(World w, int slot, int owner)
     {
         Routing.RouteStore rs = w.Routes;
+        if (!float.IsFinite(rs.PlanCost[slot]) || rs.PlanCap[slot] < rs.PlanCount[slot] || (long)rs.PlanFirst[slot] + rs.PlanCap[slot] > rs.PlanUsed)
+        {
+            return $"маршрут {slot} (владелец {owner}): PlanCost {rs.PlanCost[slot]}, план {rs.PlanFirst[slot]}+{rs.PlanCap[slot]}/{rs.PlanCount[slot]}, занято {rs.PlanUsed}";
+        }
+
         for (int s = 0; s < rs.WinCount[slot]; s++)
         {
             string? bad = LaneRef(w.Net, $"ROUT.WinLane[{slot}][{s}] (владелец {owner})", rs.Window[(slot * rs.WindowSteps) + s].Lane);
