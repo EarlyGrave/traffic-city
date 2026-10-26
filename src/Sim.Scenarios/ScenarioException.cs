@@ -1,4 +1,5 @@
 using System;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Scenarios;
 
@@ -10,8 +11,17 @@ public sealed class ScenarioException : Exception
     {
     }
 
+    public ScenarioException(string message, ModError? code)
+        : base(message)
+    {
+        ModCode = code;
+    }
+
     public ScenarioException(string message, Exception inner)
         : base(message, inner)
     {
     }
+
+    /// <summary>Код ошибки пакетов/контента (modding.md §9) или <c>null</c> для ошибок формата сценария.</summary>
+    public ModError? ModCode { get; }
 }

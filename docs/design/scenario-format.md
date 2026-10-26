@@ -369,7 +369,24 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 `activity_s = [30, 120]` (пешие поездки короче 20 минут, а при стандартных 10–30 мин покоя готовых жителей не хватает, чтобы держать `count` активных; с автобусными ногами P4 баланс можно вернуть к дефолту), `max_peds`
 = `1.3 · count`, `max_residents` = `residents`, `max_ped_path_steps` = 64; остальное — как у `s1k.json`/`s10k.json`.
 
+### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
+
+Загрузчик принимает 2 и 3. Отличия v3 от v2:
+- `"packages": ["base", ...]` обязателен; ключ `vehicle_types_file` в v3 — ошибка `UnknownKey`. Типы ТС берутся из каталога
+  набора пакетов (`content/<id>/vehicles.json`) в порядке загрузки пакетов, `ScenarioDesc.VehicleTypes` — весь каталог
+  (`base`: `car` = 0, `bus` = 1).
+- Ссылки на типы — полные id (`base:vehicle/car`) или сокращение `vehicle/car` (ищется в `base`) в `vehicles.type_mix` и
+  `transit.bus_type`. Дефолты: `type_mix` — тип 0 набора, `bus_type` — `base:vehicle/bus`.
+  Пакет вне набора — `UndeclaredDependency`, нет ассета — `UnknownAssetRef`.
+- `city.road_assets` (`street`/`arterial` → id типа дороги) пока только проверяется.
+- Остальные секции (включая `peds`) без изменений: сценарий v3 даёт тот же `ScenarioDesc`, что v2 (приёмка M2).
+- `scenarios/s1k-v3.json`, `s10k-v3.json` — копии для тестов `BasePackageGoldenTests`; остальные файлы остаются v2.
+  Сценарий v2 на встроенных типах поднимается чистой функцией `FormatUpgrades.ScenarioV2ToV3` (в загрузчик она не встроена).
+- Каталоги пакетов: `ScenarioLoader.LoadInfo(path, searchDirs)`; по умолчанию — `content/` от корня репозитория.
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
+
+В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.
 
 ```json
 {

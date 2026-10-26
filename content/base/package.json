@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "id": "base",
+  "version": "1.0.0",
+  "content_format": 1,
+  "title": "Base game content",
+  "content": {
+    "vehicles": ["vehicles.json"],
+    "roads": ["roads.json"]
+  }
+}
