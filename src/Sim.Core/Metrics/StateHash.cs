@@ -149,6 +149,21 @@ internal static class StateHash
             }
         }
 
+        // 5c. Пешеходная фаза светофоров (pedestrians.md §6): только при peds (hash_version 2), у прежних сценариев секции нет.
+        if (w.Peds != null)
+        {
+            for (int s = 0; s < w.SignalCount; s++)
+            {
+                for (int k = 0; k < SignalStore.XSlots; k++)
+                {
+                    h.Add((int)sg.XWalkLeft[(s * SignalStore.XSlots) + k]);
+                    h.Add((int)sg.XClearLeft[(s * SignalStore.XSlots) + k]);
+                }
+
+                h.Add((int)sg.XServed[s]);
+            }
+        }
+
         // 6. Transit.
         for (int s = 0; s < w.Net.BusStopCount; s++)
         {

@@ -520,7 +520,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 334);
             }
 
-            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Tie)
+            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Ped)
             {
                 return Bad(c, i, 340);
             }

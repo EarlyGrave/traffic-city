@@ -217,7 +217,7 @@ internal static class CommandDispatcher
         // 2.5: нулевые параметры Adaptive/стрелки -> дефолты RulesDesc; затем проверка (для Adaptive - с инвариантом красного, intersections.md 5.6).
         int axes = w.Signals.PhaseCount[nd.Signal];
         SetSignalPlanCmd resolved = SignalStore.Resolve(in p, axes, in w.Rules);
-        if (!SignalStore.IsValid(in resolved, axes, enforceRed: true))
+        if (!SignalStore.IsValid(in resolved, axes, enforceRed: true, pedGreenTicks: Sim.Core.Peds.PedSignals.CoordMinGreenTicks(w, p.Node)))
         {
             Rejected(w, in cmd, RejectReason.InvalidArgument);
             return;

@@ -29,6 +29,7 @@ internal static class BehaviourPhase
     {
         BehaviourJob job = w.Behaviour;
         job.Prepare(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, w.Connectors, w.Gate.NodeBusy);
+        job.PrepareCross(w.Peds?.X, w.Peds?.Net);
         if (w.Lod != null)
         {
             job.PrepareLod(w.Lod.LaneColor, w.LodCfg.MesoHeadwayScale, w.LodCfg.MesoAccelScale);
@@ -104,6 +105,15 @@ internal sealed partial class BehaviourJob : IRangeJob
     private byte[] _laneColor = Array.Empty<byte>();     // LodCells.LaneColor (meso, MesoBehaviour.cs)
     private float _mesoHeadwayScale = 1f;
     private float _mesoAccelScale = 1f;
+    private Peds.CrossingState? _xs;                     // состояние переходов (pedestrians.md §5.6); null - пешеходов нет
+    private Peds.PedNetwork? _pn;
+
+    /// <summary>Задаёт переходы (null без <c>peds</c>) к текущему тику: препятствия закрытых переходов на перегоне.</summary>
+    public void PrepareCross(Peds.CrossingState? xs, Peds.PedNetwork? pn)
+    {
+        _xs = xs;
+        _pn = pn;
+    }
 
     public BehaviourJob(int workers)
     {
@@ -232,6 +242,18 @@ internal sealed partial class BehaviourJob : IRangeJob
         {
             obstacleCalls++;
             gateGap = GateRules.ObstacleGap(net, v, e.Occ, _connectors, _nodeBusy, ref work, v.S, i, t.ComfortDecel, out beyondDecision, out gateSpeed);
+        }
+
+        if (_xs != null)
+        {
+            float cg = Peds.PedRules.MidblockGap(net, _pn!, _xs, v.Lane[i], v.S[i], vi, t.ComfortDecel);
+            if (cg < gateGap)
+            {
+                gateGap = cg;
+                gateSpeed = 0f;
+                beyondDecision = false;
+                v.ClampFlags[i] |= IntegratePhase.ClampCross;
+            }
         }
 
         v.ClampGateGap[i] = gateGap;

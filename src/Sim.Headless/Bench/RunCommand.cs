@@ -72,7 +72,7 @@ public static class RunCommand
         SimCounters c = sim.Counters;
         string veh = string.Create(
             CultureInfo.InvariantCulture,
-            $"tick={sim.Tick} vehicles={c.ActiveVehicles} stuck={c.StuckVehicles} trips={c.TripsCompleted} gridlock={c.GridlockFlag}");
+            $"tick={sim.Tick} vehicles={c.ActiveVehicles} stuck={c.StuckVehicles} stuck_events={c.StuckEventsTotal} trips={c.TripsCompleted} gridlock={c.GridlockFlag}");
         if (!sim.HasPeds)
         {
             return veh;
@@ -81,6 +81,10 @@ public static class RunCommand
         return veh + string.Create(
             CultureInfo.InvariantCulture,
             $" | peds={c.PedActive} residents={sim.ResidentCount} spawned={c.PedSpawned} ped_trips={c.PedTripsCompleted} no_path={c.PedNoPath} " +
-            $"path_queries={c.PedPathQueries} alloc_failed={c.PedAllocFailed} ped_stuck={c.PedStuckEvents} net_resets={c.PedNetResets}");
+            $"path_queries={c.PedPathQueries} alloc_failed={c.PedAllocFailed} ped_stuck={c.PedStuckEvents} net_resets={c.PedNetResets} " +
+            $"cross_releases={c.PedCrossReleases} cross_wait_mean_s={(c.PedCrossReleases > 0 ? c.PedCrossWaitTicksTotal / 20.0 / c.PedCrossReleases : 0):F2} " +
+            $"car_cross_delay_s_per_veh_h={(c.VehicleTicksTotal > 0 ? c.CarCrossDelayTicks / (double)c.VehicleTicksTotal * 3600.0 : 0):F1} grants_revoked_ped={c.GrantsRevokedPed} crossing_closed_share={(c.CrossingObservedTicks > 0 ? (double)c.CrossingClosedTicks / c.CrossingObservedTicks : 0):F3} " +
+            $"boardings={c.PedStopBoardings} alighted={c.BusPassengersAlighted} mode_fallback={c.PedModeFallback} " +
+            $"stop_wait_mean_s={(c.PedStopBoardings > 0 ? c.PedStopWaitTicksTotal * 0.05 / c.PedStopBoardings : 0.0):F1}");
     }
 }

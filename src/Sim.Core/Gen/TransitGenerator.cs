@@ -135,9 +135,127 @@ internal static class TransitGenerator
             store.RouteCount++;
         }
 
+        if (transit.Bidirectional)
+        {
+            CreateStatus bs = AddReverseRoutes(net, store, ref result);
+            if (bs != CreateStatus.Ok)
+            {
+                return bs;
+            }
+        }
+
         result.Routes = store.RouteCount;
         result.Stops = store.StopCount;
         return CreateStatus.Ok;
+    }
+
+    /// <summary>
+    /// <c>transit.bidirectional</c> (pedestrians.md §17 п. 3): к каждому из <c>n</c> прямых маршрутов добавляется парный обратный (индекс <c>n + r</c>) - те же сегменты и остановки
+    /// в обратном порядке на встречной полосе (<c>S' = Len - S</c>, тот же вид остановки). Прямые маршруты и поток PRNG не меняются. Если на каком-то сегменте нет встречной
+    /// полосы, обратный маршрут пропускается (<c>RoutesFailed++</c>); не хватает ёмкости - <c>InvalidTransit</c>.
+    /// </summary>
+    private static CreateStatus AddReverseRoutes(NetworkStore net, GenTransit store, ref TransitGenResult result)
+    {
+        int fwd = store.RouteCount;
+        for (int r = 0; r < fwd; r++)
+        {
+            ref readonly BusRouteData br = ref store.Routes[r];
+            int n = br.StopCount;
+            bool ok = n >= 2;
+            for (int k = 0; k < n && ok; k++)
+            {
+                ref readonly BusStopData st = ref store.Stops[br.FirstStop + k];
+                ok = OppositeLane(net, st.Lane) >= 0;
+            }
+
+            if (!ok)
+            {
+                result.RoutesFailed++;
+                continue;
+            }
+
+            if (store.RouteCount >= store.Routes.Length || store.StopCount + n > store.Stops.Length)
+            {
+                return CreateStatus.InvalidTransit;
+            }
+
+            int pc = store.PathCount[r];
+            if (store.PathUsed + pc > store.PathSeg.Length)
+            {
+                int newLen = Math.Max(store.PathSeg.Length * 2, store.PathUsed + pc);
+                Array.Resize(ref store.PathSeg, newLen);
+                Array.Resize(ref store.PathDir, newLen);
+            }
+
+            int ri = store.RouteCount;
+            int first = store.StopCount;
+            for (int k = n - 1; k >= 0; k--)
+            {
+                BusStopData st = store.Stops[br.FirstStop + k];
+                int opp = OppositeLane(net, st.Lane);
+                float len = net.Segments[net.Lanes[st.Lane].Segment].Length;
+                st.Lane = opp;
+                st.S = MathF.Max(0f, len - st.S);
+                st.Route = ri;
+                st.Waiting = 0;
+                st.LastArrivalTick = -1;
+                st.LastDepartTick = -1;
+                int idx = store.StopCount++;
+                store.Stops[idx] = st;
+                store.RouteStops[idx] = idx;
+                if (st.Kind == BusStopKind.Bay)
+                {
+                    result.BayStops++;
+                }
+                else
+                {
+                    result.CurbStops++;
+                }
+            }
+
+            int pf = store.PathFirst[r];
+            for (int k = 0; k < pc; k++)
+            {
+                store.PathSeg[store.PathUsed + k] = store.PathSeg[pf + pc - 1 - k];
+                store.PathDir[store.PathUsed + k] = (byte)(1 - store.PathDir[pf + pc - 1 - k]);
+            }
+
+            store.PathFirst[ri] = store.PathUsed;
+            store.PathCount[ri] = pc;
+            store.PathUsed += pc;
+            store.Routes[ri] = new BusRouteData
+            {
+                FirstStop = first,
+                StopCount = n,
+                HeadwayTicks = br.HeadwayTicks,
+                VehicleType = br.VehicleType,
+                ActiveBuses = 0,
+                LastDispatchTick = -1,
+                Generation = 1,
+            };
+            store.RouteCount++;
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    /// <summary>Встречная полоса того же сегмента с тем же номером от правого края или -1 (нет встречных полос).</summary>
+    private static int OppositeLane(NetworkStore net, int lane)
+    {
+        ref readonly LaneData ld = ref net.Lanes[lane];
+        if (ld.Segment < 0)
+        {
+            return -1;
+        }
+
+        ref readonly SegmentData sd = ref net.Segments[ld.Segment];
+        int count = ld.Direction == 0 ? sd.LanesBA : sd.LanesAB;
+        if (count <= 0)
+        {
+            return -1;
+        }
+
+        return (ld.Direction == 0 ? sd.FirstLaneBA : sd.FirstLaneAB) + Math.Min(ld.LaneNo, count - 1);
     }
 
     private static int PlaceStops(

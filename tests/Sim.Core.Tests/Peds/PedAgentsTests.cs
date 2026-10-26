@@ -15,9 +15,9 @@ namespace Sim.Core.Tests.Peds;
 public sealed class PedAgentsTests
 {
     /// <summary>Малый город (WorldSaveFixtures.Small) с пешеходами: быстрые циклы «дом - работа» (активность 5-20 с), чтобы событий было много.</summary>
-    private static ScenarioDesc Desc(int count = 300, int residents = 600, int rampTicks = 200)
+    private static ScenarioDesc Desc(int count = 300, int residents = 600, int rampTicks = 200, bool buses = true)
     {
-        ScenarioDesc d = WorldSaveFixtures.Small();
+        ScenarioDesc d = WorldSaveFixtures.Small(buses);
         d.Peds = new PedDesc
         {
             Enabled = true,
@@ -55,19 +55,20 @@ public sealed class PedAgentsTests
     }
 
     [Fact]
-    public void PedsEnabled_DoesNotChangeVehicles()
+    public void PedsEnabled_VehiclesStillFlow_PedestriansOnlyDelayThem()
     {
-        ScenarioDesc plain = WorldSaveFixtures.Small();
-        ScenarioDesc withPeds = Desc();
+        // Начиная с P3 переходы влияют на машины (pedestrians.md §5): состояние машин уже не равно состоянию без пешеходов, но поток сохраняется.
+        // Без автобусов: с ними пассажиры-агенты меняют стоянки (P4).
+        ScenarioDesc plain = WorldSaveFixtures.Small(buses: false);
+        ScenarioDesc withPeds = Desc(buses: false);
         using Simulation a = Make(in plain);
         using Simulation b = Make(in withPeds);
         a.Step(900);
         b.Step(900);
         Assert.True(b.ActivePedCount > 0);
-        Assert.True(a.Vehicles.SequenceEqual(b.Vehicles), "машины не должны зависеть от прозрачных пешеходов (P2)");
         Assert.Equal(a.Counters.VehiclesSpawned, b.Counters.VehiclesSpawned);
-        Assert.Equal(a.Counters.TripsCompleted, b.Counters.TripsCompleted);
-        Assert.Equal(a.Counters.DistanceTotalMm, b.Counters.DistanceTotalMm);
+        Assert.True(b.Counters.TripsCompleted * 10 >= a.Counters.TripsCompleted * 7, $"trips {b.Counters.TripsCompleted} против {a.Counters.TripsCompleted}");
+        Assert.Equal(0, b.Counters.StuckVehicles);
     }
 
     // ------------------------------------------------------------ кинематика и события
@@ -97,6 +98,8 @@ public sealed class PedAgentsTests
         pw.R.WorkEdge[0] = e;
         pw.R.WorkSMm[0] = len;
         pw.R.ReadyTick[0] = 5;
+        pw.R.ModeOut[0] = 0;   // нога пешая, даже если Create выбрал автобус
+        pw.R.ModeBack[0] = 0;
         pw.Wheel.Clear();
         pw.Wheel.Schedule(pw.P.Capacity, 5, -1);
 

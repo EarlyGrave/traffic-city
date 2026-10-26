@@ -98,6 +98,14 @@ internal sealed class SignalStore
     public readonly ushort[] XClearLeft;     // [c * XSlots] осталось тиков Clear
     public readonly byte[] XServed;          // [c] маска переходов, обслуженных в этом зелёном
 
+    // ---- статика пешеходной фазы (производное от сети и PhaseMask, вне хэша и сейва; PedSignals.EnsureTables) ----
+    public readonly byte[] SigXCount;        // [c] переходов узла слота (<= XSlots)
+    public readonly int[] SigXIdx;           // [c * XSlots] индекс перехода (слот рукава)
+    public readonly sbyte[] SigXAxis;        // [c * XSlots] ось, в зелёном которой переход обслуживается (-1: нет встречной оси)
+    public readonly ushort[] SigXClear;      // [c * XSlots] длительность Clear, тики
+    public int SigXVersion = -1;             // NetworkStore.Version, для которой собраны таблицы
+    public int SigXBuiltCount = -1;
+
     private readonly int _defaultArrowGap;
 
     public SignalStore(int capacity, int arrowGapTicks = DefaultArrowGapTicks)
@@ -152,6 +160,10 @@ internal sealed class SignalStore
         XWalkLeft = new ushort[c * XSlots];
         XClearLeft = new ushort[c * XSlots];
         XServed = new byte[c];
+        SigXCount = new byte[c];
+        SigXIdx = new int[c * XSlots];
+        SigXAxis = new sbyte[c * XSlots];
+        SigXClear = new ushort[c * XSlots];
     }
 
     public static ushort GreenOf(in SetSignalPlanCmd p, int k) => k switch
@@ -310,7 +322,7 @@ internal sealed class SignalStore
     /// Adaptive - ещё 1 &lt;= MinGreen &lt;= MaxGreen_k, Gap &gt;= 1, ArrowMin &lt;= ArrowMax, <c>CycleTicks == 0</c> (координация - S3) и при
     /// <paramref name="enforceRed"/> инвариант красного (5.6). Для Off/FlashYellow параметры цикла не проверяются.
     /// </summary>
-    public static bool IsValid(in SetSignalPlanCmd p, int axes, bool enforceRed = false)
+    public static bool IsValid(in SetSignalPlanCmd p, int axes, bool enforceRed = false, int pedGreenTicks = 0)
     {
         if (p.Mode == SignalMode.Off || p.Mode == SignalMode.FlashYellow)
         {
@@ -355,7 +367,7 @@ internal sealed class SignalStore
         {
             // Координация (6.7): 2 оси, C чётное, окно C/2 вмещает MinGreen, стрелку и два перехода. Инвариант красного даёт каркас окон, отдельно не проверяется.
             int arrowMax = arrows ? p.ArrowMaxTicks : 0;
-            return axes == 2 && (p.CycleTicks & 1) == 0 && (p.CycleTicks / 2) >= p.MinGreenTicks + arrowMax + (2 * yar) && MinGreenFits(in p, axes);
+            return axes == 2 && (p.CycleTicks & 1) == 0 && (p.CycleTicks / 2) >= Math.Max((int)p.MinGreenTicks, pedGreenTicks) + arrowMax + (2 * yar) && MinGreenFits(in p, axes);
         }
 
         for (int k = 0; k < axes; k++)
@@ -419,6 +431,13 @@ internal sealed class SignalStore
         CycleTicks[slot] = p.CycleTicks;
         Flags[slot] = p.Flags;
         Machine[slot] = 0;
+        XServed[slot] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(slot * XSlots) + j] = 0;
+            XClearLeft[(slot * XSlots) + j] = 0;
+        }
+
         if (p.Mode == SignalMode.Fixed || p.Mode == SignalMode.Adaptive)
         {
             for (int k = 0; k < MaxPhases; k++)
@@ -668,6 +687,14 @@ internal sealed class SignalStore
 
         BuildStatics(w, slot, node);
         ApplyPlan(slot, in resolved, w.Tick);
+        XServed[slot] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(slot * XSlots) + j] = 0;
+            XClearLeft[(slot * XSlots) + j] = 0;
+        }
+
+        SigXVersion = -1;
         w.Net.Nodes[node].Signal = slot;
         w.SignalCount = Count;
         return true;
@@ -866,6 +893,14 @@ internal sealed class SignalStore
         Count = last;
         w.SignalCount = Count;
         w.SignalStates[last] = default;
+        XServed[last] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(last * XSlots) + j] = 0;
+            XClearLeft[(last * XSlots) + j] = 0;
+        }
+
+        SigXVersion = -1;
     }
 
     private void CopySlot(int dst, int src)
@@ -898,6 +933,14 @@ internal sealed class SignalStore
         GreenElapsed[dst] = GreenElapsed[src];
         GapLeft[dst] = GapLeft[src];
         SpillTicks[dst] = SpillTicks[src];
+        XServed[dst] = XServed[src];
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(dst * XSlots) + j] = XWalkLeft[(src * XSlots) + j];
+            XClearLeft[(dst * XSlots) + j] = XClearLeft[(src * XSlots) + j];
+        }
+
+        SigXVersion = -1;   // таблицы пешеходной фазы пересоберутся
         HasArrow[dst] = HasArrow[src];
         ArmCountOf[dst] = ArmCountOf[src];
         SigLaneCount[dst] = SigLaneCount[src];

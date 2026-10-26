@@ -45,11 +45,51 @@ internal static class PedSpawn
             ps.S0Mm[p] = toWork ? rs.HomeSMm[r] : rs.WorkSMm[r];
             ps.GoalEdge[p] = toWork ? rs.WorkEdge[r] : rs.HomeEdge[r];
             ps.GoalSMm[p] = toWork ? rs.WorkSMm[r] : rs.HomeSMm[r];
+            TryBusLeg(w, pw, p, r, toWork);
             ps.T0[p] = w.Tick;
             ps.TripTick[p] = w.Tick;
             ps.VMmT[p] = pw.Cfg.SpeedMinMmPerTick + (int)w.RngPeds.NextBelow((uint)(pw.Cfg.SpeedMaxMmPerTick - pw.Cfg.SpeedMinMmPerTick + 1));
             w.Counters.PedSpawned++;
             pw.EnqueuePath(p);
         }
+    }
+
+    /// <summary>
+    /// Автобусная нога (§3): если у жителя на это направление выбран автобус, нога идёт к точке доступа остановки посадки (<c>ToStop</c>). Запасной режим: очередь остановки не меньше вместимости
+    /// автобуса, а путь пешком (по прямой между точками) не больше <c>max_walk_m</c> - нога остаётся пешей (<c>PedModeFallback++</c>). Нет точки доступа - пешком без счёта.
+    /// </summary>
+    private static void TryBusLeg(World w, PedWorld pw, int p, int r, bool toWork)
+    {
+        ResidentStore rs = pw.R;
+        if ((toWork ? rs.ModeOut[r] : rs.ModeBack[r]) == 0)
+        {
+            return;
+        }
+
+        int stop = toWork ? rs.StopAOut[r] : rs.StopABack[r];
+        if (!Stops.AccessPoint(w, stop, out int edge, out int sMm))
+        {
+            return;
+        }
+
+        PedStore ps = pw.P;
+        if (pw.StopQCount[stop] >= Transit.BusStopPhase.BusCapacity)
+        {
+            int hint = 0;
+            pw.Net.Evaluate(rs.HomeEdge[r], rs.HomeSMm[r], false, ref hint, out float hx, out float hz, out _);
+            hint = 0;
+            pw.Net.Evaluate(rs.WorkEdge[r], rs.WorkSMm[r], false, ref hint, out float wx, out float wz, out _);
+            float dx = wx - hx;
+            float dz = wz - hz;
+            if (((dx * dx) + (dz * dz)) <= (pw.Cfg.MaxWalkMm * 0.001f * (pw.Cfg.MaxWalkMm * 0.001f)))
+            {
+                w.Counters.PedModeFallback++;
+                return;
+            }
+        }
+
+        ps.Leg[p] = (byte)PedLeg.ToStop;
+        ps.GoalEdge[p] = edge;
+        ps.GoalSMm[p] = sMm;
     }
 }
