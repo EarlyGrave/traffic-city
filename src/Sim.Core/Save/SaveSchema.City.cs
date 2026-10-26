@@ -172,6 +172,8 @@ internal static partial class SaveSchema
         FrozenColumn<int>(10, "FrozenKey", 2, w => w.City!.Skims.FrozenKey),
         FrozenColumn<long>(11, "FrozenSum", 2, w => w.City!.Skims.FrozenSum),
         FrozenColumn<int>(12, "FrozenCount", 2, w => w.City!.Skims.FrozenCount),
+        Col.Array<int>(13, "LsC", w => w.City!.Skims.LsC, w => w.City!.Skims.LsC.Length, "NC * 3"),
+        Col.Array<int>(14, "LsJobs", w => w.City!.Skims.LsJobs, w => w.City!.Skims.LsJobs.Length, "NC"),
     })
     {
         After = c =>

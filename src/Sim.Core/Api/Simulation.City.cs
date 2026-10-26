@@ -311,8 +311,8 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Поле доступности по ячейкам для heatmap (zoning-demand.md §6.7). Z1: нули (поле считает дневной проход Z3); длина <paramref name="perCell"/> не меньше
-    /// <see cref="CityCellCount"/>. Возвращает число ячеек.
+    /// Поле доступности по ячейкам для heatmap (zoning-demand.md §6.7): <see cref="AccessKind.Shops"/> - logsum до C-целей по всем способам (с машиной), <see cref="AccessKind.Jobs"/> -
+    /// до рабочих мест; децисекунды, меньше - доступнее (значения могут быть отрицательными), 0 - целей нет. Длина <paramref name="perCell"/> не меньше <see cref="CityCellCount"/>. Возвращает число ячеек.
     /// </summary>
     public int GetAccessibility(Span<int> perCell, AccessKind kind)
     {
@@ -323,7 +323,13 @@ public sealed partial class Simulation
         }
 
         int n = Math.Min(perCell.Length, c.Grid.Cells);
-        perCell[..n].Clear();
+        Skims s = c.Skims;
+        for (int i = 0; i < n; i++)
+        {
+            int v = kind == AccessKind.Jobs ? s.LsJobs[i] : Accessibility.Combined(s, i, true, c.Cfg.Choice.ThetaMode64);
+            perCell[i] = v == Skims.NoLs ? 0 : v;
+        }
+
         return n;
     }
 }
