@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "kinds": {
+    "vehicle": { "min_lods": 3, "max_tris": [null, null, null] },
+    "road": { "min_lods": 3, "max_tris": [null, null, null] },
+    "building": { "min_lods": 3, "max_tris": [null, null, null] }
+  }
+}

@@ -24,6 +24,7 @@ public static class Program
         "  update-baseline  replace perf/baseline.json with a result\n" +
         "  render           render a scenario to mp4 (--scenario <name|path> --seconds <s> --out <file.mp4>; see render --help)\n" +
         "  validate         load a scenario and print a summary (--scenario <name|path> [--scenarios-dir <dir>])\n" +
+        "  validate-package check a mod package: loader, content, glTF/GLB and LODs (<package-dir> [--budgets <file>] [--game])\n" +
         "\n" +
         "Options:\n" +
         "  --help, -h       show this help\n";
@@ -60,6 +61,8 @@ public static class Program
                 }
 
                 return ValidateCommand.Run(args, Console.Out, Console.Error);
+            case "validate-package":
+                return HasHelp(args) ? Help(ValidatePackageCommand.Usage) : ValidatePackageCommand.Run(args, Console.Out, Console.Error);
             case "bench":
                 return HasHelp(args) ? Help(BenchCommand.Usage) : BenchCommand.Run(args, Console.Out, Console.Error);
             case "hash":

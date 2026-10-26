@@ -120,7 +120,10 @@ public sealed class ContentCatalog
     }
 
     /// <summary>Перевод <see cref="ScenarioException"/> разбора поля в <see cref="ModIssue"/> (путь — до первого «: »).</summary>
-    internal static ModIssue FromException(LoadedPackage pkg, string file, ScenarioException e)
+    internal static ModIssue FromException(LoadedPackage pkg, string file, ScenarioException e) =>
+        FromException(pkg.Id, file, e);
+
+    internal static ModIssue FromException(string package, string file, ScenarioException e)
     {
         string msg = e.Message;
         int sep = msg.IndexOf(": ", StringComparison.Ordinal);
@@ -132,6 +135,6 @@ public sealed class ContentCatalog
             detail.StartsWith("expected", StringComparison.Ordinal) && !detail.Contains(" or ", StringComparison.Ordinal) ? ModError.BadType :
             detail.Contains("out of range", StringComparison.Ordinal) ? ModError.OutOfRange :
             ModError.BadValue;
-        return new ModIssue(pkg.Id, file, path, code, detail);
+        return new ModIssue(package, file, path, code, detail);
     }
 }

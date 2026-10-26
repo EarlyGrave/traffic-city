@@ -109,4 +109,4 @@
 | 103 | peds-p4 (worktree) | sonnet | 3.1 P4: пассажиры-агенты, bidirectional, корпус w2 | done (ждёт мержа с P3 + регенерации корпуса; 31% поездок автобусом) |
 | 104 | peds-p5 (worktree) | sonnet | 3.1 P5: Godot-клиент — пешеходы, зебры, HUD | done, merged (машины теперь видны: раздувание по дистанции + прогрев; FPS llvmpipe 15–33) |
 | 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | done, merged (v3 ≡ v2 побайтно, golden равны) |
-| 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | wip |
+| 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | done, merged (55 новых тестов; base ok) |
