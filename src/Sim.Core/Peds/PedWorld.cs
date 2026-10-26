@@ -59,7 +59,7 @@ internal sealed partial class PedWorld
         X = new CrossingState(Net.XCapacity, w.Net.Nodes.Length, Net.MidCap);
         Wheel = new TimerWheel(c.MaxPeds + c.MaxResidents);
         PathQueue = new RingBuffer<PathRequest>(c.MaxPeds);
-        Router = new PedRouter(Net, c.MaxPedPathSteps);
+        Router = new PedRouter(Net, c.MaxPedPathSteps, X);
         Snapshot = new PedSnapshot(c.MaxPeds);
         int stops = w.Net.BusStops.Length;
         StopQHead = new int[stops];

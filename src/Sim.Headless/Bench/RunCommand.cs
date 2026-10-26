@@ -81,6 +81,8 @@ public static class RunCommand
         return veh + string.Create(
             CultureInfo.InvariantCulture,
             $" | peds={c.PedActive} residents={sim.ResidentCount} spawned={c.PedSpawned} ped_trips={c.PedTripsCompleted} no_path={c.PedNoPath} " +
-            $"path_queries={c.PedPathQueries} alloc_failed={c.PedAllocFailed} ped_stuck={c.PedStuckEvents} net_resets={c.PedNetResets}");
+            $"path_queries={c.PedPathQueries} alloc_failed={c.PedAllocFailed} ped_stuck={c.PedStuckEvents} net_resets={c.PedNetResets} " +
+            $"cross_releases={c.PedCrossReleases} cross_wait_mean_s={(c.PedCrossReleases > 0 ? c.PedCrossWaitTicksTotal / 20.0 / c.PedCrossReleases : 0):F2} " +
+            $"car_cross_delay_s={c.CarCrossDelayTicks / 20.0:F1} grants_revoked_ped={c.GrantsRevokedPed} crossing_closed_share={(c.CrossingObservedTicks > 0 ? (double)c.CrossingClosedTicks / c.CrossingObservedTicks : 0):F3}");
     }
 }

@@ -471,7 +471,7 @@ internal static class SignalPhase
 
             call |= axisBit;
             bool green = w.LaneSignals[conn] == (byte)LaneSignal.Green;
-            bool yieldDeny = dr == (byte)GateDeny.Yield || dr == (byte)GateDeny.Box;
+            bool yieldDeny = dr == (byte)GateDeny.Yield || dr == (byte)GateDeny.Box || dr == (byte)GateDeny.Ped;   // Ped не продлевает зелёный, но считается уступанием (pedestrians.md §5.6)
             if (green && !yieldDeny)
             {
                 ext = true;

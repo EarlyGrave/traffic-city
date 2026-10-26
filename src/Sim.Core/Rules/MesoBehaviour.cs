@@ -107,6 +107,16 @@ internal sealed partial class BehaviourJob
             gateGap = GateRules.ObstacleGap(e.Net, v, e.Occ, _connectors, _nodeBusy, ref work, v.S, i, t.ComfortDecel, out beyondDecision, out _);
         }
 
+        if (_xs != null)
+        {
+            float cg = Peds.PedRules.MidblockGap(e.Net, _pn!, _xs, lane, v.S[i], v.Speed[i], t.ComfortDecel);
+            if (cg < gateGap)
+            {
+                gateGap = cg;
+                beyondDecision = false;
+            }
+        }
+
         // g - зазор для целевой скорости (те же препятствия, что видит IDM); путь до следующего решения ограничивают лидер и ворота (клэмп I6).
         float g = li.Gap;
         if (gateGap < g && !beyondDecision)

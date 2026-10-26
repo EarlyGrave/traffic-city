@@ -8,7 +8,7 @@ namespace Sim.Core.Peds;
 
 /// <summary>
 /// Пути пешеходов (pedestrians.md §4.4, фаза 3b): A* по графу сети пешеходов от точки <c>(ребро, s)</c> до точки <c>(ребро, s)</c>.
-/// Стоимость рёбер - <c>PedEdgeData.CostTicks</c> (статический приор; измеренную часть добавит P3), эвристика - евклид, делённый на номинальную скорость.
+/// Стоимость рёбер - <c>PedEdgeData.CostTicks</c> (статический приор; измеренную часть переходов добавляет EWMA ожидания из <c>CrossingState</c> (P3)), эвристика - евклид, делённый на номинальную скорость.
 /// Предел - <c>max_walk_m * 1.5</c> по стоимости; больше - <c>NoPath</c>. Путь - шаги <c>edge | StepCross | StepBwd</c> в арене пешехода.
 /// Все буферы выделены в конструкторе; метки поколения запроса вместо очистки.
 /// </summary>
@@ -23,11 +23,16 @@ internal sealed class PedRouter
     private readonly int[] _closed;        // метка запроса: узел закрыт
     private readonly int[] _parent;        // ребро, которым пришли в узел, или -1 (источник)
     private readonly int[] _rev;           // обратный путь при восстановлении
+    private readonly CrossingState? _xs;   // измеренное ожидание у переходов (pedestrians.md §2.3); null - только статический приор
     private int _stamp;
 
-    public PedRouter(PedNetwork net, int maxSteps)
+    /// <summary>Выпусков перехода, начиная с которых к стоимости добавляется измеренное среднее ожидание (EWMA).</summary>
+    public const int MeasuredMinReleases = 5;
+
+    public PedRouter(PedNetwork net, int maxSteps, CrossingState? xs = null)
     {
         _net = net;
+        _xs = xs;
         int n = Math.Max(1, net.NodeCap);
         _heap = new IndexedHeap4(n);
         _g = new float[n];
@@ -35,6 +40,18 @@ internal sealed class PedRouter
         _closed = new int[n];
         _parent = new int[n];
         _rev = new int[Math.Max(1, maxSteps) + 2];
+    }
+
+    /// <summary>Измеренная часть стоимости перехода: EWMA ожидания (тики) при достаточном числе выпусков, иначе 0 (§2.3).</summary>
+    private int MeasuredWait(int edge)
+    {
+        if (_xs == null || edge < _net.WalkwayCount)
+        {
+            return 0;
+        }
+
+        int x = _net.XOfEdge(edge);
+        return _xs.Releases[x] >= MeasuredMinReleases ? _xs.MeasuredWait[x] : 0;
     }
 
     /// <summary>
@@ -113,7 +130,7 @@ internal sealed class PedRouter
                     continue;
                 }
 
-                Relax(other, _g[n] + edges[e].CostTicks, e, goalPos, stamp);
+                Relax(other, _g[n] + edges[e].CostTicks + MeasuredWait(e), e, goalPos, stamp);
             }
         }
 
