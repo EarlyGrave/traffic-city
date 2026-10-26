@@ -116,6 +116,11 @@ internal sealed class World : IDisposable
     public readonly byte[] LaneSignals;
     public readonly VehicleRenderData[][] Render;
     public long SnapshotTick;
+
+    // ---- пауза трафика агрегата (zoning-demand.md §9.2); производное, вне сейва и хэша ----
+    public int PausedTicks;               // подряд идущих тиков с паузой трафика (после двух снапшоты пусты в обоих буферах)
+    public long JumpedTicks;              // тиков, пропущенных прыжком (диагностика тестов)
+    public bool DisableJump;              // тест «прыжки = шаги»: прыжки выключены, пустые тики идут по одному
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
 
     /// <summary>true = <c>Lod.Mode != Off</c>: ячейки построены, массивы уровней машин выделены.</summary>

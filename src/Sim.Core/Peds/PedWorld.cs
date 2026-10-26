@@ -258,6 +258,12 @@ internal sealed partial class PedWorld
         w.Counters.PedNetResets++;
     }
 
+    /// <summary>
+    /// Агрегат (zoning-demand.md §9.2): пешеходы micro, оставшиеся к началу суток, снимаются тем же сбросом, что при <c>BuildRoad</c> (без пересборки сети): житель возвращается в точку выхода, тур туда
+    /// отменяется, обратная нога начинается заново агрегатом. Пешеход, стоящий у перехода или на остановке без автобусов, иначе не дошёл бы никогда.
+    /// </summary>
+    internal void DropAgentsForAggregate(World w) => ResetAgents(w);
+
     private void Anchor(int edge, int sMm, out int segSide, out float s)
     {
         if ((uint)edge < (uint)Net.EdgeCount)

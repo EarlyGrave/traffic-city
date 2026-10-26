@@ -370,14 +370,11 @@ public sealed class ZoningDataTests
 
     [Theory]
     [InlineData(CommandKind.PaintZone)]
-    [InlineData(CommandKind.SetTripExecution)]
-    public void CityCommands_AreNotSupportedInZ1(CommandKind kind)
+    public void CityCommands_AreNotSupportedInZ1(CommandKind kind)   // SetTripExecution (24) исполняет Z5: AggregateTests
     {
         ScenarioDesc d = CityFixtures.S1kRes();
         using Simulation sim = Make(d);
-        Command cmd = kind == CommandKind.PaintZone
-            ? Command.MakePaintZone(new PaintZoneCmd { X0 = 0, Z0 = 0, X1 = 100, Z1 = 100, ZoneKind = 1 }, 7)
-            : Command.MakeSetTripExecution(TripExecution.Aggregate, 7);
+        Command cmd = Command.MakePaintZone(new PaintZoneCmd { X0 = 0, Z0 = 0, X1 = 100, Z1 = 100, ZoneKind = 1 }, 7);
         Assert.True(sim.Enqueue(cmd));
         sim.Step(1);
         bool rejected = false;

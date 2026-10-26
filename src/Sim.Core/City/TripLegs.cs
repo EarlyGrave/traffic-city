@@ -28,6 +28,11 @@ internal static class TripLegs
     /// </summary>
     internal static bool StartLeg(World w, CityWorld c, int r, bool outbound, TravelMode mode)
     {
+        if (c.Exec == TripExecution.Aggregate)
+        {
+            return Demand.AggregateExec.StartLeg(w, c, r, outbound, mode);   // нога без агента (§9)
+        }
+
         CityResidents res = c.Residents;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         int home = res.Home[r];
@@ -456,10 +461,29 @@ internal static class TripLegs
             return;
         }
 
+        var mode = (TravelMode)res.LegMode[r];
+        long total = w.Tick - res.LegReq[r];
+        CompleteLeg(w, c, r, LegCostDs(c, mode, total, res.LegWait[r], res.LegWalk[r], res.LegRide[r]));
+    }
+
+    /// <summary>Фаза 2r: прибытие ноги агрегата (событие <see cref="ResidentEvent.Arrive"/>); стоимость - всё время ноги в децисекундах (модель уже дала обобщённое время).</summary>
+    internal static void OnAggregateArrived(World w, CityWorld c, int r)
+    {
+        CityResidents res = c.Residents;
+        if (!res.IsAlive(r) || res.State[r] != (byte)ResidentState.InLeg)
+        {
+            return;
+        }
+
+        CompleteLeg(w, c, r, Calendar.TicksToDs(w.Tick - res.LegReq[r]));
+    }
+
+    /// <summary>Нога закончена со стоимостью <paramref name="cost"/> (дс): наблюдение в скимы, загрузка клеток (машина), состояние по типу цели, событие плана. Общий код micro и aggregate.</summary>
+    private static void CompleteLeg(World w, CityWorld c, int r, int cost)
+    {
+        CityResidents res = c.Residents;
         long now = w.Tick;
         var mode = (TravelMode)res.LegMode[r];
-        long total = now - res.LegReq[r];
-        int cost = LegCostDs(c, mode, total, res.LegWait[r], res.LegWalk[r], res.LegRide[r]);
         int period = c.Skims.PeriodOf(res.LegReq[r], c.DayTicks);
         if (c.Skims.Observe(res.LegO[r], res.LegD[r], mode, period, cost))
         {
@@ -468,6 +492,11 @@ internal static class TripLegs
         else
         {
             w.Counters.SkimObsDropped++;
+        }
+
+        if (mode == TravelMode.Car)
+        {
+            c.Loads.AddCarLeg(c.Grid.CellsX, res.LegO[r], res.LegD[r], period, c.Day);   // L[c, p] для модели BPR (§9.1)
         }
 
         int skim = c.Skims.Get(res.LegO[r], res.LegD[r], mode, period);

@@ -26,6 +26,28 @@ internal static class PhaseIds
 /// </summary>
 internal static class PhaseList
 {
+    /// <summary>
+    /// Тик с паузой трафика (zoning-demand.md §9.2): команды и 2r уже выполнены, остаётся фаза 9r. Первые два тика паузы пишут снапшот (оба буфера становятся пустыми, пока агентов нет),
+    /// дальше снапшот не трогается и только отмечается текущим тиком.
+    /// </summary>
+    private static void RunIdleTick(World w)
+    {
+        CityPhase.Periodic(w);
+        if (w.PausedTicks < 2)
+        {
+            SnapshotPhase.Run(w);
+            w.PausedTicks++;
+        }
+        else
+        {
+            w.SnapshotTick = w.Tick + 1;
+        }
+
+        w.Tick++;
+        w.Counters.Ticks++;
+        WorldBuilder.SyncStructuralCounters(w);
+    }
+
     public static void RunTick(World w)
     {
         PhaseProbe? probe = w.PhaseProbe;
@@ -33,11 +55,21 @@ internal static class PhaseList
         probe?.Invoke(1);
         if (w.City != null)
         {
-            CityPhase.Events(w);                  // 2r. события жителей: план дня, выезды, концы занятий, дедлайны (zoning-demand.md §12)
+            CityPhase.Events(w);                  // 2r. события жителей: план дня, выезды, концы занятий, прибытия агрегата, дедлайны (zoning-demand.md §12)
+            if (Demand.AggregateExec.IsIdle(w))
+            {
+                RunIdleTick(w);                   // агрегат без агентов: фазы трафика 2-10 не выполняются (§9.2)
+                return;
+            }
         }
 
+        w.PausedTicks = 0;
         Spawner.Run(w);                           // 2. спавн
-        BusDispatch.Run(w);                       // 2b. автобусы: выпуск по интервалу
+        if (w.City == null || w.City.Exec != TripExecution.Aggregate)
+        {
+            BusDispatch.Run(w);                   // 2b. автобусы: выпуск по интервалу (агрегат автобусы не выпускает, zoning-demand.md §9.2)
+        }
+
         probe?.Invoke(2);
         if (w.Peds != null)
         {

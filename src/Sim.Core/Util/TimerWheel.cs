@@ -146,6 +146,47 @@ internal sealed class TimerWheel
         return n;
     }
 
+    /// <summary>
+    /// Ближайший тик <c>t</c> из (<paramref name="after"/>, <paramref name="limit"/>], в который <see cref="Collect"/> что-то сделает: непустая корзина либо перенос из переполнения (тик, кратный <c>W</c>,
+    /// пока переполнение не пусто). <see cref="long.MaxValue"/> - в этом диапазоне колесо молчит. Просмотр не длиннее <c>W</c> корзин (все события корзин лежат в окне <c>W</c> тиков).
+    /// </summary>
+    public long NextDue(long after, long limit)
+    {
+        if (Count == 0 || limit <= after)
+        {
+            return long.MaxValue;
+        }
+
+        long migrate = _overflow >= 0 ? ((after >> 12) + 1) << 12 : long.MaxValue;
+        long end = Math.Min(Math.Min(limit, after + W), migrate);
+        for (long t = after + 1; t <= end; t++)
+        {
+            if (_head[(int)(t & (W - 1))] >= 0)
+            {
+                return t;
+            }
+        }
+
+        return migrate <= limit ? migrate : long.MaxValue;
+    }
+
+    /// <summary>
+    /// Перепрыгивает тики (<paramref name="from"/>, <paramref name="to"/>] без событий (zoning-demand.md §9.2): то же, что <see cref="Collect"/> на каждом из них, но за O(числа кратных <c>W</c>) -
+    /// остаётся только перенос из переполнения на кратных <c>W</c> тиках. Событий в диапазоне быть не должно (<see cref="NextDue"/> вернул тик позже <paramref name="to"/>).
+    /// </summary>
+    public void AdvanceTo(long from, long to)
+    {
+        if (_overflow < 0)
+        {
+            return;
+        }
+
+        for (long t = ((from >> 12) + 1) << 12; t <= to; t += W)
+        {
+            Migrate(t);
+        }
+    }
+
     private void Migrate(long tick)
     {
         int k = _overflow;

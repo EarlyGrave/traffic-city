@@ -17,6 +17,64 @@ public sealed partial class Simulation
     /// <summary>Номер суток города (0 без города).</summary>
     public int CityDay => _disposed || _w.City == null ? 0 : _w.City.Day;
 
+    /// <summary>Длительность суток города в тиках (0 без города).</summary>
+    public int CityDayTicks => _disposed || _w.City == null ? 0 : _w.City.DayTicks;
+
+    /// <summary>
+    /// Начало окна утреннего пика внутри суток, тик: за 6 слотов до самого раннего начала смены типов зданий (выезды рабочих кучкуются у начала смен ±3 слота), не меньше 0.
+    /// Окно <c>bench --window am_peak</c> - 6 000 тиков отсюда (zoning-demand.md §11).
+    /// </summary>
+    public int CityAmPeakStartTickOfDay
+    {
+        get
+        {
+            CityWorld? c = _disposed ? null : _w.City;
+            if (c == null)
+            {
+                return 0;
+            }
+
+            int earliest = CityWorld.SlotsPerDay;
+            for (int i = 0; i < c.Types.Rows.Length; i++)
+            {
+                if (c.Types.Rows[i].ShiftSlots > 0 && c.Types.Rows[i].ShiftStartSlot < earliest)
+                {
+                    earliest = c.Types.Rows[i].ShiftStartSlot;
+                }
+            }
+
+            return Math.Max(0, (earliest == CityWorld.SlotsPerDay ? 0 : earliest) - 6) * c.SlotTicks;
+        }
+    }
+
+    /// <summary>Тиков, перепрыгнутых агрегатом без работы (zoning-demand.md §9.2): диагностика, в сейв и хэш не входит.</summary>
+    public long CityJumpedTicks => _disposed ? 0 : _w.JumpedTicks;
+
+    /// <summary>Пересечений клеток машинными ногами за вчерашние сутки (Σ <c>L</c> по клеткам и периодам); умноженное на <c>cell_m</c> - машино-км в сутки (оценка по линиям между центрами ячеек).</summary>
+    public long CityCarCellCrossingsYesterday
+    {
+        get
+        {
+            CityWorld? c = _disposed ? null : _w.City;
+            if (c == null)
+            {
+                return 0;
+            }
+
+            long sum = 0;
+            int slot = (c.Day + 1) & 1;
+            for (int i = slot; i < c.Loads.L.Length; i += 2)
+            {
+                sum += c.Loads.L[i];
+            }
+
+            return sum;
+        }
+    }
+
+    /// <summary>Сторона ячейки города, м (0 без города).</summary>
+    public float CityCellM => _disposed || _w.City == null ? 0f : _w.City.Grid.CellM;
+
     /// <summary>Версия зданий: клиент перечитывает <see cref="GetBuildings"/> только при её смене.</summary>
     public int BuildingsVersion => _disposed || _w.City == null ? 0 : _w.City.Buildings.Version;
 
