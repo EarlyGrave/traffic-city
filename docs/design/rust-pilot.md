@@ -152,6 +152,12 @@ connector `i` → поля раздела 7 в перечисленном пор
 Из golden-каталога сценарными считаются файлы с ключом `scenario` (`detlogit.json` и др. — нет). `create_status` в R3 не сверяется (нужен `Sim::create`, R4);
 `load_ok: false` у `err-json` — синтаксис. Подмножество и границы — ADR-0022 «Реализация R3».
 
+**Уточнения R4 (реализация `tc-core::{network,intersections,sim}`).** `network_hash` включает `ConflictsUsed` (шапка) и `ConflictGroup` полос, поэтому до R5 (конфликты не строятся)
+golden-тест подставляет `conflicts_used` из эталона (`Sim::set_conflicts_used_for_golden`, `#[doc(hidden)]`); `counts.conflicts` до R5 не сверяется. R5 удаляет подстановку.
+`ConnectorStore` R4 = регистрация (`Register`, `BuildAll` без пар). `Sim::create` повторяет порядок `WorldBuilder.Create`: ёмкости (`InvalidCapacity`) -> узлы (snap/индекс != i -> `InvalidNetwork`)
+-> сегменты -> `BuildAllConnectors` -> `ConnectorStore.BuildAll`; `NetworkStatus >= NodesFull` -> `NetworkTooLarge`, остальное -> `InvalidNetwork`.
+`headings_hash` (системный atan2) на Linux x64 совпал со всеми golden-сценариями; тест не краснеет при расхождении, если не задано `TC_STRICT_HEADINGS=1`.
+
 Изменение порядка/состава — правка этого раздела, `golden_version++`, перегенерация golden.
 
 ### 5.3 Как сверяется
