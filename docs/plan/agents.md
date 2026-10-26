@@ -110,9 +110,11 @@
 | 104 | peds-p5 (worktree) | sonnet | 3.1 P5: Godot-клиент — пешеходы, зебры, HUD | done, merged (машины теперь видны: раздувание по дистанции + прогрев; FPS llvmpipe 15–33) |
 | 105 | mod-m2 (worktree) | sonnet | 4.5 M2: пакет base, сценарии v3, интеграция в ScenarioLoader | done, merged (v3 ≡ v2 побайтно, golden равны) |
 | 106 | mod-m6 (worktree) | sonnet | 4.5 M6: проверка glTF/GLB, render-budgets.json, validate-package, шаг CI | done, merged (55 новых тестов; base ok) |
-| 107 | zoning-demand-spec (worktree) | opus | 3.2: ADR-0011 жители/экономика + ADR-0021 эластичный спрос + zoning-demand.md | wip |
+| 107 | zoning-demand-spec (worktree) | opus | 3.2: ADR-0011 жители/экономика + ADR-0021 эластичный спрос + zoning-demand.md | done, merged (Z1–Z9; целочисленный логит; агрегат «10 лет») |
 | 108 | render-spec (worktree) | opus | 3.3: ADR-0014 бюджет рендера и LOD + render.md | done, merged (V1–V10; FPS «до» s1k-peds agents 9.7 — раздувание по дистанции) |
 | 109 | merge-p3-p4 (worktree) | sonnet | слияние P3 + P4, регенерация корпуса w2-s1k-peds | done, merged (661+359 тестов; изменён только w2-s1k-peds) |
 | 110 | render-v1 (worktree) | sonnet | 3.3 V1: замеры клиента (RenderStats, --pose, stats) | wip |
 | 111 | render-v2 (worktree) | sonnet | 3.3 V2: render-budgets формат 2 + валидатор | wip |
 | 112 | ped-phase-tune (worktree) | sonnet | 3.1d: настройка пешеходной фазы (s10k-peds поездки ≥ 90% s10k) | wip |
+| 113 | zoning-z1 (worktree) | sonnet | 3.2 Z1: поверхность — desc, хранилища, участки, автозонирование, сейв, kind 23/24 | wip |
+| 114 | braess-z8a (worktree) | sonnet | 3.2 Z8a: парадокс Брайеса на синтетике | wip |
