@@ -25,7 +25,10 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>] [--warmup-days D] [--window am_peak]\n" +
+        "  --warmup-days D      residents scenarios: warm up D whole game days (then up to the window start, if any) instead of --warmup-ticks; JSON gets warmup_days\n" +
+        "  --window am_peak     residents scenarios: measure the morning peak, 6000 ticks (the default of --ticks here) from 6 slots before the earliest shift start; JSON gets window,\n" +
+        "                       compare refuses to mix values\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
@@ -42,19 +45,35 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--packages-dir" };
+    /// <summary>Окно утреннего пика residents-сценариев (zoning-demand.md §11): 6 000 тиков.</summary>
+    public const string AmPeak = "am_peak";
+    public const int AmPeakWindowTicks = 6000;
+
+    /// <summary>Прогрев городом: целые сутки и окно (<see cref="AmPeak"/> или null). Без жителей игнорируется.</summary>
+    internal readonly record struct CityWindow(int WarmupDays, string? Window);
+
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--warmup-days", "--window", "--packages-dir" };
     private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
         if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
-            || !a.TryGetInt("--ticks", 1, out int ticks, 2000)
+            || !a.TryGetInt("--ticks", 1, out int ticks, a.Has("--window") ? AmPeakWindowTicks : 2000)
+            || !a.TryGetInt("--warmup-days", 0, out int warmupDays, 0)
             || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200)
             || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, DefaultWarmupMaxTicks)
             || !a.TryGetInt("--repeat", 1, out int repeat, 1)
             || !a.TryGetInt("--threads", 1, out int threads, 1))
         {
             error.WriteLine($"bench: {a.Error}");
+            error.Write(Usage);
+            return ExitUsage;
+        }
+
+        string? window = a.Get("--window");
+        if (window != null && window != AmPeak)
+        {
+            error.WriteLine($"bench: --window: expected {AmPeak}, got '{window}'");
             error.Write(Usage);
             return ExitUsage;
         }
@@ -82,7 +101,7 @@ public static class BenchCommand
                 return ExitUsage;
             }
 
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec);
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec, new CityWindow(warmupDays, window));
         }
         catch (ScenarioException e)
         {
@@ -142,12 +161,12 @@ public static class BenchCommand
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default, CityWindow cityWindow = default)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads, view));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads, view, cityWindow));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -172,7 +191,7 @@ public static class BenchCommand
     /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
     public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default, CityWindow cityWindow = default)
     {
         var r = new BenchResult
         {
@@ -180,6 +199,8 @@ public static class BenchCommand
             ContentFingerprint = Sim.Scenarios.Mods.ContentFingerprint.Hex(Sim.Scenarios.Mods.ContentFingerprint.For(sc)),
             Ticks = ticks,
             WarmupTicks = warmup,
+            WarmupDays = cityWindow.WarmupDays,
+            Window = cityWindow.Window,
             Threads = threads,
             View = view.ToString(),
             Seed = sc.Desc.Seed,
@@ -198,13 +219,28 @@ public static class BenchCommand
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         view.Apply(sim);
         var timeline = new TimelineRunner(sc.Timeline);   // команды сценария в абсолютных тиках симуляции, в том числе в прогреве
-        if (warmup > 0)
-        {
-            timeline.Step(sim, warmup);
-        }
-
         int target = sc.Desc.Demand.TargetVehicles;
-        int warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax, timeline);
+        int warmedUp;
+        if (sim.HasCity && (cityWindow.WarmupDays > 0 || cityWindow.Window != null))
+        {
+            // Город: целые сутки прогрева и выход на начало окна утреннего пика (тик внутри суток); рампы OD-генератора нет.
+            long start = ((long)cityWindow.WarmupDays * sim.CityDayTicks) + (cityWindow.Window == AmPeak ? sim.CityAmPeakStartTickOfDay : 0);
+            while (sim.Tick < start)
+            {
+                timeline.Step(sim, (int)Math.Min(sim.CityDayTicks, start - sim.Tick));
+            }
+
+            warmedUp = (int)Math.Min(int.MaxValue, sim.Tick);
+        }
+        else
+        {
+            if (warmup > 0)
+            {
+                timeline.Step(sim, warmup);
+            }
+
+            warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax, timeline);
+        }
 
         r.WarmupTicksActual = warmedUp;
         r.TargetVehicles = target;
@@ -413,6 +449,16 @@ public static class BenchCommand
             w.WriteString("content_fingerprint", r.ContentFingerprint);
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
+            if (r.WarmupDays > 0)
+            {
+                w.WriteNumber("warmup_days", r.WarmupDays);
+            }
+
+            if (r.Window != null)
+            {
+                w.WriteString("window", r.Window);
+            }
+
             w.WriteNumber("threads", r.Threads);
             w.WriteString("view", r.View);
             w.WriteNumber("seed", r.Seed);
@@ -670,6 +716,8 @@ internal sealed class BenchResult
     public string ContentFingerprint = "";
     public int Ticks;
     public int WarmupTicks;
+    public int WarmupDays;
+    public string? Window;
     public int Threads = 1;
     public string View = "all";
     public ulong Seed;

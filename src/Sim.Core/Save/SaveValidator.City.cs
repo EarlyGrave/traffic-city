@@ -192,12 +192,16 @@ internal static partial class SaveValidator
                 return Bad(c, i, 27);
             }
 
-            if (inLeg)
+            if (inLeg && r.Agent[i] < 0)
             {
-                if (r.Agent[i] < 0)
+                // нога агрегата (§9.1): агента нет, прибытие - событие колеса
+                if (r.EvKind[i] != ResidentEvent.Arrive || r.EvTick[i] < w.Tick)
                 {
                     return Bad(c, i, 27);
                 }
+            }
+            else if (inLeg)
+            {
 
                 // Машина: жива, поколение совпало, обратная ссылка указывает на того же жителя. Пешеход (peds.source = city): жив, поколение совпало, PedStore.Resident - этот житель.
                 if (r.LegMode[i] == (byte)TravelMode.Car &&

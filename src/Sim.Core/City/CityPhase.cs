@@ -15,6 +15,11 @@ internal static class CityPhase
     {
         CityWorld c = w.City!;
         CityResidents res = c.Residents;
+        if (c.Exec == TripExecution.Aggregate && w.Tick % c.DayTicks == 0 && w.Peds != null && w.Peds.CitySource && w.Peds.P.AliveCount > 0)
+        {
+            w.Peds.DropAgentsForAggregate(w);   // остатки micro-пешеходов: ноги переходят к агрегату (§9.2)
+        }
+
         int n = c.Wheel.Collect(w.Tick, c.DueScratch);
         for (int k = 0; k < n; k++)
         {
@@ -46,8 +51,11 @@ internal static class CityPhase
                     }
 
                     break;
+                case ResidentEvent.Arrive:
+                    TripLegs.OnAggregateArrived(w, c, r);   // нога агрегата закончена (§9.1)
+                    break;
                 default:
-                    break;   // Arrive - агрегат (Z5)
+                    break;
             }
         }
     }
@@ -75,6 +83,7 @@ internal static class CityPhase
             c.Day++;
             w.Counters.CityDays++;
             c.Ledger.RollDay();
+            c.Loads.ClearDay(c.Day);   // «сегодня» новых суток: позавчерашние числа L больше не нужны
             c.DayStage = DayStages.Buildings;
             c.CursorBuildings = 0;
             c.CursorResidents = 0;
@@ -88,6 +97,8 @@ internal static class CityPhase
                 c.LegsDay[(idx * Demand.Skims.Modes) + m] = 0;
                 c.LegCostDay[(idx * Demand.Skims.Modes) + m] = 0;
             }
+
+            Demand.AggregateExec.OnDayBoundary(w, c);   // отложенное SetTripExecution: micro -> aggregate калибрует K по только что законченным суткам
         }
 
 #if DEBUG
@@ -109,6 +120,8 @@ internal static class CityPhase
         {
             return;
         }
+
+        all |= c.Exec == TripExecution.Aggregate;   // агрегат: дневные проходы целиком в первый тик суток (§9.2), бюджета p95 нет
 
         int quarter = Math.Max(1, c.DayTicks / 4);
         if (c.DayStage == DayStages.Buildings)
@@ -279,9 +292,9 @@ internal static class CityPhase
             alive++;
             byte state = res.State[r];
             System.Diagnostics.Debug.Assert(state <= (byte)ResidentState.InLeg, "bad resident state");
-            System.Diagnostics.Debug.Assert((state == (byte)ResidentState.InLeg) == (res.Agent[r] >= 0), "agent only in leg");
+            System.Diagnostics.Debug.Assert((state == (byte)ResidentState.InLeg) == (res.Agent[r] >= 0 || res.EvKind[r] == ResidentEvent.Arrive), "agent only in leg");
             System.Diagnostics.Debug.Assert(c.Wheel.Contains(r) == (res.EvTick[r] >= 0), "wheel entry iff event");
-            if (state == (byte)ResidentState.InLeg)
+            if (state == (byte)ResidentState.InLeg && res.Agent[r] >= 0)
             {
                 inLeg++;
                 if (res.LegMode[r] == (byte)TravelMode.Car)

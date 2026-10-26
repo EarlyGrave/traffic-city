@@ -164,7 +164,7 @@ public sealed class Simulation : IDisposable
 
     // ---- управление ----
     public long Tick { get; }                    // число выполненных тиков с момента Create
-    public void Step(int ticks);                 // ticks >= 1; выполняет §7 ticks раз
+    public void Step(int ticks);                 // ticks >= 1; выполняет §7 ticks раз (агрегат без агентов перепрыгивает пустые тики: результат тот же, zoning-demand.md §9.2)
     public bool Enqueue(in Command cmd);         // false = очередь полна (команда отброшена, счётчик++)
     public int PendingCommands { get; }
 
@@ -192,6 +192,11 @@ public sealed class Simulation : IDisposable
     // ---- город (3.2, ADR-0011, `zoning-demand.md` §13; без demand.model = residents - false/0/пусто) ----
     public bool HasCity { get; }
     public bool GetCityStats(out CityStats stats);                   // население, работа, жильё, здания, спрос, деньги по классам (Σ = 0)
+    public int CityDayTicks { get; }                                  // сутки города в тиках (Z5; нужны долгим прогонам и bench --window)
+    public long CityJumpedTicks { get; }                              // тиков, перепрыгнутых агрегатом без работы (диагностика, вне сейва и хэша)
+    public long CityCarCellCrossingsYesterday { get; }                // Σ L за вчера: пересечений клеток машинными ногами; × CityCellM / 1000 = машино-км в сутки (оценка)
+    public float CityCellM { get; }
+    public int CityAmPeakStartTickOfDay { get; }                      // начало окна am_peak внутри суток (bench --window am_peak)
     public int GetBuildings(Span<BuildingRenderData> dst);           // 24 Б на слот пула; BuildingsVersion/BuildingSlotCount - перечитывать при смене версии
     public int GetLots(Span<LotRenderData> dst);                     // 16 Б на участок; LotsVersion/LotCount
     public bool TryGetResidentInfo(int index, int generation, out ResidentInfo info);   // EntityRef - с волной инструментов T1
@@ -387,7 +392,7 @@ public enum CommandKind : int
     SetLodFocus = 11,           // слот фокуса/закрепления LOD {Slot 0..7, Kind Clear/Focus/Pin, X, Z, RadiusM} (ADR-0013, `sim-lod.md` §4)
     // 13..22 заняты планом инструментов (`player-tools.md` §1)
     PaintZone = 23,             // 3.2, ADR-0011: зона на участках в прямоугольнике {X0,Z0,X1,Z1, ZoneKind, Density} (20 Б); Z1 - NotSupported (заглушка `Zoning.Apply`), тело - Z6
-    SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate на границе суток; Z1 - NotSupported (заглушка `AggregateExec.ApplySwitch`), тело - Z5
+    SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate; запрос откладывается до границы суток (`CityWorld.ExecPending`), micro -> aggregate калибрует K; Mode > 1 - InvalidArgument, без города - NotSupported (Z5)
     // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера, диспетчер отвечает NotSupported до T3..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
     RemoveRoad = 25, UpgradeRoad = 26, SplitRoad = 27, SetArmControl = 28, SetTurnBan = 29, SetLaneFlags = 30,
     InsertBusStop = 31, RemoveBusStop = 32, RemoveBusRoute = 33, SetBusRouteParams = 34, MergeAtNode = 35,

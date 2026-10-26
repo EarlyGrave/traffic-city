@@ -87,6 +87,14 @@ public static class CompareCommand
             return ExitUsage;
         }
 
+        string rWindow = ReadWindow(resultPath);
+        string bWindow = ReadWindow(basePath);
+        if (rWindow != bWindow)
+        {
+            error.WriteLine($"compare: refusing to compare runs with different measurement windows (baseline '{bWindow}', result '{rWindow}')");
+            return ExitUsage;
+        }
+
         string? rFp = ReadFingerprint(resultPath);
         string? bFp = ReadFingerprint(basePath);
         if (rFp != null && bFp != null && rFp != bFp)
@@ -155,6 +163,20 @@ public static class CompareCommand
         catch (JsonException)
         {
             return "all";
+        }
+    }
+
+    /// <summary>Окно замера из JSON (поле <c>window</c>, например <c>am_peak</c>; нет поля и нечитаемый JSON - пустая строка).</summary>
+    internal static string ReadWindow(string path)
+    {
+        try
+        {
+            using JsonDocument d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("window", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? string.Empty : string.Empty;
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
         }
     }
 

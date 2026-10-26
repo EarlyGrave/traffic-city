@@ -86,9 +86,21 @@ public sealed partial class Simulation : IDisposable
         w.EventCount = 0;
         w.EventsOverflowed = false;
         w.Pool?.Wake();
-        for (int t = 0; t < ticks; t++)
+        for (int t = 0; t < ticks;)
         {
+            if (w.City != null)
+            {
+                long jump = Demand.AggregateExec.IdleSpan(w, ticks - t);   // агрегат без агентов: пустые тики перепрыгиваем (zoning-demand.md §9.2)
+                if (jump > 0)
+                {
+                    Demand.AggregateExec.Jump(w, jump);
+                    t += (int)jump;
+                    continue;
+                }
+            }
+
             PhaseList.RunTick(w);
+            t++;
         }
 
         w.Pool?.Rest();

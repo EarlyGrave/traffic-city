@@ -151,6 +151,27 @@ internal sealed class Skims
         return updated;
     }
 
+    /// <summary>
+    /// Применяет к <see cref="Skim"/> всё накопленное: недоприменённый слепок и текущий накопитель (без границы периода). Нужна калибровке агрегата на границе суток (zoning-demand.md §9.2):
+    /// ноги длиннее периода доезжают позже, и без неё ским последних периодов суток ещё не учёл сегодняшние наблюдения. <c>CurPeriod</c> не меняется.
+    /// </summary>
+    public void Flush(CityWorld c)
+    {
+        int shift = c.Cfg.Choice.SkimShift;
+        while (UpdateCursor < FrozenN)
+        {
+            ApplyOne(shift);
+        }
+
+        FrozenN = Current.CopySorted(FrozenKey, FrozenSum, FrozenCount);
+        UpdateCursor = 0;
+        Current.Clear();
+        while (UpdateCursor < FrozenN)
+        {
+            ApplyOne(shift);
+        }
+    }
+
     private void ApplyOne(int shift)
     {
         int i = UpdateCursor++;

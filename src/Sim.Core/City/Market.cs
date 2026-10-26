@@ -142,6 +142,18 @@ internal sealed class Market
     /// <summary>Приводит производные в соответствие версии зданий (суммы вакансий и свободного жилья верны после вызова).</summary>
     public void Sync(CityWorld c) => Ensure(c);
 
+    /// <summary>Тик <see cref="MatchStep"/> ничего не изменит: очередь ищущих пуста либо вакансий нет (прыжок агрегата, zoning-demand.md §9.2).</summary>
+    public bool MatchIsNoop(CityWorld c)
+    {
+        if (c.Residents.SeekQueue.IsEmpty)
+        {
+            return true;
+        }
+
+        Ensure(c);
+        return TotalVac <= 0;
+    }
+
     private void Ensure(CityWorld c)
     {
         if (_builtVersion == c.Buildings.Version)
