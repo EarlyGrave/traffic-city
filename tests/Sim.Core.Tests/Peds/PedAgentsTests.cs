@@ -55,8 +55,9 @@ public sealed class PedAgentsTests
     }
 
     [Fact]
-    public void PedsEnabled_DoesNotChangeVehicles()
+    public void PedsEnabled_VehiclesStillFlow_PedestriansOnlyDelayThem()
     {
+        // Начиная с P3 переходы влияют на машины (pedestrians.md §5): состояние машин уже не равно состоянию без пешеходов, но поток сохраняется.
         ScenarioDesc plain = WorldSaveFixtures.Small();
         ScenarioDesc withPeds = Desc();
         using Simulation a = Make(in plain);
@@ -64,10 +65,9 @@ public sealed class PedAgentsTests
         a.Step(900);
         b.Step(900);
         Assert.True(b.ActivePedCount > 0);
-        Assert.True(a.Vehicles.SequenceEqual(b.Vehicles), "машины не должны зависеть от прозрачных пешеходов (P2)");
         Assert.Equal(a.Counters.VehiclesSpawned, b.Counters.VehiclesSpawned);
-        Assert.Equal(a.Counters.TripsCompleted, b.Counters.TripsCompleted);
-        Assert.Equal(a.Counters.DistanceTotalMm, b.Counters.DistanceTotalMm);
+        Assert.True(b.Counters.TripsCompleted * 10 >= a.Counters.TripsCompleted * 7, $"trips {b.Counters.TripsCompleted} против {a.Counters.TripsCompleted}");
+        Assert.Equal(0, b.Counters.StuckVehicles);
     }
 
     // ------------------------------------------------------------ кинематика и события

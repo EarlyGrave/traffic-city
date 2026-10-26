@@ -4,6 +4,7 @@ using System.Numerics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Peds;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -50,6 +51,10 @@ internal static class GatePhase
         // 0c. Снятие допуска на красном (§5.4 п. 6, ADR-0019): до сбора кандидатов и пересборки OutReserved/NodeBusy по допущенным.
         RefreshMasks(w);
         RevokeOnRed(w);
+        if (w.Peds != null)
+        {
+            RevokeOnPed(w);
+        }
 
         // 1. Сбор кандидатов. Обычно - по активным множествам (маски занятых полос, ADR-0019 A2); полный проход по машинам - в первый тик и
         // после смены сети/узлов (RefreshMasks), а в Debug - как эталон, с которым сверяется активный проход на каждом тике.
@@ -178,6 +183,86 @@ internal static class GatePhase
                     }
 
                     x = next;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Снятие допуска при закрытии перехода (pedestrians.md §5.6, обобщение п. 6): для переходов узлов из <c>XClosedNow</c> (закрылись в этом тике) на входных полосах
+    /// connector'ов в масках <c>XIn | XOut</c> первая допущенная машина с connector'ом из маски, которая ещё <see cref="PedRules.CanStop"/> перед стоп-линией, теряет допуск
+    /// вместе с допущенными за ней. Машины, не успевающие остановиться, обязались и едут (их ждут пешеходы). Счётчик <c>GrantsRevokedPed</c>.
+    /// </summary>
+    private static void RevokeOnPed(World w)
+    {
+        PedWorld pw = w.Peds!;
+        CrossingState xs = pw.X;
+        PedNetwork pn = pw.Net;
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        LaneOccupancy occ = w.Occupancy;
+        ConnectorStore cs = w.Connectors;
+        Span<int> lanes = stackalloc int[2 * NetworkBuilder.MaxConnectorsPerNode];
+        for (int k = 0; k < xs.XClosedNowCount; k++)
+        {
+            int x = xs.XClosedNow[k];
+            if (x >= pn.MidXBase)
+            {
+                continue;
+            }
+
+            ref readonly NodeData nd = ref net.Nodes[pn.Edges[pn.XEdge[x]].Node];
+            ulong mask = pn.XIn[x] | pn.XOut[x];
+            ulong rest = mask;
+            int done = 0;
+            while (rest != 0UL)
+            {
+                int b = BitOperations.TrailingZeroCount(rest);
+                rest &= rest - 1UL;
+                int g = net.Lanes[nd.FirstConnector + b].ConflictGroup;
+                if (g < 0)
+                {
+                    continue;
+                }
+
+                int inLane = cs.InLane[g];
+                bool seen = false;
+                for (int q = 0; q < done; q++)
+                {
+                    seen |= lanes[q] == inLane;
+                }
+
+                if (seen)
+                {
+                    continue;
+                }
+
+                lanes[done++] = inLane;
+                float laneLen = net.LaneLength[inLane];
+                bool revoking = false;
+                int i = occ.LaneHead[inLane];
+                while (i != -1 && GateRules.IsGranted(v, i))
+                {
+                    int next = GateRules.BehindOn(v, i, inLane);
+                    if (v.Lane[i] == inLane)   // ghost: её допуск ведёт основная полоса
+                    {
+                        int gc = v.GrantConnector[i];
+                        if (!revoking && gc >= nd.FirstConnector && gc - nd.FirstConnector < 64 && ((mask >> (gc - nd.FirstConnector)) & 1UL) != 0UL)
+                        {
+                            float d = laneLen - v.S[i] - GateRules.StopLineOffset;
+                            revoking = PedRules.CanStop(d, v.Speed[i], w.Types[v.Type[i]].ComfortDecel);
+                        }
+
+                        if (revoking)
+                        {
+                            v.GateState[i] = 0;
+                            v.GrantConnector[i] = -1;
+                            w.Counters.GrantsRevokedPed++;
+                            occ.MarkLinked(i);
+                        }
+                    }
+
+                    i = next;
                 }
             }
         }
@@ -905,6 +990,30 @@ internal static class GatePhase
             return GateDeny.Stop;
         }
 
+        // 2-bis. Переход (pedestrians.md §5.6): connector в маске закрытого перехода узла - отказ, пока пешеходы не пройдут; машины, уже допущенные и не успевающие
+        // остановиться, едут (они обязались), остальные потеряли допуск в начале фазы (RevokeOnPed).
+        if (w.Peds != null && g >= 0)
+        {
+            CrossingState xs = w.Peds.X;
+            if (((xs.NodeXIn[node] | xs.NodeXOut[node]) >> cs.LocalBit[g] & 1UL) != 0UL)
+            {
+                int cin = cs.CrossInX![g];
+                int cout = cs.CrossOutX![g];
+                if (cin >= 0)
+                {
+                    xs.CarsWaiting[cin] = 1;   // машина ждёт пару переходов (вход и выход): окно машин у открытого из них держится, пока она не проедет
+                }
+
+                if (cout >= 0)
+                {
+                    xs.CarsWaiting[cout] = 1;
+                }
+
+                w.Counters.CarCrossDelayTicks++;
+                return GateDeny.Ped;
+            }
+        }
+
         // 3. Выезд свободен (don't-block-the-box) и место на самом connector'е.
         int outLane = cl.ToLane;
         if (!w.DebugDisableExitCheck)
@@ -1019,7 +1128,7 @@ internal static class GatePhase
                     // только если хвост выезда стоит. Если хвост движется, занятость выезда мимолётна, и без учёта очередь встречных «перепрыгивала»
                     // бы Y в каждый тик, когда выезд на миг занят.
                     byte dy = w.Gate.DenyReason[y];
-                    bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop;
+                    bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop || dy == (byte)GateDeny.Ped;
                     if (dy == (byte)GateDeny.Exit)
                     {
                         int exitLane = cs.OutLane[gOther];
@@ -1053,7 +1162,7 @@ internal static class GatePhase
                     continue; // (a) тай-брейк: стоящий, ждущий меньше меня, пропускает
                 }
 
-                if (stationary && w.Gate.DenyReason[y] == (byte)GateDeny.Exit)
+                if (stationary && (w.Gate.DenyReason[y] == (byte)GateDeny.Exit || w.Gate.DenyReason[y] == (byte)GateDeny.Ped))
                 {
                     continue; // стоящий перед занятым выездом (don't-block-the-box) не угроза: он не въедет, пока его выезд не освободится
                 }

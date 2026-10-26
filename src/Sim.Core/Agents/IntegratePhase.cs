@@ -24,6 +24,7 @@ internal static class IntegratePhase
     /// <summary>Биты <see cref="VehicleStore.ClampFlags"/>.</summary>
     public const byte ClampLeaderPresent = 1;
     public const byte ClampLeaderVirtual = 2;
+    public const byte ClampCross = 4;   // препятствие перехода на перегоне (pedestrians.md §5.6): метрика задержки машин
 
     // Задание для перегрузки без World (тесты, микробенчмарки): один экземпляр на поток, без аллокаций после первого вызова.
     [ThreadStatic]
@@ -154,6 +155,7 @@ internal sealed partial class IntegrateJob : IRangeJob
         _clamps[o + 5] += tally.MesoNow;
         _clamps[o + 6] += tally.MesoDistMm;
         _clamps[o + 7] += tally.Stuck;
+        _clamps[o + 8] += tally.CrossStand;
     }
 
     /// <summary>Целые накопители метрик воркера (ADR-0019, A4): сумма не зависит от порядка и разбиения на чанки.</summary>
@@ -165,6 +167,7 @@ internal sealed partial class IntegrateJob : IRangeJob
         public long MesoNow;
         public long MesoDistMm;
         public long Stuck;
+        public long CrossStand;
     }
 
     /// <summary>Складывает <c>HardClamps</c> и <c>MesoClamps</c> воркеров в <paramref name="c"/>, накопители метрик - в <see cref="TickMasks"/>; обнуляет их.</summary>
@@ -175,6 +178,7 @@ internal sealed partial class IntegrateJob : IRangeJob
         {
             c.HardClamps += _clamps[k];
             c.MesoClamps += _clamps[k + 1];
+            c.CarCrossDelayTicks += _clamps[k + 8];
             if (m != null)
             {
                 m.Active += _clamps[k + 2];
@@ -185,7 +189,7 @@ internal sealed partial class IntegrateJob : IRangeJob
                 m.Stuck += _clamps[k + 7];
             }
 
-            for (int j = 0; j < 8; j++)
+            for (int j = 0; j < 9; j++)
             {
                 _clamps[k + j] = 0;
             }
@@ -227,7 +231,7 @@ internal sealed partial class IntegrateJob : IRangeJob
         TickMasks? m = _masks;
         if (v.Lane[i] >= 0)
         {
-            clamps = Move(i, ref mesoClamps);
+            clamps = Move(i, ref mesoClamps, ref t);
             if (m != null)
             {
                 MarkCandidates(m, i);
@@ -299,7 +303,7 @@ internal sealed partial class IntegrateJob : IRangeJob
     }
 
     /// <summary>Интегрирует машину <paramref name="i"/>, живую и на полосе; возвращает число сработавших клэмпов I6 (0..2).</summary>
-    private int Move(int i, ref long mesoClamps)
+    private int Move(int i, ref long mesoClamps, ref Tally tally)
     {
         VehicleStore v = _v;
         PhysicsParams p = _p;
@@ -351,6 +355,11 @@ internal sealed partial class IntegrateJob : IRangeJob
 
         v.S[i] = sNew;
         v.Speed[i] = vNew;
+        if ((flags & IntegratePhase.ClampCross) != 0 && vNew < GateRules.CreepSpeed)
+        {
+            tally.CrossStand++;   // стоянка из-за перехода (pedestrians.md §9: car_cross_delay)
+        }
+
         if (vNew < 1f)
         {
             MarkStoppedBeforeSignal(i);

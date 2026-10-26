@@ -2,6 +2,7 @@ using System.Numerics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Peds;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -33,6 +34,12 @@ internal static class SignalPhase
         long spills0 = s.SpillOutEntries;
         RuleEnv env = default;
         bool envReady = false;
+        bool peds = w.Peds != null && PedSignals.Enabled;
+        if (peds)
+        {
+            PedSignals.EnsureTables(w);
+        }
+
         for (int slot = 0; slot < s.Count; slot++)
         {
             SignalMode mode = s.Mode[slot];
@@ -46,7 +53,7 @@ internal static class SignalPhase
                         envReady = true;
                     }
 
-                    StepAdaptive(w, s, slot, in env);
+                    StepAdaptive(w, s, slot, in env, peds && PedSignals.Hold(s, slot));
                 }
                 else
                 {
@@ -55,6 +62,11 @@ internal static class SignalPhase
 
                 Publish(w, s, slot);
                 WriteLanesMachine(w, net, s, slot);
+                if (peds)
+                {
+                    PedSignals.StepSlot(w, s, slot);
+                }
+
                 continue;
             }
 
@@ -72,6 +84,11 @@ internal static class SignalPhase
                     Interval = s.Interval[slot],
                     TicksToChange = s.TicksLeft[slot],
                 };
+                if (peds)
+                {
+                    PedSignals.StepSlot(w, s, slot);   // до уменьшения TicksLeft: первый тик зелёного виден как TicksLeft == Green
+                }
+
                 s.TicksLeft[slot]--;
             }
             else
@@ -83,6 +100,10 @@ internal static class SignalPhase
                     Interval = mode == SignalMode.Off ? SignalInterval.Off : SignalInterval.Yellow,
                     TicksToChange = 0,
                 };
+                if (peds)
+                {
+                    PedSignals.StepSlot(w, s, slot);   // не цветной режим: сигнал перехода сбрасывается (переход нерегулируемый)
+                }
             }
 
             WriteLanes(w, net, s, slot, mode);
@@ -272,9 +293,14 @@ internal static class SignalPhase
         }
     }
 
-    private static void StepAdaptive(World w, SignalStore s, int slot, in RuleEnv e)
+    private static void StepAdaptive(World w, SignalStore s, int slot, in RuleEnv e, bool hold)
     {
         Detect(w, s, slot, in e, out int call, out bool ext, out int leftWait, out int leftDemand, out int spillAxes);
+        if (w.Peds != null && PedSignals.Enabled)
+        {
+            call |= PedSignals.CallMask(w, s, slot);   // вызов пешехода: ось перехода обслуживается и без машин (pedestrians.md §6)
+        }
+
         if (s.Interval[slot] != SignalInterval.Green && s.TicksLeft[slot] == 0)
         {
             AdvanceTransition(s, slot);
@@ -314,6 +340,11 @@ internal static class SignalPhase
             int otherCall = call & ~(1 << k);
             int myLeft = leftDemand & s.ArmsOfAxis(slot, k);
             bool others = otherCall != 0 || myLeft != 0;
+            if (hold)
+            {
+                return;   // идут Walk/Clear оси: Main не завершается (эффективный MinGreen = старт + Walk + Clear)
+            }
+
             if (forceOff)
             {
                 Begin(s, slot, owner, 0, 0);
@@ -471,7 +502,7 @@ internal static class SignalPhase
 
             call |= axisBit;
             bool green = w.LaneSignals[conn] == (byte)LaneSignal.Green;
-            bool yieldDeny = dr == (byte)GateDeny.Yield || dr == (byte)GateDeny.Box;
+            bool yieldDeny = dr == (byte)GateDeny.Yield || dr == (byte)GateDeny.Box || dr == (byte)GateDeny.Ped;   // Ped не продлевает зелёный, но считается уступанием (pedestrians.md §5.6)
             if (green && !yieldDeny)
             {
                 ext = true;

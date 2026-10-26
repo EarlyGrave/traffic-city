@@ -309,6 +309,11 @@ internal static class WorldBuilder
             return desc.Transit.PassengerModel == PassengerModel.Agents ? CreateStatus.InvalidPeds : CreateStatus.Ok;
         }
 
+        if (desc.Lod.Mode != LodMode.Off && desc.Lod.MesoModel == MesoModel.Queue)
+        {
+            return CreateStatus.NotSupported;   // Q-meso + peds: машины очереди не материализованы, обязавшихся нет (ADR-0020, pedestrians.md §5.6)
+        }
+
         PedDesc p = Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks);
         return Peds.PedNetwork.IsValid(in p, in desc.Capacities) ? CreateStatus.Ok : CreateStatus.InvalidPeds;
     }

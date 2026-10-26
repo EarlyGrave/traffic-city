@@ -39,6 +39,7 @@ internal sealed class CrossingState
     public readonly ulong[] XActive;        // битовая маска: QCount > 0 или не Free; обход по возрастанию индекса
     public readonly int[] XClosedNow;       // переходы, закрывшиеся в этом тике (для снятия допусков в 4b)
     public int XClosedNowCount;
+    public int ObservedCount;               // переходов с хотя бы одним выпуском (Releases > 0): знаменатель crossing_closed_share
     public readonly byte[] CrossingSignals; // опубликованное: бит 0-1 XState, бит 2-3 сигнал (0 DontWalk, 1 Walk, 2 Clear); P3 обновляет при смене
 
     public CrossingState(int capacity, int nodeCapacity, int midCapacity)
@@ -86,6 +87,7 @@ internal sealed class CrossingState
         Array.Clear(MidClosed);
         Array.Clear(XActive);
         XClosedNowCount = 0;
+        ObservedCount = 0;
         Array.Clear(CrossingSignals);
     }
 
