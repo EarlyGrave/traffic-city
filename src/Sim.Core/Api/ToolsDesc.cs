@@ -26,6 +26,9 @@ public struct ToolsDesc
 
     public ToolCostsDesc Costs;
 
+    /// <summary><c>tools.inverse_capacity</c>: команд в буфере обратных записей за <c>Step</c> (0 - 4096). Выделяется при создании мира.</summary>
+    public int InverseCapacity;
+
     /// <summary><c>tools.world_bounds</c>: false - по умолчанию bounding box сети + <see cref="DefaultBoundsMarginM"/>.</summary>
     public bool HasWorldBounds;
     public float BoundsMinX, BoundsMinZ, BoundsMaxX, BoundsMaxZ;

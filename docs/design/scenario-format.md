@@ -436,6 +436,7 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
     "demolish_refund_pct": 50,      // снос: возврат % стоимости постройки (0..100); Cost превью < 0
     "upgrade_refund_pct": 50
   },
+  "inverse_capacity": 4096,   // команд в буфере обратных записей за Step (0/нет - 4096)
   "world_bounds": { "min_x": -3000, "min_z": -3000, "max_x": 3000, "max_z": 3000 }   // нет - bounding box сети + 2 км (OutOfBounds)
 }
 ```

@@ -458,7 +458,8 @@ public sealed class PreviewTests
                 b.LanesAB = 12;
                 break;
             case 7:
-                b.RestoreOf = new EntityRef(rng.Next(Math.Max(1, n.SegmentCount)), 1 + (2 * rng.Next(3)));
+                int rs = rng.Next(Math.Max(1, n.SegmentCount));   // живой сегмент не в дренаже: восстанавливать нечего (InvalidHandle); мёртвый handle - пересоздание (T8), тестирует UndoTests
+                b.RestoreOf = new EntityRef(rs, n.SegmentAlive(rs) ? n.Segments[rs].Generation : 1);
                 break;
             case 8:
                 b.Flags = BuildRoadFlags.AutoSplit;

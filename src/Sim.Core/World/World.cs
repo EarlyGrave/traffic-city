@@ -52,6 +52,7 @@ internal sealed class World : IDisposable
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public readonly Sim.Core.Tools.InverseLog Inv;    // обратные записи и scratch перенумерации (player-tools.md §8): не состояние, вне хэша и сейва
     public readonly ToolOps Ops;                 // длительные операции инструментов (дренаж, 4.3 T4); состояние - в хэше и сейве при ToolsTouched = 1
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
     public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
@@ -212,6 +213,7 @@ internal sealed class World : IDisposable
         Connectors = new ConnectorStore(maxConnectors, maxConflicts, PedCfg.Enabled);
         Signals = new SignalStore(c.MaxSignalizedNodes, rules.SignalArrowGapTicks);
         Ops = new ToolOps(ToolOps.DefaultCapacity);
+        Inv = new Sim.Core.Tools.InverseLog(desc.Tools.InverseCapacity, c.CommandQueueCapacity);
         Masks = new TickMasks(c.MaxVehicles);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
         SignalWait = new SignalMetrics();

@@ -187,6 +187,8 @@ internal static class ToolOpsPhase
             System.Diagnostics.Debug.Assert(s == NetworkStatus.Ok, "перестройка узла B после проверки");
         }
 
+        DegradeControl(w, a);
+        DegradeControl(w, b);
         RemoveFromZones(w, seg);
 
         // Сегмент мёртв: оставшиеся ссылки на его полосы (назначения, поездки, окна) - в «нет» (маршруты освобождаются).
@@ -216,6 +218,22 @@ internal static class ToolOpsPhase
 
         w.Emit(SimEventKind.ToolOpFinished, 0, opId, (int)CommandKind.RemoveRoad);
         ops.RemoveAt(k);
+    }
+
+    // Узел с правилом «справа» потерял рукав и стал проходным (<= 2 рукавов): правил нет, как у построенного генератором узла степени 2 (так обратная к BuildRoad возвращает прежний режим).
+    private static void DegradeControl(World w, int node)
+    {
+        NetworkStore n = w.Net;
+        ref readonly NodeData nd = ref n.Nodes[node];
+        if (nd.FirstArm < 0 || nd.ArmCount > 2 || nd.Control != NodeControl.RightHandRule)
+        {
+            return;
+        }
+
+        w.Builder.SetNodeControl(node, NodeControl.None);
+        w.Connectors.RecomputeRel(n, node, false);
+        Rules.Intersections.GatePhase.ResetNode(w, node);
+        w.Vehicles.MarkAllRouteDirty();
     }
 
     private static void ReleaseOrphan(World w, int node, bool keep)
