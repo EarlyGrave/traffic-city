@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| T8-долг UndoUnavailable в превью | облако | claude/adoring-ritchie-cxzib8 (при обрыве — продолжать с ветки) | src/Sim.Core/Tools, tests/Sim.Core.Tests/Tools | 2026-10-27 |
