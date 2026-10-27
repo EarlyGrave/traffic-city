@@ -359,6 +359,7 @@ internal static class WorldLoader
 
         // Производные оставшихся хранилищ.
         w.Occupancy.RebuildMasks(w.Net.LaneCount);
+        Transit.BusStopPhase.RebuildBay(w);
         if (w.Net.PedNet != null)
         {
             // Сеть пешеходов - производное (pedestrians.md §2), тем же кодом, что в Create; затем проверки состояния агентов (им нужны индексы рёбер) и их производные.

@@ -633,6 +633,9 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
+    /// <summary>Верхняя граница <c>transit.bay_yield_s</c> (60 с, bus-bays.md §3), тики.</summary>
+    internal const int MaxBayYieldTicks = 1200;
+
     internal static CreateStatus ValidateTransit(in ScenarioDesc desc)
     {
         TransitDesc t = desc.Transit;
@@ -643,6 +646,11 @@ internal static class WorldBuilder
         }
 
         if ((t.Routes > 0 || explicitRoutes > 0) && (uint)t.BusType >= (uint)desc.VehicleTypes.Length)
+        {
+            return CreateStatus.InvalidTransit;
+        }
+
+        if ((uint)t.BayModel > (uint)BayModel.Lane || t.BayYieldTicks < 0 || t.BayYieldTicks > MaxBayYieldTicks)
         {
             return CreateStatus.InvalidTransit;
         }

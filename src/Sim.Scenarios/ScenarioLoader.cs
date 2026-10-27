@@ -889,6 +889,8 @@ public static partial class ScenarioLoader
             HoldAlpha = 0.9f,
             HoldMaxTicks = Ticks(60),
             HoldEveryN = 1,
+            BayModel = BayModel.Virtual,
+            BayYieldTicks = Ticks(3),
             PassengerModel = pedsEnabled ? PassengerModel.Agents : PassengerModel.Counter,
         };
         string busName = refs.DefaultBus;
@@ -930,6 +932,15 @@ public static partial class ScenarioLoader
             t.HoldMaxTicks = Ticks(r.Num("hold_max_s", 60, min: 0));
             t.HoldEveryN = r.Int("hold_every_n", 1, min: 1);
             t.Bidirectional = r.Bool("bidirectional", false);
+            string bm = r.Str("bay_model", "virtual");
+            t.BayModel = bm switch
+            {
+                "virtual" => BayModel.Virtual,
+                "curb" => BayModel.Curb,
+                "lane" => BayModel.Lane,
+                _ => throw new ScenarioException($"{r.ChildPath("bay_model")}: expected \"virtual\", \"curb\" or \"lane\""),
+            };
+            t.BayYieldTicks = Ticks(r.Num("bay_yield_s", 3, min: 0, max: 60));
             string pm = r.Str("passenger_model", pedsEnabled ? "agents" : "counter");
             t.PassengerModel = pm switch
             {

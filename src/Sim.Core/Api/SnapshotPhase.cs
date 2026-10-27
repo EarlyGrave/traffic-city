@@ -168,6 +168,20 @@ internal sealed class SnapshotJob : IRangeJob
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
         int lane = v.Lane[i];
+        float s = v.S[i];
+        float lateral = v.Lateral[i];
+        if (lane < 0 && v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+        {
+            // Автобус в виртуальном кармане (ADR-0029): на полосе его нет, рисуется на остановке, сдвинутым за правый край полосы на её ширину (из опций построителя).
+            int si = Transit.BusStopRules.TargetStop(net, v, i);
+            if (si >= 0)
+            {
+                lane = net.BusStops[si].Lane;
+                s = net.BusStops[si].S;
+                lateral = -w.Builder.Options.LaneWidth;
+            }
+        }
+
         if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
         {
             if (buf[i].Flags != 0)
@@ -180,7 +194,6 @@ internal sealed class SnapshotJob : IRangeJob
             return;
         }
 
-        float s = v.S[i];
         float speed = v.Speed[i];
         Lod.QueueMeso? q = w.Queue;
         if (q != null && q.IsQueued(i))
@@ -202,7 +215,6 @@ internal sealed class SnapshotJob : IRangeJob
         int frontHint = savedHint;
         // Только нос F привязан к полосе (s >= 0 всегда): без спецслучаев на въезде и выезде с перекрёстка.
         LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref frontHint, out Vec2 front, out int fp);
-        float lateral = v.Lateral[i];
         Vec2 pd = net.LanePoints[fp + 1] - net.LanePoints[fp];
         float plen = MathF.Sqrt((pd.X * pd.X) + (pd.Z * pd.Z));
         Vec2 pdir = plen > 1e-9f ? pd * (1f / plen) : new Vec2(1f, 0f);

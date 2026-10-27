@@ -181,6 +181,31 @@ internal static class StateHash
             h.Add(w.Net.BusRoutes[r].LastDispatchTick);
         }
 
+        // 6a. Карманы остановок (ADR-0029): только при bay_model = virtual и наличии остановок Bay - хэш прочих миров прежний.
+        if (w.TransitCfg.BayModel == BayModel.Virtual)
+        {
+            bool anyBay = false;
+            for (int s = 0; s < w.Net.BusStopCount && !anyBay; s++)
+            {
+                anyBay = w.Net.BusStops[s].Kind == BusStopKind.Bay;
+            }
+
+            if (anyBay)
+            {
+                for (int s = 0; s < w.Net.BusStopCount; s++)
+                {
+                    h.Add(w.Net.BusStops[s].BayUsed);
+                    h.Add(w.Net.BusStops[s].BayFlags);
+                    h.Add(w.Net.BusStops[s].BayExitFrom);
+                }
+
+                h.Add(w.Counters.BayEntries);
+                h.Add(w.Counters.BayFallbacks);
+                h.Add(w.Counters.BayYields);
+                h.Add(w.Counters.BayExitWaitTicksTotal);
+            }
+        }
+
         // 7. Счётчики (по полям в порядке объявления).
         AddCounters(ref h, in w.Counters);
         h.Add(w.Graph.WeightsVersion);

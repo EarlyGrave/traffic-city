@@ -631,7 +631,7 @@ internal static partial class SaveValidator
             int lane = v.Lane[i];
             if (lane < -1 || lane >= lanes || v.GhostLane[i] < -1 || v.GhostLane[i] >= lanes || !Fin(v.S[i]) || !Fin(v.Speed[i]) || v.Speed[i] < 0f ||
                 !Fin(v.Accel[i]) || !Fin(v.Length[i]) || v.Length[i] <= 0f || v.Type[i] >= w.Types.Length || !Fin(v.DesiredSpeed[i]) ||
-                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 63)
+                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 127)
             {
                 return Bad(c, i, 30);
             }
@@ -694,6 +694,17 @@ internal static partial class SaveValidator
             if (v.Lod.Length != 0 && (v.Lod[i] > 31 || !Fin(v.MesoAllow[i]) || !Fin(v.MesoNext[i])))
             {
                 return Bad(c, i, 34);
+            }
+
+            // Автобус в виртуальном кармане (ADR-0029, bus-bays.md §3): автобус на остановке, вне списков полос, без ghost и смены полосы, целевая остановка существует.
+            if ((v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+            {
+                const byte need = (byte)VehicleFlags.IsBus | (byte)VehicleFlags.AtStop;
+                if ((v.Flags[i] & need) != need || lane != -1 || v.GhostLane[i] != -1 || v.LaneChangeDir[i] != 0 || v.Ahead[i] != -1 || v.Behind[i] != -1 ||
+                    v.GhostAhead[i] != -1 || v.GhostBehind[i] != -1 || Transit.BusStopRules.TargetStop(n, v, i) < 0)
+                {
+                    return Bad(c, i, 350);
+                }
             }
         }
 
@@ -1001,6 +1012,52 @@ internal static partial class SaveValidator
         return LoadStatus.Ok;
     }
 
+    /// <summary>
+    /// Карманы остановок (ADR-0029): <c>BayUsed</c> равен числу автобусов <c>InBay</c> этой остановки (0 или 1), карман бывает только у остановки <c>Bay</c> при <c>bay_model = virtual</c> и LOD выключенном,
+    /// <c>BayFlags</c> - известные биты, <c>BayExitFrom</c> не позже текущего тика и только при занятом кармане.
+    /// </summary>
+    private static LoadStatus ValidateBays(LoadContext c)
+    {
+        World w = c.W;
+        NetworkStore n = w.Net;
+        VehicleStore v = w.Vehicles;
+        int stops = n.BusStopCount;
+        var count = new byte[stops];
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i) || (v.Flags[i] & (byte)VehicleFlags.InBay) == 0)
+            {
+                continue;
+            }
+
+            int si = Transit.BusStopRules.TargetStop(n, v, i);
+            if (si < 0 || count[si] >= 2)
+            {
+                return Bad(c, i, 351);
+            }
+
+            count[si]++;
+        }
+
+        bool bays = w.TransitCfg.BayModel == BayModel.Virtual && w.Lod == null;
+        for (int s = 0; s < stops; s++)
+        {
+            ref readonly BusStopData st = ref n.BusStops[s];
+            if (!NetworkAlive.IsAlive(st.Generation))
+            {
+                continue;   // мёртвый слот: каноничность проверена в ValidateNetwork
+            }
+
+            if (st.BayUsed > 1 || st.BayUsed != count[s] || (st.BayFlags & ~BayStopFlags.Known) != 0 || st.BayExitFrom < -1 || st.BayExitFrom > w.Tick ||
+                (st.BayExitFrom >= 0 && st.BayUsed == 0) || (st.BayUsed == 1 && (!bays || st.Kind != BusStopKind.Bay)))
+            {
+                return Bad(c, s, 352);
+            }
+        }
+
+        return LoadStatus.Ok;
+    }
+
     /// <summary>Конец загрузки: проверки, не привязанные к одному блоку.</summary>
     public static LoadStatus ValidateRest(LoadContext c)
     {
@@ -1036,6 +1093,12 @@ internal static partial class SaveValidator
             }
 
             owned[r >> 6] |= 1UL << (r & 63);
+        }
+
+        LoadStatus bay = ValidateBays(c);
+        if (bay != LoadStatus.Ok)
+        {
+            return bay;
         }
 
         if (w.City == null)

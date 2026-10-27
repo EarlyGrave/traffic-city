@@ -60,6 +60,7 @@ internal sealed class World : IDisposable
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
     public readonly TickMasks Masks;             // маски кандидатов фаз 7-8 из фазы 6 (ADR-0019, A3); производное, вне хэша
+    public readonly int[] BayBus;                // остановка -> слот автобуса в её кармане (InBay) или -1; производное (ADR-0029), вне хэша и сейва: после загрузки пересобирается
     public readonly Rules.Intersections.GateScanJob GateScan = new();
     public readonly Rules.Intersections.GateResolveJob GateResolve = new();
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
@@ -218,6 +219,8 @@ internal sealed class World : IDisposable
         Ops = new ToolOps(ToolOps.DefaultCapacity);
         Inv = new Sim.Core.Tools.InverseLog(desc.Tools.InverseCapacity, c.CommandQueueCapacity);
         Masks = new TickMasks(c.MaxVehicles);
+        BayBus = new int[Net.BusStops.Length];
+        System.Array.Fill(BayBus, -1);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
         SignalWait = new SignalMetrics();
         Graph.AttachSignals(Signals, Gate.ConnDelay);
