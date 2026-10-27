@@ -94,7 +94,7 @@ internal sealed partial class NetworkStore
 
     internal static NodeData DeadNode(int generation) => new() { FirstArm = -1, Signal = -1, Zone = -1, Generation = generation };
 
-    internal static SegmentData DeadSegment(int generation) => new() { NodeA = -1, NodeB = -1, FirstLaneAB = -1, FirstLaneBA = -1, Generation = generation };
+    internal static SegmentData DeadSegment(int generation) => new() { NodeA = -1, NodeB = -1, FirstLaneAB = -1, FirstLaneBA = -1, Profile = -1, Generation = generation };
 
     /// <summary>Мёртвая и запасная полоса блока: ссылки -1, <c>Generation == 0</c> (живая - 1).</summary>
     internal static LaneData DeadLane() => new() { Segment = -1, Node = -1, FromLane = -1, ToLane = -1, Left = -1, Right = -1, ConflictGroup = -1 };
@@ -106,7 +106,7 @@ internal sealed partial class NetworkStore
     internal static bool IsDeadLane(in LaneData l) =>
         l.Generation == 0 && l.Segment == -1 && l.Node == -1 && l.FromLane == -1 && l.ToLane == -1 && l.Left == -1 && l.Right == -1 && l.ConflictGroup == -1 &&
         l.Kind == LaneKind.Normal && l.LaneNo == 0 && l.Direction == 0 && l.Flags == 0 && l.Length == 0f && l.SpeedLimit == 0f && l.FirstPoint == 0 &&
-        l.PointCount == 0 && l.FirstNext == 0 && l.NextCount == 0;
+        l.PointCount == 0 && l.FirstNext == 0 && l.NextCount == 0 && l.Width == 0f;
 
     // ---- блоки арен ----
 

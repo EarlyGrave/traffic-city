@@ -10,6 +10,13 @@ internal static class LotFlags
     public const byte Painted = 2;    // зону задал игрок (автозонирование и рост его не трогают)
 }
 
+/// <summary>Значения <see cref="LotStore.Orient"/>.</summary>
+internal static class LotOrient
+{
+    public const byte Legacy = 255;   // участок вдоль дороги без привязки к сетке (сейвы до v8, режим legacy)
+    public const byte Max = 3;        // 0..3: +x, -x, +z, -z
+}
+
 /// <summary>
 /// Участки (zoning-demand.md §2.1): SoA с ёмкостью <c>max_lots</c>, только дописываются (<see cref="Count"/>); индекс - идентификатор, поколения нет
 /// (устаревшую ссылку на сегмент ловит <see cref="SegGen"/>). Состояние (в сейве, блок <c>LOTS</c>): сегмент, сторона, отрезок фасада, зона, плотность, здание, флаги.
@@ -30,6 +37,13 @@ internal sealed class LotStore
     public readonly byte[] Density;
     public readonly int[] Building;      // индекс здания или -1
     public readonly byte[] Flags;
+
+    // ---- состояние участков на мировой сетке (ADR-0030, road-profiles.md §4.4; столбцы LOTS v8). Заполняет RP5; до него Orient = 255 (legacy), остальное 0 ----
+    public readonly int[] CellX;         // передний левый угол, клетки мировой сетки 8 м
+    public readonly int[] CellZ;
+    public readonly byte[] CellsF;       // ширина по фасаду, клеток
+    public readonly byte[] CellsD;       // глубина, клеток
+    public readonly byte[] Orient;       // ось глубины +x, -x, +z, -z (0..3); 255 - legacy
 
     // ---- производные ----
     public readonly float[] X;
@@ -58,6 +72,12 @@ internal sealed class LotStore
         Density = new byte[capacity];
         Building = new int[capacity];
         Flags = new byte[capacity];
+        CellX = new int[capacity];
+        CellZ = new int[capacity];
+        CellsF = new byte[capacity];
+        CellsD = new byte[capacity];
+        Orient = new byte[capacity];
+        Array.Fill(Orient, LotOrient.Legacy);
         X = new float[capacity];
         Z = new float[capacity];
         Heading = new float[capacity];
@@ -105,6 +125,11 @@ internal sealed class LotStore
         Density[index] = 0;
         Building[index] = -1;
         Flags[index] = 0;
+        CellX[index] = 0;
+        CellZ[index] = 0;
+        CellsF[index] = 0;
+        CellsD[index] = 0;
+        Orient[index] = LotOrient.Legacy;
         Version++;
         return true;
     }

@@ -160,6 +160,9 @@ internal static class WorldLoader
             case "QMSO":
                 expected = c.Lod.Mode != LodMode.Off && c.Lod.MesoModel == MesoModel.Queue;
                 break;
+            case "RPRF":
+                expected = c.RoadProfileMode == 1;
+                break;
             case "BTYP":
             case "LOTS":
             case "BLDG":

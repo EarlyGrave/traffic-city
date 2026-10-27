@@ -265,7 +265,16 @@
 - Режим профилей строг: у каждого сегмента явной сети и у обоих классов дорог генератора профиль обязателен (`InvalidNetwork` иначе); ссылка на профиль без каталога - тоже ошибка.
   Инструменты игрока (`BuildRoad`) до RP7 строят сегменты без профиля (`Profile = -1`, геометрия legacy).
 - `Lane.Width` пишется у Normal-полос (из профиля или `NetworkOptions.LaneWidth`), у connector'ов 0; u-turn connector'а берёт ширину входной полосы. Сейв v7 (RP2 перейдёт на v8) при загрузке заполняет `Profile = -1`, `Width = NetLaneWidth`.
-- Сохранение мира в режиме профилей до RP2 не поддерживается (каталог и `Profile` в сейв не пишутся).
+- Сохранение мира в режиме профилей поддержано с RP2 (`world_version` 8, см. §11); до RP2 каталог и `Profile` в сейв не писались.
 - `NetworkStore.Hash()` хэширует полосы полями в прежней раскладке (60 байт); профильный раздел (каталог, `Segment.Profile`, `Lane.Width`) добавляется только при каталоге. То же для `NetworkHash.Network` и `desc_hash` (метка раздела `FORP`).
 - `PedNetwork.HalfRoad` и `LotBuilder.FrontOffsetM` в режиме профилей читают профиль минимально (`max(Curb)` и `EdgeMm`); сторонний тротуар и сетка 8 м - RP4/RP5.
 
+
+## 11. Решения при реализации RP2 (агент L17)
+- `world_version` 8. `PARM` 188 `RoadProfileMode` (0 legacy, 1 профили), 189-190 `WorldGridOriginX/Z` (`ScenarioDesc.WorldGridOriginX/Z`, `World.WorldGridOriginX/Z`; в хэш не входят, поведение задаст RP5/RP9).
+- Блок `RPRF` - PreWorld (каталог нужен до создания мира), есть ⇔ `RoadProfileMode = 1`; режим 1 без блока - `MissingBlock`, блок при режиме 0 - `InvalidValue`. Столбцы: `ModuleMm`; по профилю `Kind`, `WidthMm`, `ElemCount`, `IdLength`; по элементу `ElemKind`, `ElemDir`, `ElemWidthMm`; `IdBlob` (UTF-8). При загрузке каталог проходит тот же `RoadProfileValidator`, что при `Create`.
+- `NSEG` 16 `Profile` (-1 без профиля), `NLAN` 19 `Width`; `Mirrored` - бит в `NSEG.Flags`, маска валидатора расширена; `Mirrored` без профиля - отказ.
+- Валидатор: в режиме профилей сегмент с `Profile >= 0` обязан иметь `LanesAB/LanesBA/Kind` из профиля (с учётом `Mirrored`), а обычная полоса - `Width` ровно как `RoadProfileStore.LaneWidthM`; сегмент с `Profile = -1` допустим (дорога инструмента до RP7). У connector'а `Width = 0`, у обычной полосы `> 0`. RP7 (`UpgradeRoad` с другой шириной/числом полос) обязан сохранять эти инварианты или ослабить проверку осознанно.
+- Мёртвый слот сегмента теперь `Profile = -1` (`DeadSegment`), мёртвая полоса `Width = 0` (входят в `IsDeadLane`): в режиме профилей хэш читает эти поля у всех слотов, канон нужен для round-trip.
+- `LOTS` 11-15 (`CellX`, `CellZ`, `CellsF`, `CellsD`, `Orient`) лежат в `LotStore` и в сейве; **в хэш состояния участков (`CityHash`) пока не входят** - RP5 добавляет их в хэш (только для `Orient != 255`, чтобы legacy-хэши не менялись). Валидатор: `Orient = 255` ⇒ клеток нет (все 0); иначе `Orient <= 3`, `CellsF >= 1`, `CellsD >= 1`.
+- `MigrationV8` - режим legacy; `NetworkStore.FillLegacyProfileData` удалён (данные теперь из столбцов). Корпус `w8-*`: все прежние случаи + `cross-prof` (асимметричный профиль, `Mirrored`, начало сетки `(-4, 12)`) и `s1k-prof` (генератор на профилях фикстуры); `w1`-`w7` не менялись.

@@ -196,26 +196,6 @@ internal sealed partial class NetworkStore
     }
 
     /// <summary>
-    /// Загрузка сейва без каталога профилей (v7): <c>Segment.Profile = -1</c> у всех слотов, <c>Lane.Width</c> Normal-полос = ширина полосы сети.
-    /// Эти поля пишутся при эмиссии и не лежат в сейве v7; у connector'ов и мёртвых полос Width = 0, как при построении.
-    /// </summary>
-    internal void FillLegacyProfileData(float laneWidth)
-    {
-        for (int i = 0; i < SegmentCount; i++)
-        {
-            Segments[i].Profile = -1;
-        }
-
-        for (int l = 0; l < LaneCount; l++)
-        {
-            if (LaneAlive(l) && Lanes[l].Kind == LaneKind.Normal)
-            {
-                Lanes[l].Width = laneWidth;
-            }
-        }
-    }
-
-    /// <summary>
     /// Загрузка сейва: производные массивы полос (<c>LaneLength</c>, <c>LanePieceHeading</c>, <c>LaneGateNode</c>) по сохранённым полосам, точкам и узлам.
     /// Полосы с диапазоном точек вне <c>LanePointCount</c> пропускаются (их отклоняет проверка загрузчика раньше).
     /// </summary>
