@@ -1,8 +1,11 @@
 // Точка вместо ТС вдали (docs/design/render.md §3.4): горизонтальный квад 1x1, масштаб инстанса = (длина, 1, ширина).
 // Размер в мире = max(истинный размер, k_px пикселей на этой дистанции): ТС не мельче k_px и не крупнее себя - геометрия не раздувается.
 // 1 px в мире на дистанции d = 2·d / (высота_вьюпорта · P[1][1]); при FOV 60° и 1080p это 0.00107·d (формула спеки).
+// Цвет инстанса: rgb - цвет, a - доля тонирования инфо-режима (0 у stuck/выделенных: насыщенный оверлей поверх беж).
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_opaque, shadows_disabled;
+
+#include "res://Shaders/world.gdshaderinc"
 
 uniform float k_px = 2.0;
 
@@ -16,5 +19,5 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = COLOR.rgb;
+	ALBEDO = world_info(COLOR.rgb * light_tint, COLOR.a);
 }

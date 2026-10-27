@@ -296,7 +296,7 @@ public sealed partial class NodePanel : PanelContainer
             {
                 int sig = (_armPed[a] >> 2) & 3;
                 int occ = _armPed[a] & 3;
-                _sb.Append(sig == 1 ? "[color=#3ee65a]walk[/color]" : sig == 2 ? "[color=#ffdb26]clear[/color]" : "[color=#ff4040]stop[/color]");
+                _sb.Append(sig == 1 ? Palette.BbWalk + "walk[/color]" : sig == 2 ? Palette.BbClear + "clear[/color]" : Palette.BbStop + "stop[/color]");
                 _sb.Append(occ == 0 ? string.Empty : occ == 1 ? " call" : " busy");
             }
             else

@@ -1,6 +1,7 @@
 // Тротуары и переходы чанками (docs/design/render.md §3.5): ленты непрозрачные, ширина = ширина тротуара; heatmap из PedEdgeCounts по CUSTOM0.x (ребро).
 // CUSTOM0.y = 1 у перехода: он нужен только как heatmap-лента (вблизи зебра рисуется отдельно, лента отбрасывается).
 // R = плотность (нормирована в коде), B = на ребре кто-то есть.
+// Инфо-режим (visual-style.md §7): цвет тонируется в беж, heatmap слоя «Пешеходы» накладывается поверх.
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled, cull_disabled, depth_draw_opaque;
 
@@ -15,7 +16,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 col = COLOR.rgb;
+	vec3 col = world_info(COLOR.rgb, 1.0);
 	float m = heat_mix(v_dist);
 	if (v_cross > 0.5 && m <= 0.001) {
 		discard;

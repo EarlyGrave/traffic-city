@@ -31,7 +31,7 @@ public partial class SimHost : Node3D
 
     private static readonly Color _signalRed = new(1f, 0.2f, 0.2f);
     private static readonly Color _signalYellow = new(1f, 0.86f, 0.15f);
-    private static readonly Color _signalGreen = new(0.24f, 0.9f, 0.35f);
+    private static readonly Color _signalGreen = Palette.SignalWalk;
 
     private Simulation? _sim;
     private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
@@ -42,6 +42,9 @@ public partial class SimHost : Node3D
     private bool _logStepAlloc;
     private RoadChunks? _roads;
     private HeatTexture? _roadHeat;
+    private readonly InfoMode _info = new();
+    private bool _infoArg;
+    private int _infoArgLayer;
     private PedChunks? _pedStatic;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
@@ -99,6 +102,7 @@ public partial class SimHost : Node3D
         _status = GetNodeOrNull<Label>("../Hud/Status");
         _renderStats = GetNodeOrNull<RenderStats>("../RenderStats");
 
+        InfoMode.Init();
         string name = Scenario;
         string[] args = OS.GetCmdlineUserArgs();
         ParseArgs(args, ref name);
@@ -125,6 +129,11 @@ public partial class SimHost : Node3D
             _renderStats.Pose = _pose.Length > 0 ? _pose : (_hasCamArgs ? "cam" : "default");
             _renderStats.WarmupTicks = _warmupTicks;
             _renderStats.ExtraArgs = ArgsWithoutPaths(args);
+        }
+
+        if (_infoArg)
+        {
+            _info.Snap(true, _infoArgLayer);
         }
 
         if (_showHud)
@@ -154,7 +163,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
-    /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>,
+    /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
     /// <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
     private void ParseArgs(string[] args, ref string name)
@@ -215,6 +224,16 @@ public partial class SimHost : Node3D
             else if (a == "--warmup-ticks" && i + 1 < args.Length)
             {
                 int.TryParse(args[++i], NumberStyles.Integer, inv, out _warmupTicks);
+            }
+            else if (a == "--info" && i + 1 < args.Length)
+            {
+                _infoArg = true;
+                _infoArgLayer = args[++i] switch
+                {
+                    "peds" => InfoMode.LayerPeds,
+                    "zones" => InfoMode.LayerZones,
+                    _ => InfoMode.LayerTraffic,
+                };
             }
             else if (a == "--ped-mode" && i + 1 < args.Length)
             {
@@ -343,9 +362,11 @@ public partial class SimHost : Node3D
             RebuildRoads(_sim);
         }
 
-        if (_roadHeat != null)
+        _info.Update(delta, _camera?.Distance ?? 1000f);
+        if (_roadHeat != null && _info.Visible)
         {
-            // heatmap дорог в шейдере: раз в 0.5 с обновляется только текстура данных, мешей не трогаем (render.md §3.5)
+            // heatmap дорог в шейдере: раз в 0.5 с обновляется только текстура данных, мешей не трогаем (render.md §3.5);
+            // данные нужны только в информационном режиме
             _heatTimer -= delta;
             if (_heatTimer <= 0)
             {
@@ -391,12 +412,19 @@ public partial class SimHost : Node3D
             switch (key.Keycode)
             {
                 case Key.F1:
-                    if (_roads != null)
-                    {
-                        _roads.SetHeat(!_roads.Heat);
-                        _heatTimer = 0;
-                    }
-
+                    _info.Toggle();
+                    _heatTimer = 0;
+                    _pedHeatTimer = 0;
+                    break;
+                case Key.Key1 when _info.Active:
+                    _info.SetLayer(InfoMode.LayerTraffic);
+                    break;
+                case Key.Key2 when _info.Active:
+                    _info.SetLayer(InfoMode.LayerPeds);
+                    _pedHeatTimer = 0;
+                    break;
+                case Key.Key3 when _info.Active:
+                    _info.SetLayer(InfoMode.LayerZones); // заглушка: участки «Зоны» рисует VS9
                     break;
                 case Key.F2:
                     _signalsOn = !_signalsOn;
@@ -530,13 +558,18 @@ public partial class SimHost : Node3D
     /// <summary>Сеть изменилась (4.3, T2-T4: снос, перенос, закрытие): дороги и текстура heatmap пересобираются целиком (инкрементальный оверлей - T6, бэклог).</summary>
     private void RebuildRoads(Simulation sim)
     {
-        bool heat = _roads!.Heat;
-        _roads.Root.QueueFree();
+        _roads!.Root.QueueFree();
         _roadHeat = new HeatTexture(sim.Network.Segments.Length);
         _roadHeat.UpdateRoads(sim.SegmentLoads);
         _roads = new RoadChunks(sim, _roadHeat, _lod);
-        _roads.SetHeat(heat);
         AddChild(_roads.Root);
+    }
+
+    private static ShaderMaterial GroundMaterial()
+    {
+        var mat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/ground_flat.gdshader") };
+        mat.SetShaderParameter("ground_color", Palette.Ground);
+        return mat;
     }
 
     private void BuildScene(Simulation sim)
@@ -579,12 +612,7 @@ public partial class SimHost : Node3D
             Mesh = new PlaneMesh { Size = new Vector2(w + 400f, h + 400f) },
             Position = center + new Vector3(0f, -0.15f, 0f),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            MaterialOverride = new StandardMaterial3D
-            {
-                AlbedoColor = new Color(0.10f, 0.13f, 0.11f),
-                Roughness = 1f,
-                MetallicSpecular = 0f,
-            },
+            MaterialOverride = GroundMaterial(),
         });
 
         _roadHeat = new HeatTexture(sim.Network.Segments.Length);
@@ -592,7 +620,7 @@ public partial class SimHost : Node3D
         _roads = new RoadChunks(sim, _roadHeat, _lod);
         AddChild(_roads.Root);
 
-        _vehicles = new VehicleLayer(this, _types, _lod);
+        _vehicles = new VehicleLayer(this, _types, _lod) { Info = _info };
 
         if (sim.HasPeds)
         {
@@ -614,8 +642,8 @@ public partial class SimHost : Node3D
                 Visible = false,
                 Position = new Vector2(8f, 290f),
             };
-            _inspector.AddThemeColorOverride("font_color", new Color(1f, 1f, 0.85f));
-            _inspector.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.9f));
+            _inspector.AddThemeColorOverride("font_color", Palette.InspectorText);
+            _inspector.AddThemeColorOverride("font_shadow_color", Palette.TextShadow);
             GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_inspector);
         }
 
@@ -644,7 +672,7 @@ public partial class SimHost : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             MaterialOverride = new StandardMaterial3D
             {
-                AlbedoColor = new Color(1f, 0.95f, 0.2f),
+                AlbedoColor = Palette.RouteLine,
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 CullMode = BaseMaterial3D.CullModeEnum.Disabled,
                 NoDepthTest = true,

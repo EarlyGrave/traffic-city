@@ -1,5 +1,6 @@
 // Дороги чанками (docs/design/render.md §3.5, §5.2): цвет полосы из вершин, heatmap = цвет из текстуры SegmentLoads по CUSTOM0.x (сегмент).
 // Непрозрачный, без прозрачного прохода. R = SpeedRatio, G = Density/120, B = Count > 0.
+// Инфо-режим (visual-style.md §7): цвет тонируется в беж, heatmap слоя «Трафик» накладывается поверх.
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled, cull_disabled, depth_draw_opaque;
 
@@ -11,7 +12,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 col = COLOR.rgb;
+	vec3 col = world_info(COLOR.rgb, 1.0);
 	float m = heat_mix(v_dist);
 	if (m > 0.0 && v_idx > -0.5) {
 		vec4 h = heat_fetch(v_idx);
