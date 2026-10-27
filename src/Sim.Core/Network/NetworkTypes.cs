@@ -7,7 +7,7 @@ internal enum NetworkStatus : int
 {
     Ok = 0,
     InvalidArgument = 1,    // нет такого узла, A == B, число полос/лимит скорости вне диапазона
-    SegmentTooShort = 2,    // ось короче 2 * NodeSetback + MinLaneLength
+    SegmentTooShort = 2,    // ось короче 2 * NodeSetback + MinLaneLength (увеличенные отступы ADR-0028 сжимаются, а не отказывают)
     TooManyArms = 3,        // узел с > MaxArms сегментами
     TooManyConnectors = 4,  // план connector'ов узла не влез в рабочий буфер
     NodeAlreadyBuilt = 5,   // BuildConnectors для узла уже вызывался
@@ -39,9 +39,13 @@ internal struct NetworkOptions
 {
     public float LaneWidth;        // м
     public float SnapRadius;       // м: узлы ближе прилипают друг к другу
-    public float NodeSetback;      // м: отступ конца сегмента от оси узла (длина connector'а прямо = 2 * NodeSetback)
+    public float NodeSetback;      // м: базовый (минимальный) отступ конца сегмента от оси узла; тупики и изгибы - ровно он (ADR-0028)
     public int ConnectorSamples;   // точек в полилинии connector'а (>= 2)
     public float MinLaneLength;    // м: минимальная длина полосы между отступами
+    public float CornerRadius;     // м: радиус скругления бордюра (ADR-0028); отступ рукава узла степени >= 3 = max(NodeSetback, полуширина поперечной + CornerRadius); 0 - фиксированный NodeSetback (до ADR-0028)
+
+    /// <summary>Радиус скругления по умолчанию (ADR-0028, `city.corner_radius_m`).</summary>
+    public const float DefaultCornerRadius = 6f;
 
     public static NetworkOptions Default => new()
     {
@@ -50,7 +54,11 @@ internal struct NetworkOptions
         NodeSetback = 7f,
         ConnectorSamples = 8,
         MinLaneLength = 1f,
+        CornerRadius = DefaultCornerRadius,
     };
+
+    /// <summary>Значение опции из поля сценария (<c>CityGenDesc.CornerRadius</c>): 0 - дефолт, &lt; 0 - выключено (фиксированный отступ), иначе радиус.</summary>
+    public static float CornerRadiusFromDesc(float desc) => desc == 0f ? DefaultCornerRadius : desc < 0f ? 0f : desc;
 }
 
 internal enum Maneuver : byte

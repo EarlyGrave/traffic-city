@@ -77,7 +77,9 @@ internal static class Corridor
             segs.Add(new SegmentDesc { A = i, B = south, LanesAB = 1, LanesBA = 1, SpeedLimit = 13.9f, Kind = RoadKind.Street });
         }
 
-        d.Network = new NetworkDesc { Nodes = nodes.ToArray(), Segments = segs.ToArray() };
+        // Калибровка meso (h, разгон) и допуски «meso против micro» сняты на коробке узла 14 м (фиксированный отступ 7 м): геометрия ADR-0028 здесь выключена,
+        // пересчёт калибровки под новую геометрию - отдельная задача (ADR-0028, «Последствия»).
+        d.Network = new NetworkDesc { Nodes = nodes.ToArray(), Segments = segs.ToArray(), CornerRadius = -1f };
         d.Rules.DefaultYellowTicks = 60;
         d.Rules.DefaultAllRedTicks = 20;
         d.VehicleTypes = new[] { Step2.RealCar() };

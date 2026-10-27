@@ -33,6 +33,7 @@ internal sealed class LoadContext
     public OdPairDesc[] OdPairs = Array.Empty<OdPairDesc>();
     public float[] TypeMix = Array.Empty<float>();
     public float NetLaneWidth = 3.5f;
+    public float NetCornerRadius;   // w6 (ADR-0028); 0 - фиксированный отступ (сейвы до w6)
     public int NetConnectorSamples = 8;
 
     /// <summary>Длины групп свободной длины (-1 - ещё не задана); см. <see cref="ColumnDef.Group"/>.</summary>

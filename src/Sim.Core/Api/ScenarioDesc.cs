@@ -159,6 +159,7 @@ public struct CityGenDesc
     public float NodeJitter;               // фоновый джиттер всех внутренних узлов, м (дефолт 0)
     public float RemovedStreetShare;       // 0..0.5
     public int ConnectorSamples;
+    public float CornerRadius;             // city.corner_radius_m, м (ADR-0028): 0 = дефолт 6 м, < 0 = выключено (фиксированный отступ 7 м, как до ADR-0028)
     public CitySignals Signals;
     public MinorControl MinorControl;
     public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
@@ -186,6 +187,7 @@ public struct NetworkDesc
 {
     public NodeDesc[] Nodes;
     public SegmentDesc[] Segments;
+    public float CornerRadius;             // network.corner_radius_m, м (ADR-0028): 0 = дефолт 6 м, < 0 = выключено (фиксированный отступ 7 м)
 }
 
 // ---- demand (вкл. секцию "vehicles" JSON: целевое число машин, разгон, смесь типов) ----

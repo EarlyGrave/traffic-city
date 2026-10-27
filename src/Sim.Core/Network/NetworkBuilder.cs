@@ -60,7 +60,13 @@ internal sealed partial class NetworkBuilder
 
     /// <summary>Конструктор по контракту генератора (city-generator §7.1).</summary>
     public NetworkBuilder(NetworkStore store, float laneWidth, int connectorSamples)
-        : this(store, WithGeometry(laneWidth, connectorSamples), DefaultConnectorRules.Instance)
+        : this(store, WithGeometry(laneWidth, connectorSamples, NetworkOptions.DefaultCornerRadius), DefaultConnectorRules.Instance)
+    {
+    }
+
+    /// <summary>То же с радиусом скругления (<see cref="NetworkOptions.CornerRadius"/>, 0 - фиксированный отступ; ADR-0028).</summary>
+    public NetworkBuilder(NetworkStore store, float laneWidth, int connectorSamples, float cornerRadius)
+        : this(store, WithGeometry(laneWidth, connectorSamples, cornerRadius), DefaultConnectorRules.Instance)
     {
     }
 
@@ -74,11 +80,12 @@ internal sealed partial class NetworkBuilder
 
     public NetworkStore Store => _s;
 
-    private static NetworkOptions WithGeometry(float laneWidth, int connectorSamples)
+    private static NetworkOptions WithGeometry(float laneWidth, int connectorSamples, float cornerRadius)
     {
         NetworkOptions o = NetworkOptions.Default;
         o.LaneWidth = laneWidth;
         o.ConnectorSamples = connectorSamples;
+        o.CornerRadius = cornerRadius > 0f ? cornerRadius : 0f;
         return o;
     }
 
@@ -430,8 +437,8 @@ internal sealed partial class NetworkBuilder
         AddSegment(nodeA, nodeB, ReadOnlySpan<Vec2>.Empty, lanesAB, lanesBA, speedLimit, kind, out segment);
 
     /// <summary>
-    /// Сегмент A→B, ось проходит через <paramref name="via"/>. Ось обрезается на NodeSetback у обоих узлов;
-    /// SegmentData.Length — длина обрезанной оси (= Length всех Normal-полос сегмента, s параметризован по оси).
+    /// Сегмент A→B, ось проходит через <paramref name="via"/>. Отступы концов (ADR-0028) - по рукавам, которые уже есть у узлов
+    /// (<see cref="IncrementalSetback"/>): так строят инструменты игрока; генератор и явная сеть знают все рукава заранее и зовут перегрузку с отступами.
     /// </summary>
     public NetworkStatus AddSegment(
         int nodeA,
@@ -443,10 +450,43 @@ internal sealed partial class NetworkBuilder
         RoadKind kind,
         out int segment)
     {
+        float sa = _o.NodeSetback;
+        float sb = _o.NodeSetback;
+        if (_s.NodeAlive(nodeA) && _s.NodeAlive(nodeB) && nodeA != nodeB && via.Length <= MaxVia && lanesAB >= 0 && lanesBA >= 0)
+        {
+            Vec2 pa = _s.Nodes[nodeA].Position;
+            Vec2 pb = _s.Nodes[nodeB].Position;
+            float half = HalfWidth(lanesAB + lanesBA);
+            sa = IncrementalSetback(nodeA, via.Length > 0 ? via[0] : pb, half);
+            sb = IncrementalSetback(nodeB, via.Length > 0 ? via[^1] : pa, half);
+        }
+
+        return AddSegment(nodeA, nodeB, via, lanesAB, lanesBA, speedLimit, kind, sa, sb, out segment);
+    }
+
+    /// <summary>
+    /// Сегмент A→B с заданными отступами концов от осей узлов (<paramref name="setbackA"/>, <paramref name="setbackB"/>; не меньше <c>NodeSetback</c>).
+    /// Ось короче <c>2 * NodeSetback + MinLaneLength</c> - <see cref="NetworkStatus.SegmentTooShort"/>; если короче суммы отступов + <c>MinLaneLength</c>,
+    /// надбавки сверх <c>NodeSetback</c> сжимаются пропорционально (ADR-0028: увеличенный отступ не отклоняет сегмент, который строился до него).
+    /// <c>NodeData.Radius</c> концов - максимум отступов их рукавов. SegmentData.Length — длина обрезанной оси (= Length всех Normal-полос сегмента).
+    /// </summary>
+    public NetworkStatus AddSegment(
+        int nodeA,
+        int nodeB,
+        ReadOnlySpan<Vec2> via,
+        int lanesAB,
+        int lanesBA,
+        float speedLimit,
+        RoadKind kind,
+        float setbackA,
+        float setbackB,
+        out int segment)
+    {
         segment = -1;
         if (!_s.NodeAlive(nodeA) || !_s.NodeAlive(nodeB) || nodeA == nodeB ||
             lanesAB < 0 || lanesBA < 0 || lanesAB > MaxLanesPerDirection || lanesBA > MaxLanesPerDirection ||
-            lanesAB + lanesBA == 0 || !(speedLimit > 0f) || float.IsInfinity(speedLimit) || via.Length > MaxVia)
+            lanesAB + lanesBA == 0 || !(speedLimit > 0f) || float.IsInfinity(speedLimit) || via.Length > MaxVia ||
+            !float.IsFinite(setbackA) || !float.IsFinite(setbackB))
         {
             return NetworkStatus.InvalidArgument;
         }
@@ -484,9 +524,11 @@ internal sealed partial class NetworkBuilder
             return NetworkStatus.SegmentTooShort;
         }
 
+        ClampSetbacks(total, ref setbackA, ref setbackB);
+
         // Обрезка по отступам.
-        float start = setback;
-        float end = total - setback;
+        float start = setbackA;
+        float end = total - setbackB;
         int m = 0;
         _axis[m] = PointAt(start, n);
         _axisS[m++] = 0f;
@@ -561,6 +603,19 @@ internal sealed partial class NetworkBuilder
             PointCount = m,
             Generation = gen,
         };
+
+        // Отступ стоп-линий узла (NodeData.Radius) - наибольший из отступов его рукавов (клиент рисует по нему площадку узла).
+        ref NodeData ndA = ref _s.Nodes[nodeA];
+        if (setbackA > ndA.Radius)
+        {
+            ndA.Radius = setbackA;
+        }
+
+        ref NodeData ndB = ref _s.Nodes[nodeB];
+        if (setbackB > ndB.Radius)
+        {
+            ndB.Radius = setbackB;
+        }
 
         // Инцидентность (для BuildConnectors).
         LinkSegment(seg);

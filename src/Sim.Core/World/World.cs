@@ -199,8 +199,8 @@ internal sealed class World : IDisposable
 
         Net = new NetworkStore(c);
         Builder = desc.City.Enabled
-            ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples)
-            : new NetworkBuilder(Net);
+            ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.City.CornerRadius))
+            : new NetworkBuilder(Net, NetworkOptions.Default.LaneWidth, NetworkOptions.Default.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.Network.CornerRadius));
         Vehicles = new VehicleStore(c.MaxVehicles, LodCfg.Mode != LodMode.Off);
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);

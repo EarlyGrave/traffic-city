@@ -157,10 +157,25 @@ internal static class WorldBuilder
             }
         }
 
+        // Отступы концов по всем рукавам узла (ADR-0028): явная сеть известна целиком до эмиссии сегментов.
+        int[] segA = new int[segmentCount];
+        int[] segB = new int[segmentCount];
+        int[] segLanes = new int[segmentCount];
+        float[] setA = new float[segmentCount];
+        float[] setB = new float[segmentCount];
+        for (int i = 0; i < segmentCount; i++)
+        {
+            segA[i] = segments![i].A;
+            segB[i] = segments[i].B;
+            segLanes[i] = segments[i].LanesAB + segments[i].LanesBA;
+        }
+
+        w.Builder.PlanSetbacks(segA, segB, segLanes, setA, setB);
+
         for (int i = 0; i < segmentCount; i++)
         {
             SegmentDesc s = segments![i];
-            NetworkStatus st = w.Builder.AddSegment(s.A, s.B, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, out _);
+            NetworkStatus st = w.Builder.AddSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, setA[i], setB[i], out _);
             if (st != NetworkStatus.Ok)
             {
                 return st.ToCreateStatus();

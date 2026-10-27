@@ -187,6 +187,7 @@ public class WorkerThreadsTests
     public void Phases6And10_HardClampsAndSnapshot_EqualForOneAndManyThreads(int threads)
     {
         ScenarioDesc d = Step3.S1k();
+        d.City.CornerRadius = -1f;   // клэмпы на резких поворотах коробки 14 м: с отступами ADR-0028 за 3000 тиков их нет, а тест должен их ловить
         using Simulation one = Simulation.Create(in d);
         using Simulation many = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         for (int k = 0; k < 6; k++)

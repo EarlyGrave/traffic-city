@@ -236,6 +236,7 @@ internal static class NetworkHash
         h.Add(o.NodeSetback);
         h.Add(o.ConnectorSamples);
         h.Add(o.MinLaneLength);
+        h.Add(NetworkOptions.CornerRadiusFromDesc(d.Network.CornerRadius));   // ADR-0028: действующий радиус явной сети (golden перегенерирован, golden_version прежний)
         return h.Value;
     }
 

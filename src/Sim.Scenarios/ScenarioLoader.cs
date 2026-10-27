@@ -651,6 +651,10 @@ public static partial class ScenarioLoader
         c.RemovedStreetShare = (float)r.Num("removed_street_share", 0.15, min: 0, max: 0.5);
         c.ConnectorSamples = r.Int("connector_samples", 8, min: 2);
 
+        // ADR-0028: 0 в JSON - скругление выключено (фиксированный отступ 7 м); в desc это -1, а 0 там значит «дефолт».
+        double corner = r.Num("corner_radius_m", 6, min: 0, max: 50);
+        c.CornerRadius = corner == 0 ? -1f : (float)corner;
+
         string signals = r.Str("signals", "arterial_x_arterial");
         c.Signals = signals switch
         {
@@ -708,6 +712,7 @@ public static partial class ScenarioLoader
     {
         JsonElement[] nodesJ = r.ReqArray("nodes");
         JsonElement[] segsJ = r.ReqArray("segments");
+        double corner = r.Num("corner_radius_m", 6, min: 0, max: 50);   // ADR-0028: 0 - выключено (в desc -1)
         r.Finish();
 
         var nodes = new NodeDesc[nodesJ.Length];
@@ -765,7 +770,7 @@ public static partial class ScenarioLoader
             s.Finish();
         }
 
-        return new NetworkDesc { Nodes = nodes, Segments = segs };
+        return new NetworkDesc { Nodes = nodes, Segments = segs, CornerRadius = corner == 0 ? -1f : (float)corner };
     }
 
     private static int NodeRef(JsonObjectReader s, string key, Dictionary<string, int> ids)

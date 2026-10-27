@@ -336,7 +336,7 @@ public sealed class PreviewTests
 
         // Стоимость сноса = -(стоимость постройки) x возврат; после применения повторный снос - Busy.
         SegmentData sd = sim.World.Net.Segments[seg];
-        long build = ToolValidator.RoadCost(_costs.Costs, sd.Kind, sd.Length + (2f * sim.World.Builder.Options.NodeSetback), sd.LanesAB + sd.LanesBA, curve: false);
+        long build = ToolValidator.RoadCost(_costs.Costs, sd.Kind, sim.World.Builder.FullAxisLength(seg), sd.LanesAB + sd.LanesBA, curve: false);
         Assert.Equal(-(build / 2), r.Cost);
         Assert.Equal(RejectReason.None, ToolsFixture.Run(sim, in rm));
         Assert.Equal(RejectReason.Busy, sim.Preview(in rm, out _, issues));
