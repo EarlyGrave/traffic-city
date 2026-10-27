@@ -52,15 +52,13 @@ public sealed class RoadChunks
     // Ширина полосы, если в сети нет ни одного сегмента с двумя и более полосами (иначе её не измерить): значение NetworkOptions.LaneWidth по умолчанию.
     private const float FallbackLaneWidth = 3.5f;
 
-    private static readonly Color _streetColor = Palette.Street;
-    private static readonly Color _arterialColor = Palette.Arterial;
-    private static readonly Color _junctionColor = Palette.Connector;
 
     private readonly ShaderMaterial _material;
     private readonly List<int> _keep = new();
     private readonly List<Arm> _arms = new();
     private readonly List<Vec2> _ring = new();
     private readonly List<Vec2> _corner = new();
+    private readonly HashSet<(int, int, int, int, int, int)> _seen = new();
     private Vec2[] _scratch = new Vec2[256];
 
     /// <summary>Версия сети (<c>NetworkView.Version</c>), по которой построены меши; при расхождении <see cref="SimHost"/> пересобирает дороги целиком.</summary>
@@ -74,9 +72,6 @@ public sealed class RoadChunks
         _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
         _material.SetShaderParameter("line_center_alpha", Palette.LaneLineCenterAlpha);
         _material.SetShaderParameter("line_px", LinePx);
-        _material.SetShaderParameter("asphalt_color", Palette.Asphalt);
-        _material.SetShaderParameter("asphalt_fade_begin", lod.RoadLod0 * Palette.AsphaltFadeBegin);
-        _material.SetShaderParameter("asphalt_fade_end", lod.RoadLod0 * Palette.AsphaltFadeEnd);
         _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
         _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };
@@ -85,18 +80,9 @@ public sealed class RoadChunks
 
     public Node3D Root { get; }
 
-    private static Color KindColor(NetworkView net, int segment)
-    {
-        if ((uint)segment >= (uint)net.Segments.Length)
-        {
-            return _streetColor;
-        }
-
-        Color c = net.Segments[segment].Kind == RoadKind.Arterial ? _arterialColor : _streetColor;
-
-        // закрывающийся сегмент (4.3, T4: Closing, дренаж) - свой цвет палитры; меши пересобираются при смене Version сети
-        return (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? Palette.Closing : c;
-    }
+    /// <summary>Асфальт одного цвета на всех LOD и у всех классов; закрывающийся сегмент (4.3, T4: Closing, дренаж) - тон <see cref="Palette.Closing"/> поверх (меши пересобираются при смене Version сети).</summary>
+    private static Color KindColor(NetworkView net, int segment) =>
+        (uint)segment < (uint)net.Segments.Length && (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? Palette.Closing : Palette.AsphaltVertex;
 
     private static float KindY(NetworkView net, int segment) =>
         segment >= 0 && segment < net.Segments.Length && net.Segments[segment].Kind == RoadKind.Arterial ? 0.02f : 0f;
@@ -322,7 +308,7 @@ public sealed class RoadChunks
 
             ReadOnlySpan<int> arms = armSeg.AsSpan(armStart[n], armStart[n + 1] - armStart[n]);
             float py = NodeY(net, arms);
-            Color pc = NodeColor(net, arms);
+            Color pc = Palette.AsphaltVertex;
             AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue);
             AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints);
             AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0);
@@ -347,20 +333,6 @@ public sealed class RoadChunks
         }
 
         return y;
-    }
-
-    /// <summary>Площадка: цвет артерии, если среди рукавов есть артерия (магистраль идёт через узел сплошной), иначе цвет улицы.</summary>
-    private static Color NodeColor(NetworkView net, ReadOnlySpan<int> arms)
-    {
-        foreach (int a in arms)
-        {
-            if (net.Segments[a >> 1].Kind == RoadKind.Arterial)
-            {
-                return _arterialColor;
-            }
-        }
-
-        return _junctionColor;
     }
 
     /// <summary>
@@ -508,16 +480,81 @@ public sealed class RoadChunks
 
         if (guides)
         {
-            for (int ci = 0; ci < nd.ConnectorCount; ci++)
+            AddBoundaries(net, nd, geo, ends, b, y + GuideLift, col);
+        }
+    }
+
+    /// <summary>Граница номер <paramref name="bnd"/> (0 - внешняя правая кромка направления, n - левая) на торце рукава: точка на отрезке между кромками торца, как целые значения <c>UV.y</c> ленты.</summary>
+    private static Vec2 BoundaryPoint(NetworkView net, SegGeom[] geo, Vec2[] ends, int seg, bool atA, int dir, int bnd)
+    {
+        SegGeom g = geo[seg];
+        Vec2 plus = ends[(seg * 4) + (atA ? 0 : 2)];
+        Vec2 minus = ends[(seg * 4) + (atA ? 1 : 3)];
+        Vec2 right = g.Sgn < 0f ? plus : minus; // правая кромка движения A→B
+        Vec2 left = g.Sgn < 0f ? minus : plus;
+        Vec2 r = dir == 0 ? right : left;
+        Vec2 l = dir == 0 ? left : right;
+        float t = bnd / (float)(net.Segments[seg].LanesAB + net.Segments[seg].LanesBA);
+        return new Vec2(r.X + ((l.X - r.X) * t), r.Z + ((l.Z - r.Z) * t));
+    }
+
+    /// <summary>
+    /// Линии внутри площадки - продолжение разделителей полос сегментов: для каждого connector'а его правая и левая границы (ось +- w/2), начало и конец -
+    /// точно на границах торцов лент рукавов. Граница, общая у соседних параллельных connector'ов (те же границы входа и выхода), рисуется один раз.
+    /// Внешние кромки (граница 0 и крайняя левая направления: край дороги и осевая) не рисуются: край - это кромка площадки, осевая обрывается у площадки,
+    /// как в Cities: Skylines (внутри перекрёстка нет сквозной линии, которую пересекали бы встречные левые повороты).
+    /// </summary>
+    private void AddBoundaries(NetworkView net, in NodeData nd, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col)
+    {
+        _seen.Clear();
+        for (int ci = 0; ci < nd.ConnectorCount; ci++)
+        {
+            int li = nd.FirstConnector + ci;
+            if (!net.IsLaneAlive(li) || net.Lanes[li].PointCount < 3)
             {
-                int li = nd.FirstConnector + ci;
-                if (!net.IsLaneAlive(li) || net.Lanes[li].PointCount < 2)
+                continue;
+            }
+
+            LaneData cn = net.Lanes[li];
+            if ((uint)cn.FromLane >= (uint)net.Lanes.Length || (uint)cn.ToLane >= (uint)net.Lanes.Length)
+            {
+                continue;
+            }
+
+            LaneData from = net.Lanes[cn.FromLane];
+            LaneData to = net.Lanes[cn.ToLane];
+            if ((uint)from.Segment >= (uint)geo.Length || (uint)to.Segment >= (uint)geo.Length || !geo[from.Segment].Ok || !geo[to.Segment].Ok)
+            {
+                continue;
+            }
+
+            SegmentData sf = net.Segments[from.Segment];
+            SegmentData st = net.Segments[to.Segment];
+            int nf = from.Direction == 0 ? sf.LanesAB : sf.LanesBA;
+            int nt = to.Direction == 0 ? st.LanesAB : st.LanesBA;
+            bool fromA = sf.NodeA == cn.Node;
+            bool toA = st.NodeA == cn.Node;
+            ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(cn.FirstPoint, cn.PointCount);
+            for (int side = 0; side < 2; side++)
+            {
+                int bs = from.LaneNo + side;
+                int be = to.LaneNo + side;
+                if (bs <= 0 || bs >= nf || be <= 0 || be >= nt || !_seen.Add((from.Segment, from.Direction, bs, to.Segment, to.Direction, be)))
                 {
                     continue;
                 }
 
-                LaneData lane = net.Lanes[li];
-                AddGuide(b, net.LanePoints.Slice(lane.FirstPoint, lane.PointCount), y + GuideLift, col);
+                float off = (side == 0 ? -geo[from.Segment].Sgn : geo[from.Segment].Sgn) * geo[from.Segment].W * 0.5f; // вправо / влево по ходу connector'а
+                EnsureScratch(pts.Length);
+                _scratch[0] = BoundaryPoint(net, geo, ends, from.Segment, fromA, from.Direction, bs);
+                for (int k = 1; k < pts.Length - 1; k++)
+                {
+                    MeshBuilder.EdgeNormal(pts, k, out float ox, out float oz);
+                    _scratch[k] = new Vec2(pts[k].X + (ox * off), pts[k].Z + (oz * off));
+                }
+
+                _scratch[pts.Length - 1] = BoundaryPoint(net, geo, ends, to.Segment, toA, to.Direction, be);
+                AddGuide(b, new ReadOnlySpan<Vec2>(_scratch, 0, pts.Length), y, col);
             }
         }
     }

@@ -21,10 +21,9 @@ public static class Palette
     public static readonly Color Ambient = Srgb("#D9E6FF");
 
     /// <summary>Линии полос и направляющие коннекторов (VS3a): смешиваются с асфальтом долей <see cref="LaneLineAlpha"/>, то есть читаются слабым тёмным оттенком.</summary>
-    /// <summary>Асфальт вблизи (все классы и площадки); дальше плавно переходит в цвет класса (Street/Arterial) - «картографический» вид.</summary>
+    /// <summary>Асфальт: единственный цвет дорог на всех дистанциях и LOD (класс дороги цветом не различается; heatmap инфо-режима - поверх).</summary>
     public static readonly Color Asphalt = Srgb("#8A8884");
-    public const float AsphaltFadeBegin = 0.5f; // доли дистанции LOD0
-    public const float AsphaltFadeEnd = 1.0f;
+    public static readonly Color AsphaltVertex = Lin("#8A8884"); // тот же цвет в линейном пространстве - для вершин дорог
 
     public static readonly Color LaneLine = Srgb("#E2DED6");
     public const float LaneLineAlpha = 0.30f;
@@ -54,10 +53,7 @@ public static class Palette
     public static readonly Color TextShadow = new(0f, 0f, 0f, 0.9f);
 
     // ---- линейные: цвета вершин и инстансов ----
-    public static readonly Color Street = Lin("#FFFFFF");
-    public static readonly Color Arterial = Lin("#FCE6A6");
-    public static readonly Color Connector = Street; // площадка перекрёстка - как дорога рукава (VS3 уточнит по классу)
-    public static readonly Color Closing = Lin("#D8A699");
+    public static readonly Color Closing = Lin("#B5766B"); // тон «закрыто» поверх серого асфальта
     public static readonly Color Sidewalk = Lin("#E4E1DA");
     public static readonly Color Zebra = Lin("#FFFFFF");
 
