@@ -103,7 +103,7 @@ public sealed class RustPilotGoldenTests
             names.Add(Path.GetFileNameWithoutExtension(p));
         }
 
-        foreach (string need in new[] { "demo-grid", "net-skew", "net-star5", "net-oneway", "net-signal", "net-big", "err-snap", "err-short", "err-caps", "err-json" })
+        foreach (string need in new[] { "demo-grid", "net-skew", "net-star5", "net-oneway", "net-signal", "net-big", "err-snap", "err-short", "err-caps", "err-json", "net-profiles", "err-profile-width", "err-profile-nocurb", "err-profile-lane-order", "err-profile-lane-width", "err-profile-mm", "err-profile-ref", "err-profile-lanes" })
         {
             Assert.Contains(need, names);
         }

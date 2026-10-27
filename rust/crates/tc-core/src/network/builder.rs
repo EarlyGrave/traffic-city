@@ -9,7 +9,7 @@ use crate::util::Vec2;
 
 use super::connectors::STRAIGHT_COS;
 use super::store::NetworkStore;
-use super::types::{ConnectorRules, LaneData, LaneKind, Maneuver, NetworkStatus, NodeData, SegmentData};
+use super::types::{ConnectorRules, LaneData, LaneKind, Maneuver, NetworkStatus, NodeData, SEGMENT_MIRRORED, SegmentData};
 
 pub const MAX_VIA: usize = 12;
 pub const MAX_LANES_PER_DIRECTION: i32 = 8;
@@ -160,7 +160,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
     /// Сегмент A->B, ось проходит через `via`, с отступами концов `setback_a`/`setback_b` от осей узлов (ADR-0028, C# `AddSegment` с отступами):
     /// ось короче `2 * node_setback + min_lane_length` - `SegmentTooShort`; если короче суммы отступов + `min_lane_length`, надбавки сверх `node_setback`
     /// сжимаются пропорционально. `radius` концов - максимум отступов их рукавов. `SegmentData::length` - длина обрезанной оси (= длина всех Normal-полос сегмента).
-    #[allow(clippy::too_many_arguments, clippy::neg_cmp_op_on_partial_ord)]
+    #[allow(clippy::too_many_arguments)]
     pub fn add_segment(
         &mut self,
         s: &mut NetworkStore,
@@ -174,6 +174,82 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         setback_a: f32,
         setback_b: f32,
     ) -> Result<i32, NetworkStatus> {
+        self.add_segment_core(
+            s,
+            node_a,
+            node_b,
+            via,
+            lanes_ab,
+            lanes_ba,
+            speed_limit,
+            kind,
+            setback_a,
+            setback_b,
+            -1,
+            false,
+        )
+    }
+
+    /// Сегмент по профилю (ADR-0030, C# `AddProfileSegment` с отступами): число полос и вид дороги берутся из профиля
+    /// (`mirrored` - построен против направления рисования профиля), смещение и ширина каждой полосы - из его элементов.
+    /// Нет каталога или профиль вне диапазона - `InvalidArgument`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_profile_segment(
+        &mut self,
+        s: &mut NetworkStore,
+        node_a: i32,
+        node_b: i32,
+        via: &[Vec2],
+        profile: i32,
+        mirrored: bool,
+        speed_limit: f32,
+        setback_a: f32,
+        setback_b: f32,
+    ) -> Result<i32, NetworkStatus> {
+        let (lanes_ab, lanes_ba, kind) = match &s.profiles {
+            Some(ps) if profile >= 0 && (profile as usize) < ps.count => {
+                let p = profile as usize;
+                (ps.lanes_ab(p, mirrored), ps.lanes_ba(p, mirrored), ps.kind[p])
+            }
+            _ => return Err(NetworkStatus::InvalidArgument),
+        };
+        self.add_segment_core(
+            s,
+            node_a,
+            node_b,
+            via,
+            lanes_ab,
+            lanes_ba,
+            speed_limit,
+            kind,
+            setback_a,
+            setback_b,
+            profile,
+            mirrored,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::neg_cmp_op_on_partial_ord)]
+    fn add_segment_core(
+        &mut self,
+        s: &mut NetworkStore,
+        node_a: i32,
+        node_b: i32,
+        via: &[Vec2],
+        lanes_ab: i32,
+        lanes_ba: i32,
+        speed_limit: f32,
+        kind: RoadKind,
+        setback_a: f32,
+        setback_b: f32,
+        profile: i32,
+        mirrored: bool,
+    ) -> Result<i32, NetworkStatus> {
+        let profile_ok = profile < 0
+            || s.profiles.as_ref().is_some_and(|ps| {
+                let p = profile as usize;
+                p < ps.count && lanes_ab == ps.lanes_ab(p, mirrored) && lanes_ba == ps.lanes_ba(p, mirrored)
+            });
         if node_a < 0
             || node_a >= s.node_count
             || node_b < 0
@@ -189,6 +265,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             || via.len() > MAX_VIA
             || !setback_a.is_finite()
             || !setback_b.is_finite()
+            || !profile_ok
         {
             return Err(NetworkStatus::InvalidArgument);
         }
@@ -266,13 +343,31 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         s.segment_point_count += m as i32;
 
         let half_width = lane_total as f32 * self.o.lane_width * 0.5;
+        let prof = if profile >= 0 { s.profiles.take() } else { None };
         for k in 0..lanes_ab {
-            let x = half_width - ((k as f32 + 0.5) * self.o.lane_width); // вправо от оси в системе A->B
-            self.emit_lane(s, first_lane + k, seg, k, 0, lanes_ab, x, m, length, speed_limit);
+            // Вправо от оси в системе A->B: профиль - из его элементов, legacy - прежняя формула одной ширины на сеть.
+            let (x, w) = match &prof {
+                Some(ps) => (
+                    ps.lane_center_m(profile as usize, mirrored, 0, k),
+                    ps.lane_width_m(profile as usize, mirrored, 0, k),
+                ),
+                None => (half_width - ((k as f32 + 0.5) * self.o.lane_width), self.o.lane_width),
+            };
+            self.emit_lane(s, first_lane + k, seg, k, 0, lanes_ab, x, w, m, length, speed_limit);
         }
         for k in 0..lanes_ba {
-            let x = -(half_width - ((k as f32 + 0.5) * self.o.lane_width));
-            self.emit_lane(s, first_lane + lanes_ab + k, seg, k, 1, lanes_ba, x, m, length, speed_limit);
+            let (x, w) = match &prof {
+                Some(ps) => (
+                    ps.lane_center_m(profile as usize, mirrored, 1, k),
+                    ps.lane_width_m(profile as usize, mirrored, 1, k),
+                ),
+                None => (-(half_width - ((k as f32 + 0.5) * self.o.lane_width)), self.o.lane_width),
+            };
+            self.emit_lane(s, first_lane + lanes_ab + k, seg, k, 1, lanes_ba, x, w, m, length, speed_limit);
+        }
+        let has_profile = prof.is_some();
+        if has_profile {
+            s.profiles = prof;
         }
 
         s.segments[seg as usize] = SegmentData {
@@ -283,7 +378,8 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             kind,
             lanes_ab: lanes_ab as u8,
             lanes_ba: lanes_ba as u8,
-            reserved: 0,
+            flags: if has_profile && mirrored { SEGMENT_MIRRORED } else { 0 },
+            profile: if has_profile { profile } else { -1 },
             first_lane_ab: if lanes_ab > 0 { first_lane } else { -1 },
             first_lane_ba: if lanes_ba > 0 { first_lane + lanes_ab } else { -1 },
             first_point: first_seg_point,
@@ -323,6 +419,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         direction: i32,
         lane_count_in_dir: i32,
         x: f32,
+        width: f32,
         m: usize,
         length: f32,
         limit: f32,
@@ -361,6 +458,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             next_count: 0,
             conflict_group: -1,
             generation: 1,
+            width,
         };
     }
 
@@ -425,7 +523,8 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
 
     /// Отступы концов прямых сегментов `a[e] -> b[e]` (узлы уже в хранилище) по полному списку рукавов (явная сеть): `(setback_a, setback_b)` на сегмент.
     /// Сегменты с неверными узлами получают `node_setback` и в рукава не идут.
-    pub fn plan_setbacks(&self, s: &NetworkStore, a: &[i32], b: &[i32], lane_total: &[i32]) -> Vec<(f32, f32)> {
+    /// `profile[e]` >= 0 (режим профилей): `h` сегмента берётся из профиля (`max(curb_l, curb_r)`, ADR-0030), а не по числу полос; пустой срез - legacy.
+    pub fn plan_setbacks(&self, s: &NetworkStore, a: &[i32], b: &[i32], lane_total: &[i32], profile: &[i32]) -> Vec<(f32, f32)> {
         let m = a.len();
         let nodes = s.node_count;
         let valid = |na: i32, nb: i32| na >= 0 && nb >= 0 && na < nodes && nb < nodes && na != nb;
@@ -436,7 +535,10 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         let mut half = vec![0.0_f32; m];
         for e in 0..m {
             let (na, nb) = (a[e], b[e]);
-            half[e] = self.half_width(lane_total[e]);
+            half[e] = match (&s.profiles, profile.get(e)) {
+                (Some(ps), Some(&p)) if p >= 0 && (p as usize) < ps.count => ps.half_road_m(p as usize),
+                _ => self.half_width(lane_total[e]),
+            };
             if !valid(na, nb) {
                 continue;
             }

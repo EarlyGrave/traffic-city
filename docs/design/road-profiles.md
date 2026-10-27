@@ -267,6 +267,9 @@
 - `Lane.Width` пишется у Normal-полос (из профиля или `NetworkOptions.LaneWidth`), у connector'ов 0; u-turn connector'а берёт ширину входной полосы. Сейв v7 (RP2 перейдёт на v8) при загрузке заполняет `Profile = -1`, `Width = NetLaneWidth`.
 - Сохранение мира в режиме профилей до RP2 не поддерживается (каталог и `Profile` в сейв не пишутся).
 - `NetworkStore.Hash()` хэширует полосы полями в прежней раскладке (60 байт); профильный раздел (каталог, `Segment.Profile`, `Lane.Width`) добавляется только при каталоге. То же для `NetworkHash.Network` и `desc_hash` (метка раздела `FORP`).
+- **RP3 (агент L18, Rust-пилот).** `tc-core::api::profiles` (валидатор с теми же видами ошибок), `network::profiles::RoadProfileStore`, эмиссия по профилю
+  с `Mirrored`, `h = max(CurbL, CurbR)`, ширина u-turn connector'а от `Lane.width` входной полосы; `tc-scenarios` — `load_with` и `parse_road_profiles`;
+  golden `net-profiles`, `err-profile-*` (rust-pilot.md §5.1). Старые golden не менялись. C ABI профили не передаёт.
 - `PedNetwork.HalfRoad` и `LotBuilder.FrontOffsetM` в режиме профилей читают профиль минимально (`max(Curb)` и `EdgeMm`); сторонний тротуар и сетка 8 м - RP4/RP5.
 - RP4 (L19): `PedNetwork` в режиме профилей читает `WalkMm`/`EdgeMm` по сторонам (ось тротуара `Edge − Walk/2`), сторона без тротуара — без рёбер и переходов; `HalfRoad` остался только для legacy. Подробности — pedestrians.md §2.6.
 

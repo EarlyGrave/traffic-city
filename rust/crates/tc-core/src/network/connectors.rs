@@ -158,6 +158,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
                 next_count: 1,
                 conflict_group: -1,
                 generation: 1,
+                width: 0.0,
             };
         }
 
@@ -378,7 +379,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         let t3 = normalize(s.lane_points[fo + 1] - p3);
         let chord = dist(p0, p3);
         let d = if uturn {
-            max_net(chord, 2.0 * self.o.lane_width)
+            max_net(chord, 2.0 * lane_in.width)
         } else {
             chord * (1.0_f32 / 3.0_f32)
         };
@@ -417,7 +418,7 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         let mut limit = lane_in.speed_limit;
         if uturn || cos_turn <= COS_TEN_DEGREES {
             let r = if uturn {
-                self.o.lane_width
+                lane_in.width
             } else {
                 chord / (2.0_f32 * max_net(0.0, (1.0_f32 - cos_turn) * 0.5_f32).sqrt())
             };

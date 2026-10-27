@@ -211,6 +211,13 @@ internal static class Program
             return;
         }
 
+        if (desc.RoadProfiles.Enabled)
+        {
+            // Каталог профилей (ADR-0030, RP3) в C ABI пилота не передаётся: такие golden сверяет только cargo test (tc-scenarios).
+            Console.WriteLine($"ffi-smoke: {name}: режим профилей, пропуск (каталог вне C ABI)");
+            return;
+        }
+
         int goldenStatus = g.GetProperty("create_status").GetInt32();
         CreateStatus csStatus = Simulation.TryCreate(in desc, out Simulation? csSim);
         using (csSim)

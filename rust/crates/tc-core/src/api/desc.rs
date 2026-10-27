@@ -4,6 +4,11 @@
 
 use crate::util::Fnv1a64;
 
+use super::profiles::RoadProfilesDesc;
+
+/// Метка профильного раздела хэшей (`FORP`, C# `NetworkHash.ProfilesTag`).
+pub const PROFILES_TAG: i32 = 0x464F_5250;
+
 /// Версия формата хэшей (первое `Add(int)` каждого из четырёх хэшей).
 pub const HASH_VERSION: i32 = 1;
 
@@ -71,6 +76,10 @@ pub struct SegmentDesc {
     /// м/с: `(float)(kmh / 3.6)`, деление в f64.
     pub speed_limit: f32,
     pub kind: RoadKind,
+    /// Профиль дороги (ADR-0030): индекс в каталоге + 1, 0 - нет (legacy).
+    pub profile: i32,
+    /// Сегмент построен против направления рисования профиля (`SegmentFlags.Mirrored`).
+    pub mirrored: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -87,6 +96,8 @@ pub struct ScenarioDesc {
     pub seed: u64,
     pub capacities: SimCapacities,
     pub network: NetworkDesc,
+    /// Каталог профилей дорог (ADR-0030); `profiles = None` - режим legacy.
+    pub road_profiles: RoadProfilesDesc,
 }
 
 /// `NetworkOptions.Default` (C# `NetworkTypes.cs`): зашиты, из JSON читается только `corner_radius` (`network.corner_radius_m`, ADR-0028).
@@ -195,5 +206,28 @@ pub fn desc_hash(d: &ScenarioDesc) -> u64 {
     h.add_i32(o.connector_samples);
     h.add_f32(o.min_lane_length);
     h.add_f32(NetworkOptions::corner_radius_from_desc(d.network.corner_radius)); // ADR-0028: действующий радиус явной сети
+    if let Some(ps) = &d.road_profiles.profiles {
+        // Раздел профилей (ADR-0030, только режим профилей): каталог, профили сегментов явной сети, профили классов дорог генератора.
+        h.add_i32(PROFILES_TAG);
+        h.add_i32(d.road_profiles.module_mm);
+        h.add_i32(len_i32(ps.len()));
+        for p in ps {
+            h.add_u8(p.kind as u8);
+            h.add_i32(p.width_mm);
+            h.add_i32(len_i32(p.elements.len()));
+            for e in &p.elements {
+                h.add_u8(e.kind as u8);
+                h.add_u8(e.dir as u8);
+                h.add_i32(e.width_mm);
+            }
+        }
+        for s in &d.network.segments {
+            h.add_i32(s.profile);
+            h.add_u8(u8::from(s.mirrored));
+        }
+        // Генератор вне пилота: city.profiles.street / arterial всегда 0.
+        h.add_i32(0);
+        h.add_i32(0);
+    }
     h.value()
 }

@@ -4,10 +4,12 @@ pub mod builder;
 pub mod connectors;
 pub mod hash;
 pub mod lane_geometry;
+pub mod profiles;
 pub mod store;
 pub mod types;
 
 pub use builder::NetworkBuilder;
+pub use profiles::RoadProfileStore;
 pub use store::NetworkStore;
 pub use types::{
     ConnectorRules, DefaultConnectorRules, LaneData, LaneKind, Maneuver, ManeuverContext, NetworkStatus, NodeData, SegmentData,

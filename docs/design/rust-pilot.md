@@ -126,6 +126,16 @@ handle → `#[derive(Copy)] struct { index: i32, generation: i32 }`; `NetworkSta
   (узлы `signal`/`stop`/`yield`/`right_hand`), `net-big` (решётка 12×12 с `speed_kmh` 30/50/70 — проверка `kmh/3.6` в double), ошибочные: `err-snap` (узлы ближе SnapRadius →
   `InvalidNetwork`), `err-short` (сегмент короче минимума), `err-caps` (`max_lane_points` мал → `NetworkTooLarge`), `err-json` (висячая запятая → `load_ok: false`).
   Все фикстуры — `city.enabled: false`, `demand.target_vehicles: 0` (или минимальные секции, которые требует C#-загрузчик).
+- **Профили дорог (RP3, ADR-0030, road-profiles.md §8).** Фикстура `net-profiles` берёт каталог `tests/fixtures/road-profiles.fixture.json`
+  через `road_profiles_file` и строит `street_2`, `oneway_2`, `arterial_4`, `arterial_6` и `asym_1_2` дважды: вдоль профиля и с `mirrored: true`.
+  Ошибочные `err-profile-*` (`width`, `nocurb`, `lane-order`, `lane-width`: каталоги в `tests/golden/rust-pilot/profiles/`; `mm`: дробные мм;
+  `ref`: неизвестный профиль; `lanes`: `lanes_ba` не сходится с профилем) дают `load_ok: false`. Если каталог разобран, но не прошёл валидацию,
+  в golden есть `"profile_error": "<RoadProfileError>"` (BadWidth, NoCurb, LaneOrder, ElementWidth…): Rust сверяет вид ошибки с C#.
+  Порядок хэшей в режиме профилей: в `network_hash` после connector'ов добавляется раздел с меткой `0x464F5250` (`FORP`): каталог, `Segment.Profile` каждого
+  сегмента, `Lane.Width` каждой полосы; в `desc_hash` после `corner_radius` — метка, каталог, `Profile`+`Mirrored` сегментов и два нуля
+  (`city.profiles` вне пилота). **Без каталога оба раздела не добавляются**: прежние golden не менялись. Загрузчик Rust по-прежнему без ввода-вывода:
+  `load_with(text, читатель файлов)` получает путь `road_profiles_file` как в JSON, `load_str` для таких сценариев — ошибка. Каталог вне C ABI:
+  `ffi-smoke` такие сценарии пропускает, сверяет их только `cargo test`.
 
 ### 5.2 `network_hash` (C#: `Simulation.ComputeNetworkHash()`, новый; Rust: `network::hash`)
 FNV-1a 64 (`core-api` §9: `Add` little-endian, float — битовый образ, enum — базовым типом, `bool` — байтом), после построения сети и
