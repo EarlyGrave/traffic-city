@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using Sim.Core.Api;
 using Sim.Core.Metrics;
 using Sim.Core.Util;
@@ -20,6 +21,7 @@ public static class RustPilotGolden
     public const string DemoGrid = "scenarios/demo-grid.json";
     public const string FixturesDir = "scenarios";
 
+    private static readonly Regex _profileErrorRx = new(@"invalid road profile \((\w+)\)", RegexOptions.CultureInvariant);
     private static readonly ulong[] _pcgSeeds = [0UL, 1UL, 42UL, (1UL << 63) + 5UL];
     private static readonly ulong[] _pcgStreams = [0UL, 1UL, 6UL, 1UL << 62];
     private static readonly int[] _xxLens = [0, 1, 3, 4, 7, 8, 31, 32, 33, 63, 64, 100, 1000, 4097];
@@ -60,9 +62,17 @@ public static class RustPilotGolden
         {
             desc = ScenarioLoader.Load(Path.Combine(root, scenarioPath));
         }
-        catch (ScenarioException)
+        catch (ScenarioException e)
         {
-            sb.Append("  \"load_ok\": false\n}\n");
+            // Каталог профилей разобран, но не прошёл валидацию: вид ошибки (RoadProfileError) - часть golden, Rust сверяет его с C# (ADR-0030).
+            Match m = _profileErrorRx.Match(e.Message);
+            sb.Append("  \"load_ok\": false");
+            if (m.Success)
+            {
+                sb.Append(",\n  \"profile_error\": \"").Append(m.Groups[1].Value).Append('"');
+            }
+
+            sb.Append("\n}\n");
             return sb.ToString();
         }
 

@@ -1,0 +1,24 @@
+{
+  "format_version": 2,
+  "name": "err-profile-lanes",
+  "seed": 1,
+  "duration_s": 10,
+  "vehicle_types_file": "../../../../scenarios/vehicle-types.json",
+  "road_profiles_file": "../../../fixtures/road-profiles.fixture.json",
+  "city": { "enabled": false },
+  "network": {
+    "nodes": [
+      { "id": "n0", "x": 0, "z": 0, "control": "none" },
+      { "id": "n1", "x": 100, "z": 0, "control": "none" }
+    ],
+    "segments": [
+      { "a": "n0", "b": "n1", "profile": "oneway_2", "lanes_ba": 1, "speed_kmh": 40 }
+    ]
+  },
+  "vehicles": { "count": 0, "spawn_ramp_s": 1 },
+  "capacities": {
+    "max_vehicles": 64, "max_nodes": 16, "max_segments": 32, "max_lanes": 512, "max_lane_points": 4096,
+    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256, "max_plan_steps": 8192,
+    "max_pending_trips": 64, "max_signalized_nodes": 4
+  }
+}
