@@ -78,9 +78,37 @@ internal sealed partial class PedNetwork
 
     // ---------------------------------------------------------------- углы
 
-    // Режим профилей (ADR-0030): полуширина проезжей части из профиля сегмента (max(CurbL, CurbR)); тротуар по сторонам и сторона без тротуара - RP4.
     private static float HalfRoad(NetworkStore net, in SegmentData sd, float laneW) =>
-        net.Profiles != null && sd.Profile >= 0 ? net.Profiles.HalfRoadM(sd.Profile) : (sd.LanesAB + sd.LanesBA) * laneW * 0.5f;
+        (sd.LanesAB + sd.LanesBA) * laneW * 0.5f;
+
+    /// <summary>Сегмент построен по профилю (ADR-0030): тротуары по сторонам берутся из профиля. Иначе legacy (глобальная ширина тротуара).</summary>
+    private static bool ByProfile(NetworkStore net, in SegmentData sd) => net.Profiles != null && sd.Profile >= 0;
+
+    /// <summary>Есть ли тротуар на стороне <paramref name="side"/> сегмента (0 - справа от A→B). В legacy всегда есть.</summary>
+    private static bool HasWalk(NetworkStore net, in SegmentData sd, int side) =>
+        !ByProfile(net, in sd) || net.Profiles!.WalkMm(sd.Profile, (sd.Flags & SegmentFlags.Mirrored) != 0, side == 1) > 0;
+
+    /// <summary>
+    /// Смещение оси пешеходной полосы от оси сегмента на стороне <paramref name="side"/>, м (RP4). legacy: <c>HalfRoad + sw/2</c>.
+    /// Профиль: центр элемента-тротуара, <c>Edge - Walk/2</c>; сторона без тротуара - край профиля (нужен только для позиции угла).
+    /// </summary>
+    private static float SideOff(NetworkStore net, in SegmentData sd, int side, float laneW, float sw)
+    {
+        if (!ByProfile(net, in sd))
+        {
+            return HalfRoad(net, in sd, laneW) + (sw * 0.5f);
+        }
+
+        int walk = net.Profiles!.WalkMm(sd.Profile, (sd.Flags & SegmentFlags.Mirrored) != 0, side == 1);
+        return ((2 * net.Profiles.EdgeMm[sd.Profile]) - walk) * 0.0005f;
+    }
+
+    /// <summary>Ширина тротуара стороны, м: профиль - из профиля, legacy - глобальная <paramref name="sw"/>.</summary>
+    private static float SideWalkW(NetworkStore net, in SegmentData sd, int side, float sw) =>
+        ByProfile(net, in sd) ? net.Profiles!.WalkMm(sd.Profile, (sd.Flags & SegmentFlags.Mirrored) != 0, side == 1) * 0.001f : sw;
+
+    /// <summary>Сторона сегмента, лежащая справа (<paramref name="right"/>) или слева, если смотреть от узла <paramref name="n"/> вдоль рукава.</summary>
+    private static int ArmSide(in SegmentData sd, int n, bool right) => (sd.NodeA == n) == right ? 0 : 1;
 
     private static Vec2 Perp(Vec2 d) => new(-d.Z, d.X);   // «вправо» в смысле RightNormal сети: к рукаву со следующим по часовой индексом
 
@@ -115,7 +143,6 @@ internal sealed partial class PedNetwork
     /// <summary>Позиции углов: пересечение параллелей соседних рукавов, сдвинутых на <c>h + sw/2</c> в сторону сектора между ними (§2.1).</summary>
     private void BuildCorners(NetworkStore net, float laneW, float sw)
     {
-        float half = sw * 0.5f;
         for (int n = 0; n < net.NodeCount; n++)
         {
             ref readonly NodeData nd = ref net.Nodes[n];
@@ -130,9 +157,11 @@ internal sealed partial class PedNetwork
             if (ac == 1)
             {
                 Vec2 d = net.ArmDir[fa];
-                float o = HalfRoad(net, in net.Segments[net.NodeArms[fa]], laneW) + half;
-                NodePos[fa] = p + (Perp(d) * o);
-                NodePos[DeadBase + fa] = p + (Perp(d) * -o);
+                ref readonly SegmentData sd1 = ref net.Segments[net.NodeArms[fa]];
+                float oR = SideOff(net, in sd1, ArmSide(in sd1, n, true), laneW, sw);
+                float oL = SideOff(net, in sd1, ArmSide(in sd1, n, false), laneW, sw);
+                NodePos[fa] = p + (Perp(d) * oR);
+                NodePos[DeadBase + fa] = p + (Perp(d) * -oL);
                 continue;
             }
 
@@ -141,8 +170,10 @@ internal sealed partial class PedNetwork
                 int k2 = k + 1 == ac ? 0 : k + 1;
                 Vec2 d1 = net.ArmDir[fa + k];
                 Vec2 d2 = net.ArmDir[fa + k2];
-                float o1 = HalfRoad(net, in net.Segments[net.NodeArms[fa + k]], laneW) + half;
-                float o2 = HalfRoad(net, in net.Segments[net.NodeArms[fa + k2]], laneW) + half;
+                ref readonly SegmentData sdk = ref net.Segments[net.NodeArms[fa + k]];
+                ref readonly SegmentData sdk2 = ref net.Segments[net.NodeArms[fa + k2]];
+                float o1 = SideOff(net, in sdk, ArmSide(in sdk, n, true), laneW, sw);
+                float o2 = SideOff(net, in sdk2, ArmSide(in sdk2, n, false), laneW, sw);
                 Vec2 p1 = Perp(d1) * o1;
                 float cr = Cross(d1, d2);
                 if (MathF.Abs(cr) < ParallelSin)
@@ -184,7 +215,8 @@ internal sealed partial class PedNetwork
 
             ref readonly SegmentData sd = ref net.Segments[ld.Segment];
             float len = sd.Length;
-            if (sd.Kind != RoadKind.Street || len < 2f * MidEdgeMarginM || !Built(net, sd.NodeA) || !Built(net, sd.NodeB))
+            if (sd.Kind != RoadKind.Street || len < 2f * MidEdgeMarginM || !Built(net, sd.NodeA) || !Built(net, sd.NodeB) ||
+                !HasWalk(net, in sd, 0) || !HasWalk(net, in sd, 1))
             {
                 continue;
             }
@@ -258,7 +290,6 @@ internal sealed partial class PedNetwork
                 MarkLanesWithMid(in sd, _bmid[0], _bmid[cnt - 1]);
             }
 
-            float off = HalfRoad(net, in sd, laneW) + (sw * 0.5f);
             ref readonly NodeData ndA = ref net.Nodes[sd.NodeA];
             ref readonly NodeData ndB = ref net.Nodes[sd.NodeB];
             int la = LocalArm(net, in ndA, seg);
@@ -266,6 +297,12 @@ internal sealed partial class PedNetwork
             for (int side = 0; side < 2; side++)
             {
                 SideFirstEdge[(2 * seg) + side] = EdgeCount;
+                if (!HasWalk(net, in sd, side))
+                {
+                    continue;   // стороны без тротуара нет: ни рёбер, ни переходов через неё (RP4)
+                }
+
+                float off = SideOff(net, in sd, side, laneW, sw);
                 int pc = ShiftAxis(net, in sd, side == 0 ? off : -off);
                 float total = _ss[pc - 1];
                 int cornerA = CornerId(in ndA, side == 0 ? la : la - 1);
@@ -415,6 +452,26 @@ internal sealed partial class PedNetwork
 
             int fa = nd.FirstArm;
             int seg = net.NodeArms[fa];
+            ref readonly SegmentData sde = ref net.Segments[seg];
+            if (ByProfile(net, in sde))
+            {
+                int sR = ArmSide(in sde, n, true);
+                int sL = ArmSide(in sde, n, false);
+                if (!HasWalk(net, in sde, sR) || !HasWalk(net, in sde, sL))
+                {
+                    continue;
+                }
+
+                float oR = SideOff(net, in sde, sR, laneW, sw);
+                float oL = SideOff(net, in sde, sL, laneW, sw);
+                int f2 = PointCount;
+                Points[PointCount++] = NodePos[fa];
+                Points[PointCount++] = nd.Position + (net.ArmDir[fa] * (-0.25f * (SideWalkW(net, in sde, sR, sw) + SideWalkW(net, in sde, sL, sw))));
+                Points[PointCount++] = NodePos[DeadBase + fa];
+                AddEdge(PedEdgeKind.EndCap, fa, DeadBase + fa, DetMath.ToIntSat(MathF.Round((oR + oL) * 1000f)), 0, 0, seg, n, fa, 0f, 0f, f2, 3);
+                continue;
+            }
+
             int first = PointCount;
             Points[PointCount++] = NodePos[fa];
             Points[PointCount++] = nd.Position + (net.ArmDir[fa] * (-0.5f * sw));
@@ -453,6 +510,12 @@ internal sealed partial class PedNetwork
                     continue;
                 }
 
+                int sideB = ArmSide(in sd, n, true);   // угол slot лежит справа от рукава (наружу от узла), угол slot-1 - слева
+                if (!HasWalk(net, in sd, sideB) || !HasWalk(net, in sd, 1 - sideB))
+                {
+                    continue;   // переход соединяет два тротуара рукава; нет одного - нет и перехода
+                }
+
                 if (EdgeCount + 1 > _edgeCap || PointCount + 2 > _pointCap)
                 {
                     return false;
@@ -463,7 +526,7 @@ internal sealed partial class PedNetwork
                 int first = PointCount;
                 Points[PointCount++] = NodePos[a];
                 Points[PointCount++] = NodePos[b];
-                int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in sd, laneW)) + sw) * 1000f));
+                int mm = CrossLenMm(net, in sd, sideB, laneW, sw);
                 int idx = AddEdge(PedEdgeKind.Crossing, a, b, mm, signal ? (byte)1 : (byte)0, 0, seg, n, slot, 0f, 0f, first, 2);
                 Edges[idx].CostTicks += WaitTicks(w, signal, arterial);
                 XEdge[slot] = idx;
@@ -489,7 +552,7 @@ internal sealed partial class PedNetwork
             int first = PointCount;
             Points[PointCount++] = NodePos[a];
             Points[PointCount++] = NodePos[b];
-            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in net.Segments[seg], laneW)) + sw) * 1000f));
+            int mm = CrossLenMm(net, in net.Segments[seg], 0, laneW, sw);
             int idx = AddEdge(PedEdgeKind.MidCrossing, a, b, mm, 0, 0, seg, -1, m, MidS[m], MidS[m], first, 2);
             Edges[idx].CostTicks += 2 * 20;   // улица без светофора: 2 с (§2.3)
             MidEdge[m] = idx;
@@ -497,6 +560,15 @@ internal sealed partial class PedNetwork
 
         return true;
     }
+
+    /// <summary>
+    /// Длина перехода, мм: между осями тротуаров двух сторон. legacy - <c>2·HalfRoad + sw</c> (как раньше, бит в бит);
+    /// профиль - сумма смещений сторон (кромка слева + кромка справа + газоны + половины тротуаров).
+    /// </summary>
+    private static int CrossLenMm(NetworkStore net, in SegmentData sd, int side, float laneW, float sw) =>
+        ByProfile(net, in sd)
+            ? DetMath.ToIntSat(MathF.Round((SideOff(net, in sd, side, laneW, sw) + SideOff(net, in sd, 1 - side, laneW, sw)) * 1000f))
+            : DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in sd, laneW)) + sw) * 1000f));
 
     /// <summary>Статический приор ожидания у перехода, тики (§2.3): Webster (C − g)² / 2C для светофора, 2 с на улице и 6 с на артерии без него.</summary>
     private static int WaitTicks(World w, bool signal, bool arterial)
