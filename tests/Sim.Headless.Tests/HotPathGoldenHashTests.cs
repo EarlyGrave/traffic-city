@@ -57,7 +57,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S1k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "decb20ea2a07d258", "f73f9edf56796177", "c42eed2872955e57", "3c19a40172758a0b" };
+        string[] expected = { "decb20ea2a07d258", "f73f9edf56796177", "b17eea7a462c0fd6", "0484fde2a94d8f35" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);

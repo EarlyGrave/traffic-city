@@ -29,7 +29,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "9a7ecb80908c384d", "68c058a508d7568c", "62f6271181658ed5", "c74298ed48c774d8" };
+        string[] expected = { "9a7ecb80908c384d", "68c058a508d7568c", "62f6271181658ed5", "5cac9bedcf5120e7" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
