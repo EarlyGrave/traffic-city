@@ -187,8 +187,13 @@ public sealed partial class NodePanel : PanelContainer
         ReadOnlySpan<byte> ls = sim.LaneSignals;
         for (int c = nd.FirstConnector; c < nd.FirstConnector + nd.ConnectorCount; c++)
         {
+            if (!net.IsLaneAlive(c))
+            {
+                continue;
+            }
+
             LaneData cn = net.Lanes[c];
-            if (cn.FromLane < 0 || cn.ToLane < 0 || c >= ls.Length)
+            if (!net.IsLaneAlive(cn.FromLane) || !net.IsLaneAlive(cn.ToLane) || c >= ls.Length)
             {
                 continue;
             }

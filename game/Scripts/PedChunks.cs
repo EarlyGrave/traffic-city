@@ -52,9 +52,9 @@ public sealed class PedChunks
             bool cross = e >= sidewalks.Length;
             PedEdgeData ed = cross ? crossings[e - sidewalks.Length] : sidewalks[e];
             _edgeLenM[e] = ed.LenMm / 1000f;
-            if (ed.PointCount < 2)
+            if (ed.PointCount < 2 || (ed.Segment >= 0 && !net.IsSegmentAlive(ed.Segment)) || (ed.Node >= 0 && !net.IsNodeAlive(ed.Node)))
             {
-                continue;
+                continue; // ребро снесённого сегмента/узла (после сноса сеть пешеходов пересобрана ядром, это страховка от призраков)
             }
 
             ReadOnlySpan<Vec2> poly = pts.Slice(ed.FirstPoint, ed.PointCount);

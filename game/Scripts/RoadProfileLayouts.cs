@@ -226,7 +226,7 @@ public sealed class RoadProfileLayouts
         bool baseAB = sd.LanesAB > 0;
         int lane = baseAB ? sd.FirstLaneAB : sd.FirstLaneBA;
         float cBase = baseAB ? lay.CBaseAB : lay.CBaseBA;
-        if ((uint)lane >= (uint)net.Lanes.Length || net.Lanes[lane].PointCount < 2 || float.IsNaN(cBase))
+        if (!net.IsLaneAlive(lane) || net.Lanes[lane].PointCount < 2 || float.IsNaN(cBase))
         {
             return false;
         }
