@@ -55,6 +55,8 @@ public partial class SimHost : Node3D
     private PerfHud? _hud;
     private RenderStats? _renderStats;
     private string _pose = string.Empty;
+    private bool _timeAuto;        // --time-of-day auto: час суток из игрового времени (только при demand.model = residents)
+    private int _dayTicks;         // calendar.day_s * 20; 0 - нет календаря (фиксированный час)
     private Label? _status;
     private Label? _inspector;
     private PedMesh? _peds;
@@ -165,8 +167,22 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
-    /// <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
+    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
+    /// <summary>Час суток из <c>HH:MM</c> или десятичных часов (<c>19</c>, <c>19.5</c>).</summary>
+    private static bool TryParseHour(string v, out float hour)
+    {
+        CultureInfo inv = CultureInfo.InvariantCulture;
+        int c = v.IndexOf(':', StringComparison.Ordinal);
+        if (c > 0 && int.TryParse(v.AsSpan(0, c), NumberStyles.Integer, inv, out int h) && int.TryParse(v.AsSpan(c + 1), NumberStyles.Integer, inv, out int m))
+        {
+            hour = h + (m / 60f);
+            return true;
+        }
+
+        return float.TryParse(v, NumberStyles.Float, inv, out hour);
+    }
+
     private void ParseArgs(string[] args, ref string name)
     {
         CultureInfo inv = CultureInfo.InvariantCulture;
@@ -184,6 +200,18 @@ public partial class SimHost : Node3D
             else if (a == "--log-step-alloc")
             {
                 _logStepAlloc = true;
+            }
+            else if (a == "--time-of-day" && i + 1 < args.Length)
+            {
+                string v = args[++i];
+                if (v == "auto")
+                {
+                    _timeAuto = true;
+                }
+                else if (TryParseHour(v, out float hh))
+                {
+                    RenderPreset.SetStartHour(hh);
+                }
             }
             else if (a == "--pose" && i + 1 < args.Length)
             {
@@ -309,6 +337,12 @@ public partial class SimHost : Node3D
         {
             _hud.Visible = true;
             _hudPending = false;
+        }
+
+        if (_timeAuto && _dayTicks > 0)
+        {
+            // тик 0 = 00:00; обновляем раз в ~секунду игрового времени (20 тиков), не каждый кадр
+            RenderPreset.SetHour(GetParent(), 24f * (_sim.Tick % _dayTicks) / _dayTicks);
         }
 
         long allocA = GC.GetAllocatedBytesForCurrentThread();
@@ -440,6 +474,12 @@ public partial class SimHost : Node3D
                     }
 
                     break;
+                case Key.T:
+                    // ручной час суток: T - +1 ч, Shift+T - -1 ч (выключает привязку к игровому времени)
+                    _timeAuto = false;
+                    RenderPreset.SetHour(GetParent(), RenderPreset.Hour + (key.ShiftPressed ? -1f : 1f));
+                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
+                    break;
                 case Key.F4:
                     // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
                     // для них перезапуск с --render-preset.
@@ -524,6 +564,7 @@ public partial class SimHost : Node3D
         _sim = sim;
         RoadProfileLayouts.Set(in desc.RoadProfiles); // сечения дорог для RoadChunks/PedChunks (RP6); без каталога - legacy
         _types = desc.VehicleTypes;
+        _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
