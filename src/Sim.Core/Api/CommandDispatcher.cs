@@ -409,7 +409,7 @@ internal static partial class CommandDispatcher
             if (nd.Signal < 0)
             {
                 int axes = SignalStore.AxesOf(w, c.Node);
-                SetSignalPlanCmd plan = SignalStore.DefaultPlan(axes, in w.Rules);
+                SetSignalPlanCmd plan = SignalStore.DefaultPlan(w, c.Node, axes);   // all-red с надбавкой на очистку коробки (ADR-0028)
                 if (axes < 1 || !w.Signals.TryAdd(w, c.Node, in plan, out _))
                 {
                     Rejected(w, in cmd, RejectReason.InvalidArgument);

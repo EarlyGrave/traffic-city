@@ -3,6 +3,7 @@ using System.Numerics;
 using Sim.Core.Api;
 using Sim.Core.Gen;
 using Sim.Core.Network;
+using Sim.Core.Util;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -264,6 +265,53 @@ internal sealed class SignalStore
             AllRedTicks = (ushort)Math.Clamp(allRed, 0, ushort.MaxValue),
             Flags = adaptive ? SignalPlanFlags.Arrows : (byte)0,
         };
+    }
+
+    /// <summary>План по умолчанию для узла <paramref name="node"/>: <see cref="DefaultPlan(int, in RulesDesc, bool)"/> + надбавка all-red на очистку коробки (<see cref="ClearanceExtraTicks"/>, ADR-0028).</summary>
+    internal static SetSignalPlanCmd DefaultPlan(World w, int node, int phases, bool adaptive = true)
+    {
+        SetSignalPlanCmd p = DefaultPlan(phases, in w.Rules, adaptive);
+        p.AllRedTicks = (ushort)Math.Clamp(p.AllRedTicks + ClearanceExtraTicks(w.Net, node, w.Builder.Options), 0, ushort.MaxValue);
+        return p;
+    }
+
+    /// <summary>
+    /// Надбавка all-red узла на очистку коробки (ADR-0028): all-red по инженерной формуле <c>r = (W + L) / v</c>; базовый all-red (1 с) соответствует коробке
+    /// <c>W0 = 2 * NodeSetback</c> (14 м, до ADR-0028), поэтому <c>r(W) = r0 + (W - W0) / v</c>. <c>W = 2 * NodeData.Radius</c> - самый длинный проезд «прямо» через узел
+    /// (сумма отступов противоположных рукавов), <c>v</c> - наименьший лимит скорости рукавов узла (самый медленный подход очищает коробку дольше всех).
+    /// Тиков - вверх до целого. Коробка не шире <c>W0</c> (в том числе <c>corner_radius = 0</c>) - 0: поведение побитово прежнее. Узел без рукавов - 0.
+    /// </summary>
+    internal static int ClearanceExtraTicks(NetworkStore net, int node, in NetworkOptions o)
+    {
+        if ((uint)node >= (uint)net.NodeCount)
+        {
+            return 0;
+        }
+
+        ref readonly NodeData nd = ref net.Nodes[node];
+        float box = 2f * nd.Radius;
+        float box0 = 2f * o.NodeSetback;
+        if (!(box > box0) || nd.FirstArm < 0 || nd.ArmCount <= 0)
+        {
+            return 0;
+        }
+
+        float v = float.MaxValue;
+        for (int a = 0; a < nd.ArmCount; a++)
+        {
+            float lim = net.Segments[net.NodeArms[nd.FirstArm + a]].SpeedLimit;
+            if (lim < v)
+            {
+                v = lim;
+            }
+        }
+
+        if (!(v > 0f) || v == float.MaxValue)
+        {
+            return 0;
+        }
+
+        return DetMath.ToIntSat(MathF.Ceiling((box - box0) / v / PhysicsParams.DefaultDt));
     }
 
     /// <summary>
@@ -835,7 +883,7 @@ internal sealed class SignalStore
         SetSignalPlanCmd resolved = Resolve(in plan, axes, in w.Rules);
         if (!IsValid(in resolved, axes))
         {
-            resolved = Resolve(DefaultPlan(axes, in w.Rules), axes, in w.Rules);
+            resolved = Resolve(DefaultPlan(w, node, axes), axes, in w.Rules);
             result = 1;
         }
 
@@ -1161,7 +1209,7 @@ internal sealed class SignalStore
                     continue;
                 }
 
-                SetSignalPlanCmd def = DefaultPlan(axes, in w.Rules, s.Adaptive);
+                SetSignalPlanCmd def = DefaultPlan(w, s.Node, axes, s.Adaptive);
                 def.OffsetTicks = s.OffsetTicks;
                 def.CycleTicks = axes == 2 ? s.CycleTicks : (ushort)0;
                 TryAdd(w, s.Node, in def, out _);

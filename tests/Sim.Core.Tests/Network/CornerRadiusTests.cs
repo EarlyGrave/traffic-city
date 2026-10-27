@@ -1,5 +1,6 @@
 using System;
 using Sim.Core.Api;
+using Sim.Core.Gen;
 using Sim.Core.Network;
 using Sim.Core.Tests.Gen;
 using Sim.Core.Util;
@@ -93,6 +94,33 @@ public class CornerRadiusTests
 
         _out.WriteLine($"{scenario}: сегментов {n.SegmentCount}, концов с увеличенным отступом {inflated}, сжатых надбавок {r.Builder.SetbackClampCount}");
         Assert.True(inflated > 0);
+    }
+
+    [Fact]
+    public void Clearance_AllRedGrowsWithBox_ZeroWithoutCornerRadius()
+    {
+        int prev = -1;
+        float[] radii = { -1f, 2f, 4f, 6f, 8f, 10f };
+        foreach (float r in radii)
+        {
+            GenRun g = GenFixture.Run("s1k", run => run.City.CornerRadius = r);
+            Assert.Equal(CreateStatus.Ok, g.CityStatus);
+            SignalPlanSeed s = g.City0.SignalPlans[0];
+            int extra = Sim.Core.Rules.Intersections.SignalStore.ClearanceExtraTicks(g.Net, s.Node, g.Builder.Options);
+            float box = 2f * g.Net.Nodes[s.Node].Radius;
+            _out.WriteLine($"corner {r}: коробка {box:0.0} м, all-red {s.AllRedTicks} тиков (+{extra})");
+            Assert.Equal(g.Rules.DefaultAllRedTicks + extra, s.AllRedTicks);
+            if (r < 0)
+            {
+                Assert.Equal(0, extra);   // коробка 14 м - интергрин прежний
+            }
+            else
+            {
+                Assert.True(extra > prev, $"all-red не растёт с коробкой: {extra} <= {prev}");
+            }
+
+            prev = extra;
+        }
     }
 
     [Fact]

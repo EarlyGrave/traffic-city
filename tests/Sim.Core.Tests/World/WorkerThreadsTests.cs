@@ -291,11 +291,20 @@ public class WorkerThreadsTests
 
     private static void Poison(World w, int hw)
     {
+        // Только живые слоты: фаза 5 мёртвые слоты ниже HighWater не пишет (дыра от деспауна дала бы ложное «отличается»).
         Sim.Core.Agents.VehicleStore v = w.Vehicles;
-        Array.Fill(v.Accel, 123f, 0, hw);
-        Array.Fill(v.LaneChangeDir, (sbyte)7, 0, hw);
-        Array.Fill(v.ClampLeadGap, 123f, 0, hw);
-        Array.Fill(v.ClampFlags, (byte)255, 0, hw);
-        Array.Fill(v.ClampGateGap, 123f, 0, hw);
+        for (int i = 0; i < hw; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            v.Accel[i] = 123f;
+            v.LaneChangeDir[i] = 7;
+            v.ClampLeadGap[i] = 123f;
+            v.ClampFlags[i] = 255;
+            v.ClampGateGap[i] = 123f;
+        }
     }
 }

@@ -516,7 +516,7 @@ internal static class CityGenerator
                 }
 
                 int yellow = rules.DefaultYellowTicks;
-                int allRed = rules.DefaultAllRedTicks;
+                int allRed = rules.DefaultAllRedTicks + Rules.Intersections.SignalStore.ClearanceExtraTicks(store, n, b.Options);   // очистка коробки (ADR-0028); 0 при коробке 14 м
                 int cycle = g0 + g1 + (2 * (yellow + allRed));
                 int offset;
                 int seedCycle = 0;

@@ -118,8 +118,10 @@ public class SignalMaskTests
         Assert.Equal(480, s.GreenTicks[0]);
         Assert.Equal(480, s.GreenTicks[1]);
         Assert.Equal(60, s.YellowTicks[0]);
-        Assert.Equal(20, s.AllRedTicks[0]);
+        int extra = SignalStore.ClearanceExtraTicks(sim.World.Net, 0, sim.World.Builder.Options);   // ADR-0028: all-red + очистка коробки шире 14 м
+        Assert.True(extra > 0);
+        Assert.Equal(20 + extra, s.AllRedTicks[0]);
         Assert.Equal(0, s.OffsetTicks[0]);
-        Assert.Equal(2 * (480 + 60 + 20), s.CycleOf(0));
+        Assert.Equal(2 * (480 + 60 + 20 + extra), s.CycleOf(0));
     }
 }
