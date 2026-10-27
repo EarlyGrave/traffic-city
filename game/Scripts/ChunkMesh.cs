@@ -16,18 +16,22 @@ public sealed class MeshBuilder
     private readonly List<Color> _c = new();
     private readonly List<float> _custom = new();
     private readonly List<int> _i = new();
+    private readonly List<Vector2> _uv = new();
     private readonly int _stride;
+    private readonly bool _useUv;
 
-    public MeshBuilder(int customStride)
+    /// <summary><paramref name="customStride"/>: 1, 2 или 4 float в <c>CUSTOM0</c>; <paramref name="useUv"/> - писать <c>UV</c> (дороги: поперечная координата полос).</summary>
+    public MeshBuilder(int customStride, bool useUv = false)
     {
         _stride = customStride;
+        _useUv = useUv;
     }
 
     public int VertexCount => _v.Count;
 
     public bool IsEmpty => _i.Count == 0;
 
-    public int Add(Vector3 p, Color c, float c0, float c1 = 0f)
+    public int Add(Vector3 p, Color c, float c0, float c1 = 0f, float c2 = 0f, float c3 = 0f, Vector2 uv = default)
     {
         _v.Add(p);
         _c.Add(c);
@@ -37,7 +41,37 @@ public sealed class MeshBuilder
             _custom.Add(c1);
         }
 
+        if (_stride > 2)
+        {
+            _custom.Add(c2);
+            _custom.Add(c3);
+        }
+
+        if (_useUv)
+        {
+            _uv.Add(uv);
+        }
+
         return _v.Count - 1;
+    }
+
+    /// <summary>Единичная нормаль <c>(-dz, dx)</c> к полилинии в точке <paramref name="k"/> (по соседям k-1, k+1) - общая для лент и площадок перекрёстков.</summary>
+    public static void EdgeNormal(ReadOnlySpan<Vec2> pts, int k, out float ox, out float oz)
+    {
+        Vec2 pr = pts[Math.Max(k - 1, 0)];
+        Vec2 nx = pts[Math.Min(k + 1, pts.Length - 1)];
+        float dx = nx.X - pr.X;
+        float dz = nx.Z - pr.Z;
+        float len = MathF.Sqrt((dx * dx) + (dz * dz));
+        if (len < 1e-4f)
+        {
+            dx = 1f;
+            dz = 0f;
+            len = 1f;
+        }
+
+        ox = -dz / len;
+        oz = dx / len;
     }
 
     public void Tri(int a, int b, int c)
@@ -65,20 +99,7 @@ public sealed class MeshBuilder
         for (int k = 0; k < pts.Length; k++)
         {
             Vec2 p = pts[k];
-            Vec2 pr = pts[Math.Max(k - 1, 0)];
-            Vec2 nx = pts[Math.Min(k + 1, pts.Length - 1)];
-            float dx = nx.X - pr.X;
-            float dz = nx.Z - pr.Z;
-            float len = MathF.Sqrt((dx * dx) + (dz * dz));
-            if (len < 1e-4f)
-            {
-                dx = 1f;
-                dz = 0f;
-                len = 1f;
-            }
-
-            float ox = -dz / len;
-            float oz = dx / len;
+            EdgeNormal(pts, k, out float ox, out float oz);
             float cx = p.X + (ox * shift);
             float cz = p.Z + (oz * shift);
             Add(new Vector3(cx + (ox * half), y, cz + (oz * half)), col, c0, c1);
@@ -105,7 +126,12 @@ public sealed class MeshBuilder
         arrays[(int)Mesh.ArrayType.Color] = _c.ToArray();
         arrays[(int)Mesh.ArrayType.Custom0] = _custom.ToArray();
         arrays[(int)Mesh.ArrayType.Index] = _i.ToArray();
-        Mesh.ArrayCustomFormat fmt = _stride > 1 ? Mesh.ArrayCustomFormat.RgFloat : Mesh.ArrayCustomFormat.RFloat;
+        if (_useUv)
+        {
+            arrays[(int)Mesh.ArrayType.TexUV] = _uv.ToArray();
+        }
+
+        Mesh.ArrayCustomFormat fmt = _stride > 2 ? Mesh.ArrayCustomFormat.RgbaFloat : _stride > 1 ? Mesh.ArrayCustomFormat.RgFloat : Mesh.ArrayCustomFormat.RFloat;
         var flags = (Mesh.ArrayFormat)((ulong)Mesh.ArrayFormat.FormatCustom0 | ((ulong)fmt << (int)Mesh.ArrayFormat.FormatCustom0Shift));
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null, flags);
@@ -132,11 +158,11 @@ public static class ChunkGrid
         return ((long)cx << 32) ^ (uint)cz;
     }
 
-    public static MeshBuilder Get(Dictionary<long, MeshBuilder> map, long key, int stride)
+    public static MeshBuilder Get(Dictionary<long, MeshBuilder> map, long key, int stride, bool uv = false)
     {
         if (!map.TryGetValue(key, out MeshBuilder? b))
         {
-            b = new MeshBuilder(stride);
+            b = new MeshBuilder(stride, uv);
             map[key] = b;
         }
 
