@@ -10,8 +10,9 @@ namespace Sim.Core.Tests.Gen;
 public class CityGeneratorTests
 {
     // Голден-хэш NetworkStore.Hash() сети s1k (seed 20261024). Менять только вместе с city-generator.md §3.9
-    // (порядок PRNG) или изменением геометрии/эмиссии NetworkBuilder.
-    private const ulong GoldenS1kNetworkHash = 0x579C25BA8FEB8BC8UL;
+    // (порядок PRNG) или изменением геометрии/эмиссии NetworkBuilder. ADR-0028 (отступы рукавов + corner_radius 6 м): был 0x579C25BA8FEB8BC8UL,
+    // с city.corner_radius_m = 0 он воспроизводится (CornerRadiusTests.Disabled_ReproducesLegacyNetwork).
+    private const ulong GoldenS1kNetworkHash = 0x1F8AC860002F6EFBUL;
 
     private readonly ITestOutputHelper _out;
 
