@@ -40,8 +40,8 @@ public class CoordinationGeneratorTests
             }
 
             coordinated++;
-            Assert.Equal(1440, s.CycleTicks[a]);   // s1k: 600 м / 16.7 м/с = 36 с, C = 2T = 72 с
-            Assert.True(s.OffsetTicks[a] < 1440);
+            Assert.Equal(1460, s.CycleTicks[a]);   // s1k: 608 м / 16.7 м/с = 36.5 с, C = 2T = 72.96 с -> 1459 тиков, чётное 1460
+            Assert.True(s.OffsetTicks[a] < 1460);
             var pa = w.Net.Nodes[s.Node[a]].Position;
             for (int b = a + 1; b < s.Count; b++)
             {
@@ -51,13 +51,13 @@ public class CoordinationGeneratorTests
                 }
 
                 var pb = w.Net.Nodes[s.Node[b]].Position;
-                bool alongX = Math.Abs(pa.Z - pb.Z) < 1f && Math.Abs(Math.Abs(pa.X - pb.X) - 600f) < 1f;
-                bool alongZ = Math.Abs(pa.X - pb.X) < 1f && Math.Abs(Math.Abs(pa.Z - pb.Z) - 600f) < 1f;
+                bool alongX = Math.Abs(pa.Z - pb.Z) < 1f && Math.Abs(Math.Abs(pa.X - pb.X) - 608f) < 1f;
+                bool alongZ = Math.Abs(pa.X - pb.X) < 1f && Math.Abs(Math.Abs(pa.Z - pb.Z) - 608f) < 1f;
                 if (alongX || alongZ)
                 {
                     pairs++;
                     int diff = Math.Abs(s.OffsetTicks[a] - s.OffsetTicks[b]);
-                    Assert.InRange(Math.Min(diff, 1440 - diff), 718, 722);   // сдвиг на T = C/2 (-T = +T mod 2T)
+                    Assert.InRange(Math.Min(diff, 1460 - diff), 728, 732);   // сдвиг на T = C/2 (-T = +T mod 2T)
                 }
             }
         }
@@ -75,10 +75,10 @@ public class CoordinationGeneratorTests
             SignalStore s = sim.World.Signals;
             for (int k = 0; k < s.Count; k++)
             {
-                if (s.GreenTicks[k * SignalStore.MaxPhases] == 640)
+                if (s.GreenTicks[k * SignalStore.MaxPhases] == 650)
                 {
-                    Assert.Equal(640, s.GreenTicks[(k * SignalStore.MaxPhases) + 1]);   // C/2 - Yellow - AllRed = 36 - 3 - 1 = 32 с
-                    Assert.Equal(1440, s.CycleOf(k));
+                    Assert.Equal(650, s.GreenTicks[(k * SignalStore.MaxPhases) + 1]);   // C/2 - Yellow - AllRed = 36.5 - 3 - 1 = 32.5 с
+                    Assert.Equal(1460, s.CycleOf(k));
                     Assert.Equal(0, s.CycleTicks[k]);
                 }
             }

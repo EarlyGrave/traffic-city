@@ -6,9 +6,9 @@
   "vehicle_types_file": "vehicle-types.json",
   "city": {
     "enabled": true,
-    "size_m": [3000, 3000],
+    "size_m": [3040, 3040],
     "scale": 2.0,
-    "block_m": 150,
+    "block_m": 152,
     "arterial_every": 4,
     "arterial_speed_kmh": 60,
     "street_speed_kmh": 40,
@@ -29,7 +29,7 @@
     }
   },
   "demand": {
-    "zone_m": 500,
+    "zone_m": 508,
     "model": "gravity",
     "gravity_exponent": 1.0,
     "weight_jitter": 0.5,
@@ -62,7 +62,7 @@
   },
   "routing": {
     "levels": 1,
-    "cell_m": 1000,
+    "cell_m": 1016,
     "fanout": 4,
     "window_steps": 16,
     "pathfind_budget_per_tick": 128,

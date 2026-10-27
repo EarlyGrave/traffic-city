@@ -691,6 +691,17 @@ public static partial class ScenarioLoader
             ParseCityProfiles(r, profiles, ref c);   // city.profiles: с каталогом обязательна для генератора
         }
 
+        // city.snap_nodes (road-profiles.md §5): узлы на сетку module_m, шаг = block_m; дефолт true в режиме профилей, false - прежнее поведение.
+        c.SnapNodes = r.Bool("snap_nodes", profiles.Enabled);
+        if (c.Enabled && c.SnapNodes)
+        {
+            int moduleMm = profiles.Enabled ? profiles.ModuleMm : DefaultModuleMm;
+            if (Mm(c.BlockSize, r.ChildPath("block_m")) % moduleMm != 0)
+            {
+                throw new ScenarioException($"{r.ChildPath("block_m")}: must be a multiple of module_m ({moduleMm / 1000.0:0.###} m) when snap_nodes is on");
+            }
+        }
+
         r.Finish();
         return c;
     }
