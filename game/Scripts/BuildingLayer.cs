@@ -50,9 +50,18 @@ public sealed class BuildingLayer
         _cfg = cfg;
         _material = CreateMaterial(cfg.LodScale);
         _ring = new BoxBatch("Buildings_ring", BoxBuilder.Box(Vector3.One, new Vector3(0f, 0.5f, 0f)), _material);
-        _ring.Node.CastShadow = GeometryInstance3D.ShadowCastingSetting.On; // тень: здания LOD0-LOD1 при высоте >= 1 м (render.md §6)
+        // Тень (здания LOD0-LOD1, render.md §6) рисует второй узел на том же MultiMesh и простом материале: x-ray (discard в building.gdshader)
+        // не должен резать тень. Основной узел тени не отбрасывает - сумма draw calls та же, что с одним узлом (тень + основной проход).
+        _ring.Node.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         Root = new Node3D { Name = "Buildings" };
         Root.AddChild(_ring.Node);
+        Root.AddChild(new MultiMeshInstance3D
+        {
+            Name = "Buildings_ring_shadow",
+            Multimesh = _ring.Node.Multimesh,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.ShadowsOnly,
+            MaterialOverride = new StandardMaterial3D(),
+        });
         Root.AddChild(_lod2);
         Root.AddChild(_far);
         parent.AddChild(Root);
@@ -97,6 +106,10 @@ public sealed class BuildingLayer
         mat.SetShaderParameter("wall_shade", Palette.BuildingWallShade);
         mat.SetShaderParameter("ao_min", Palette.BuildingAoMin);
         mat.SetShaderParameter("ao_height", Palette.BuildingAoHeight);
+        mat.SetShaderParameter("xray_min_h", Palette.BuildingXrayMinHeight);
+        mat.SetShaderParameter("xray_max_dist", Palette.BuildingXrayMaxDist);
+        mat.SetShaderParameter("xray_focus_k", Palette.BuildingXrayFocusK);
+        mat.SetShaderParameter("xray_begin", Palette.BuildingXrayBegin);
         return mat;
     }
 
