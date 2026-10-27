@@ -47,6 +47,7 @@
     "node_jitter_m": number,            // фоновый джиттер всех внутренних узлов, м (0..0.45·block_m). Дефолт 0 — улицы и артерии прямые. PRNG-draw делается всегда
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
+    "corner_radius_m": number,         // ADR-0028: радиус скругления бордюра, 0..50 м. Отступ рукава узла степени >= 3 = max(7, полуширина самой широкой поперечной дороги + r); тупики/изгибы - 7 м. Дефолт 6; 0 - фиксированный отступ 7 м (как до ADR-0028)
     "signals": "arterial_x_arterial" | "all_arterial" | "none",   // где ставить светофоры. Дефолт "arterial_x_arterial"
     "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
     "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
@@ -56,7 +57,8 @@
 
   "network": {                          // явная сеть (тесты, ручные карты); взаимоисключима с city.enabled
     "nodes": [ { "id": string, "x": number, "z": number, "control": "none|yield|stop|signal|right_hand" } ],
-    "segments": [ { "a": string, "b": string, "lanes_ab": int, "lanes_ba": int, "speed_kmh": number, "kind": "street|arterial" } ]
+    "segments": [ { "a": string, "b": string, "lanes_ab": int, "lanes_ba": int, "speed_kmh": number, "kind": "street|arterial" } ],
+    "corner_radius_m": number         // то же, что city.corner_radius_m (ADR-0028), для явной сети. Дефолт 6; 0 - фиксированный отступ 7 м
   },
 
   "vehicles": {
