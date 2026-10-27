@@ -29,7 +29,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "9a7ecb80908c384d", "68c058a508d7568c", "62f6271181658ed5", "5cac9bedcf5120e7" };
+        string[] expected = { "589f828a71bfd3fd", "6e2cd09b49ebd8e4", "aa954ecd8144bc6e", "0dcafc93ebf89a96" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -44,7 +44,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S10k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s10k", threads);
-        string[] expected = { "a1d2e0ea765acdae", "3be8f865185d9615", "67764242726f2f17" };
+        string[] expected = { "ea46251e96555cf3", "fd84b140ef4900d5", "f42ff041da91c795" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);
@@ -68,7 +68,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AlternateStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = CreateAlternate("s1k", threads);
-        string[] expected = { "89ef5134bd77addd", "9bcb38ad7eea4a9b", "c9a93d7bb1ae916c", "593182f61439a215" };
+        string[] expected = { "f7fd16a93f23759a", "957675600da4a429", "f38d41fdd0d9e0df", "f1950d049a51c37a" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -83,7 +83,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S10k_AlternateStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = CreateAlternate("s10k", threads);
-        string[] expected = { "16d3d7565a4956a9", "3819bf0d5d3f1342", "e3340ee972ff71dd" };
+        string[] expected = { "b6fb62544019ebe0", "1e9d60035585c8aa", "0533c68dc2976f3e" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);

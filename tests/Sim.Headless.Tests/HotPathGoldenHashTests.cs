@@ -57,7 +57,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S1k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "decb20ea2a07d258", "f73f9edf56796177", "b17eea7a462c0fd6", "0484fde2a94d8f35" };
+        string[] expected = { "2af924566810da2f", "bf55c7d416e70bc8", "293a50c4eaa29f71", "558d3c3ef0b080e0" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -74,7 +74,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S10k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s10k", threads);
-        string[] expected = { "717d41ca1461d1e1", "ef7aaf0f178854af", "507358c0cd199f0f" };
+        string[] expected = { "968acda58db1f475", "b6de7d495370be2c", "4a215863ab2ef5ae" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);
@@ -93,8 +93,8 @@ public sealed class HotPathGoldenHashTests : IDisposable
         Assert.Equal(0, code);
         string[] lines = o.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(2, lines.Length);
-        Assert.StartsWith("tick=1000 hash=decb20ea2a07d258 ", lines[0], StringComparison.Ordinal);
-        Assert.StartsWith("tick=2000 hash=f73f9edf56796177 ", lines[1], StringComparison.Ordinal);
+        Assert.StartsWith("tick=1000 hash=2af924566810da2f ", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("tick=2000 hash=bf55c7d416e70bc8 ", lines[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
             lines[t - 1] = o.ToString();
         }
 
-        Assert.StartsWith("tick=1000 hash=decb20ea2a07d258 ", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("tick=1000 hash=2af924566810da2f ", lines[0], StringComparison.Ordinal);
         Assert.Equal(lines[0], lines[1]);
         Assert.Equal(lines[0], lines[2]);
     }

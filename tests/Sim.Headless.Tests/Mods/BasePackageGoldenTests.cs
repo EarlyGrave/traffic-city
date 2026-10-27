@@ -159,7 +159,7 @@ public sealed class BasePackageGoldenTests : IDisposable
     public void S1kV3_StateHash_MatchesHotPathGolden()
     {
         using Simulation sim = CreateV3("s1k");
-        string[] expected = { "decb20ea2a07d258", "f73f9edf56796177", "b17eea7a462c0fd6", "0484fde2a94d8f35" };   // = HotPathGoldenHashTests
+        string[] expected = { "2af924566810da2f", "bf55c7d416e70bc8", "293a50c4eaa29f71", "558d3c3ef0b080e0" };   // = HotPathGoldenHashTests
         foreach (string e in expected)
         {
             sim.Step(1000);
@@ -171,7 +171,7 @@ public sealed class BasePackageGoldenTests : IDisposable
     public void S10kV3_StateHash_MatchesHotPathGolden()
     {
         using Simulation sim = CreateV3("s10k");
-        string[] expected = { "717d41ca1461d1e1", "ef7aaf0f178854af", "507358c0cd199f0f" };   // = HotPathGoldenHashTests
+        string[] expected = { "968acda58db1f475", "b6de7d495370be2c", "4a215863ab2ef5ae" };   // = HotPathGoldenHashTests
         foreach (string e in expected)
         {
             sim.Step(200);

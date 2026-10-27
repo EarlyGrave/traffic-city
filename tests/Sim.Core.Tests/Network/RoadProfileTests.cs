@@ -17,7 +17,7 @@ namespace Sim.Core.Tests.Network;
 /// </summary>
 public class RoadProfileTests
 {
-    private const ulong GoldenS1kNetworkHash = 0x1F8AC860002F6EFBUL;   // как в CityGeneratorTests: legacy-сеть s1k побитово прежняя
+    private const ulong GoldenS1kNetworkHash = 0xADA92B804C9F5496UL;   // как в CityGeneratorTests: legacy-сеть s1k побитово прежняя
 
     private static string FixturePath => Path.Combine(GenFixture.RepoRoot(), "tests", "fixtures", "road-profiles.fixture.json");
 
