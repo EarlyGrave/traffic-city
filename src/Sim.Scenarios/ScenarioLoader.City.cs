@@ -9,7 +9,7 @@ namespace Sim.Scenarios;
 public static partial class ScenarioLoader
 {
     private static readonly string[] _citySectionKeys = { "calendar", "zoning", "residents", "economy", "choice" };
-    private static readonly string[] _cityCapacityKeys = { "max_lots", "max_buildings", "max_city_residents", "skim_obs_capacity" };
+    private static readonly string[] _cityCapacityKeys = { "max_lots", "max_buildings", "max_city_residents", "skim_obs_capacity", "max_parking" };
 
     /// <summary>
     /// <c>city.landuse</c> (visual-style.md §8, ADR-0027): парки, пруды и береговая полоса генератора. Нет секции или <c>enabled = false</c> - выключено (нулевая структура, сценарий побитово прежний).

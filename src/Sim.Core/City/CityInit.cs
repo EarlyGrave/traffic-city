@@ -28,6 +28,15 @@ internal static class CityInit
             Populate(w, c);
         }
 
+        if (c.Parking != null)
+        {
+            Parking.ParkingBuild.CreateAll(w, c);   // обочины участков и стоянки активных зданий (parking.md §3)
+            if (c.Cfg.Zoning.Auto)
+            {
+                Parking.HomeAssign.AssignInitial(w, c);   // домашние места начального населения; кому не хватило - HasCar снимается (§4)
+            }
+        }
+
         c.Lots.Version++;
         c.RebuildWheel(-1);   // колесо жителей: начальные события Plan (Z2)
         Accessibility.Init(w);   // производные скимов, поле доступности и LS_ref (zoning-demand.md §6.7)

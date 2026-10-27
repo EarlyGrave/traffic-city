@@ -78,7 +78,7 @@ public sealed class BudgetSurfaceTests
         Assert.Equal(16, (int)RejectReason.BudgetRule);
         Assert.Equal(16, System.Runtime.CompilerServices.Unsafe.SizeOf<BudgetPolicy>());
         Assert.Equal(64, System.Runtime.CompilerServices.Unsafe.SizeOf<Command>());
-        Assert.Equal(9, SaveSchema.WorldVersion);
+        Assert.Equal(10, SaveSchema.WorldVersion);
     }
 
     [Fact]

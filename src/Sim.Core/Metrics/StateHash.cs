@@ -244,6 +244,11 @@ internal static class StateHash
             if (w.City != null)
             {
                 h.Add(t.ResidentRef);   // только в режиме жителей: хэш прочих миров не меняется (CZ1)
+                if (w.City.Parking != null)
+                {
+                    h.Add(t.ParkRef);   // парковка (parking.md §13): поля только в режиме
+                    h.Add(t.ParkGen);
+                }
             }
         }
 

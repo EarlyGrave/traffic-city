@@ -32,6 +32,9 @@ internal sealed class CityWorld
     /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
     public CityBudget? Budget;
 
+    /// <summary>Объекты стоянки (parking.md §2.1, ADR-0026); <c>null</c> без <c>parking.model = "resource"</c> - ни одна ветка парковки не исполняется (PK1).</summary>
+    public Sim.Core.Parking.ParkingStore? Parking;
+
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
     public readonly ArrivalRing Arrivals;

@@ -171,6 +171,12 @@ internal static class WorldLoader
             case "LEDG":
                 expected = c.Desc.Demand.Model == DemandModel.Residents;
                 break;
+            case "PARK":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Parking.Enabled;
+                break;
+            case "LUSE":
+                expected = c.LandUseCount > 0;
+                break;
             case "CBGT":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Economy.CityBudget;
                 break;
@@ -334,6 +340,7 @@ internal static class WorldLoader
         if (ov.MaxBuildings != 0) { caps.MaxBuildings = ov.MaxBuildings; }
         if (ov.MaxCityResidents != 0) { caps.MaxCityResidents = ov.MaxCityResidents; }
         if (ov.SkimObsCapacity != 0) { caps.SkimObsCapacity = ov.SkimObsCapacity; }
+        if (ov.MaxParking != 0) { caps.MaxParking = ov.MaxParking; }
     }
 
     /// <summary>Конец загрузки: проверки состояния, производные, роутер, снапшот, сверка хэша.</summary>

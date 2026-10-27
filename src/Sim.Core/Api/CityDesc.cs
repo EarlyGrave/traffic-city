@@ -14,6 +14,9 @@ public enum LotZone : byte
     Residential = 1,
     Commercial = 2,
     Industrial = 3,
+
+    /// <summary>Гараж (parking.md §3): здание-стоянка, ставится командой <c>BuildParking</c> (K6); рост и зонирование его не трогают (<c>Lot.Zone</c> этого значения не принимает).</summary>
+    Parking = 4,
 }
 
 /// <summary>Исполнитель ног (zoning-demand.md §4, §9): агенты (micro, дефолт) или агрегат (скимы и загрузка ячеек).</summary>
@@ -51,6 +54,11 @@ public struct BuildingTypeDesc
     public int ConstructDays;       // дней в Constructing
     public int AttractQ8;           // C: привлекательность для выбора цели (Q8)
     public int VisualRow;           // строка визуала для клиента (индекс, заданный хостом)
+
+    // ---- парковка (parking.md §3, §14, K1): читается только в режиме parking.model = resource; нули - стоянки у здания нет ----
+    public int ParkingCapacity;     // R/C/I: мест стоянки здания (buildings.json: parking); для Kind = Parking (гараж) - Capacity
+    public ParkingAccess ParkingAccess;   // buildings.json: parking_access
+    public int ParkingFee;          // buildings.json: parking_fee, деньги за постановку гостя
 }
 
 /// <summary>Календарь (<c>calendar</c>).</summary>
@@ -185,12 +193,12 @@ public struct CityDesc
     /// <summary>6 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0 },
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40 },
     };
 
     /// <summary>Дефолты спеки (zoning-demand.md §16) с базовой таблицей зданий; <c>Calendar.DayTicks</c> = 72 000.</summary>

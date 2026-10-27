@@ -78,6 +78,11 @@ internal static class CityHash
         {
             AddBudget(ref h, c, in w.Counters);
         }
+
+        if (c.Parking != null)
+        {
+            Parking.ParkingHash.Add(ref h, w);   // раздел парковки (parking.md §13): только в режиме, хэш прочих миров не меняется (PK1)
+        }
     }
 
     /// <summary>

@@ -138,6 +138,18 @@ public struct SimCounters
     public long FareEvaded;               // ног на автобусе без оплаты (не хватило на проезд)
     public long DebtEvictions;            // выселений за долг
     public long InsufficientFunds;        // отказов инструментов из-за нехватки казны
+    // --- парковка (4.4, parking.md §11): в хэше (раздел парковки) только в режиме, в сейве (CNTR) всегда; считают K2-K5, без режима - нули ---
+    public long ParkSearchTimeSum;        // parking_search_time: Σ тиков ожидания места и поиска по закрытым машинным ногам
+    public long ParkSearchTimeCount;      // число закрытых ног, вошедших в сумму
+    public long ParkSearchHist0, ParkSearchHist1, ParkSearchHist2, ParkSearchHist3, ParkSearchHist4, ParkSearchHist5;   // корзины: 0, <= 20 с, <= 60 с, <= 300 с, <= 600 с, > 600 с
+    public long ParkNoSpotWaits;          // parking_no_spot_waits: ног, которым не хватило мест (раз на ногу)
+    public long ParkModeSwitch;           // parking_mode_switch: смен способа по причине мест
+    public long ParkToursDropped;         // parking_tours_dropped: туров, снятых по дедлайну без мест
+    public long ParkOverflow;             // parking_overflow: постановок на Overflow
+    public long ParkTowed;                // parking_towed: эвакуаций стоящих гостей
+    public long ParkCarShed;              // parking_car_shed: жителей без машины из-за нехватки домашних мест
+    public long ParkSearching;            // parking_searching: машин в поиске сейчас (gauge)
+    public long ParkWalkTicks;            // parking_walk_ticks: Σ ходьбы от мест
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>
