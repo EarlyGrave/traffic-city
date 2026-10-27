@@ -1,8 +1,8 @@
 {
   "world_version": 10,
   "tick": 216500,
-  "state_hash": "d5a2195131720bdb",
-  "hash_after_load": "d5a2195131720bdb",
+  "state_hash": "e343718ad54dbb8c",
+  "hash_after_load": "e343718ad54dbb8c",
   "continue_ticks": 200,
-  "hash_after_continue": "53e9993afe0818c6"
+  "hash_after_continue": "d3343e5106aabaf8"
 }
