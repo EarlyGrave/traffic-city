@@ -199,6 +199,71 @@ public sealed class PedSignalTests
     }
 
     [Fact]
+    public void Adaptive_GreenResting_PedestrianStreamDoesNotStarveCrossAxisCarCall()
+    {
+        // L15: на отдыхе дольше MaxGreen каждый новый пешеход заново запускал Walk + Hold, и непрерывный поток пешеходов держал зелёную ось бесконечно,
+        // пока на встречной оси стояла машина. Теперь вызов другой оси запрещает Walk при отдыхе: Main кончается, ось переключается.
+        using Simulation sim = Cross(peds: true, adaptive: true);
+        World w = sim.World;
+        PedWorld pw = w.Peds!;
+        SignalStore s = w.Signals;
+        int xe = XOf(w, 0);
+        int xw = XOf(w, 2);
+        PedCrossingTests.AddPed(w, xe, 0);
+        int guard = 0;
+        while (guard++ < 4000 && !(s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.GreenElapsed[0] >= s.GreenTicks[1] + 200))
+        {
+            sim.Step(1);
+        }
+
+        Assert.Equal(1, s.Phase[0]);
+        Assert.True(s.GreenElapsed[0] >= s.GreenTicks[1] + 200, "фикстура: зелёная ось должна отдыхать дольше MaxGreen");
+
+        int resident = 1;
+        int walks = 0;
+        bool switched = false;
+        bool carPlaced = false;
+        for (int t = 0; t < 3000 && !switched; t++)
+        {
+            if (t == 1200)
+            {
+                // ось X (фаза 0) на красном, машина у стоп-линии: вызов; к этому моменту поток пешеходов уже держит зелёную ось Z
+                Assert.Equal(1, s.Phase[0]);
+                Assert.True(walks > 100, $"фикстура: поток пешеходов должен непрерывно запускать Walk на отдыхающей оси (walks={walks} res={resident} ge={s.GreenElapsed[0]})");
+                int laneX = GateFixture.InLane(w, 0);
+                GateFixture.Place(sim, laneX, w.Net.LaneLength[laneX] - 6f, 0f);
+                carPlaced = true;
+            }
+
+            // поток без пауз: пока идёт Clear, у каждого перехода уже стоит новый пешеход (на Walk предыдущих он не успел), Walk перезапускается в тот же тик
+            bool clearing = false;
+            for (int j = 0; j < s.SigXCount[0]; j++)
+            {
+                clearing |= s.XClearLeft[j] != 0;
+            }
+
+            foreach (int x in new[] { xe, xw })
+            {
+                if ((t == 0 || clearing) && pw.X.QCount[x] == 0 && resident < 40)
+                {
+                    PedCrossingTests.AddPed(w, x, resident++);
+                }
+            }
+
+            sim.Step(1);
+            if (PedSignals.IsWalk(pw.X, xe) || PedSignals.IsWalk(pw.X, xw))
+            {
+                walks++;
+            }
+
+            switched = s.Phase[0] != 1 || s.Interval[0] != SignalInterval.Green;
+            Assert.False(switched && !carPlaced, "до вызова оси X зелёная ось Z не должна уступать");
+        }
+
+        Assert.True(switched, "зелёная ось Z должна уступить оси X: поток пешеходов не вправе продлевать её бесконечно");
+    }
+
+    [Fact]
     public void Fixed_WalkOnlyAtGreenStart_PedestrianWaitsForNextGreen()
     {
         using Simulation sim = Cross(peds: true, adaptive: false);

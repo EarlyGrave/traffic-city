@@ -340,6 +340,7 @@ internal static class SignalPhase
             int otherCall = call & ~(1 << k);
             int myLeft = leftDemand & s.ArmsOfAxis(slot, k);
             bool others = otherCall != 0 || myLeft != 0;
+            s.PendingOther[slot] = others ? (byte)1 : (byte)0;   // читает PedSignals.StepSlot: Walk при отдыхе зелёного не стартует, пока ждёт другая ось (L15)
             if (hold)
             {
                 return;   // идут Walk/Clear оси: Main не завершается (эффективный MinGreen = старт + Walk + Clear)

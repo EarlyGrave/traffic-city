@@ -101,6 +101,7 @@ internal sealed class SignalStore
 
     // ---- статика пешеходной фазы (производное от сети и PhaseMask, вне хэша и сейва; PedSignals.EnsureTables) ----
     public readonly byte[] SigXCount;        // [c] переходов узла слота (<= XSlots)
+    public readonly byte[] PendingOther;     // [c] 1: в этом тике у зелёной оси есть вызов другой оси/стрелки (пишет StepAdaptive до чтения PedSignals.StepSlot; вне хэша и сейва)
     public readonly int[] SigXIdx;           // [c * XSlots] индекс перехода (слот рукава)
     public readonly sbyte[] SigXAxis;        // [c * XSlots] ось, в зелёном которой переход обслуживается (-1: нет встречной оси)
     public readonly ushort[] SigXClear;      // [c * XSlots] длительность Clear, тики
@@ -162,6 +163,7 @@ internal sealed class SignalStore
         XClearLeft = new ushort[c * XSlots];
         XServed = new byte[c];
         SigXCount = new byte[c];
+        PendingOther = new byte[c];
         SigXIdx = new int[c * XSlots];
         SigXAxis = new sbyte[c * XSlots];
         SigXClear = new ushort[c * XSlots];
