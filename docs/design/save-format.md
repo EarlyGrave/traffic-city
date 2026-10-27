@@ -439,6 +439,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 5 | 4.3, ADR-0023, задача T4: операции дренажа инструментов. Столбцы `NETW` 50-60 (`ToolOpCount`, `ToolOpNextId`, девять массивов полей операций); раздел хэша «операции» - только если операции заводились (`NextId != 1`); `DenyReason` допускает 8 | `MigrationV5` (`Save/MigrationV5.cs`): «операций нет» (`Count = 0`, `NextId = 1`), блоков не создаёт; w1-w4 продолжаются тем же хэшем |
 | 6 | ADR-0028, отступ рукава узла по ширине поперечной дороги + `corner_radius`. Столбец `PARM` 185 `NetCornerRadius` (f32, опция построителя: 0 - фиксированный отступ 7 м); геометрия сети по-прежнему сохраняется целиком (`NNOD.Radius`, точки полос), поэтому загрузка от радиуса не зависит - он нужен только `BuildRoad` после загрузки | `MigrationV6` (`Save/MigrationV6.cs`): `NetCornerRadius = 0` - дороги, построенные в старом сейве после загрузки, получают геометрию до ADR-0028; блоков не создаёт; w1-w5 продолжаются тем же хэшем |
 | 7 | ADR-0029, карман автобусных остановок (`docs/design/bus-bays.md`). Столбцы `PARM` 186-187 (`TransitBayModel`: 0 curb, 1 virtual, 2 lane - резерв под настоящую полосу-карман; `TransitBayYieldTicks`), `BDYN` 10-12 (`BayUsed`, `BayFlags`, `BayExitFrom` по остановкам), `CNTR` 150-153 (`BayEntries`, `BayFallbacks`, `BayYields`, `BayExitWaitTicksTotal`); флаг машины `InBay = 64` (`VEHC.Flags` до 127); раздел хэша «карманы» - только при `bay_model = virtual` и наличии остановок `Bay` | `MigrationV7` (`Save/MigrationV7.cs`): `TransitBayModel = 0` (curb), `TransitBayYieldTicks = 60`, поля кармана нулевые (`BayExitFrom = -1`), счётчики 0 - старые сейвы ведут себя как раньше; блоков не создаёт; w1-w6 продолжаются тем же хэшем |
+| 8 | ADR-0030, профили дорог и участки на мировой сетке (`docs/design/road-profiles.md` §3.4, §4.4). Блок `RPRF` (PreWorld, только при `PARM.RoadProfileMode = 1`): каталог целиком - модуль, по профилю вид/ширина/число элементов/длина id, по элементу тип/направление/ширина, байты id (UTF-8); столбцы `PARM` 188-190 (`RoadProfileMode`: 0 legacy, 1 профили; `WorldGridOriginX/Z`), `NSEG` 16 `Profile` (-1 - без профиля; бит `Mirrored` - в `NSEG.Flags`), `NLAN` 19 `Width`, `LOTS` 11-15 (`CellX`, `CellZ`, `CellsF`, `CellsD`, `Orient`: 255 - legacy; объявлены сразу, заполняет RP5); раздел хэша «профили» - только в режиме профилей (RP1); хэш участков столбцы сетки пока не читает | `MigrationV8` (`Save/MigrationV8.cs`): режим legacy, `Profile = -1`, `Width = NetLaneWidth` у живых обычных полос (connector'ы и мёртвые слоты 0), начало сетки 0, у участков клеток нет и `Orient = 255`; блоков не создаёт; w1-w7 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -654,6 +655,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 185 | NetCornerRadius | f32 | 1 | 0 |
 | `PARM` | 186 | TransitBayModel | i32 | 1 | 0 |
 | `PARM` | 187 | TransitBayYieldTicks | i32 | 1 | 60 |
+| `PARM` | 188 | RoadProfileMode | i32 | 1 | 0 |
+| `PARM` | 189 | WorldGridOriginX | f32 | 1 | 0 |
+| `PARM` | 190 | WorldGridOriginZ | f32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -678,6 +682,15 @@ s10k с цифрами размера и времени. Клиентские к
 | `VTYP` | 13 | SafeDecel | f32 | Types.Length | 0 |
 | `VTYP` | 14 | RightBias | f32 | Types.Length | 0 |
 | `VTYP` | 15 | LaneChangeDurationTicks | i32 | Types.Length | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 1 | ModuleMm | i32 | 1 | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 2 | Kind | u8 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 3 | WidthMm | i32 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 4 | ElemCount | u8 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 5 | IdLength | u16 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 6 | ElemKind | u8 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 7 | ElemDir | u8 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 8 | ElemWidthMm | i32 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 9 | IdBlob | u8 | sum(IdLength) | 0 |
 | `BTYP` (demand.model = residents) | 1 | Kind | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 2 | Density | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 3 | Capacity | i32 | Rows.Length | 0 |
@@ -947,6 +960,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NSEG` | 13 | Flags | u8 | SegmentCount | 0 |
 | `NSEG` | 14 | Cx | f32 | SegmentCount | 0 |
 | `NSEG` | 15 | Cz | f32 | SegmentCount | 0 |
+| `NSEG` | 16 | Profile | i32 | SegmentCount | -1 |
 | `NLAN` | 1 | Kind | u8 | LaneCount | 0 |
 | `NLAN` | 2 | LaneNo | u8 | LaneCount | 0 |
 | `NLAN` | 3 | Direction | u8 | LaneCount | 0 |
@@ -965,6 +979,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NLAN` | 16 | NextCount | i32 | LaneCount | 0 |
 | `NLAN` | 17 | ConflictGroup | i32 | LaneCount | -1 |
 | `NLAN` | 18 | Generation | i32 | LaneCount | 0 |
+| `NLAN` | 19 | Width | f32 | LaneCount | 0 |
 | `NARM` | 1 | NodeArms | i32 | NodeArmCount | 0 |
 | `NARM` | 2 | ArmFlags | u8 | NodeArmCount | 0 |
 | `NARM` | 3 | ArmDirX | f32 | NodeArmCount | 0 |
@@ -1301,6 +1316,11 @@ s10k с цифрами размера и времени. Клиентские к
 | `LOTS` (demand.model = residents) | 8 | Density | u8 | Count | 0 |
 | `LOTS` (demand.model = residents) | 9 | Building | i32 | Count | -1 |
 | `LOTS` (demand.model = residents) | 10 | Flags | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 11 | CellX | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 12 | CellZ | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 13 | CellsF | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 14 | CellsD | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 15 | Orient | u8 | Count | 255 |
 | `BLDG` (demand.model = residents) | 1 | HighWater | i32 | 1 | 0 |
 | `BLDG` (demand.model = residents) | 2 | FreeCount | i32 | 1 | 0 |
 | `BLDG` (demand.model = residents) | 3 | FreeList | i32 | FreeCount | 0 |

@@ -94,6 +94,14 @@ internal static partial class SaveValidator
                 return Bad(c, i, 4);
             }
 
+            // Сетка участков (w8, road-profiles.md §4.4): legacy-участок (Orient = 255) клеток не несёт; участок на сетке - ось 0..3 и размер не меньше клетки.
+            if (l.Orient[i] == LotOrient.Legacy
+                ? (l.CellX[i] != 0 || l.CellZ[i] != 0 || l.CellsF[i] != 0 || l.CellsD[i] != 0)
+                : (l.Orient[i] > LotOrient.Max || l.CellsF[i] == 0 || l.CellsD[i] == 0))
+            {
+                return Bad(c, i, 10);
+            }
+
             int bi = l.Building[i];
             if (bi != -1 && (!b.Pool.IsAlive(bi) || b.Lot[bi] != i))
             {

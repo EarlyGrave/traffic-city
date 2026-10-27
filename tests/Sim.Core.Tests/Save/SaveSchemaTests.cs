@@ -80,8 +80,8 @@ public class SaveSchemaTests
     public void NetworkStructs_AreFullyCovered()
     {
         AllFieldsCovered(typeof(NodeData), "NNOD", string.Empty);
-        AllFieldsCovered(typeof(SegmentData), "NSEG", string.Empty, "Profile");   // Profile и Lane.Width (ADR-0030) в сейв попадут в RP2 (world_version 8)
-        AllFieldsCovered(typeof(LaneData), "NLAN", string.Empty, "Width");
+        AllFieldsCovered(typeof(SegmentData), "NSEG", string.Empty);
+        AllFieldsCovered(typeof(LaneData), "NLAN", string.Empty);
         AllFieldsCovered(typeof(ZoneData), "NZON", string.Empty, "Reserved0", "Reserved1", "Reserved2");
     }
 

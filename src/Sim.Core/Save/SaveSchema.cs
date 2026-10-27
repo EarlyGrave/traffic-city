@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 7;
+    public const int WorldVersion = 8;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 3;
@@ -31,16 +31,17 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams()),
         Demand(),
         VehicleTypes(),
+        RoadProfilesBlock(),
         BuildingTypesBlock(),
         Extend(WorldState(), PedWorldState(), CityWorldState()),
         Extend(Counters(), PedCounters(), CityCounters(), BayCounters()),
         NetworkCounts(),
         Nodes(),
-        Segments(),
-        Lanes(),
+        Extend(Segments(), new[] { SegmentProfileColumn() }),
+        Extend(Lanes(), new[] { LaneWidthColumn() }),
         Arms(),
         LaneNext(),
         Points(),
@@ -66,7 +67,7 @@ internal static partial class SaveSchema
         ResidentsBlock(),
         CrossingsBlock(),
         PedPathQueue(),
-        LotsBlock(),
+        Extend(LotsBlock(), LotGridColumns()),
         BuildingsBlock(),
         ResidentsCityBlock(),
         SkimsBlock(),

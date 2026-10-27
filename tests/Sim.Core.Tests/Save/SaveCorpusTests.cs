@@ -21,7 +21,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 12L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ)
+    private const long BudgetBytes = 15L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -34,6 +34,8 @@ public sealed class SaveCorpusTests
         new("s1k-res-d3", 216000, S1kRes),   // Z8 (E4): s1k-res на границе 3-х суток, настоящий календарь; тест Demand/ResCorpusTests
         new("small-drain", 600, Small, EvolveDrain),   // 4.3 (T4): сохранение посреди дренажа (операция сноса, закрытые полосы), w5
         new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
+        new("cross-prof", 600, CrossProf),   // w8 (ADR-0030): режим профилей - каталог RPRF, Profile/Mirrored, Width, начало сетки
+        new("s1k-prof", 2400, S1kProf),
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -199,6 +201,14 @@ public sealed class SaveCorpusTests
 
     private static (ScenarioDesc, string[]) Small() => (WorldSaveFixtures.Small(), new[] { "car", "bus" });
 
+    private static (ScenarioDesc, string[]) CrossProf() => (ProfileSaveFixtures.Cross(), new[] { "car" });
+
+    private static (ScenarioDesc, string[]) S1kProf()
+    {
+        LoadedScenario sc = ProfileSaveFixtures.S1k();
+        return (sc.Desc, sc.TypeNames);
+    }
+
     private static (ScenarioDesc, string[]) SmallEdited() => (Sim.Core.Tests.Network.ToolStateFixture.Desc(), new[] { "car", "bus" });
 
     // Прогрев, дороги без connector'ов вдали от города строятся и освобождаются (дыры в пулах и арены), остаток тиков до ticks.
@@ -328,6 +338,48 @@ public sealed class SaveCorpusTests
                 Assert.Equal(BayModel.Curb, sim!.World.TransitCfg.BayModel);
                 Assert.Equal(60, sim.World.TransitCfg.BayYieldTicks);
                 Assert.Equal(0, sim.Counters.BayEntries);
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W7Files_AreKeptAndMigrate_ToLegacyProfiles()
+    {
+        // Файлы w7 (до профилей дорог, ADR-0030) остаются навсегда: миграция 7 -> 8 даёт режим legacy (Profile = -1, Width = NetLaneWidth, участки Orient = 255),
+        // хэш продолжения не меняется (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w7-*.tcsave");
+        Assert.True(old.Length >= 7, "корпус w7 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(7, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 7, rep.MigrationsApplied);
+                var net = sim!.World.Net;
+                Assert.Null(net.Profiles);
+                float laneWidth = sim.World.Builder.Options.LaneWidth;
+                for (int s = 0; s < net.SegmentCount; s++)
+                {
+                    Assert.Equal(-1, net.Segments[s].Profile);
+                }
+
+                for (int l = 0; l < net.LaneCount; l++)
+                {
+                    float expect = net.LaneAlive(l) && net.Lanes[l].Kind == Sim.Core.Network.LaneKind.Normal ? laneWidth : 0f;
+                    Assert.Equal(expect, net.Lanes[l].Width);
+                }
+
+                if (sim.World.City != null)
+                {
+                    for (int i = 0; i < sim.World.City.Lots.Count; i++)
+                    {
+                        Assert.Equal(Sim.Core.City.LotOrient.Legacy, sim.World.City.Lots.Orient[i]);
+                    }
+                }
             }
         }
     }

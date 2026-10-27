@@ -83,7 +83,9 @@ internal static partial class SaveValidator
         }
 
         if (!Fin(c.NetLaneWidth) || c.NetLaneWidth <= 0f || c.NetLaneWidth > 100f || c.NetConnectorSamples < 2 || c.NetConnectorSamples > 64 ||
-            !Fin(c.NetCornerRadius) || c.NetCornerRadius < 0f || c.NetCornerRadius > 50f)
+            !Fin(c.NetCornerRadius) || c.NetCornerRadius < 0f || c.NetCornerRadius > 50f ||
+            c.RoadProfileMode > 1 || (c.RoadProfileMode == 1) != c.Desc.RoadProfiles.Enabled ||
+            !Fin(c.Desc.WorldGridOriginX) || !Fin(c.Desc.WorldGridOriginZ) || MathF.Abs(c.Desc.WorldGridOriginX) > 1e7f || MathF.Abs(c.Desc.WorldGridOriginZ) > 1e7f)
         {
             return LoadStatus.InvalidValue;
         }
@@ -134,7 +136,6 @@ internal static partial class SaveValidator
         }
 
         n.RebuildLaneDerived();
-        n.FillLegacyProfileData(w.Builder.Options.LaneWidth);   // сейв v7 без профилей (RP2 сохранит каталог): Profile = -1, Width = NetLaneWidth
         if (w.Builder.RebuildIndexes() != NetworkStatus.Ok)
         {
             return LoadStatus.CapacityExceeded;
@@ -256,8 +257,18 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
-                (n.ToolsTouched == 0 && (sd.Flags != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
+            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
+                (n.ToolsTouched == 0 && ((sd.Flags & ~SegmentFlags.Mirrored) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
+            {
+                return Bad(c, i, 3);
+            }
+
+            // Профиль (w8): -1 - сегмент без профиля (legacy или дорога инструмента); иначе индекс каталога, а число полос и вид выводятся из профиля с учётом Mirrored.
+            RoadProfileStore? prof = n.Profiles;
+            bool mirrored = (sd.Flags & SegmentFlags.Mirrored) != 0;
+            if (sd.Profile < -1 || (prof == null ? sd.Profile != -1 : sd.Profile >= prof.Count) || (mirrored && sd.Profile < 0) ||
+                (prof != null && sd.Profile >= 0 &&
+                 (sd.LanesAB != prof.LanesAB(sd.Profile, mirrored) || sd.LanesBA != prof.LanesBA(sd.Profile, mirrored) || sd.Kind != prof.Kind[sd.Profile])))
             {
                 return Bad(c, i, 3);
             }
@@ -325,6 +336,26 @@ internal static partial class SaveValidator
             if (l.ConflictGroup >= 0 && (l.Kind != LaneKind.Connector || cs.Lane[l.ConflictGroup] != i))
             {
                 return Bad(c, i, 7);
+            }
+
+            // Ширина (w8): у connector'а 0, у обычной полосы положительная; на сегменте с профилем - ровно ширина полосы профиля (одна формула с эмиссией).
+            if (!Fin(l.Width) || l.Width < 0f || l.Width > 100f || (l.Kind == LaneKind.Connector ? l.Width != 0f : l.Width <= 0f))
+            {
+                return Bad(c, i, 5);
+            }
+
+            if (l.Kind != LaneKind.Connector && n.Profiles != null)
+            {
+                ref readonly SegmentData own = ref n.Segments[l.Segment];
+                if (own.Profile >= 0 && l.LaneNo >= (l.Direction == 0 ? own.LanesAB : own.LanesBA))
+                {
+                    return Bad(c, i, 5);
+                }
+
+                if (own.Profile >= 0 && l.Width != n.Profiles.LaneWidthM(own.Profile, (own.Flags & SegmentFlags.Mirrored) != 0, l.Direction, l.LaneNo))
+                {
+                    return Bad(c, i, 5);
+                }
             }
         }
 
