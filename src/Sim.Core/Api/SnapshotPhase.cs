@@ -115,6 +115,11 @@ internal sealed class SnapshotJob : IRangeJob
     private float[] _oldZ = Array.Empty<float>();
     private int[] _oldGen = Array.Empty<int>();
     private long[] _rearTick = Array.Empty<long>();  // w.Tick последнего обновления
+    private float[] _bayCur = Array.Empty<float>();  // боковой сдвиг кузова карманом (0 .. -ширина полосы), общий для обеих осей; состояние на машину, вне хэша и сейва
+    private float[] _bayOld = Array.Empty<float>();  // он же до последнего обновления (идемпотентность повторного прогона в тот же тик)
+
+    /// <summary>За сколько тиков кузов сдвигается в карман и обратно (1.5 с); ширина сдвига - ширина полосы сети.</summary>
+    private const int BaySlideTicks = 30;
 
     /// <summary><paramref name="list"/> = null: индексы диапазона - слоты; иначе слот = <c>list[k]</c> (вид, <see cref="RenderViewState"/>).</summary>
     public void Prepare(World w, VehicleRenderData[] buf, int[]? list = null)
@@ -132,6 +137,8 @@ internal sealed class SnapshotJob : IRangeJob
             _oldZ = new float[cap];
             _oldGen = new int[cap];
             _rearTick = new long[cap];
+            _bayCur = new float[cap];
+            _bayOld = new float[cap];
         }
     }
 
@@ -169,16 +176,16 @@ internal sealed class SnapshotJob : IRangeJob
         NetworkStore net = w.Net;
         int lane = v.Lane[i];
         float s = v.S[i];
-        float lateral = v.Lateral[i];
+        bool inBay = false;
         if (lane < 0 && v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
         {
-            // Автобус в виртуальном кармане (ADR-0029): на полосе его нет, рисуется на остановке, сдвинутым за правый край полосы на её ширину (из опций построителя).
+            // Автобус в виртуальном кармане (ADR-0029): на полосе его нет, рисуется на остановке; смещение за правый край полосы - ниже, общим боковым сдвигом обеих осей.
             int si = Transit.BusStopRules.TargetStop(net, v, i);
             if (si >= 0)
             {
                 lane = net.BusStops[si].Lane;
                 s = net.BusStops[si].S;
-                lateral = -w.Builder.Options.LaneWidth;
+                inBay = true;
             }
         }
 
@@ -191,9 +198,11 @@ internal sealed class SnapshotJob : IRangeJob
 
             _rearGen[i] = 0;
             _oldGen[i] = 0;
+            _bayCur[i] = 0f;
             return;
         }
 
+        float lateral = v.Lateral[i];
         float speed = v.Speed[i];
         Lod.QueueMeso? q = w.Queue;
         if (q != null && q.IsQueued(i))
@@ -238,6 +247,21 @@ internal sealed class SnapshotJob : IRangeJob
         }
 
         bool have = _oldGen[i] == gen;
+        float laneW = w.Builder.Options.LaneWidth;
+        float bayTarget = inBay ? -laneW : 0f;
+        if (_rearTick[i] != tick)
+        {
+            _bayOld[i] = have ? _bayCur[i] : bayTarget;   // новая машина / загрузка сейфа: без скольжения
+        }
+
+        float bayLat = _bayOld[i];
+        if (bayLat != bayTarget)
+        {
+            float step = laneW / BaySlideTicks;
+            bayLat = bayLat < bayTarget ? MathF.Min(bayLat + step, bayTarget) : MathF.Max(bayLat - step, bayTarget);
+        }
+
+        _bayCur[i] = bayLat;
         Vec2 rd = default;
         float rlen = 0f;
         if (have)
@@ -265,6 +289,11 @@ internal sealed class SnapshotJob : IRangeJob
         float alen = MathF.Sqrt((ax.X * ax.X) + (ax.Z * ax.Z));
         Vec2 dir = alen > 1e-4f ? ax * (1f / alen) : pdir;
         float heading = MathF.Atan2(dir.Z, dir.X);
+        if (bayLat != 0f)
+        {
+            // Карман: тот же боковой сдвиг у обеих осей (задняя ось в состоянии остаётся в системе полосы) - кузов параллелен полосе, без перекоса при заезде и «хлыста» при выезде.
+            front = new Vec2(front.X + (pdir.Z * bayLat), front.Z - (pdir.X * bayLat));
+        }
         // Кузов покрывает [s - L, s] вдоль курса: центр на L/2 позади носа.
         float x = front.X - (dir.X * length * 0.5f);
         float z = front.Z - (dir.Z * length * 0.5f);

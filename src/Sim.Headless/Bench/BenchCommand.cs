@@ -306,6 +306,10 @@ public static class BenchCommand
         SimCounters c = sim.Counters;
         sim.GetStats(out SimStats s);
         r.PathfindQueries = c.PathfindQueries;
+        r.BayEntries = c.BayEntries;
+        r.BayFallbacks = c.BayFallbacks;
+        r.BayYields = c.BayYields;
+        r.BayExitWaitS = c.BayEntries > 0 ? c.BayExitWaitTicksTotal * 0.05 / c.BayEntries : null;
         r.Counters = c;
         r.AvgSpeedKmh = s.AvgSpeedKmh;
         r.AvgTripTimeS = s.AvgTripTimeS;
@@ -536,6 +540,10 @@ public static class BenchCommand
             w.WriteNumber("stuck_vehicles", r.StuckVehicles);
             w.WriteBoolean("gridlock_flag", r.Gridlock);
             WriteNullable(w, "bus_headway_deviation_s", r.BusHeadwayDeviationS);
+            w.WriteNumber("bay_entries", r.BayEntries);
+            w.WriteNumber("bay_fallbacks", r.BayFallbacks);
+            w.WriteNumber("bay_yields", r.BayYields);
+            WriteNullable(w, "bay_exit_wait_s_mean", r.BayExitWaitS);   // средняя задержка выезда из кармана на заезд, с (кумулятивно с начала симуляции)
             WriteNullable(w, "max_still_s", r.Signal.MaxStillS);
             w.WriteNumber("still_episodes_60s", r.Signal.StillEpisodes60);
             w.WriteNumber("still_episodes_120s", r.Signal.StillEpisodes120);
@@ -750,6 +758,8 @@ internal sealed class BenchResult
     public double? BytesPerVehicle;
     public double? BusHeadwayDeviationS;
     public long PathfindQueries;
+    public long BayEntries, BayFallbacks, BayYields;
+    public double? BayExitWaitS;
     public SimCounters Counters;
     public SimWork Work;
     public PhaseStat[]? PhaseMs;

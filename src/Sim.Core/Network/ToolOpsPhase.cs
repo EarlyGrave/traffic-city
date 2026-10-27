@@ -88,6 +88,15 @@ internal static class ToolOpsPhase
             count += w.Occupancy.LaneCount[first + k];
         }
 
+        // Автобус в виртуальном кармане остановки сегмента вне списков полос: сегмент не пуст, пока он не выехал или не снят (ADR-0029).
+        for (int s = 0; s < n.BusStopCount; s++)
+        {
+            if (n.BusStops[s].BayUsed != 0 && n.BusStops[s].Lane >= 0 && n.Lanes[n.BusStops[s].Lane].Segment == seg)
+            {
+                count++;
+            }
+        }
+
         for (int e = 0; e < 2; e++)
         {
             int node = e == 0 ? sd.NodeA : sd.NodeB;

@@ -74,7 +74,7 @@ public class BusBayTests
         }
     }
 
-    internal static Scene Make(BayModel model, int lanes = 1, int headway = 100000, float stopFromEnd = 0f, BusStopKind kind = BusStopKind.Bay, int dwell = Dwell, int threads = 1)
+    internal static Scene Make(BayModel model, int lanes = 1, int headway = 100000, float stopFromEnd = 0f, BusStopKind kind = BusStopKind.Bay, int dwell = Dwell, int threads = 1, int yieldTicks = 60)
     {
         ScenarioDesc d = TestScenarios.Line();
         d.Network = new NetworkDesc
@@ -91,7 +91,8 @@ public class BusBayTests
                 new SegmentDesc { A = 1, B = 2, LanesAB = lanes, LanesBA = lanes, SpeedLimit = 13.9f, Kind = RoadKind.Street },
             },
         };
-        d.Capacities.MaxRoutes = 64;
+        d.Capacities.MaxRoutes = 128;
+        d.Capacities.MaxVehicles = 128;
         VehicleTypeDesc bus = TestScenarios.Car();
         bus.Category = VehicleCategory.Bus;
         bus.Length = 12f;
@@ -107,7 +108,7 @@ public class BusBayTests
             HoldAlpha = 0f,
             HoldEveryN = 1,
             BayModel = model,
-            BayYieldTicks = 60,
+            BayYieldTicks = yieldTicks,
         };
         var s = new Scene { Sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads }) };
         NetworkStore n = s.W.Net;
@@ -312,7 +313,12 @@ public class BusBayTests
         Assert.True(bus < r.Length);
         Assert.NotEqual(0, r[bus].Flags & (byte)VehicleRenderFlags.Active);
         Assert.NotEqual(0, r[bus].Flags & (byte)VehicleRenderFlags.AtStop);
-        Assert.Equal(-sc.W.Builder.Options.LaneWidth, r[bus].LateralOffset);
+        sc.Sim.Step(40);   // сдвиг кузова в карман занимает 1.5 с
+        r = sc.Sim.Vehicles;
+        NetworkStore net = sc.W.Net;
+        float laneZ = net.LanePoints[net.Lanes[sc.Lane0].FirstPoint].Z;
+        Assert.Equal(sc.W.Builder.Options.LaneWidth, MathF.Abs(r[bus].Z - laneZ), 0.01f);   // сдвинут на ширину полосы из сети
+        Assert.True(MathF.Abs(r[bus].Heading) < 0.01f, $"кузов в кармане параллелен полосе, курс {r[bus].Heading}");   // обе оси сдвинуты, перекоса нет
         // Вид (ADR-0019): автобус в кармане попадает в список слотов вида по полосе остановки.
         sc.Sim.SetRenderView(-10000f, -10000f, 10000f, 10000f);
         sc.Sim.Step(2);

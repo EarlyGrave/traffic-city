@@ -51,6 +51,15 @@ internal static class BusStopPhase
                 continue;
             }
 
+            if (v.Lane[i] < 0 && BayLost(w, i))
+            {
+                // Сеть изменилась под автобусом в кармане: остановку снесли, полосу закрыли/дренируют, полоса стала короче точки остановки или остановка попала в горизонт ворот.
+                // Вставлять некуда - автобус снимается (пассажиры выходят), уступка пересобирается.
+                Remove(w, i, v.BusRoute[i], ref w.Net.BusRoutes[v.BusRoute[i]]);
+                RebuildBay(w);
+                continue;
+            }
+
             if (agents)
             {
                 w.Counters.BusPaxOnBoardTicks += v.Passengers[i];
@@ -254,6 +263,11 @@ internal static class BusStopPhase
         bool terminal = v.BusNextStop[i] >= br.StopCount - 1;
         if (!terminal && !BusStopRules.ExitGap(w, i, in stop, out ahead, out behind))
         {
+            if ((stop.BayFlags & BayStopFlags.Yield) == 0 && w.Tick - stop.BayExitFrom >= w.TransitCfg.BayYieldTicks)
+            {
+                RaiseYield(w, i, ref stop);
+            }
+
             return;
         }
 
@@ -269,10 +283,45 @@ internal static class BusStopPhase
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
     }
 
+    /// <summary>true = автобус <c>InBay</c> больше не может выехать в полосу остановки (см. вызов в <see cref="Run"/>).</summary>
+    private static bool BayLost(World w, int i)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        int si = BusStopRules.TargetStop(net, v, i);
+        if (si < 0 || net.BusStops[si].Lane < 0 || !net.BusStopAlive(si))
+        {
+            return true;
+        }
+
+        ref readonly BusStopData st = ref net.BusStops[si];
+        ref readonly LaneData ld = ref net.Lanes[st.Lane];
+        return (ld.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0 || ld.Kind != LaneKind.Normal || net.LaneLength[st.Lane] - st.S < BusStopRules.BayHorizon(w);
+    }
+
+    /// <summary>Уступка (bus-bays.md §2 п. 5): автобус ждёт выезда дольше <c>bay_yield_s</c> - у тыла автобуса поднимается стена для ведомых полосы (читает фаза 5).</summary>
+    private static void RaiseYield(World w, int i, ref BusStopData stop)
+    {
+        stop.BayFlags |= BayStopFlags.Yield;
+        w.LaneYieldS[stop.Lane] = stop.S - w.Vehicles.Length[i];
+        w.BayYieldActive++;
+        w.Counters.BayYields++;
+    }
+
     /// <summary>Карман остановки <paramref name="si"/> освобождён: автобус <paramref name="i"/> больше не <c>InBay</c>.</summary>
     private static void ReleaseBay(World w, int i, int si, ref BusStopData stop, long waitedTicks)
     {
         w.Vehicles.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.InBay);
+        if ((stop.BayFlags & BayStopFlags.Yield) != 0)
+        {
+            if ((uint)stop.Lane < (uint)w.LaneYieldS.Length)
+            {
+                w.LaneYieldS[stop.Lane] = -1f;
+            }
+
+            w.BayYieldActive--;
+        }
+
         stop.BayUsed = 0;
         stop.BayFlags = 0;
         stop.BayExitFrom = -1;
@@ -284,6 +333,8 @@ internal static class BusStopPhase
     internal static void RebuildBay(World w)
     {
         System.Array.Fill(w.BayBus, -1);
+        System.Array.Fill(w.LaneYieldS, -1f);
+        w.BayYieldActive = 0;
         VehicleStore v = w.Vehicles;
         for (int i = 0; i < v.HighWater; i++)
         {
@@ -293,6 +344,12 @@ internal static class BusStopPhase
                 if (si >= 0)
                 {
                     w.BayBus[si] = i;
+                    ref BusStopData bs = ref w.Net.BusStops[si];
+                    if ((bs.BayFlags & BayStopFlags.Yield) != 0 && bs.Lane >= 0)
+                    {
+                        w.LaneYieldS[bs.Lane] = bs.S - v.Length[i];
+                        w.BayYieldActive++;
+                    }
                 }
             }
         }
