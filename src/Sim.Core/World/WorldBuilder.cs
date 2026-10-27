@@ -33,6 +33,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateRoadProfiles(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         st = ValidateRouting(in desc);
         if (st != CreateStatus.Ok)
         {
@@ -127,6 +133,81 @@ internal static class WorldBuilder
     }
 
     /// <summary>
+    /// Каталог профилей дорог (ADR-0030): без каталога ссылок на профили быть не должно (режим legacy); с каталогом он валиден, а каждый сегмент явной сети
+    /// и оба класса дорог генератора несут профиль, согласованный с полосами, видом дороги и <c>Mirrored</c>.
+    /// </summary>
+    private static CreateStatus ValidateRoadProfiles(in ScenarioDesc desc)
+    {
+        if (!desc.RoadProfiles.Enabled)
+        {
+            bool refs = desc.City.Enabled ? desc.City.StreetProfile != 0 || desc.City.ArterialProfile != 0 : AnySegmentProfile(desc.Network.Segments);
+            return refs ? CreateStatus.InvalidNetwork : CreateStatus.Ok;
+        }
+
+        if (RoadProfileValidator.Validate(in desc.RoadProfiles, out _) != RoadProfileError.None)
+        {
+            return CreateStatus.InvalidNetwork;
+        }
+
+        RoadProfileDesc[] ps = desc.RoadProfiles.Profiles;
+        if (desc.City.Enabled)
+        {
+            int sp = desc.City.StreetProfile - 1;
+            int ap = desc.City.ArterialProfile - 1;
+            bool ok = (uint)sp < (uint)ps.Length && (uint)ap < (uint)ps.Length && ps[sp].Kind == RoadKind.Street && ps[ap].Kind == RoadKind.Arterial;
+            return ok ? CreateStatus.Ok : CreateStatus.InvalidNetwork;
+        }
+
+        SegmentDesc[]? segs = desc.Network.Segments;
+        for (int i = 0; segs != null && i < segs.Length; i++)
+        {
+            ref readonly SegmentDesc s = ref segs[i];
+            int p = s.Profile - 1;
+            if ((uint)p >= (uint)ps.Length || ps[p].Kind != s.Kind)
+            {
+                return CreateStatus.InvalidNetwork;
+            }
+
+            int fwd = 0;
+            int bwd = 0;
+            foreach (RoadElemDesc e in ps[p].Elements)
+            {
+                if (e.Kind == RoadElemKind.Lane)
+                {
+                    if (e.Dir == RoadLaneDir.Forward)
+                    {
+                        fwd++;
+                    }
+                    else
+                    {
+                        bwd++;
+                    }
+                }
+            }
+
+            if (s.LanesAB != (s.Mirrored ? bwd : fwd) || s.LanesBA != (s.Mirrored ? fwd : bwd))
+            {
+                return CreateStatus.InvalidNetwork;
+            }
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    private static bool AnySegmentProfile(SegmentDesc[]? segs)
+    {
+        for (int i = 0; segs != null && i < segs.Length; i++)
+        {
+            if (segs[i].Profile != 0 || segs[i].Mirrored)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Строит сеть. Явная сеть (<c>desc.Network</c>) - узлы без прилипания друг к другу, сегменты, connector'ы всех узлов.
     /// </summary>
     public static CreateStatus BuildNetwork(World w, in ScenarioDesc desc)
@@ -161,6 +242,7 @@ internal static class WorldBuilder
         int[] segA = new int[segmentCount];
         int[] segB = new int[segmentCount];
         int[] segLanes = new int[segmentCount];
+        int[] segProfile = new int[segmentCount];
         float[] setA = new float[segmentCount];
         float[] setB = new float[segmentCount];
         for (int i = 0; i < segmentCount; i++)
@@ -168,14 +250,17 @@ internal static class WorldBuilder
             segA[i] = segments![i].A;
             segB[i] = segments[i].B;
             segLanes[i] = segments[i].LanesAB + segments[i].LanesBA;
+            segProfile[i] = segments[i].Profile - 1;   // desc: индекс + 1, 0 - нет
         }
 
-        w.Builder.PlanSetbacks(segA, segB, segLanes, setA, setB);
+        w.Builder.PlanSetbacks(segA, segB, segLanes, segProfile, setA, setB);
 
         for (int i = 0; i < segmentCount; i++)
         {
             SegmentDesc s = segments![i];
-            NetworkStatus st = w.Builder.AddSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, setA[i], setB[i], out _);
+            NetworkStatus st = s.Profile > 0
+                ? w.Builder.AddProfileSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.Profile - 1, s.Mirrored, s.SpeedLimit, setA[i], setB[i], out _)
+                : w.Builder.AddSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, setA[i], setB[i], out _);
             if (st != NetworkStatus.Ok)
             {
                 return st.ToCreateStatus();

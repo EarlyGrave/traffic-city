@@ -158,15 +158,18 @@ internal static class TransitionPhase
         }
 
         v.LaneChangeTicks[i] = (ushort)ticks;
-        v.Lateral[i] = LateralOffset(e, p, i, ticks, dur);
+        v.Lateral[i] = LateralOffset(e, i, ticks, dur);
     }
 
     // Смещение относительно оси целевой полосы: машина стартует на оси исходной полосы (справа/слева от целевой).
-    private static float LateralOffset(in RuleEnv e, in PhysicsParams p, int i, int ticks, int dur)
+    // Расстояние между осями соседних полос - полусумма их ширин (ADR-0030); у полос одной ширины это она сама.
+    private static float LateralOffset(in RuleEnv e, int i, int ticks, int dur)
     {
         VehicleStore v = e.V;
-        float sign = e.Net.Lanes[v.GhostLane[i]].Left == v.Lane[i] ? 1f : -1f;
-        return -sign * p.LaneWidth * (1f - ((float)ticks / dur));
+        ref readonly LaneData target = ref e.Net.Lanes[v.GhostLane[i]];
+        float sign = target.Left == v.Lane[i] ? 1f : -1f;
+        float width = (target.Width + e.Net.Lanes[v.Lane[i]].Width) * 0.5f;
+        return -sign * width * (1f - ((float)ticks / dur));
     }
 
     private static bool TryBeginLaneChange(in RuleEnv e, in VehicleTypeDesc t, in PhysicsParams p, int i, int dir)
@@ -213,7 +216,7 @@ internal static class TransitionPhase
         v.GateState[i] = 0;
         v.LaneChangeTicks[i] = 0;
         v.DesiredSpeed[i] = Idm.DesiredSpeed(t, tl.SpeedLimit);
-        v.Lateral[i] = LateralOffset(e, p, i, 0, dur);
+        v.Lateral[i] = LateralOffset(e, i, 0, dur);
         return true;
     }
 

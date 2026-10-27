@@ -134,6 +134,7 @@ internal static partial class SaveValidator
         }
 
         n.RebuildLaneDerived();
+        n.FillLegacyProfileData(w.Builder.Options.LaneWidth);   // сейв v7 без профилей (RP2 сохранит каталог): Profile = -1, Width = NetLaneWidth
         if (w.Builder.RebuildIndexes() != NetworkStatus.Ok)
         {
             return LoadStatus.CapacityExceeded;

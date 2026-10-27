@@ -331,6 +331,8 @@ internal static class CityGenerator
         int[] segA = new int[aliveEdges];
         int[] segB = new int[aliveEdges];
         int[] segLanes = new int[aliveEdges];
+        int[] segProfile = new int[aliveEdges];
+        RoadProfileStore? profiles = b.Store.Profiles;   // режим профилей (ADR-0030): число полос и ширины - из профилей city.profiles
         float[] setA = new float[aliveEdges];
         float[] setB = new float[aliveEdges];
         int ek = 0;
@@ -344,10 +346,11 @@ internal static class CityGenerator
             segA[ek] = pl.NodeOut[pl.EdgeA[e]];
             segB[ek] = pl.NodeOut[pl.EdgeB[e]];
             segLanes[ek] = pl.EdgeKind[e] == (byte)RoadKind.Arterial ? 4 : 2;
+            segProfile[ek] = profiles != null ? (pl.EdgeKind[e] == (byte)RoadKind.Arterial ? city.ArterialProfile : city.StreetProfile) - 1 : -1;
             ek++;
         }
 
-        b.PlanSetbacks(segA, segB, segLanes, setA, setB);
+        b.PlanSetbacks(segA, segB, segLanes, segProfile, setA, setB);
 
         int normalLanes = 0;
         ek = 0;
@@ -361,7 +364,10 @@ internal static class CityGenerator
             bool art = pl.EdgeKind[e] == (byte)RoadKind.Arterial;
             int lanes = art ? 2 : 1;
             float speed = art ? city.ArterialSpeed : city.StreetSpeed;
-            NetworkStatus st = b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], setA[ek], setB[ek], out int si);
+            int prof = segProfile[ek];
+            NetworkStatus st = prof >= 0
+                ? b.AddProfileSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, prof, false, speed, setA[ek], setB[ek], out int si)
+                : b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], setA[ek], setB[ek], out si);
             ek++;
             if (st != NetworkStatus.Ok)
             {
@@ -369,7 +375,7 @@ internal static class CityGenerator
             }
 
             pl.EdgeOut[e] = si;
-            normalLanes += 2 * lanes;
+            normalLanes += prof >= 0 ? profiles!.LanesFwd[prof] + profiles.LanesBwd[prof] : 2 * lanes;
         }
 
         NetworkStatus cs = b.BuildAllConnectorsEx();

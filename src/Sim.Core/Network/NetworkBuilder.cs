@@ -480,13 +480,63 @@ internal sealed partial class NetworkBuilder
         RoadKind kind,
         float setbackA,
         float setbackB,
+        out int segment) =>
+        AddSegmentCore(nodeA, nodeB, via, lanesAB, lanesBA, speedLimit, kind, setbackA, setbackB, -1, false, out segment);
+
+    /// <summary>
+    /// Сегмент по профилю (ADR-0030, road-profiles.md §3.2): число полос и тип дороги берутся из профиля (<paramref name="mirrored"/> - построен против направления рисования профиля),
+    /// смещение и ширина каждой полосы - из его элементов. Отступы концов - по рукавам, которые уже есть у узлов (<see cref="IncrementalSetback"/>).
+    /// Нет каталога или профиль вне диапазона - <see cref="NetworkStatus.InvalidArgument"/>.
+    /// </summary>
+    public NetworkStatus AddProfileSegment(int nodeA, int nodeB, ReadOnlySpan<Vec2> via, int profile, bool mirrored, float speedLimit, out int segment)
+    {
+        float sa = _o.NodeSetback;
+        float sb = _o.NodeSetback;
+        if (_s.Profiles != null && (uint)profile < (uint)_s.Profiles.Count && _s.NodeAlive(nodeA) && _s.NodeAlive(nodeB) && nodeA != nodeB && via.Length <= MaxVia)
+        {
+            Vec2 pa = _s.Nodes[nodeA].Position;
+            Vec2 pb = _s.Nodes[nodeB].Position;
+            sa = IncrementalSetback(nodeA, via.Length > 0 ? via[0] : pb, 0f);
+            sb = IncrementalSetback(nodeB, via.Length > 0 ? via[^1] : pa, 0f);
+        }
+
+        return AddProfileSegment(nodeA, nodeB, via, profile, mirrored, speedLimit, sa, sb, out segment);
+    }
+
+    /// <summary>То же с заданными отступами концов (<see cref="PlanSetbacks(ReadOnlySpan{int}, ReadOnlySpan{int}, ReadOnlySpan{int}, ReadOnlySpan{int}, Span{float}, Span{float})"/>: генератор и явная сеть знают все рукава заранее).</summary>
+    public NetworkStatus AddProfileSegment(int nodeA, int nodeB, ReadOnlySpan<Vec2> via, int profile, bool mirrored, float speedLimit, float setbackA, float setbackB, out int segment)
+    {
+        RoadProfileStore? ps = _s.Profiles;
+        if (ps == null || (uint)profile >= (uint)ps.Count)
+        {
+            segment = -1;
+            return NetworkStatus.InvalidArgument;
+        }
+
+        return AddSegmentCore(nodeA, nodeB, via, ps.LanesAB(profile, mirrored), ps.LanesBA(profile, mirrored), speedLimit, ps.Kind[profile], setbackA, setbackB, profile, mirrored, out segment);
+    }
+
+    private NetworkStatus AddSegmentCore(
+        int nodeA,
+        int nodeB,
+        ReadOnlySpan<Vec2> via,
+        int lanesAB,
+        int lanesBA,
+        float speedLimit,
+        RoadKind kind,
+        float setbackA,
+        float setbackB,
+        int profile,
+        bool mirrored,
         out int segment)
     {
         segment = -1;
+        RoadProfileStore? ps = profile >= 0 ? _s.Profiles : null;
         if (!_s.NodeAlive(nodeA) || !_s.NodeAlive(nodeB) || nodeA == nodeB ||
             lanesAB < 0 || lanesBA < 0 || lanesAB > MaxLanesPerDirection || lanesBA > MaxLanesPerDirection ||
             lanesAB + lanesBA == 0 || !(speedLimit > 0f) || float.IsInfinity(speedLimit) || via.Length > MaxVia ||
-            !float.IsFinite(setbackA) || !float.IsFinite(setbackB))
+            !float.IsFinite(setbackA) || !float.IsFinite(setbackB) ||
+            (profile >= 0 && (ps == null || profile >= ps.Count || lanesAB != ps.LanesAB(profile, mirrored) || lanesBA != ps.LanesBA(profile, mirrored))))
         {
             return NetworkStatus.InvalidArgument;
         }
@@ -578,14 +628,17 @@ internal sealed partial class NetworkBuilder
         float halfWidth = laneTotal * _o.LaneWidth * 0.5f;
         for (int k = 0; k < lanesAB; k++)
         {
-            float x = halfWidth - ((k + 0.5f) * _o.LaneWidth); // вправо от оси в системе A→B
-            EmitLane(firstLane + k, firstPoint + (k * m), seg, k, 0, lanesAB, x, m, length, speedLimit);
+            // Вправо от оси в системе A→B: профиль - из его элементов, legacy - прежняя формула одной ширины на сеть.
+            float x = ps != null ? ps.LaneCenterM(profile, mirrored, 0, k) : halfWidth - ((k + 0.5f) * _o.LaneWidth);
+            float w = ps != null ? ps.LaneWidthM(profile, mirrored, 0, k) : _o.LaneWidth;
+            EmitLane(firstLane + k, firstPoint + (k * m), seg, k, 0, lanesAB, x, w, m, length, speedLimit);
         }
 
         for (int k = 0; k < lanesBA; k++)
         {
-            float x = -(halfWidth - ((k + 0.5f) * _o.LaneWidth));
-            EmitLane(firstLane + lanesAB + k, firstPoint + ((lanesAB + k) * m), seg, k, 1, lanesBA, x, m, length, speedLimit);
+            float x = ps != null ? ps.LaneCenterM(profile, mirrored, 1, k) : -(halfWidth - ((k + 0.5f) * _o.LaneWidth));
+            float w = ps != null ? ps.LaneWidthM(profile, mirrored, 1, k) : _o.LaneWidth;
+            EmitLane(firstLane + lanesAB + k, firstPoint + ((lanesAB + k) * m), seg, k, 1, lanesBA, x, w, m, length, speedLimit);
         }
 
         _s.Segments[seg] = new SegmentData
@@ -597,6 +650,8 @@ internal sealed partial class NetworkBuilder
             Kind = kind,
             LanesAB = (byte)lanesAB,
             LanesBA = (byte)lanesBA,
+            Flags = ps != null && mirrored ? SegmentFlags.Mirrored : (byte)0,
+            Profile = ps != null ? profile : -1,
             FirstLaneAB = lanesAB > 0 ? firstLane : -1,
             FirstLaneBA = lanesBA > 0 ? firstLane + lanesAB : -1,
             FirstPoint = firstSegPoint,
@@ -624,7 +679,7 @@ internal sealed partial class NetworkBuilder
         return NetworkStatus.Ok;
     }
 
-    private void EmitLane(int laneIdx, int first, int seg, int laneNo, int direction, int laneCountInDir, float x, int m, float length, float limit)
+    private void EmitLane(int laneIdx, int first, int seg, int laneNo, int direction, int laneCountInDir, float x, float width, int m, float length, float limit)
     {
         for (int i = 0; i < m; i++)
         {
@@ -658,6 +713,7 @@ internal sealed partial class NetworkBuilder
             NextCount = 0,
             ConflictGroup = -1,
             Generation = 1,
+            Width = width,
         };
     }
 

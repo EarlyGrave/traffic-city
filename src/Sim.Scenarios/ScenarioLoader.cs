@@ -68,11 +68,12 @@ public static partial class ScenarioLoader
 
     /// <param name="path">Файл сценария.</param>
     /// <param name="searchDirs">Каталоги пакетов для <c>format_version: 3</c> (modding.md §1.1); <c>null</c> - <c>content/</c> игры, найденный от каталога сценария/текущего.</param>
-    public static LoadedScenario LoadInfo(string path, IReadOnlyList<PackageSearchDir>? searchDirs = null)
+    /// <param name="overrides">Подмена внешних файлов (каталог профилей дорог, golden-тесты); <c>null</c> - как в сценарии.</param>
+    public static LoadedScenario LoadInfo(string path, IReadOnlyList<PackageSearchDir>? searchDirs = null, ScenarioOverrides? overrides = null)
     {
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
-        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir));
+        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides);
     }
 
     /// <summary>Поиск <c>content/</c> игры: вверх от <paramref name="startDir"/> и от текущего каталога (как <see cref="ScenarioLocator"/> ищет <c>scenarios/</c>).</summary>
@@ -91,7 +92,7 @@ public static partial class ScenarioLoader
 
     /// <summary>Разбор с каталогами пакетов для <c>format_version: 3</c> (<c>null</c> - v3 отвергается).</summary>
     public static LoadedScenario Parse(
-        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs)
+        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null)
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
@@ -141,7 +142,8 @@ public static partial class ScenarioLoader
             CheckRoadAssets(cityR, catalog!, packages!);
         }
 
-        CityGenDesc city = ParseCity(cityR);
+        RoadProfilesDesc roadProfiles = LoadRoadProfiles(root, readRelativeFile, overrides);
+        CityGenDesc city = ParseCity(cityR, roadProfiles);
         NetworkDesc network = default;
         if (netR != null)
         {
@@ -150,7 +152,7 @@ public static partial class ScenarioLoader
                 throw new ScenarioException("$.network: explicit network requires $.city.enabled = false");
             }
 
-            network = ParseNetwork(netR);
+            network = ParseNetwork(netR, roadProfiles);
         }
         else if (!city.Enabled)
         {
@@ -216,6 +218,7 @@ public static partial class ScenarioLoader
             Transit = transit,
             Rules = rules,
             VehicleTypes = types,
+            RoadProfiles = roadProfiles,
         };
         return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline);
     }
@@ -591,7 +594,7 @@ public static partial class ScenarioLoader
 
     // ---------------------------------------------------------------- city / network
 
-    private static CityGenDesc ParseCity(JsonObjectReader? r)
+    private static CityGenDesc ParseCity(JsonObjectReader? r, RoadProfilesDesc profiles)
     {
         var c = new CityGenDesc
         {
@@ -618,6 +621,11 @@ public static partial class ScenarioLoader
         if (r == null)
         {
             c.IrregularNodes = ScaledIrregularDefault(c.Scale);
+            if (profiles.Enabled)
+            {
+                throw new ScenarioException("$.city.profiles: required key is missing when $.road_profiles_file is set");
+            }
+
             return c;
         }
 
@@ -678,6 +686,10 @@ public static partial class ScenarioLoader
         c.SignalMode = ParseSignalMode(r.Str("signal_mode", "adaptive"), r.ChildPath("signal_mode"));
         c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
         c.ProgressionSpeedFactor = (float)r.Num("progression_speed_factor", 1.0, min: 0.5, max: 1.5);
+        if (c.Enabled)
+        {
+            ParseCityProfiles(r, profiles, ref c);   // city.profiles: с каталогом обязательна для генератора
+        }
 
         r.Finish();
         return c;
@@ -708,7 +720,7 @@ public static partial class ScenarioLoader
     private static int ScaledIrregularDefault(float scale) =>
         (int)Math.Round(12.0 * scale * scale, MidpointRounding.AwayFromZero);
 
-    private static NetworkDesc ParseNetwork(JsonObjectReader r)
+    private static NetworkDesc ParseNetwork(JsonObjectReader r, RoadProfilesDesc profiles)
     {
         JsonElement[] nodesJ = r.ReqArray("nodes");
         JsonElement[] segsJ = r.ReqArray("segments");
@@ -752,6 +764,13 @@ public static partial class ScenarioLoader
             var s = new JsonObjectReader(segsJ[i], p);
             segs[i].A = NodeRef(s, "a", ids);
             segs[i].B = NodeRef(s, "b", ids);
+            if (ParseSegmentProfile(s, profiles, ref segs[i]))
+            {
+                segs[i].SpeedLimit = Mps(s.Num("speed_kmh", min: 1));
+                s.Finish();
+                continue;
+            }
+
             segs[i].LanesAB = s.Int("lanes_ab", min: 0, max: 16);
             segs[i].LanesBA = s.Int("lanes_ba", min: 0, max: 16);
             if (segs[i].LanesAB + segs[i].LanesBA == 0)

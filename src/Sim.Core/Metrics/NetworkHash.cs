@@ -131,8 +131,26 @@ internal static class NetworkHash
             h.Add(cs.Flags[i]);
         }
 
+        if (net.Profiles != null)
+        {
+            // Раздел профилей (ADR-0030, только режим профилей; legacy-хэш прежний): каталог, Segment.Profile и Lane.Width всех слотов.
+            h.Add(ProfilesTag);
+            net.Profiles.AddToHash(ref h);
+            for (int i = 0; i < net.SegmentCount; i++)
+            {
+                h.Add(net.Segments[i].Profile);
+            }
+
+            for (int i = 0; i < net.LaneCount; i++)
+            {
+                h.Add(net.Lanes[i].Width);
+            }
+        }
+
         return h.Value;
     }
+
+    private const int ProfilesTag = 0x46_4F_52_50;
 
     /// <summary>Конфликты connector'ов (rust-pilot.md §5.2); <c>ushort</c> - два байта little-endian.</summary>
     public static ulong Conflicts(World w)
@@ -237,6 +255,36 @@ internal static class NetworkHash
         h.Add(o.ConnectorSamples);
         h.Add(o.MinLaneLength);
         h.Add(NetworkOptions.CornerRadiusFromDesc(d.Network.CornerRadius));   // ADR-0028: действующий радиус явной сети (golden перегенерирован, golden_version прежний)
+        if (d.RoadProfiles.Enabled)
+        {
+            // Раздел профилей (ADR-0030, только режим профилей): каталог, профили сегментов явной сети, профили классов дорог генератора.
+            h.Add(ProfilesTag);
+            h.Add(d.RoadProfiles.ModuleMm);
+            RoadProfileDesc[] ps = d.RoadProfiles.Profiles;
+            h.Add(ps.Length);
+            for (int i = 0; i < ps.Length; i++)
+            {
+                h.Add((byte)ps[i].Kind);
+                h.Add(ps[i].WidthMm);
+                h.Add(ps[i].Elements.Length);
+                for (int e = 0; e < ps[i].Elements.Length; e++)
+                {
+                    h.Add((byte)ps[i].Elements[e].Kind);
+                    h.Add((byte)ps[i].Elements[e].Dir);
+                    h.Add(ps[i].Elements[e].WidthMm);
+                }
+            }
+
+            for (int i = 0; i < segs.Length; i++)
+            {
+                h.Add(segs[i].Profile);
+                h.Add((byte)(segs[i].Mirrored ? 1 : 0));
+            }
+
+            h.Add(d.City.StreetProfile);
+            h.Add(d.City.ArterialProfile);
+        }
+
         return h.Value;
     }
 

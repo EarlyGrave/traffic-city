@@ -298,7 +298,7 @@ public class ScenarioLoaderTests
     {
         foreach (string f in Directory.GetFiles(ScenariosDir(), "*.json"))
         {
-            if (Path.GetFileName(f) == "vehicle-types.json")
+            if (Path.GetFileName(f) is "vehicle-types.json" or "road-profiles.json")
             {
                 continue;
             }

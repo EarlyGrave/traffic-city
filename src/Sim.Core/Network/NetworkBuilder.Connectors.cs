@@ -474,7 +474,7 @@ internal sealed partial class NetworkBuilder
         Vec2 p3 = _s.LanePoints[laneOut.FirstPoint];
         Vec2 t3 = Normalize(_s.LanePoints[laneOut.FirstPoint + 1] - p3);
         float chord = Dist(p0, p3);
-        float d = uturn ? MathF.Max(chord, 2f * _o.LaneWidth) : chord * (1f / 3f);
+        float d = uturn ? MathF.Max(chord, 2f * laneIn.Width) : chord * (1f / 3f);
         Vec2 p1 = p0 + (t0 * d);
         Vec2 p2 = p3 - (t3 * d);
 
@@ -517,7 +517,7 @@ internal sealed partial class NetworkBuilder
         float limit = laneIn.SpeedLimit;
         if (uturn || cosTurn <= CosTenDegrees)
         {
-            float r = uturn ? _o.LaneWidth : chord / (2f * MathF.Sqrt(MathF.Max(0f, (1f - cosTurn) * 0.5f)));
+            float r = uturn ? laneIn.Width : chord / (2f * MathF.Sqrt(MathF.Max(0f, (1f - cosTurn) * 0.5f)));
             float v = MathF.Max(MinConnectorSpeed, MathF.Sqrt(LateralAccel * r));
             limit = MathF.Min(limit, v);
         }
