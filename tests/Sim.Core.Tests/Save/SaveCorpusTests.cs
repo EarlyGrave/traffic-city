@@ -36,7 +36,7 @@ public sealed class SaveCorpusTests
         new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
         new("cross-prof", 600, CrossProf),   // w8 (ADR-0030): режим профилей - каталог RPRF, Profile/Mirrored, Width, начало сетки
         new("s1k-prof", 2400, S1kProf),
-        new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025, E1): s1k-res с city_budget, ожидающая политика в сейве (E2 заменит сценарием s1k-res-econ)
+        new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -248,11 +248,9 @@ public sealed class SaveCorpusTests
 
     private static (ScenarioDesc, string[]) S1kResEcon()
     {
-        // E1: сценария s1k-res-econ ещё нет (его добавляет E2) - тот же s1k-res с economy.city_budget = true.
-        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res.json"));
-        ScenarioDesc d = sc.Desc;
-        d.Town.Economy.CityBudget = true;
-        return (d, sc.TypeNames);
+        // E2: сценарий s1k-res-econ (s1k-res + economy.city_budget, содержание сети и автобусов).
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res-econ.json"));
+        return (sc.Desc, sc.TypeNames);
     }
 
     // За 100 тиков до конца - SetBudgetPolicy: в сейве ожидающая политика (граница суток ещё впереди: тик 216500 > 216000, следующая - 288000).

@@ -35,7 +35,7 @@ internal sealed class World : IDisposable
     public float WorldGridOriginX, WorldGridOriginZ;   // начало мировой сетки 8 м (ADR-0030): из desc, пишется в сейв (PARM); поведение задаст RP5
     public ToolsDesc ToolsCfg;                 // стоимости и границы инструментов игрока (конфигурация хоста: вне сейва и хэша)
     public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
-    public readonly CityDesc Town;             // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
+    public CityDesc Town;           // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
 
     // ---- хранилища ----
     public readonly NetworkStore Net;

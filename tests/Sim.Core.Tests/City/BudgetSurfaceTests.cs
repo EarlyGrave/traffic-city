@@ -216,7 +216,7 @@ public sealed class BudgetSurfaceTests
         Assert.True(sim.GetCityBudget(out CityBudgetInfo info));
         CityEconomyDesc e = City(sim).Cfg.Economy;
         Assert.Equal(City(sim).Ledger.City, info.Balance);
-        Assert.Equal(0, info.CreditLimit);
+        Assert.Equal(e.CreditDays * City(sim).Budget!.IncomeEwma, info.CreditLimit);   // E2: оценка дохода при создании
         Assert.Equal((ushort)e.TaxRBp, info.Policy.TaxRBp);
         Assert.Equal((ushort)e.TaxCProfitBp, info.Policy.TaxCBp);
         Assert.Equal((ushort)e.TaxIProfitBp, info.Policy.TaxIBp);
@@ -229,7 +229,7 @@ public sealed class BudgetSurfaceTests
         Assert.Equal(sim.CityCellCount, sim.GetLandValue(lv));
         for (int i = 0; i < sim.CityCellCount; i++)
         {
-            Assert.Equal(e.LvRef, lv[i]);
+            Assert.Equal(BudgetLand.Target(in e, City(sim).Skims, i), lv[i]);   // E2: LV = T при создании
         }
 
         Assert.Equal(0, sim.GetLandValue(Array.Empty<int>()));
@@ -334,13 +334,14 @@ public sealed class BudgetSurfaceTests
         BudgetPolicy withEnable = CityBudget.DefaultPolicy(CityDesc.Default().Economy);
         using (Simulation noBudget = Make(ShortCity(budget: false)))
         {
-            Assert.Equal(RejectReason.NotSupported, Run(noBudget, in withEnable));   // Enable - заглушка до E2
             BudgetPolicy without = withEnable;
             without.Flags = 0;
             Assert.Equal(RejectReason.BudgetRule, Run(noBudget, in without));
             without.R0 = 3;
             Assert.Equal(RejectReason.InvalidArgument, Run(noBudget, in without));
             Assert.Null(City(noBudget).Budget);
+            Assert.Equal(RejectReason.None, Run(noBudget, in withEnable));   // E2: Enable включает бюджет на идущем городе
+            Assert.NotNull(City(noBudget).Budget);
         }
 
         ScenarioDesc plain = WorldSaveFixtures.Small();
@@ -437,9 +438,10 @@ public sealed class BudgetSurfaceTests
         // Параметры казны сами в хэш не входят, а состояние бюджета - входит (раздел «казна»).
         Assert.NotEqual(off.ComputeStateHash(), on.ComputeStateHash());
         ulong before = on.ComputeStateHash();
-        City(on).Budget!.IncomeEwma = 1;
+        long saved = City(on).Budget!.IncomeEwma;
+        City(on).Budget!.IncomeEwma = saved + 1;
         Assert.NotEqual(before, on.ComputeStateHash());
-        City(on).Budget!.IncomeEwma = 0;
+        City(on).Budget!.IncomeEwma = saved;
         Assert.Equal(before, on.ComputeStateHash());
         City(on).Buildings.PayrollEwma[0] = 5;
         Assert.NotEqual(before, on.ComputeStateHash());
