@@ -113,6 +113,7 @@ internal static class Relocate
             Vehicles(w, lanes);
             Trips(w, lanes);
             Stops(w, lanes);
+            Transit.BusStopPhase.RebuildBay(w);   // стена уступки автобусу из кармана индексируется полосой (ADR-0029)
             Zones(w, lanes);
             LaneArrays(w, lanes);
         }

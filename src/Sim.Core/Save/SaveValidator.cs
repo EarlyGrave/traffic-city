@@ -1049,7 +1049,7 @@ internal static partial class SaveValidator
             }
 
             if (st.BayUsed > 1 || st.BayUsed != count[s] || (st.BayFlags & ~BayStopFlags.Known) != 0 || st.BayExitFrom < -1 || st.BayExitFrom > w.Tick ||
-                (st.BayExitFrom >= 0 && st.BayUsed == 0) || (st.BayUsed == 1 && (!bays || st.Kind != BusStopKind.Bay)))
+                (st.BayExitFrom >= 0 && st.BayUsed == 0) || (st.BayFlags != 0 && st.BayExitFrom < 0) || (st.BayUsed == 1 && (!bays || st.Kind != BusStopKind.Bay)))
             {
                 return Bad(c, s, 352);
             }

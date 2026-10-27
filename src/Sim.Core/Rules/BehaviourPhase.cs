@@ -30,6 +30,7 @@ internal static class BehaviourPhase
         BehaviourJob job = w.Behaviour;
         job.Prepare(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w), w.Types, PhysicsParams.From(w), w.Tick, w.Connectors, w.Gate.NodeBusy);
         job.PrepareCross(w.Peds?.X, w.Peds?.Net);
+        job.PrepareYield(w.BayYieldActive > 0 ? w.LaneYieldS : null);
         if (w.Lod != null)
         {
             job.PrepareLod(w.Lod.LaneColor, w.LodCfg.MesoHeadwayScale, w.LodCfg.MesoAccelScale);
@@ -109,6 +110,10 @@ internal sealed partial class BehaviourJob : IRangeJob
     private Peds.PedNetwork? _pn;
 
     /// <summary>Задаёт переходы (null без <c>peds</c>) к текущему тику: препятствия закрытых переходов на перегоне.</summary>
+    private float[]? _yield;                             // World.LaneYieldS: стена уступки автобусу из кармана по полосам (ADR-0029); null - уступок нет
+
+    public void PrepareYield(float[]? laneYieldS) => _yield = laneYieldS;
+
     public void PrepareCross(Peds.CrossingState? xs, Peds.PedNetwork? pn)
     {
         _xs = xs;
@@ -271,6 +276,25 @@ internal sealed partial class BehaviourJob : IRangeJob
             if (ag < a)
             {
                 a = ag;
+            }
+        }
+
+        if (_yield != null)
+        {
+            // Уступка автобусу, выезжающему из кармана (ПДД 18.3, bus-bays.md §2 п. 5): стена у тыла автобуса; только тем, кто успевает встать с комфортным торможением.
+            // Не безопасность (клэмп I6 её не знает), а вежливость.
+            float wall = _yield[v.Lane[i]];
+            if (wall >= 0f && !GateRules.IsGranted(v, i))   // допущенная через ворота машина стену не видит: иначе она держала бы чужой проезд, пока автобус ждёт
+            {
+                float yg = wall - v.S[i];
+                if (yg > t.MinGap && (vi * vi) <= 2f * t.ComfortDecel * (yg - t.MinGap))
+                {
+                    float ay = Idm.Accel(t, vi, v.DesiredSpeed[i], yg, vi);
+                    if (ay < a)
+                    {
+                        a = ay;
+                    }
+                }
             }
         }
 
