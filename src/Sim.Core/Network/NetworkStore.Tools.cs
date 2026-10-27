@@ -99,7 +99,7 @@ internal sealed partial class NetworkStore
     /// <summary>Мёртвая и запасная полоса блока: ссылки -1, <c>Generation == 0</c> (живая - 1).</summary>
     internal static LaneData DeadLane() => new() { Segment = -1, Node = -1, FromLane = -1, ToLane = -1, Left = -1, Right = -1, ConflictGroup = -1 };
 
-    internal static BusStopData DeadBusStop(int generation) => new() { Lane = -1, Route = -1, LastArrivalTick = -1, LastDepartTick = -1, Generation = generation };
+    internal static BusStopData DeadBusStop(int generation) => new() { Lane = -1, Route = -1, LastArrivalTick = -1, LastDepartTick = -1, Generation = generation, BayExitFrom = -1 };
 
     internal static BusRouteData DeadBusRoute(int generation) => new() { LastDispatchTick = -1, Generation = generation };
 

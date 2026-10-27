@@ -79,6 +79,16 @@ public static class LaneFlags
     public const byte Draining = 8;
 }
 
+/// <summary>Биты <see cref="BusStopData.BayFlags"/> (ADR-0029).</summary>
+public static class BayStopFlags
+{
+    /// <summary>Ведомые полосы остановки уступают автобусу, ждущему выезда из кармана (BB2).</summary>
+    public const byte Yield = 1;
+
+    /// <summary>Все известные биты (валидатор сейва).</summary>
+    public const byte Known = Yield;
+}
+
 /// <summary>Живость слота пула по полю <c>Generation</c> (нечётное = занят): чтение без обращения к пулу, для клиента и обходов «по живым».</summary>
 public static class NetworkAlive
 {
@@ -141,7 +151,12 @@ public struct BusStopData
     public BusStopKind Kind;
     public int Route;
     public ushort Waiting;
-    public ushort Reserved;
+
+    /// <summary>Карман (docs/design/bus-bays.md §3): 1 - в кармане стоит автобус (<c>InBay</c>). Ёмкость 1; 0 у остановок без кармана.</summary>
+    public byte BayUsed;
+
+    /// <summary>Биты <see cref="BayStopFlags"/>: <c>Yield</c> (уступка автобусу, BB2).</summary>
+    public byte BayFlags;
     public long LastArrivalTick;
 
     /// <summary>Тик последнего отправления автобуса с остановки (удержание, ADR-0008); -1 - не было.</summary>
@@ -149,6 +164,9 @@ public struct BusStopData
 
     /// <summary>Поколение слота пула остановок (нечётное = занят); 4.3, T2. Поля выше не сдвинуты.</summary>
     public int Generation;
+
+    /// <summary>Тик, с которого автобус из кармана ждёт зазор для выезда (bus-bays.md §2 п. 4); -1 - не ждёт.</summary>
+    public long BayExitFrom;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

@@ -21,7 +21,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 10L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ
+    private const long BudgetBytes = 12L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ)
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -304,6 +304,30 @@ public sealed class SaveCorpusTests
                 Assert.Equal(Simulation.CurrentWorldVersion - 3, rep.MigrationsApplied);
                 Assert.Equal(0, sim!.World.ToolsTouched);
                 Assert.Null(sim.World.VerifyDerived());
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W6Files_AreKeptAndMigrate_WithCurbBays()
+    {
+        // Файлы w6 (до карманов остановок, ADR-0029) остаются навсегда: миграция 6 -> 7 ставит bay_model = curb (остановки Bay ведут себя как раньше), хэш продолжения не меняется
+        // (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w6-*.tcsave");
+        Assert.True(old.Length >= 7, "корпус w6 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(6, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 6, rep.MigrationsApplied);
+                Assert.Equal(BayModel.Curb, sim!.World.TransitCfg.BayModel);
+                Assert.Equal(60, sim.World.TransitCfg.BayYieldTicks);
+                Assert.Equal(0, sim.Counters.BayEntries);
             }
         }
     }

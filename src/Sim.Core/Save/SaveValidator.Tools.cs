@@ -21,7 +21,7 @@ internal static partial class SaveValidator
         sd.FirstLaneAB == -1 && sd.FirstLaneBA == -1 && sd.FirstPoint == 0 && sd.PointCount == 0 && sd.Cx == 0f && sd.Cz == 0f;
 
     internal static bool DeadBusStopIsCanonical(in BusStopData s) =>
-        s.Lane == -1 && s.S == 0f && s.Kind == 0 && s.Route == -1 && s.Waiting == 0 && s.Reserved == 0 && s.LastArrivalTick == -1 && s.LastDepartTick == -1;
+        s.Lane == -1 && s.S == 0f && s.Kind == 0 && s.Route == -1 && s.Waiting == 0 && s.BayUsed == 0 && s.BayFlags == 0 && s.LastArrivalTick == -1 && s.LastDepartTick == -1 && s.BayExitFrom == -1;
 
     internal static bool DeadBusRouteIsCanonical(in BusRouteData r) =>
         r.FirstStop == 0 && r.StopCount == 0 && r.HeadwayTicks == 0 && r.VehicleType == 0 && r.ActiveBuses == 0 && r.LastDispatchTick == -1;

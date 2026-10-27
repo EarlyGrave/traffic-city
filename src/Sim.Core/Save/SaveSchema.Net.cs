@@ -389,5 +389,8 @@ internal static partial class SaveSchema
         Col.Field<BusRouteStats>(7, "StatsHeadwayDeviationTicksTotal", w => w.BusRouteStats, _busRouteN, "BusRouteCount", nameof(BusRouteStats.HeadwayDeviationTicksTotal)),
         Col.Field<BusRouteStats>(8, "StatsLastDispatchTick", w => w.BusRouteStats, _busRouteN, "BusRouteCount", nameof(BusRouteStats.LastDispatchTick), def: "-1"),
         Col.Field<BusStopData>(9, "LastDepartTick", w => w.Net.BusStops, _stopN, "BusStopCount", nameof(BusStopData.LastDepartTick), def: "-1"),
+        Col.Field<BusStopData>(10, "BayUsed", w => w.Net.BusStops, _stopN, "BusStopCount", nameof(BusStopData.BayUsed)),
+        Col.Field<BusStopData>(11, "BayFlags", w => w.Net.BusStops, _stopN, "BusStopCount", nameof(BusStopData.BayFlags)),
+        Col.Field<BusStopData>(12, "BayExitFrom", w => w.Net.BusStops, _stopN, "BusStopCount", nameof(BusStopData.BayExitFrom), def: "-1"),
     });
 }

@@ -16,6 +16,7 @@ public sealed class LegacyCornerGoldenTests
     {
         ScenarioDesc d = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null)).Desc;
         d.City.CornerRadius = -1f;
+        d.Transit.BayModel = BayModel.Curb;   // ADR-0029: дефолт загрузчика - виртуальный карман; эталоны до ADR-0028 сняты без него (bay_model = "curb" их воспроизводит)
         if (fixedLegacy)
         {
             d.City.SignalMode = CitySignalMode.Fixed;

@@ -277,6 +277,23 @@ public struct TransitDesc
 
     /// <summary>Парный обратный маршрут к каждому (scenario-format.md §2.4, pedestrians.md §17 п. 3). P1: только поле; генератор его пока не читает.</summary>
     public bool Bidirectional;
+
+    /// <summary>Модель кармана остановок <c>Bay</c> (ADR-0029, bus-bays.md); нулевая структура - <see cref="Api.BayModel.Curb"/> (прежнее поведение), дефолт загрузчика сценариев - <see cref="Api.BayModel.Virtual"/>.</summary>
+    public BayModel BayModel;
+
+    /// <summary>Ожидание автобуса в кармане до уступки ведомых, тики (BB2; в BB1 только хранится). Дефолт загрузчика 3 с = 60.</summary>
+    public int BayYieldTicks;
+}
+
+/// <summary>
+/// Модель кармана остановок <c>Bay</c> (ADR-0029). <c>Curb</c> - как раньше: автобус стоит на полосе и блокирует её. <c>Virtual</c> - автобус снимается со списка полосы на время стоянки
+/// и выезжает по gap acceptance. <c>Lane</c> зарезервировано под настоящую полосу-карман (<see cref="LaneKind.BusBay"/>, вариант B): пока ведёт себя как <c>Curb</c>.
+/// </summary>
+public enum BayModel : int
+{
+    Curb = 0,
+    Virtual = 1,
+    Lane = 2,
 }
 
 /// <summary>Модель пассажиров автобусов (ADR-0020): счётчик ADR-0008 или пассажиры-пешеходы.</summary>

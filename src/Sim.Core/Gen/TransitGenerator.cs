@@ -200,6 +200,9 @@ internal static class TransitGenerator
                 st.Waiting = 0;
                 st.LastArrivalTick = -1;
                 st.LastDepartTick = -1;
+                st.BayUsed = 0;
+                st.BayFlags = 0;
+                st.BayExitFrom = -1;
                 int idx = store.StopCount++;
                 store.Stops[idx] = st;
                 store.RouteStops[idx] = idx;
@@ -320,6 +323,7 @@ internal static class TransitGenerator
                 Waiting = 0,
                 LastArrivalTick = -1,
                 LastDepartTick = -1,
+                BayExitFrom = -1,
             };
             store.RouteStops[idx] = idx;
             store.StopCount++;

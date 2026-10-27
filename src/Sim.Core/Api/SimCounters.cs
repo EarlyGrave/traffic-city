@@ -53,6 +53,8 @@ public struct SimCounters
     public long BusHeadwayDeviationTicksTotal;   // Σ |фактический интервал между автобусами на остановке - плановый|, тики
     public long BusHeadwaySamples;               // число таких измерений (прибытия, у которых на остановке был предыдущий автобус)
     public long BusPassengersBoarded;
+    public long BayEntries, BayFallbacks;        // кармана ADR-0029: заезды в виртуальный карман / остановки Bay, обслуженные у обочины (занят, горизонт ворот)
+    public long BayYields, BayExitWaitTicksTotal; // уступки автобусу (BB2) / Σ тиков ожидания зазора для выезда из кармана
     // --- перекрёстки (intersections.md §10) ---
     public long Grants;                   // выданных допусков
     public long GateDeniedExit;           // отказов «выезд занят» (don't-block-the-box)
