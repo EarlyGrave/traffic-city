@@ -378,9 +378,86 @@ internal static partial class SaveValidator
             }
         }
 
+        LoadStatus bs = ValidateBudget(c, w, city);
+        if (bs != LoadStatus.Ok)
+        {
+            return bs;
+        }
+
         ref readonly SimCounters k = ref w.Counters;
         bool ok = k.CityEvents >= 0 && k.ResToursPlanned >= 0 && k.ResLegsDone >= 0 && k.ResStuck >= 0 && k.Immigrants >= 0 && k.Emigrants >= 0 && k.CityDays >= 0 && k.SkimObserved >= 0;
         return ok ? LoadStatus.Ok : Bad(c, 0, 118);
+    }
+
+    /// <summary>
+    /// Казна города (city-economy.md §12): политики в пределах параметров, ожидающая согласована с флагом, цена земли в [lv_min, lv_max], сглаженные величины и переносы остатков в диапазоне,
+    /// записи undo - нули либо живые и не истёкшие, <c>Insolvent</c> согласован с долгом. Без бюджета: фонд оплаты зданий нулевой.
+    /// </summary>
+    private static LoadStatus ValidateBudget(LoadContext c, World w, CityWorld city)
+    {
+        BuildingStore bl = city.Buildings;
+        CityBudget? b = city.Budget;
+        for (int i = 0; i < bl.HighWater; i++)
+        {
+            if (bl.PayrollEwma[i] < 0 || (b == null && bl.PayrollEwma[i] != 0))
+            {
+                return Bad(c, i, 21);
+            }
+        }
+
+        if (b == null)
+        {
+            return LoadStatus.Ok;
+        }
+
+        CityEconomyDesc e = city.Cfg.Economy;
+        if (CityBudget.CheckPolicy(in e, in b.Policy) != RejectReason.None || b.HasPending > 1 ||
+            (b.HasPending == 1 ? CityBudget.CheckPolicy(in e, in b.PendingPolicy) != RejectReason.None : !CityBudget.Same(in b.PendingPolicy, default(BudgetPolicy))))
+        {
+            return Bad(c, 0, 9);
+        }
+
+        for (int i = 0; i < b.LandValue.Length; i++)
+        {
+            if (b.LandValue[i] < e.LvMin || b.LandValue[i] > e.LvMax)
+            {
+                return Bad(c, i, 18);
+            }
+        }
+
+        if (b.IncomeEwma < 0 || b.ExpenseEwma < 0 || b.DebtDays < 0 || b.OverLimitDays < 0 || b.Insolvent > 1 || (b.Insolvent == 1 && b.DebtDays < 1))
+        {
+            return Bad(c, 0, 19);
+        }
+
+        for (int i = 0; i < b.Carry.Length; i++)
+        {
+            if (b.Carry[i] < 0 || b.Carry[i] >= Ledger.Bp)
+            {
+                return Bad(c, i, 21);
+            }
+        }
+
+        for (int i = 0; i < b.UndoCredits.Length; i++)
+        {
+            ref readonly UndoCredit u = ref b.UndoCredits[i];
+            bool dead = u.TargetGeneration == 0 && u.TargetIndex == 0 && u.Amount == 0 && u.ExpireTick == 0;
+            if (!dead && (u.TargetIndex < 0 || u.TargetGeneration <= 0 || u.ExpireTick < w.Tick))
+            {
+                return Bad(c, i, 25);
+            }
+        }
+
+        for (int i = 0; i < 2; i++)
+        {
+            if (b.FareEvadedDay[i] < 0 || b.DebtEvictionsDay[i] < 0)
+            {
+                return Bad(c, i, 29);
+            }
+        }
+
+        ref readonly SimCounters k = ref w.Counters;
+        return k.FareEvaded >= 0 && k.DebtEvictions >= 0 && k.InsufficientFunds >= 0 ? LoadStatus.Ok : Bad(c, 0, 154);
     }
 
     /// <summary>Узкий доступ к машинам для проверок города (индекс, живость, поколение, ссылка на жителя).</summary>

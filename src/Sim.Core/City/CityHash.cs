@@ -51,7 +51,7 @@ internal static class CityHash
         Ledger lg = c.Ledger;
         h.Add(lg.External);
         h.Add(lg.City);
-        for (int k = 0; k < Ledger.FlowCount; k++)
+        for (int k = 0; k < Ledger.LegacyFlowCount; k++)
         {
             h.Add(lg.FlowDay[k]);
             h.Add(lg.FlowYesterday[k]);
@@ -74,6 +74,82 @@ internal static class CityHash
         }
 
         AddCounters(ref h, in w.Counters);
+        if (c.Budget != null)
+        {
+            AddBudget(ref h, c, in w.Counters);
+        }
+    }
+
+    /// <summary>
+    /// Раздел казны (city-economy.md §12, hash_version 4): только при <c>economy.city_budget</c>, поэтому хэш прежних сценариев не меняется. Порядок: политики, цена земли, сглаженные
+    /// доход и расход, переносы, долг, кредиты undo, накопители суток, потоки 13..16, фонд оплаты живых зданий, счётчики казны. Производные (<c>Maint*</c>, <c>VotDsQ8</c>) не хэшируются.
+    /// </summary>
+    private static void AddBudget(ref Fnv1a64 h, CityWorld c, in SimCounters k)
+    {
+        CityBudget b = c.Budget!;
+        AddPolicy(ref h, in b.Policy);
+        AddPolicy(ref h, in b.PendingPolicy);
+        h.Add(b.HasPending);
+        for (int i = 0; i < b.LandValue.Length; i++)
+        {
+            h.Add(b.LandValue[i]);
+        }
+
+        h.Add(b.IncomeEwma);
+        h.Add(b.ExpenseEwma);
+        for (int i = 0; i < b.Carry.Length; i++)
+        {
+            h.Add(b.Carry[i]);
+        }
+
+        h.Add(b.DebtDays);
+        h.Add(b.OverLimitDays);
+        h.Add(b.Insolvent);
+        for (int i = 0; i < b.UndoCredits.Length; i++)
+        {
+            ref readonly UndoCredit u = ref b.UndoCredits[i];
+            h.Add(u.TargetIndex);
+            h.Add(u.TargetGeneration);
+            h.Add(u.Amount);
+            h.Add(u.ExpireTick);
+        }
+
+        for (int i = 0; i < 2; i++)
+        {
+            h.Add(b.FareEvadedDay[i]);
+            h.Add(b.DebtEvictionsDay[i]);
+        }
+
+        Ledger lg = c.Ledger;
+        for (int f = Ledger.LegacyFlowCount; f < Ledger.FlowCount; f++)
+        {
+            h.Add(lg.FlowDay[f]);
+            h.Add(lg.FlowYesterday[f]);
+            h.Add(lg.FlowTotal[f]);
+        }
+
+        BuildingStore bl = c.Buildings;
+        for (int i = 0; i < bl.HighWater; i++)
+        {
+            if (bl.Pool.IsAlive(i))
+            {
+                h.Add(bl.PayrollEwma[i]);
+            }
+        }
+
+        h.Add(k.FareEvaded);
+        h.Add(k.DebtEvictions);
+        h.Add(k.InsufficientFunds);
+    }
+
+    private static void AddPolicy(ref Fnv1a64 h, in BudgetPolicy p)
+    {
+        h.Add((int)p.TaxRBp);
+        h.Add((int)p.TaxCBp);
+        h.Add((int)p.TaxIBp);
+        h.Add((int)p.LandTaxBpDay);
+        h.Add((int)p.Fare);
+        h.Add((int)p.Flags);
     }
 
     private static void AddLots(ref Fnv1a64 h, LotStore l)

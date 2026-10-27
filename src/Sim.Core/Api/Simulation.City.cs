@@ -205,7 +205,10 @@ public sealed partial class Simulation
         return c.LegsDay[idx] > 0 ? (int)(c.LegCostDay[idx] / c.LegsDay[idx]) : 0;
     }
 
-    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера (<paramref name="yesterday"/>), за текущие сутки или с начала симуляции; длина <paramref name="dst"/> не меньше 13.</summary>
+    /// <summary>Число видов потоков денег (<see cref="FlowKind"/>): минимальная длина буфера <see cref="CopyFlowTotals"/>.</summary>
+    public const int FlowKindCount = Ledger.FlowCount;
+
+    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера, за текущие сутки или с начала симуляции (<paramref name="period"/>); длина <paramref name="dst"/> не меньше <see cref="FlowKindCount"/> (17).</summary>
     public bool CopyFlowTotals(Span<long> dst, FlowPeriod period)
     {
         CityWorld? c = _disposed ? null : _w.City;
@@ -222,6 +225,57 @@ public sealed partial class Simulation
         };
         src.AsSpan().CopyTo(dst);
         return true;
+    }
+
+    /// <summary>
+    /// Состояние казны (city-economy.md §10); false - города нет либо режим <c>city_budget</c> выключен. Кредитный лимит - <c>credit_days * IncomeEwma</c>; ноги без оплаты и выселения за долг - за вчера.
+    /// </summary>
+    public bool GetCityBudget(out CityBudgetInfo info)
+    {
+        info = default;
+        CityWorld? c = _disposed ? null : _w.City;
+        CityBudget? b = c?.Budget;
+        if (c == null || b == null)
+        {
+            return false;
+        }
+
+        int y = (c.Day + 1) & 1;   // «вчера»: другой элемент пары накопителей
+        info = new CityBudgetInfo
+        {
+            Balance = c.Ledger.City,
+            IncomeEwma = b.IncomeEwma,
+            ExpenseEwma = b.ExpenseEwma,
+            CreditLimit = b.CreditLimit(in c.Cfg.Economy),
+            MaintRoadDay = b.MaintRoadDay,
+            MaintBusDay = b.MaintBusDay,
+            FareEvadedYesterday = b.FareEvadedDay[y],
+            DebtEvictionsYesterday = b.DebtEvictionsDay[y],
+            DebtDays = b.DebtDays,
+            OverLimitDays = b.OverLimitDays,
+            Insolvent = b.Insolvent,
+            HasPending = b.HasPending,
+            Policy = b.Policy,
+            PendingPolicy = b.PendingPolicy,
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// Цена места по ячейкам для heatmap (city-economy.md §4, §10): тот же массив, что берёт земельный налог; деньги. Длина <paramref name="perCell"/> не меньше <see cref="CityCellCount"/>.
+    /// Возвращает число записанных ячеек; 0 - города или режима <c>city_budget</c> нет.
+    /// </summary>
+    public int GetLandValue(Span<int> perCell)
+    {
+        CityBudget? b = _disposed ? null : _w.City?.Budget;
+        if (b == null)
+        {
+            return 0;
+        }
+
+        int n = Math.Min(perCell.Length, b.LandValue.Length);
+        b.LandValue.AsSpan(0, n).CopyTo(perCell);
+        return n;
     }
 
     /// <summary>Здания для клиента по слотам пула; возвращает число записанных слотов (<c>min(BuildingSlotCount, dst.Length)</c>), мёртвые слоты - <c>Kind = 0</c>.</summary>

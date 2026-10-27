@@ -29,7 +29,7 @@ public enum AccessKind : byte
     Jobs = 1,       // LS_jobs: logsum до рабочих мест
 }
 
-/// <summary>Вид потока денег (zoning-demand.md §7.1). Числа лежат в сейве; новые - только в конец.</summary>
+/// <summary>Вид потока денег (zoning-demand.md §7.1, city-economy.md §2.1). Числа лежат в сейве; новые - только в конец. Всего <see cref="Simulation.FlowKindCount"/> = 17.</summary>
 public enum FlowKind : byte
 {
     Endowment = 0,
@@ -45,6 +45,10 @@ public enum FlowKind : byte
     Fare = 10,
     Maintenance = 11,
     Subsidy = 12,
+    Interest = 13,      // 4.2 (city-economy.md §2.1): проценты по долгу City -> External
+    Dividend = 14,      // фирма -> External: остаток сверх буфера
+    Leakage = 15,       // житель -> External: траты вне города сверх буфера
+    Refund = 16,        // External -> City: возврат за снос, понижение, undo
 }
 
 /// <summary>Здание для клиента: 24 байта (zoning-demand.md §13). Индекс в массиве = слот пула зданий; мёртвый слот - <c>Kind = 0</c>.</summary>
@@ -134,4 +138,48 @@ public struct CityStats
     public long ResStuck;
     public int ExecMode;              // TripExecution
     public int R0;
+}
+
+/// <summary>Биты <see cref="BudgetPolicy.Flags"/> (city-economy.md §2.2).</summary>
+public static class BudgetPolicyFlags
+{
+    /// <summary>Бюджет включён. У города с бюджетом бит обязан стоять в каждой политике (выключить нельзя); у города без бюджета - запрос <c>Enable</c> (E2).</summary>
+    public const ushort Enable = 1;
+}
+
+/// <summary>
+/// Политика бюджета (city-economy.md §2.2): 16 байт. Ставки - базисные пункты (10 000 = 100%), <c>Fare</c> - деньги за автобусную ногу. Действующая политика меняется
+/// только на границе суток; команда <see cref="CommandKind.SetBudgetPolicy"/> кладёт её в ожидающую.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
+public struct BudgetPolicy
+{
+    public ushort TaxRBp;          // 0..1   налог на зарплату жителей
+    public ushort TaxCBp;          // 2..3   налог на прибыль коммерческих фирм
+    public ushort TaxIBp;          // 4..5   налог на прибыль промышленных фирм
+    public ushort LandTaxBpDay;    // 6..7   земельный налог в сутки от цены места
+    public ushort Fare;            // 8..9   плата за автобусную ногу
+    public ushort Flags;           // 10..11 BudgetPolicyFlags
+    public ushort R0, R1;          // 12..15 резерв, обязаны быть 0
+}
+
+/// <summary>Состояние бюджета города для клиента (<see cref="Simulation.GetCityBudget"/>, city-economy.md §10). Потоки по видам за вчера - <see cref="Simulation.CopyFlowTotals"/>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct CityBudgetInfo
+{
+    public long Balance;                 // баланс казны (City)
+    public long IncomeEwma;              // сглаженный доход за сутки
+    public long ExpenseEwma;             // сглаженный расход за сутки
+    public long CreditLimit;             // credit_days * IncomeEwma
+    public long MaintRoadDay;            // содержание дорог в сутки (производное)
+    public long MaintBusDay;             // содержание автобусов в сутки (производное)
+    public long FareEvadedYesterday;     // ног без оплаты (не хватило на проезд) за вчера
+    public long DebtEvictionsYesterday;  // выселений за долг за вчера
+    public int DebtDays;                 // дней подряд с City < 0
+    public int OverLimitDays;            // дней подряд за кредитным лимитом
+    public byte Insolvent;               // 1 - за кредитным лимитом
+    public byte HasPending;              // 1 - есть ожидающая политика
+    public ushort R0;
+    public BudgetPolicy Policy;          // действующая
+    public BudgetPolicy PendingPolicy;   // ожидающая границы суток (если HasPending)
 }

@@ -29,6 +29,9 @@ internal sealed class CityWorld
     public readonly LotBuilder LotGen;
     public readonly Market Market;             // производные рынков труда и жилья (Z4); в сейв не входят
 
+    /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
+    public CityBudget? Budget;
+
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
     public readonly ArrivalRing Arrivals;
@@ -71,6 +74,13 @@ internal sealed class CityWorld
         Buildings = new BuildingStore(caps.MaxBuildings);
         Residents = new CityResidents(caps.MaxCityResidents);
         Ledger = new Ledger(Residents, Buildings);
+        if (cfg.Economy.CityBudget)
+        {
+            Budget = new CityBudget(in cfg.Economy, grid.Cells);
+            Ledger.Carry = Budget.Carry;
+            Budget.RecomputeDerived(this);
+        }
+
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
         LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm);
@@ -94,6 +104,7 @@ internal sealed class CityWorld
     {
         LotGen.RestoreDerived(w);
         Market.Invalidate();
+        Budget?.RecomputeDerived(this);
         RebuildWheel(w.Tick - 1);
         TripLegs.RestoreDerived(w);
     }

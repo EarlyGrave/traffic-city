@@ -161,7 +161,60 @@ public static partial class ScenarioLoader
         e.LossDaysClose = r.Int("loss_days_close", 14, min: 1, max: 3650);
         e.EwmaShift = r.Int("ewma_shift", 3, min: 0, max: 16);
         e.CTargetPct = r.Int("c_target_pct", 100, min: 0, max: 100_000);
+        ParseBudget(r, ref e);
         r.Finish();
+    }
+
+    /// <summary>Ключи казны города (city-economy.md §13): разрешены только при <c>residents</c> (секция <c>economy</c> целиком), без <c>city_budget</c> хранятся как дефолты. Проценты - в базисные пункты.</summary>
+    private static void ParseBudget(JsonObjectReader r, ref CityEconomyDesc e)
+    {
+        e.CityBudget = r.Bool("city_budget", false);
+        e.MaxTaxBp = r.Int("max_tax_bp", 5000, min: 0, max: 10_000);
+        e.MaxLandBp = r.Int("max_land_bp_day", 100, min: 0, max: 10_000);
+        e.MaxFare = r.Int("max_fare", 1000, min: 0, max: ushort.MaxValue);
+        e.TaxRBp = Pct(r, "tax_r_pct", 6, e.MaxTaxBp);
+        e.TaxCProfitBp = Pct(r, "tax_c_profit_pct", 20, e.MaxTaxBp);
+        e.TaxIProfitBp = Pct(r, "tax_i_profit_pct", 20, e.MaxTaxBp);
+        e.LandTaxBpDay = r.Int("land_tax_bp_day", 15, min: 0, max: e.MaxLandBp);
+        e.BusFare = r.Int("bus_fare", 2, min: 0, max: e.MaxFare);
+        e.InitialCityBalancePerResident = r.Int("initial_city_balance_per_resident", 60, min: 0, max: 100_000_000);
+        e.InterestBpDay = r.Int("interest_bp_day", 3, min: 0, max: 10_000);
+        e.CreditDays = r.Int("credit_days", 60, min: 0, max: 3650);
+        JsonObjectReader? maint = r.OptObject("maint_road_per_lane_km_day");
+        if (maint != null)
+        {
+            e.MaintRoadStreetPerLaneKmDay = maint.Int("street", 0, min: 0, max: 100_000_000);
+            e.MaintRoadArterialPerLaneKmDay = maint.Int("arterial", 0, min: 0, max: 100_000_000);
+            maint.Finish();
+        }
+
+        e.MaintBusDay = r.Int("maint_bus_day", 0, min: 0, max: 100_000_000);
+        e.MaintStopDay = r.Int("maint_stop_day", 0, min: 0, max: 100_000_000);
+        e.LvMin = r.Int("lv_min", 50, min: 0, max: 100_000_000);
+        e.LvMax = r.Int("lv_max", 1000, min: e.LvMin, max: 100_000_000);
+        e.LvRef = r.Int("lv_ref", 200, min: e.LvMin, max: e.LvMax);
+        e.LvSlopePerMin = r.Int("lv_slope_per_min", 20, min: 0, max: 100_000_000);
+        e.LvShift = r.Int("lv_shift", 3, min: 0, max: 16);
+        e.VotPct = r.Int("vot_pct", 50, min: 1, max: 10_000);
+        e.ResBufferDays = r.Int("res_buffer_days", 5, min: 0, max: 3650);
+        e.FirmBufferDays = r.Int("firm_buffer_days", 10, min: 0, max: 3650);
+        e.PayoutShift = r.Int("payout_shift", 3, min: 0, max: 16);
+        e.EvictDebtDays = r.Int("evict_debt_days", 3, min: 1, max: 3650);
+        e.BudgetEwmaShift = r.Int("budget_ewma_shift", 3, min: 0, max: 16);
+        e.UndoRefundS = r.Int("undo_refund_s", 10, min: 0, max: 3600);
+    }
+
+    /// <summary>Процент в базисные пункты (<c>round((float)pct * 100)</c>); не выше <paramref name="maxBp"/>.</summary>
+    private static int Pct(JsonObjectReader r, string key, double def, int maxBp)
+    {
+        double pct = r.Num(key, def, min: 0, max: 100);
+        int bp = (int)Math.Round((float)pct * 100.0, MidpointRounding.AwayFromZero);
+        if (bp > maxBp)
+        {
+            throw new ScenarioException($"{r.ChildPath(key)}: {pct}% exceeds max_tax_bp ({maxBp} bp)");
+        }
+
+        return bp;
     }
 
     private static void ParseChoice(JsonObjectReader? r, ref CityDesc t)

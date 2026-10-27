@@ -112,6 +112,35 @@ public struct CityEconomyDesc
     public int LossDaysClose;
     public int EwmaShift;
     public int CTargetPct;          // §8.3: c_target, визитов на место C к норме, %; дефолт 100
+
+    // ---- казна города (city-economy.md §13, 4.2): ключи разрешены только при residents; city_budget = false - режим выключен, остальные поля хранятся как дефолты ----
+    public bool CityBudget;                     // economy.city_budget
+    public int TaxRBp;                          // tax_r_pct * 100: налог на зарплату (дефолт политики), б.п.
+    public int TaxCProfitBp;                    // tax_c_profit_pct * 100
+    public int TaxIProfitBp;                    // tax_i_profit_pct * 100
+    public int LandTaxBpDay;                    // land_tax_bp_day: земельный налог в сутки, б.п. цены места
+    public int BusFare;                         // bus_fare: плата за автобусную ногу
+    public int InitialCityBalancePerResident;   // initial_city_balance_per_resident: вклад в казну на жителя
+    public int InterestBpDay;                   // interest_bp_day: процент на долг в сутки, б.п.
+    public int CreditDays;                      // credit_days: лимит кредита в днях сглаженного дохода
+    public int MaintRoadStreetPerLaneKmDay;     // maint_road_per_lane_km_day.street
+    public int MaintRoadArterialPerLaneKmDay;   // maint_road_per_lane_km_day.arterial
+    public int MaintBusDay;                     // maint_bus_day: на автобус в сутки
+    public int MaintStopDay;                    // maint_stop_day: на остановку в сутки
+    public int LvRef;                           // lv_ref: цена места при LS_ref
+    public int LvSlopePerMin;                   // lv_slope_per_min: прирост цены за минуту выигрыша доступности
+    public int LvMin, LvMax;                    // lv_min, lv_max: границы цены места
+    public int LvShift;                         // lv_shift: сглаживание цены (>> shift в сутки)
+    public int VotPct;                          // vot_pct: ценность времени, % зарплаты
+    public int ResBufferDays;                   // res_buffer_days: буфер жителя в днях дохода
+    public int FirmBufferDays;                  // firm_buffer_days: буфер фирмы в днях фонда оплаты
+    public int PayoutShift;                     // payout_shift: доля вывода остатка (>> shift)
+    public int EvictDebtDays;                   // evict_debt_days: порог долга жителя в днях дохода
+    public int BudgetEwmaShift;                 // budget_ewma_shift: сглаживание дохода и расхода казны
+    public int UndoRefundS;                     // undo_refund_s: окно возврата undo, с игрового времени
+    public int MaxTaxBp;                        // max_tax_bp: предел ставок налогов политики
+    public int MaxLandBp;                       // max_land_bp_day: предел земельного налога
+    public int MaxFare;                         // max_fare: предел платы за проезд
 }
 
 /// <summary>Выбор (<c>choice</c>, ADR-0021): θ - уже в виде <c>θ64 = θ[1/дс] · 64 · 2^16</c> (zoning-demand.md §6.2), стоимости - децисекунды.</summary>
@@ -216,6 +245,29 @@ public struct CityDesc
             LossDaysClose = 14,
             EwmaShift = 3,
             CTargetPct = 100,
+            TaxRBp = 600,
+            TaxCProfitBp = 2000,
+            TaxIProfitBp = 2000,
+            LandTaxBpDay = 15,
+            BusFare = 2,
+            InitialCityBalancePerResident = 60,
+            InterestBpDay = 3,
+            CreditDays = 60,
+            LvRef = 200,
+            LvSlopePerMin = 20,
+            LvMin = 50,
+            LvMax = 1000,
+            LvShift = 3,
+            VotPct = 50,
+            ResBufferDays = 5,
+            FirmBufferDays = 10,
+            PayoutShift = 3,
+            EvictDebtDays = 3,
+            BudgetEwmaShift = 3,
+            UndoRefundS = 10,
+            MaxTaxBp = 5000,
+            MaxLandBp = 100,
+            MaxFare = 1000,
         },
         Choice = new CityChoiceDesc
         {

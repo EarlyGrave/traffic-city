@@ -205,7 +205,7 @@ O(NC + 1) раз в 72 000 тиков; правка сети — +1 проход
 - `CityStats` (3.2) без изменений раскладки; новые числа — только в `CityBudgetInfo`.
 
 ## 11. Команды
-- `SetBudgetPolicy` (`CommandKind 25`; номер закрепить при мерже E1, свободны 25+): payload `BudgetPolicy` (§2.2).
+- `SetBudgetPolicy` (`CommandKind 36`: 25-35 заняты инструментами T1; закреплено в E1): payload `BudgetPolicy` (§2.2).
   Проверки: ставки ≤ `max_tax_bp` (5 000), земля ≤ `max_land_bp_day` (100), `Fare ≤ max_fare` (1 000); `Enable` без режима
   `residents` — `NotSupported`; иначе `RejectReason.BudgetRule`. Применение — на границе суток (последняя команда суток побеждает).
 - `Enable` на городе без бюджета (урок E4): создаётся `CityBudget`, `Endowment` казне, `LV = T`, `PayrollEwma` = вчерашний фонд,
@@ -217,10 +217,9 @@ O(NC + 1) раз в 72 000 тиков; правка сети — +1 проход
   `DebtDays`, `OverLimitDays`, `Insolvent`, `UndoCredits[64]`. Столбцы: `LEDG` — потоки 13–16 (сегодня/вчера/всего),
   `BLDG` — `PayrollEwma`, `PARM` — параметры §13, `CNTR` — `fare_evaded`, `debt_evictions`, `insufficient_funds`.
 - Производные (не в сейве): `MaintRoadDay`, `MaintBusDay`, `VotDsQ8` — пересчёт в `CityWorld.RestoreDerived`.
-- `world_version` — следующий свободный при мерже E1 (запись в `save-format.md` §12). Окно версии открыто до E8 (E2–E5 вправе
-  дописывать столбцы с дефолтом в миграции и перегенерацией корпуса текущей версии). Миграция: столбцы-дефолты (потоки 13–16 = 0,
+- `world_version` = 9 (E1; запись в `save-format.md` §12). Окно версии открыто до E8 (E2–E5 вправе дописывать столбцы с дефолтом в миграции и перегенерацией корпуса текущей версии). Миграция: столбцы-дефолты (потоки 13–16 = 0,
   `PayrollEwma` = 0, параметры = дефолты §13 с `city_budget = false`), блок не создаётся — бюджет выключен, продолжение побитово.
-- Хэш: секция бюджета только при бюджете; `hash_version` +1. `ValidateCity`: Σ счетов = 0 с `City`, `LV ∈ [lv_min, lv_max]`,
+- Хэш: секция бюджета только при бюджете; `hash_version` 3 -> 4 (E1; виды потоков 13–16 вне бюджета в хэш не входят). `ValidateCity`: Σ счетов = 0 с `City`, `LV ∈ [lv_min, lv_max]`,
   записи `UndoCredits` с `ExpireTick ≥ Tick` или нули, `Insolvent` согласован с `City` и лимитом.
 - Корпус: `wN-s1k-res-econ-d3` (день 3) и `wN-s1k-res` (прежний город в новой версии).
 
@@ -326,3 +325,32 @@ E4 — после T7 и T8 (цены и обратные команды инст
 
 ## 18. Результаты задач
 (заполняют E1–E7: отличия от спеки, замороженная поверхность, числа калибровки)
+
+### 18.1 E1 — поверхность (агент L21, ветка `local/e1-budget-surface`)
+
+**Замороженная поверхность** (E2, E3, E6 не меняют, только заполняют; изменение — отдельным решением оркестратора):
+- `Api/CityDesc.cs`: поля казны в `CityEconomyDesc` (`CityBudget`, `TaxRBp`, `TaxCProfitBp`, `TaxIProfitBp`, `LandTaxBpDay`, `BusFare`, `InitialCityBalancePerResident`, `InterestBpDay`, `CreditDays`,
+  `MaintRoadStreetPerLaneKmDay`, `MaintRoadArterialPerLaneKmDay`, `MaintBusDay`, `MaintStopDay`, `LvRef`, `LvSlopePerMin`, `LvMin`, `LvMax`, `LvShift`, `VotPct`, `ResBufferDays`, `FirmBufferDays`, `PayoutShift`,
+  `EvictDebtDays`, `BudgetEwmaShift`, `UndoRefundS`, `MaxTaxBp`, `MaxLandBp`, `MaxFare`), дефолты §13. Параметры хранятся и сохраняются всегда (при `city_budget = false` — дефолтами); пределы проверяет `CityBudget.IsValid` (из `CityBuild.IsValid`).
+- `Api/CityInfo.cs`: `FlowKind` 13-16, `BudgetPolicy` (16 Б, `Pack = 2`), `BudgetPolicyFlags.Enable`, `CityBudgetInfo`. `Api/Command.cs`: `CommandKind.SetBudgetPolicy = 36`, `SetBudgetPolicyCmd`, `Command.MakeSetBudgetPolicy`.
+  `Api/SimEvent.cs`: `BudgetNegative` 55, `BudgetLimitReached` 56, `BudgetRecovered` 57, `PolicyApplied` 58; `RejectReason.BudgetRule` = 16.
+- `Api/Simulation.City.cs`: `GetCityBudget`, `GetLandValue`, `Simulation.FlowKindCount` (= 17; `CopyFlowTotals` требует не меньше). `Api/SimCounters.cs`: `FareEvaded`, `DebtEvictions`, `InsufficientFunds`.
+- `City/Ledger.cs`: `FlowCount` 17, `LegacyFlowCount` 13, `Bp` 10 000, `Carry` (ссылка на `CityBudget.Carry`), `TransferPct`. `City/CityBudget.cs`: состояние §2.2 (+ суточные пары `FareEvadedDay`, `DebtEvictionsDay`),
+  `UndoCredit`, `DefaultPolicy`, `CheckPolicy`, `RecomputeDerived` (считает `VotDsQ8`), `CreditLimit`. `City/CityWorld.cs`: `Budget` (создаётся в конструкторе при `city_budget`). `City/BuildingStore.cs`: `PayrollEwma`.
+- Заглушки E2 с зафиксированными сигнатурами: `BudgetFlows.OnDayBoundary(World, CityWorld)` (вызов в `CityPhase.Periodic` после `Day++`, до `Ledger.RollDay`; E1 применяет `PendingPolicy`),
+  `BudgetFlows.RecomputeMaintenance(World, CityWorld)`, `BudgetFlows.Enable(World, CityWorld)` -> `RejectReason`, `BudgetLand.Update(World, CityWorld, bool reset)`.
+- Сейв: `world_version` 9, блок `CBGT`, `PARM` 191-218, `BLDG` 21, `CNTR` 154-156, `LEDG` 3-5 по 17 (`save-format.md` §12), `MigrationV9`, `hash_version` 4, `SaveValidator.ValidateBudget`, корпус `w9-*` (+ `w9-s1k-res-econ-d3-t216500`).
+
+**Отличия от спеки (минимальные решения):**
+1. `SetBudgetPolicy` = **36**, а не 25: 25-35 заняты инструментами игрока (T1). `RejectReason.InsufficientFunds` = 12 уже существует (T1) — новый код E1 только `BudgetRule` = 16.
+2. Проверки команды: неизвестные биты `Flags` и ненулевой резерв — `InvalidArgument`; ставки выше `max_*` и политика без бита `Enable` на городе с бюджетом (выключить бюджет нельзя) — `BudgetRule`; нет города — `NotSupported`;
+   город без бюджета: `Enable` — `NotSupported` (заглушка до E2), политика без `Enable` — `BudgetRule`. Политика, равная действующей, **снимает** ожидающую (последняя команда суток побеждает, как `SetTripExecution`).
+3. `FareEvadedYesterday`/`DebtEvictionsYesterday` в `CityBudgetInfo` требуют состояния «вчера» — добавлены пары `FareEvadedDay[2]`, `DebtEvictionsDay[2]` (индекс `day & 1`) в `CityBudget` и `CBGT` 29-30 (в §12 их не было).
+   E2 обязана обнулять элемент нового дня на границе суток (как `ToursDay`) и увеличивать их вместе со счётчиками `FareEvaded`/`DebtEvictions`.
+4. `LV` при создании = `lv_ref` (а не цель `T`): `T` считает `BudgetLand.Update(reset: true)` (E2) при `Create`/`Enable`. `Endowment` казне E1 не делает (поток E2): казна при создании = 0.
+5. `Ledger.Carry` — ссылка на тот же массив, что `CityBudget.Carry`; без бюджета `Carry = null` и `TransferPct` округляет вниз без переноса.
+6. Хэш вне бюджета прежний: виды потоков 13-16 в общую часть хэша не входят (`LegacyFlowCount = 13`), раздел казны (`CityHash.AddBudget`) пишется только при бюджете. `hash_version` поднят до 4 по спеке (на хэши прежних сценариев не влияет).
+7. `ValidateBudget`: `Insolvent = 1` допустим только при `DebtDays >= 1`; запись `UndoCredits` — нули либо `TargetGeneration > 0`, `TargetIndex >= 0`, `ExpireTick >= Tick` (E4 обязана гасить истёкшие записи до сохранения мира или менять правило).
+8. `VotDsQ8` считается в `CityBudget.RecomputeDerived` по формуле §5: `96 · SlotTicks / 2 · 100 · 256 / (wage_per_shift · vot_pct)` (децисекунды эталонной смены; тик = 0.5 дс). E3 берёт готовое значение.
+9. Загрузчик: проценты `tax_*_pct` -> базисные пункты `round(float(v) · 100)`; кросс-проверки (ставка не выше `max_*`, `lv_min <= lv_ref <= lv_max`) дают `ScenarioException`; те же пределы на стороне ядра — `CityBuild.IsValid` (`InvalidCity`); `city_budget` вне `residents` — `InvalidCity`.
+10. `Sim.Headless/Bench/CityRunCommand.cs`: буфер `Flows` берёт `Simulation.FlowKindCount` (иначе `CopyFlowTotals` вернул бы `false`); отчёт по-прежнему печатает 13 видов (расширяет E5).
