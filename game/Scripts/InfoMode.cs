@@ -35,8 +35,8 @@ public sealed class InfoMode
     /// <summary>Разовая запись цветов тонирования и нейтрального <c>light_tint</c> (VS10 будет писать его по времени суток).</summary>
     public static void Init()
     {
-        RenderingServer.GlobalShaderParameterSet("info_bg_dark", ToVec(Palette.InfoBgDark.SrgbToLinear()));
-        RenderingServer.GlobalShaderParameterSet("info_bg_light", ToVec(Palette.InfoBgLight.SrgbToLinear()));
+        RenderingServer.GlobalShaderParameterSet("info_bg_dark", ToVec(Palette.ToWorld(Palette.InfoBgDark)));
+        RenderingServer.GlobalShaderParameterSet("info_bg_light", ToVec(Palette.ToWorld(Palette.InfoBgLight)));
         RenderingServer.GlobalShaderParameterSet("light_tint", Vector3.One);
     }
 
