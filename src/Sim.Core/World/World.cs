@@ -201,6 +201,11 @@ internal sealed class World : IDisposable
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
+        if (desc.RoadProfiles.Enabled)
+        {
+            Net.Profiles = new RoadProfileStore(in desc.RoadProfiles);   // desc проверен WorldBuilder.Create (RoadProfileValidator)
+        }
+
         Builder = desc.City.Enabled
             ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.City.CornerRadius))
             : new NetworkBuilder(Net, NetworkOptions.Default.LaneWidth, NetworkOptions.Default.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.Network.CornerRadius));

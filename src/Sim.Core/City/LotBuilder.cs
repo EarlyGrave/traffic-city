@@ -302,6 +302,11 @@ internal sealed class LotBuilder
 
     private static float FrontOffsetM(World w, in SegmentData sd)
     {
+        if (w.Net.Profiles != null && sd.Profile >= 0)
+        {
+            return w.Net.Profiles.EdgeMm[sd.Profile] * 0.001f;   // режим профилей (ADR-0030): фасад участка - край профиля (проезжая часть, газон, тротуар); сетка 8 м - RP5
+        }
+
         float sidewalk = w.PedCfg.Enabled ? w.PedCfg.SidewalkWidthMm / 1000f : SidewalkDefaultM;
         return (Math.Max(sd.LanesAB, sd.LanesBA) * w.Builder.Options.LaneWidth) + sidewalk;
     }

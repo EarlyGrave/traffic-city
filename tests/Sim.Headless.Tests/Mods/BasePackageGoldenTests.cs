@@ -93,7 +93,7 @@ public sealed class BasePackageGoldenTests : IDisposable
     public static IEnumerable<object[]> V2Scenarios() =>
         Directory.GetFiles(Path.Combine(Root(), "scenarios"), "*.json")
             .Select(Path.GetFileName)
-            .Where(n => n != "vehicle-types.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
+            .Where(n => n != "vehicle-types.json" && n != "road-profiles.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
             .OrderBy(n => n, StringComparer.Ordinal)
             .Select(n => new object[] { n! });
 

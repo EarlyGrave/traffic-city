@@ -16,6 +16,10 @@ internal sealed partial class NetworkBuilder
 
     private float HalfWidth(int laneTotal) => laneTotal * _o.LaneWidth * 0.5f;
 
+    /// <summary>Полуширина проезжей части сегмента <c>h</c> (ADR-0028): режим профилей - <c>max(CurbL, CurbR)</c> его профиля (ADR-0030), иначе по числу полос.</summary>
+    private float SegmentHalf(in SegmentData sd) =>
+        _s.Profiles != null && sd.Profile >= 0 ? _s.Profiles.HalfRoadM(sd.Profile) : HalfWidth(sd.LanesAB + sd.LanesBA);
+
     /// <summary>Отступ рукава узла степени <paramref name="degree"/> при полуширине самой широкой поперечной дороги <paramref name="crossHalf"/> (0 - поперечных нет).</summary>
     internal static float ArmSetback(in NetworkOptions o, int degree, float crossHalf)
     {
@@ -62,7 +66,7 @@ internal sealed partial class NetworkBuilder
             Vec2 v = (code & 1) == 0
                 ? Dir(_s.SegmentPoints[p0], _s.SegmentPoints[p0 + 1])
                 : Dir(_s.SegmentPoints[p0 + sd.PointCount - 1], _s.SegmentPoints[p0 + sd.PointCount - 2]);
-            float h = HalfWidth(sd.LanesAB + sd.LanesBA);
+            float h = SegmentHalf(in sd);
             if (Crosses(u, v) && h > cross)
             {
                 cross = h;
@@ -76,7 +80,11 @@ internal sealed partial class NetworkBuilder
     /// Отступы концов прямых сегментов <c>a[e] → b[e]</c> (узлы уже в хранилище) по полному списку рукавов (генератор, явная сеть): <paramref name="setbackA"/>/<paramref name="setbackB"/>.
     /// Сегменты с неверными узлами получают <c>NodeSetback</c> и в рукава не идут (их отклонит <c>AddSegment</c>). Аллоцирует рабочие массивы (построение мира, не тик).
     /// </summary>
-    internal void PlanSetbacks(ReadOnlySpan<int> a, ReadOnlySpan<int> b, ReadOnlySpan<int> laneTotal, Span<float> setbackA, Span<float> setbackB)
+    internal void PlanSetbacks(ReadOnlySpan<int> a, ReadOnlySpan<int> b, ReadOnlySpan<int> laneTotal, Span<float> setbackA, Span<float> setbackB) =>
+        PlanSetbacks(a, b, laneTotal, ReadOnlySpan<int>.Empty, setbackA, setbackB);
+
+    /// <summary>То же; у сегментов с <paramref name="profile"/>[e] &gt;= 0 (режим профилей) <c>h</c> берётся из профиля, а не по числу полос.</summary>
+    internal void PlanSetbacks(ReadOnlySpan<int> a, ReadOnlySpan<int> b, ReadOnlySpan<int> laneTotal, ReadOnlySpan<int> profile, Span<float> setbackA, Span<float> setbackB)
     {
         int m = a.Length;
         int nodes = _s.NodeCount;
@@ -90,7 +98,7 @@ internal sealed partial class NetworkBuilder
         {
             int na = a[e];
             int nb = b[e];
-            half[e] = HalfWidth(laneTotal[e]);
+            half[e] = profile.Length > e && profile[e] >= 0 && _s.Profiles != null ? _s.Profiles.HalfRoadM(profile[e]) : HalfWidth(laneTotal[e]);
             next[2 * e] = -1;
             next[(2 * e) + 1] = -1;
             if (na < 0 || nb < 0 || na >= nodes || nb >= nodes || na == nb || !_s.NodeAlive(na) || !_s.NodeAlive(nb))

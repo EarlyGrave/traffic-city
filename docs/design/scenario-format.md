@@ -447,6 +447,12 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 Нет секции - те же значения по умолчанию, что в примере (кроме `world_bounds`). Нулевой `ToolsDesc` ядра (тесты) - всё бесплатно. `tools.preview_detour_work` (спека §7.3) пока не используется:
 связность в превью считается Tarjan'ом без ограниченного A*-объезда.
 
+### 2.9 Профили дорог: `road_profiles_file` (RP1, ADR-0030, `docs/design/road-profiles.md`)
+- Корневой ключ `road_profiles_file` (путь от каталога сценария) включает режим профилей; без него режим `legacy` (прежняя геометрия, хэши и сейвы без изменений). Формат каталога - `scenarios/road-profiles.json`, `format_version: 1`.
+- С каталогом генератору обязателен `city.profiles: {"street": id, "arterial": id}` (вид профиля должен совпасть), а каждому сегменту явной сети - `profile: id` (+ необязательный `mirrored: true`);
+  `lanes_ab`/`lanes_ba`/`kind` выводятся из профиля (с учётом `mirrored`), а если заданы - обязаны совпасть. Без каталога эти ключи - ошибка.
+- Тесты и golden подменяют файл каталога через `ScenarioOverrides.Profiles` (`tests/fixtures/road-profiles.fixture.json`); подмена действует, только если сценарий сам объявил `road_profiles_file`.
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
 В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.

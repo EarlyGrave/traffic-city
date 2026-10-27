@@ -64,6 +64,9 @@ public static class SegmentFlags
 
     /// <summary>Ось - квадратичная Безье с контрольной точкой <see cref="SegmentData.Cx"/>, <see cref="SegmentData.Cz"/>.</summary>
     public const byte Curve = 2;
+
+    /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030): элементы читаются в обратном порядке, forward ↔ backward. Только в режиме профилей.</summary>
+    public const byte Mirrored = 4;
 }
 
 /// <summary>Биты <see cref="LaneData.Flags"/>.</summary>
@@ -111,6 +114,9 @@ public struct SegmentData
 
     /// <summary>Контрольная точка квадратичной Безье (<see cref="SegmentFlags.Curve"/>), иначе 0 (4.3, T2): нужна обратной команде и превью.</summary>
     public float Cx, Cz;
+
+    /// <summary>Индекс профиля в <c>RoadProfileStore</c> (ADR-0030) или -1: режим legacy / сегмент без профиля. В хэш входит только в режиме профилей.</summary>
+    public int Profile;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -130,6 +136,9 @@ public struct LaneData
     public int FirstNext, NextCount;// исходящие connector'ы (диапазон в LaneNext)
     public int ConflictGroup;       // [шаг 3] или -1
     public int Generation;
+
+    /// <summary>Ширина полосы, м (ADR-0030; пишется при эмиссии Normal-полосы: из профиля или <c>NetworkOptions.LaneWidth</c>); у connector'ов 0. В хэш входит только в режиме профилей.</summary>
+    public float Width;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

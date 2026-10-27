@@ -1,0 +1,81 @@
+{
+  "format_version": 1,
+  "module_m": 8,
+  "profiles": [
+    {
+      "id": "street_2", "kind": "street", "width_m": 16,
+      "elements": [
+        {"type": "sidewalk", "w": 3},
+        {"type": "verge", "w": 1.25},
+        {"type": "curb", "w": 0.25},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "curb", "w": 0.25},
+        {"type": "verge", "w": 1.25},
+        {"type": "sidewalk", "w": 3}
+      ]
+    },
+    {
+      "id": "oneway_2", "kind": "street", "width_m": 16,
+      "elements": [
+        {"type": "sidewalk", "w": 3},
+        {"type": "verge", "w": 1.25},
+        {"type": "curb", "w": 0.25},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "curb", "w": 0.25},
+        {"type": "verge", "w": 1.25},
+        {"type": "sidewalk", "w": 3}
+      ]
+    },
+    {
+      "id": "arterial_4", "kind": "arterial", "width_m": 24,
+      "elements": [
+        {"type": "sidewalk", "w": 3},
+        {"type": "verge", "w": 0.75},
+        {"type": "curb", "w": 0.25},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "median", "w": 2},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "curb", "w": 0.25},
+        {"type": "verge", "w": 0.75},
+        {"type": "sidewalk", "w": 3}
+      ]
+    },
+    {
+      "id": "arterial_6", "kind": "arterial", "width_m": 32,
+      "elements": [
+        {"type": "sidewalk", "w": 3},
+        {"type": "verge", "w": 1.25},
+        {"type": "curb", "w": 0.25},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "median", "w": 2},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "curb", "w": 0.25},
+        {"type": "verge", "w": 1.25},
+        {"type": "sidewalk", "w": 3}
+      ]
+    },
+    {
+      "id": "asym_1_2", "kind": "arterial", "width_m": 24,
+      "elements": [
+        {"type": "sidewalk", "w": 3},
+        {"type": "verge", "w": 2.5},
+        {"type": "curb", "w": 0.25},
+        {"type": "lane", "w": 3.5, "dir": "backward"},
+        {"type": "median", "w": 2},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "lane", "w": 3.5, "dir": "forward"},
+        {"type": "curb", "w": 0.25},
+        {"type": "verge", "w": 2.5},
+        {"type": "sidewalk", "w": 3}
+      ]
+    }
+  ]
+}

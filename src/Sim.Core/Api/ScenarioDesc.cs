@@ -22,6 +22,7 @@ public struct ScenarioDesc
     public ToolsDesc Tools;                // инструменты игрока: стоимости и границы мира (player-tools.md §11); нули - бесплатно, границы по умолчанию
     public CityDesc Town;                  // режим жителей (ADR-0011, zoning-demand.md §16): читается только при Demand.Model = Residents; иначе нули и ничего не выделяется
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
+    public RoadProfilesDesc RoadProfiles;  // каталог профилей дорог (ADR-0030, road-profiles.md); Profiles = null - режим legacy: прежняя геометрия, хэши и сейвы побитово прежние
 }
 
 public struct SimCapacities
@@ -165,6 +166,8 @@ public struct CityGenDesc
     public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
     public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (формула этапа 1, дефолт), 1 = alternate, 2 = none
     public float ProgressionSpeedFactor;               // city.progression_speed_factor: v_p = ArterialSpeed * factor (0 = 1.0), калибровка волны alternate
+    public int StreetProfile;                          // city.profiles.street: индекс профиля + 1 (0 - нет; в режиме профилей обязателен); число полос - из профиля
+    public int ArterialProfile;                        // city.profiles.arterial: индекс профиля + 1
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----
@@ -181,6 +184,8 @@ public struct SegmentDesc
     public int LanesAB, LanesBA;
     public float SpeedLimit;               // м/с
     public RoadKind Kind;
+    public int Profile;                    // индекс профиля + 1 (0 - нет); в режиме профилей обязателен, LanesAB/LanesBA/Kind тогда выводятся из профиля (с учётом Mirrored) и обязаны совпасть
+    public bool Mirrored;                  // сегмент A→B построен против направления рисования профиля (SegmentFlags.Mirrored)
 }
 
 public struct NetworkDesc

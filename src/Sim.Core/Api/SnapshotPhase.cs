@@ -247,7 +247,12 @@ internal sealed class SnapshotJob : IRangeJob
         }
 
         bool have = _oldGen[i] == gen;
-        float laneW = w.Builder.Options.LaneWidth;
+        float laneW = net.Lanes[lane].Width;   // ширина полосы остановки (ADR-0030; в legacy = Options.LaneWidth); у connector'а Width = 0 - запас, чтобы скольжение не застряло
+        if (!(laneW > 0f))
+        {
+            laneW = w.Builder.Options.LaneWidth;
+        }
+
         float bayTarget = inBay ? -laneW : 0f;
         if (_rearTick[i] != tick)
         {

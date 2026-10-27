@@ -78,7 +78,9 @@ internal sealed partial class PedNetwork
 
     // ---------------------------------------------------------------- углы
 
-    private static float HalfRoad(in SegmentData sd, float laneW) => (sd.LanesAB + sd.LanesBA) * laneW * 0.5f;
+    // Режим профилей (ADR-0030): полуширина проезжей части из профиля сегмента (max(CurbL, CurbR)); тротуар по сторонам и сторона без тротуара - RP4.
+    private static float HalfRoad(NetworkStore net, in SegmentData sd, float laneW) =>
+        net.Profiles != null && sd.Profile >= 0 ? net.Profiles.HalfRoadM(sd.Profile) : (sd.LanesAB + sd.LanesBA) * laneW * 0.5f;
 
     private static Vec2 Perp(Vec2 d) => new(-d.Z, d.X);   // «вправо» в смысле RightNormal сети: к рукаву со следующим по часовой индексом
 
@@ -128,7 +130,7 @@ internal sealed partial class PedNetwork
             if (ac == 1)
             {
                 Vec2 d = net.ArmDir[fa];
-                float o = HalfRoad(in net.Segments[net.NodeArms[fa]], laneW) + half;
+                float o = HalfRoad(net, in net.Segments[net.NodeArms[fa]], laneW) + half;
                 NodePos[fa] = p + (Perp(d) * o);
                 NodePos[DeadBase + fa] = p + (Perp(d) * -o);
                 continue;
@@ -139,8 +141,8 @@ internal sealed partial class PedNetwork
                 int k2 = k + 1 == ac ? 0 : k + 1;
                 Vec2 d1 = net.ArmDir[fa + k];
                 Vec2 d2 = net.ArmDir[fa + k2];
-                float o1 = HalfRoad(in net.Segments[net.NodeArms[fa + k]], laneW) + half;
-                float o2 = HalfRoad(in net.Segments[net.NodeArms[fa + k2]], laneW) + half;
+                float o1 = HalfRoad(net, in net.Segments[net.NodeArms[fa + k]], laneW) + half;
+                float o2 = HalfRoad(net, in net.Segments[net.NodeArms[fa + k2]], laneW) + half;
                 Vec2 p1 = Perp(d1) * o1;
                 float cr = Cross(d1, d2);
                 if (MathF.Abs(cr) < ParallelSin)
@@ -256,7 +258,7 @@ internal sealed partial class PedNetwork
                 MarkLanesWithMid(in sd, _bmid[0], _bmid[cnt - 1]);
             }
 
-            float off = HalfRoad(in sd, laneW) + (sw * 0.5f);
+            float off = HalfRoad(net, in sd, laneW) + (sw * 0.5f);
             ref readonly NodeData ndA = ref net.Nodes[sd.NodeA];
             ref readonly NodeData ndB = ref net.Nodes[sd.NodeB];
             int la = LocalArm(net, in ndA, seg);
@@ -417,7 +419,7 @@ internal sealed partial class PedNetwork
             Points[PointCount++] = NodePos[fa];
             Points[PointCount++] = nd.Position + (net.ArmDir[fa] * (-0.5f * sw));
             Points[PointCount++] = NodePos[DeadBase + fa];
-            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f));
+            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in net.Segments[seg], laneW)) + sw) * 1000f));
             AddEdge(PedEdgeKind.EndCap, fa, DeadBase + fa, mm, 0, 0, seg, n, fa, 0f, 0f, first, 3);
         }
 
@@ -461,7 +463,7 @@ internal sealed partial class PedNetwork
                 int first = PointCount;
                 Points[PointCount++] = NodePos[a];
                 Points[PointCount++] = NodePos[b];
-                int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in sd, laneW)) + sw) * 1000f));
+                int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in sd, laneW)) + sw) * 1000f));
                 int idx = AddEdge(PedEdgeKind.Crossing, a, b, mm, signal ? (byte)1 : (byte)0, 0, seg, n, slot, 0f, 0f, first, 2);
                 Edges[idx].CostTicks += WaitTicks(w, signal, arterial);
                 XEdge[slot] = idx;
@@ -487,7 +489,7 @@ internal sealed partial class PedNetwork
             int first = PointCount;
             Points[PointCount++] = NodePos[a];
             Points[PointCount++] = NodePos[b];
-            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(in net.Segments[seg], laneW)) + sw) * 1000f));
+            int mm = DetMath.ToIntSat(MathF.Round(((2f * HalfRoad(net, in net.Segments[seg], laneW)) + sw) * 1000f));
             int idx = AddEdge(PedEdgeKind.MidCrossing, a, b, mm, 0, 0, seg, -1, m, MidS[m], MidS[m], first, 2);
             Edges[idx].CostTicks += 2 * 20;   // улица без светофора: 2 с (§2.3)
             MidEdge[m] = idx;

@@ -54,6 +54,9 @@ internal sealed partial class NetworkStore
     /// </summary>
     public byte ToolsTouched { get; internal set; }
 
+    /// <summary>Каталог профилей дорог (ADR-0030); null - режим legacy. Задаётся один раз в <c>World</c> до построения сети; в тике только читается.</summary>
+    internal RoadProfileStore? Profiles { get; set; }
+
     /// <summary>Курс отрезка a->b: тем же выражением, что <see cref="LaneGeometry"/> (нормировка + atan2).</summary>
     internal static float PieceHeading(Vec2 a, Vec2 b)
     {
@@ -193,6 +196,26 @@ internal sealed partial class NetworkStore
     }
 
     /// <summary>
+    /// Загрузка сейва без каталога профилей (v7): <c>Segment.Profile = -1</c> у всех слотов, <c>Lane.Width</c> Normal-полос = ширина полосы сети.
+    /// Эти поля пишутся при эмиссии и не лежат в сейве v7; у connector'ов и мёртвых полос Width = 0, как при построении.
+    /// </summary>
+    internal void FillLegacyProfileData(float laneWidth)
+    {
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            Segments[i].Profile = -1;
+        }
+
+        for (int l = 0; l < LaneCount; l++)
+        {
+            if (LaneAlive(l) && Lanes[l].Kind == LaneKind.Normal)
+            {
+                Lanes[l].Width = laneWidth;
+            }
+        }
+    }
+
+    /// <summary>
     /// Загрузка сейва: производные массивы полос (<c>LaneLength</c>, <c>LanePieceHeading</c>, <c>LaneGateNode</c>) по сохранённым полосам, точкам и узлам.
     /// Полосы с диапазоном точек вне <c>LanePointCount</c> пропускаются (их отклоняет проверка загрузчика раньше).
     /// </summary>
@@ -244,6 +267,22 @@ internal sealed partial class NetworkStore
         PedNet?.SidewalkWidthM ?? 0f,
         PedNet?.CrosswalkWidthM ?? 0f);
 
+    /// <summary>Раздел профилей хэша (только режим профилей, ADR-0030): каталог, <c>Segment.Profile</c> и <c>Lane.Width</c> всех слотов.</summary>
+    private void AddProfileStateToHash(ref Fnv1a64 h)
+    {
+        h.Add(0x46_4F_52_50);   // метка раздела
+        Profiles!.AddToHash(ref h);
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            h.Add(Segments[i].Profile);
+        }
+
+        for (int i = 0; i < LaneCount; i++)
+        {
+            h.Add(Lanes[i].Width);
+        }
+    }
+
     /// <summary>FNV-1a 64 по занятой части всех массивов сети (детерминизм построения).</summary>
     public ulong Hash()
     {
@@ -288,7 +327,30 @@ internal sealed partial class NetworkStore
             h.Add(sg.Generation);
         }
 
-        h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<LaneData>(Lanes, 0, LaneCount)));
+        // Полосы - полями в раскладке до ADR-0030 (60 байт): новое поле Width в этот хэш не входит, пока нет каталога профилей.
+        for (int i = 0; i < LaneCount; i++)
+        {
+            ref readonly LaneData l = ref Lanes[i];
+            h.Add((byte)l.Kind);
+            h.Add(l.LaneNo);
+            h.Add(l.Direction);
+            h.Add(l.Flags);
+            h.Add(l.Segment);
+            h.Add(l.Node);
+            h.Add(l.FromLane);
+            h.Add(l.ToLane);
+            h.Add(l.Length);
+            h.Add(l.SpeedLimit);
+            h.Add(l.FirstPoint);
+            h.Add(l.PointCount);
+            h.Add(l.Left);
+            h.Add(l.Right);
+            h.Add(l.FirstNext);
+            h.Add(l.NextCount);
+            h.Add(l.ConflictGroup);
+            h.Add(l.Generation);
+        }
+
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount)));
         h.Add(new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount));
         h.Add(MemoryMarshal.AsBytes(new ReadOnlySpan<Vec2>(ArmDir, 0, NodeArmCount)));
@@ -299,6 +361,11 @@ internal sealed partial class NetworkStore
         if (ToolsTouched != 0)
         {
             AddToolStateToHash(ref h);
+        }
+
+        if (Profiles != null)
+        {
+            AddProfileStateToHash(ref h);
         }
 
         return h.Value;
