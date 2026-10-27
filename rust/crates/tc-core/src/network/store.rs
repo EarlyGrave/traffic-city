@@ -5,6 +5,7 @@ use crate::api::desc::{NodeControl, SimCapacities};
 use crate::util::detmath::atan2_system;
 use crate::util::{FixedHashMap, Vec2};
 
+use super::profiles::RoadProfileStore;
 use super::types::{LaneData, NodeData, SegmentData};
 
 pub struct NetworkStore {
@@ -42,6 +43,8 @@ pub struct NetworkStore {
     pub segment_point_count: i32,
     pub node_arm_count: i32,
     pub lane_next_count: i32,
+    /// Каталог профилей дорог (ADR-0030); `None` - режим legacy. Задаётся один раз до построения сети, дальше только читается.
+    pub profiles: Option<RoadProfileStore>,
     /// ++ при каждом изменении сети.
     pub version: i32,
 }
@@ -79,6 +82,7 @@ impl NetworkStore {
             segment_point_count: 0,
             node_arm_count: 0,
             lane_next_count: 0,
+            profiles: None,
             version: 0,
         }
     }

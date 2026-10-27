@@ -10,14 +10,18 @@
 use std::fmt;
 
 use tc_core::api::desc::{NetworkDesc, NodeControl, NodeDesc, RoadKind, ScenarioDesc, SegmentDesc, SimCapacities};
+use tc_core::api::profiles::{self, RoadElemDesc, RoadElemKind, RoadLaneDir, RoadProfileDesc, RoadProfileError, RoadProfilesDesc};
 
 use crate::json::{self, Json};
 
-/// Ошибка загрузки; `path` - JSONPath-подобный путь (`$.network.nodes[2].x`), `message` - причина. Тексты не сверяются с C#.
+/// Ошибка загрузки; `path` - JSONPath-подобный путь (`$.network.nodes[2].x`), `message` - причина. Тексты не сверяются с C#,
+/// а вид ошибки каталога профилей (`profile_error`) - те же значения, что в C# (`RoadProfileError`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LoadError {
     pub path: String,
     pub message: String,
+    /// Задан, если каталог профилей разобран, но не прошёл валидацию (road-profiles.md §1 «Валидация»).
+    pub profile_error: Option<RoadProfileError>,
 }
 
 impl LoadError {
@@ -25,6 +29,7 @@ impl LoadError {
         Self {
             path: path.to_string(),
             message: message.into(),
+            profile_error: None,
         }
     }
 }
@@ -188,8 +193,18 @@ fn mps(kmh: f64) -> f32 {
     (kmh / 3.6) as f32
 }
 
-/// Разбирает текст сценария. `Ok` - подмножество разобрано (соответствует `load_ok: true` в golden), `Err` - `load_ok: false`.
+/// Читатель внешних файлов сценария: путь как в JSON (`road_profiles_file`) -> текст файла или причина отказа.
+/// Загрузчик сам ввода-вывода не делает; относительные пути разрешает вызывающий (от каталога сценария, как C# `readRelativeFile`).
+pub type FileReader<'a> = &'a mut dyn FnMut(&str) -> Result<String, String>;
+
+/// Разбирает текст сценария без доступа к файлам: сценарий с `road_profiles_file` даёт ошибку (нужен `load_with`).
+/// `Ok` - подмножество разобрано (соответствует `load_ok: true` в golden), `Err` - `load_ok: false`.
 pub fn load_str(text: &str) -> Res<ScenarioDesc> {
+    load_with(text, &mut |_| Err("file access is not available (use load_with)".to_string()))
+}
+
+/// Как `load_str`, но внешний каталог профилей (`road_profiles_file`, ADR-0030) читает `read_file`.
+pub fn load_with(text: &str, read_file: FileReader<'_>) -> Res<ScenarioDesc> {
     let doc = json::parse(text).map_err(|e| LoadError::new("$", format!("invalid JSON: {e}")))?;
     let mut root = Obj::new(&doc, "$")?;
 
@@ -208,6 +223,7 @@ pub fn load_str(text: &str) -> Res<ScenarioDesc> {
     let seed = root.ulong("seed")?;
     root.num("duration_s", None, 0.0, f64::INFINITY)?;
     root.str_("vehicle_types_file", Some(""))?;
+    let road_profiles = load_road_profiles(&mut root, read_file)?;
 
     // city: генератор вне подмножества, нужна явная сеть.
     let city_enabled = match root.opt_obj("city")? {
@@ -221,7 +237,7 @@ pub fn load_str(text: &str) -> Res<ScenarioDesc> {
         ));
     }
     let mut net_obj = root.opt_obj("network")?.ok_or_else(|| root.missing("network"))?;
-    let network = parse_network(&mut net_obj)?;
+    let network = parse_network(&mut net_obj, &road_profiles)?;
 
     // vehicles: обязательная секция; остальное (type_mix и т.д.) относится к типам ТС и пропускается.
     let mut veh = root.opt_obj("vehicles")?.ok_or_else(|| root.missing("vehicles"))?;
@@ -263,10 +279,201 @@ pub fn load_str(text: &str) -> Res<ScenarioDesc> {
     let capacities = parse_capacities(&mut cap_obj, levels)?;
     root.finish()?;
 
-    Ok(ScenarioDesc { seed, capacities, network })
+    Ok(ScenarioDesc {
+        seed,
+        capacities,
+        network,
+        road_profiles,
+    })
 }
 
-fn parse_network(r: &mut Obj<'_>) -> Res<NetworkDesc> {
+const PROFILES_FORMAT_VERSION: i32 = 1;
+const DEFAULT_MODULE_MM: i32 = 8000;
+
+/// Метры -> целые мм; нецелое число мм - ошибка (ширины в каталоге целые мм, road-profiles.md §1). Как C# `Mm`.
+fn mm(meters: f64, path: &str) -> Res<i32> {
+    let v = meters * 1000.0;
+    let rounded = v.round(); // от нуля при половине, как MidpointRounding.AwayFromZero
+    if (v - rounded).abs() > 1e-6 || rounded > 1_000_000.0 {
+        return Err(LoadError::new(
+            path,
+            format!("value {meters} is not a whole number of millimetres (or too large)"),
+        ));
+    }
+    Ok(rounded as i32)
+}
+
+/// Читает `road_profiles_file` (путь передаётся читателю как есть); ключа нет - режим legacy (`profiles = None`).
+fn load_road_profiles(root: &mut Obj<'_>, read_file: FileReader<'_>) -> Res<RoadProfilesDesc> {
+    if !root.has("road_profiles_file") {
+        return Ok(RoadProfilesDesc::default());
+    }
+    let file = root.str_("road_profiles_file", None)?;
+    let text = read_file(&file).map_err(|e| LoadError::new("$.road_profiles_file", e))?;
+    parse_road_profiles(&text).map_err(|e| LoadError {
+        path: format!("{file}: {}", e.path),
+        message: e.message,
+        profile_error: e.profile_error,
+    })
+}
+
+/// Разбор текста каталога профилей (`scenarios/road-profiles.json`, `tests/fixtures/road-profiles.fixture.json`) с валидацией ядра.
+/// Те же проверки и тот же вид ошибки, что у C# `ScenarioLoader.ParseRoadProfiles`.
+pub fn parse_road_profiles(text: &str) -> Res<RoadProfilesDesc> {
+    let doc = json::parse(text).map_err(|e| LoadError::new("$", format!("road profiles: invalid JSON: {e}")))?;
+    let mut root = Obj::new(&doc, "$")?;
+    match root.get("format_version") {
+        None => return Err(root.missing("format_version")),
+        Some(v) => {
+            let ver = int_value(v, "$.format_version", i32::MIN, i32::MAX)?;
+            if ver != PROFILES_FORMAT_VERSION {
+                return Err(LoadError::new(
+                    "$.format_version",
+                    format!("unsupported version {ver}, loader supports {PROFILES_FORMAT_VERSION}"),
+                ));
+            }
+        }
+    }
+    let module_path = root.child("module_m");
+    let module_mm = match root.get("module_m") {
+        None => DEFAULT_MODULE_MM,
+        Some(v) => mm(num_value(v, &module_path, 0.001, f64::INFINITY)?, &module_path)?,
+    };
+    let items = root.req_arr("profiles")?;
+    let pp = root.child("profiles");
+    root.finish()?;
+
+    let mut profiles = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        let p = format!("{pp}[{i}]");
+        let mut r = Obj::new(item, &p)?;
+        let id = r.str_("id", None)?;
+        let kind = match r.str_("kind", None)?.as_str() {
+            "street" => RoadKind::Street,
+            "arterial" => RoadKind::Arterial,
+            _ => return Err(LoadError::new(&r.child("kind"), "expected \"street\" or \"arterial\"")),
+        };
+        let wpath = r.child("width_m");
+        let width_mm = mm(r.num("width_m", None, 0.001, f64::INFINITY)?, &wpath)?;
+        let els = r.req_arr("elements")?;
+        let ep = r.child("elements");
+        r.finish()?;
+
+        let mut elements = Vec::with_capacity(els.len());
+        for (e, ej) in els.iter().enumerate() {
+            let q = format!("{ep}[{e}]");
+            let mut er = Obj::new(ej, &q)?;
+            let kind = match er.str_("type", None)?.as_str() {
+                "sidewalk" => RoadElemKind::Sidewalk,
+                "verge" => RoadElemKind::Verge,
+                "curb" => RoadElemKind::Curb,
+                "lane" => RoadElemKind::Lane,
+                "median" => RoadElemKind::Median,
+                "bike" => RoadElemKind::Bike,
+                "parking" => RoadElemKind::Parking,
+                "tram" => RoadElemKind::Tram,
+                "bus_bay" => RoadElemKind::BusBay,
+                _ => return Err(LoadError::new(&er.child("type"), "unknown element type")),
+            };
+            let w_path = er.child("w");
+            let w_mm = mm(er.num("w", None, 0.0, f64::INFINITY)?, &w_path)?;
+            let dir = if kind == RoadElemKind::Lane {
+                match er.str_("dir", None)?.as_str() {
+                    "forward" => RoadLaneDir::Forward,
+                    "backward" => RoadLaneDir::Backward,
+                    _ => return Err(LoadError::new(&er.child("dir"), "expected \"forward\" or \"backward\"")),
+                }
+            } else if er.has("dir") {
+                return Err(LoadError::new(&er.child("dir"), "allowed only for \"lane\" elements"));
+            } else {
+                RoadLaneDir::Forward
+            };
+            er.finish()?;
+            elements.push(RoadElemDesc { kind, dir, width_mm: w_mm });
+        }
+        profiles.push(RoadProfileDesc {
+            id,
+            kind,
+            width_mm,
+            elements,
+        });
+    }
+
+    let desc = RoadProfilesDesc {
+        module_mm,
+        profiles: Some(profiles),
+    };
+    if let Err((err, bad)) = profiles::validate(&desc) {
+        let at = match (bad, desc.profiles.as_ref()) {
+            (b, Some(ps)) if b >= 0 => format!("{pp}[{b}] (\"{}\")", ps[b as usize].id),
+            _ => pp,
+        };
+        return Err(LoadError {
+            path: at,
+            message: format!("invalid road profile ({})", err.name()),
+            profile_error: Some(err),
+        });
+    }
+    Ok(desc)
+}
+
+/// Поля сегмента явной сети при каталоге (C# `ParseSegmentProfile`): `profile` (id) обязателен, `mirrored` по умолчанию false;
+/// `lanes_ab`/`lanes_ba`/`kind` выводятся из профиля, а если заданы - обязаны совпасть. `Ok(None)` - каталога нет (поля читает прежний код).
+fn parse_segment_profile(s: &mut Obj<'_>, profiles: &RoadProfilesDesc) -> Res<Option<SegmentProfileFields>> {
+    let Some(ps) = &profiles.profiles else {
+        for key in ["profile", "mirrored"] {
+            if s.has(key) {
+                return Err(LoadError::new(&s.child(key), "requires $.road_profiles_file"));
+            }
+        }
+        return Ok(None);
+    };
+
+    let id = s.str_("profile", None)?;
+    let Some(p) = ps.iter().position(|x| x.id == id) else {
+        return Err(LoadError::new(&s.child("profile"), format!("unknown road profile '{id}'")));
+    };
+    let mirrored = s.bool_("mirrored", false)?;
+    let pd = &ps[p];
+    let count = |dir: RoadLaneDir| pd.elements.iter().filter(|e| e.kind == RoadElemKind::Lane && e.dir == dir).count() as i32;
+    let (fwd, bwd) = (count(RoadLaneDir::Forward), count(RoadLaneDir::Backward));
+    let (lanes_ab, lanes_ba) = if mirrored { (bwd, fwd) } else { (fwd, bwd) };
+    if s.has("lanes_ab") && s.int("lanes_ab", None, i32::MIN, i32::MAX)? != lanes_ab {
+        return Err(LoadError::new(
+            &s.child("lanes_ab"),
+            format!("does not match profile '{id}' ({lanes_ab})"),
+        ));
+    }
+    if s.has("lanes_ba") && s.int("lanes_ba", None, i32::MIN, i32::MAX)? != lanes_ba {
+        return Err(LoadError::new(
+            &s.child("lanes_ba"),
+            format!("does not match profile '{id}' ({lanes_ba})"),
+        ));
+    }
+    if s.has("kind") {
+        let want = if pd.kind == RoadKind::Street { "street" } else { "arterial" };
+        if s.str_("kind", None)? != want {
+            return Err(LoadError::new(&s.child("kind"), format!("does not match profile '{id}'")));
+        }
+    }
+    Ok(Some(SegmentProfileFields {
+        profile: p as i32 + 1,
+        mirrored,
+        lanes_ab,
+        lanes_ba,
+        kind: pd.kind,
+    }))
+}
+
+struct SegmentProfileFields {
+    profile: i32,
+    mirrored: bool,
+    lanes_ab: i32,
+    lanes_ba: i32,
+    kind: RoadKind,
+}
+
+fn parse_network(r: &mut Obj<'_>, profiles: &RoadProfilesDesc) -> Res<NetworkDesc> {
     let nodes_j = r.req_arr("nodes")?;
     let segs_j = r.req_arr("segments")?;
     // ADR-0028: 0 в JSON - скругление выключено (в desc -1), как C# ParseNetwork.
@@ -314,6 +521,21 @@ fn parse_network(r: &mut Obj<'_>) -> Res<NetworkDesc> {
         let mut s = Obj::new(sj, &p)?;
         let a = node_ref(&mut s, "a", &ids)?;
         let b = node_ref(&mut s, "b", &ids)?;
+        if let Some(pf) = parse_segment_profile(&mut s, profiles)? {
+            let speed_limit = mps(s.num("speed_kmh", None, 1.0, f64::INFINITY)?);
+            s.finish()?;
+            segments.push(SegmentDesc {
+                a,
+                b,
+                lanes_ab: pf.lanes_ab,
+                lanes_ba: pf.lanes_ba,
+                speed_limit,
+                kind: pf.kind,
+                profile: pf.profile,
+                mirrored: pf.mirrored,
+            });
+            continue;
+        }
         let lanes_ab = s.int("lanes_ab", None, 0, 16)?;
         let lanes_ba = s.int("lanes_ba", None, 0, 16)?;
         if lanes_ab + lanes_ba == 0 {
@@ -333,6 +555,8 @@ fn parse_network(r: &mut Obj<'_>) -> Res<NetworkDesc> {
             lanes_ba,
             speed_limit,
             kind,
+            profile: 0,
+            mirrored: false,
         });
     }
 

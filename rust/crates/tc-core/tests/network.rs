@@ -38,6 +38,8 @@ fn seg(a: i32, b: i32, ab: i32, ba: i32) -> SegmentDesc {
         lanes_ba: ba,
         speed_limit: 13.0,
         kind: RoadKind::Street,
+        profile: 0,
+        mirrored: false,
     }
 }
 
@@ -50,6 +52,7 @@ fn desc(nodes: Vec<NodeDesc>, segments: Vec<SegmentDesc>) -> ScenarioDesc {
             segments,
             corner_radius: 0.0,
         },
+        road_profiles: Default::default(),
     }
 }
 

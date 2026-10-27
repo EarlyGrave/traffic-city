@@ -1,6 +1,6 @@
 //! Сетевые хэши Rust-пилота (rust-pilot.md §5.2, «Уточнения R2»): порт `Metrics/NetworkHash.cs`. FNV-1a 64, порядок и состав - как в C#.
 
-use crate::api::desc::HASH_VERSION;
+use crate::api::desc::{HASH_VERSION, PROFILES_TAG};
 use crate::intersections::ConnectorStore;
 use crate::util::Fnv1a64;
 
@@ -43,7 +43,7 @@ pub fn network_hash(net: &NetworkStore, cs: &ConnectorStore) -> u64 {
         h.add_u8(s.kind as u8);
         h.add_u8(s.lanes_ab);
         h.add_u8(s.lanes_ba);
-        h.add_u8(s.reserved);
+        h.add_u8(s.flags);
         h.add_i32(s.first_lane_ab);
         h.add_i32(s.first_lane_ba);
         h.add_i32(s.first_point);
@@ -107,6 +107,18 @@ pub fn network_hash(net: &NetworkStore, cs: &ConnectorStore) -> u64 {
         h.add_u8(cs.maneuver[i]);
         h.add_u8(cs.from_arm[i]);
         h.add_u8(cs.flags[i]);
+    }
+
+    if let Some(ps) = &net.profiles {
+        // Раздел профилей (ADR-0030, метка `FORP`; только режим профилей - legacy-хэш прежний): каталог, `segment.profile` и `lane.width` всех слотов.
+        h.add_i32(PROFILES_TAG);
+        ps.add_to_hash(&mut h);
+        for s in &net.segments[..net.segment_count as usize] {
+            h.add_i32(s.profile);
+        }
+        for l in &net.lanes[..net.lane_count as usize] {
+            h.add_f32(l.width);
+        }
     }
 
     h.value()

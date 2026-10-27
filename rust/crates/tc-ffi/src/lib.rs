@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tc_core::api::command::{COMMAND_SIZE, Command, PAYLOAD_SIZE, PilotCounters};
 use tc_core::api::desc::{NetworkDesc, NodeControl, NodeDesc, RoadKind, ScenarioDesc, SegmentDesc, SimCapacities};
+use tc_core::api::profiles::RoadProfilesDesc;
 use tc_core::api::snapshot::VehicleRenderData;
 use tc_core::api::status::CreateStatus;
 use tc_core::sim::Sim;
@@ -221,12 +222,15 @@ unsafe fn read_desc(d: &TcScenarioDesc) -> Result<ScenarioDesc, i32> {
             lanes_ba: s.lanes_ba,
             speed_limit: s.speed_limit,
             kind,
+            profile: 0, // C-API профили не передаёт (режим legacy)
+            mirrored: false,
         });
     }
     Ok(ScenarioDesc {
         seed: d.seed,
         capacities: capacities(&d.capacities),
         network: out,
+        road_profiles: RoadProfilesDesc::default(),
     })
 }
 

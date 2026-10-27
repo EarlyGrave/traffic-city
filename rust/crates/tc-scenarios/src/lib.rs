@@ -24,5 +24,5 @@
 pub mod json;
 pub mod loader;
 
-pub use loader::{LoadError, load_str};
+pub use loader::{FileReader, LoadError, load_str, load_with, parse_road_profiles};
 pub use tc_core::api::desc::desc_hash;

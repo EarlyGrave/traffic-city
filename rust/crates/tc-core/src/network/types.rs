@@ -87,6 +87,9 @@ impl NodeData {
     };
 }
 
+/// Бит `Flags` сегмента: построен против направления рисования профиля (C# `SegmentFlags.Mirrored`).
+pub const SEGMENT_MIRRORED: u8 = 4;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct SegmentData {
@@ -97,7 +100,8 @@ pub struct SegmentData {
     pub kind: RoadKind,
     pub lanes_ab: u8,
     pub lanes_ba: u8,
-    pub reserved: u8,
+    pub flags: u8,
+    pub profile: i32,
     pub first_lane_ab: i32,
     pub first_lane_ba: i32,
     pub first_point: i32,
@@ -114,7 +118,8 @@ impl SegmentData {
         kind: RoadKind::Street,
         lanes_ab: 0,
         lanes_ba: 0,
-        reserved: 0,
+        flags: 0,
+        profile: -1,
         first_lane_ab: 0,
         first_lane_ba: 0,
         first_point: 0,
@@ -144,6 +149,8 @@ pub struct LaneData {
     pub next_count: i32,
     pub conflict_group: i32,
     pub generation: i32,
+    /// Ширина полосы, м (ADR-0030): Normal-полосы - из профиля или `NetworkOptions::lane_width`, connector'ы - 0.
+    pub width: f32,
 }
 
 impl LaneData {
@@ -166,6 +173,7 @@ impl LaneData {
         next_count: 0,
         conflict_group: 0,
         generation: 0,
+        width: 0.0,
     };
 }
 

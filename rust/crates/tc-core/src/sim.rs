@@ -3,11 +3,12 @@
 
 use crate::api::command::{Command, KIND_SET_TARGET_VEHICLE_COUNT, PilotCounters};
 use crate::api::desc::{NetworkOptions, ScenarioDesc, SimCapacities};
+use crate::api::profiles::{self, RoadElemKind, RoadLaneDir};
 use crate::api::snapshot::VehicleRenderData;
 use crate::api::status::CreateStatus;
 use crate::intersections::ConnectorStore;
 use crate::network::hash::{conflicts_hash, headings_hash, network_hash};
-use crate::network::{DefaultConnectorRules, NetworkBuilder, NetworkStatus, NetworkStore};
+use crate::network::{DefaultConnectorRules, NetworkBuilder, NetworkStatus, NetworkStore, RoadProfileStore};
 use crate::util::{RingBuffer, Vec2};
 
 /// `WorldBuilder.MaxCapacity`.
@@ -69,6 +70,37 @@ fn validate_capacities(c: &SimCapacities) -> CreateStatus {
     CreateStatus::Ok
 }
 
+/// `WorldBuilder.ValidateRoadProfiles` (явная сеть): без каталога ссылок на профили быть не должно (режим legacy); с каталогом он валиден,
+/// а каждый сегмент несёт профиль, согласованный с полосами, видом дороги и `mirrored`.
+fn validate_road_profiles(desc: &ScenarioDesc) -> CreateStatus {
+    let segs = &desc.network.segments;
+    let Some(ps) = &desc.road_profiles.profiles else {
+        return if segs.iter().any(|s| s.profile != 0 || s.mirrored) {
+            CreateStatus::InvalidNetwork
+        } else {
+            CreateStatus::Ok
+        };
+    };
+    if profiles::validate(&desc.road_profiles).is_err() {
+        return CreateStatus::InvalidNetwork;
+    }
+    for s in segs {
+        let p = i64::from(s.profile) - 1;
+        let Some(pd) = usize::try_from(p).ok().and_then(|p| ps.get(p)) else {
+            return CreateStatus::InvalidNetwork;
+        };
+        if pd.kind != s.kind {
+            return CreateStatus::InvalidNetwork;
+        }
+        let lane = |dir: RoadLaneDir| pd.elements.iter().filter(|e| e.kind == RoadElemKind::Lane && e.dir == dir).count() as i32;
+        let (fwd, bwd) = (lane(RoadLaneDir::Forward), lane(RoadLaneDir::Backward));
+        if s.lanes_ab != (if s.mirrored { bwd } else { fwd }) || s.lanes_ba != (if s.mirrored { fwd } else { bwd }) {
+            return CreateStatus::InvalidNetwork;
+        }
+    }
+    CreateStatus::Ok
+}
+
 impl Sim {
     /// `Simulation.Create` для явной сети. Ошибка - `CreateStatus` (без паник).
     pub fn create(desc: &ScenarioDesc) -> Result<Sim, CreateStatus> {
@@ -78,7 +110,15 @@ impl Sim {
             return Err(st);
         }
 
+        let st = validate_road_profiles(desc);
+        if st != CreateStatus::Ok {
+            return Err(st);
+        }
+
         let mut net = NetworkStore::new(c);
+        if desc.road_profiles.enabled() {
+            net.profiles = Some(RoadProfileStore::new(&desc.road_profiles)); // каталог проверен validate_road_profiles
+        }
         let mut options = NetworkOptions::DEFAULT;
         options.corner_radius = NetworkOptions::corner_radius_from_desc(desc.network.corner_radius);
         let mut builder = NetworkBuilder::new(options, DefaultConnectorRules);
@@ -111,10 +151,13 @@ impl Sim {
         let sa: Vec<i32> = segs.iter().map(|s| s.a).collect();
         let sb: Vec<i32> = segs.iter().map(|s| s.b).collect();
         let lanes: Vec<i32> = segs.iter().map(|s| s.lanes_ab.wrapping_add(s.lanes_ba)).collect();
-        let setbacks = builder.plan_setbacks(&net, &sa, &sb, &lanes);
+        let profile: Vec<i32> = segs.iter().map(|s| s.profile - 1).collect(); // desc: индекс + 1, 0 - нет
+        let setbacks = builder.plan_setbacks(&net, &sa, &sb, &lanes, &profile);
         for (sg, &(set_a, set_b)) in segs.iter().zip(setbacks.iter()) {
-            builder
-                .add_segment(
+            let added = if sg.profile > 0 {
+                builder.add_profile_segment(&mut net, sg.a, sg.b, &[], sg.profile - 1, sg.mirrored, sg.speed_limit, set_a, set_b)
+            } else {
+                builder.add_segment(
                     &mut net,
                     sg.a,
                     sg.b,
@@ -126,7 +169,8 @@ impl Sim {
                     set_a,
                     set_b,
                 )
-                .map_err(NetworkStatus::to_create_status)?;
+            };
+            added.map_err(NetworkStatus::to_create_status)?;
         }
         let built = builder.build_all_connectors(&mut net);
         if built != NetworkStatus::Ok {

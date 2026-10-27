@@ -7,7 +7,17 @@ use std::path::{Path, PathBuf};
 use tc_core::api::status::CreateStatus;
 use tc_core::sim::Sim;
 use tc_scenarios::json::{self, Json};
-use tc_scenarios::{desc_hash, load_str};
+use tc_scenarios::{LoadError, desc_hash, load_str, load_with};
+
+/// Загрузка сценария из файла репозитория: внешние файлы (`road_profiles_file`) читаются от каталога сценария, как C# `ScenarioLoader.Load`.
+fn load_scenario(scenario: &str) -> Result<tc_core::api::desc::ScenarioDesc, LoadError> {
+    let path = repo_root().join(scenario);
+    let dir = path.parent().unwrap().to_path_buf();
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{scenario}: {e}"));
+    load_with(&text, &mut |rel: &str| {
+        fs::read_to_string(dir.join(rel)).map_err(|e| format!("{rel}: {e}"))
+    })
+}
 
 fn repo_root() -> PathBuf {
     // rust/crates/tc-scenarios -> корень репозитория
@@ -91,7 +101,7 @@ fn check_create(name: &str, desc: &tc_core::api::desc::ScenarioDesc, g: &Json) {
 #[test]
 fn desc_hash_and_load_ok_match_csharp_golden() {
     let files = golden_files();
-    assert!(files.len() >= 10, "ожидали demo-grid + 9 фикстур, нашли {}", files.len());
+    assert!(files.len() >= 19, "ожидали demo-grid + 18 фикстур, нашли {}", files.len());
     let mut checked: Vec<String> = Vec::new();
     for f in files {
         let name = f.file_name().unwrap().to_string_lossy().into_owned();
@@ -109,13 +119,22 @@ fn desc_hash_and_load_ok_match_csharp_golden() {
             panic!("{name}: нет load_ok")
         };
 
-        let text = fs::read_to_string(repo_root().join(scenario)).unwrap_or_else(|e| panic!("{name}: {scenario}: {e}"));
-        let loaded = load_str(&text);
+        let loaded = load_scenario(scenario);
         assert_eq!(
             loaded.is_ok(),
             *load_ok,
             "{name}: load_ok (ошибка загрузчика: {:?})",
             loaded.as_ref().err()
+        );
+        // Вид ошибки каталога профилей (RoadProfileError) - тот же, что у C#; ключа в golden нет - ошибка не из валидации каталога.
+        let want_kind = match field(&g, "profile_error") {
+            Some(Json::Str(s)) => Some(s.as_str()),
+            _ => None,
+        };
+        assert_eq!(
+            loaded.as_ref().err().and_then(|e| e.profile_error).map(|k| k.name()),
+            want_kind,
+            "{name}: profile_error"
         );
         if let Ok(desc) = loaded {
             let Some(Json::Str(expected)) = field(&g, "desc_hash") else {
@@ -128,8 +147,22 @@ fn desc_hash_and_load_ok_match_csharp_golden() {
         }
         checked.push(name);
     }
-    assert_eq!(checked.len(), 10, "сценарных golden: {checked:?}");
-    for must in ["demo-grid.json", "err-json.json", "err-caps.json", "net-big.json", "net-skew.json"] {
+    assert_eq!(checked.len(), 18, "сценарных golden: {checked:?}");
+    for must in [
+        "demo-grid.json",
+        "err-json.json",
+        "err-caps.json",
+        "net-big.json",
+        "net-skew.json",
+        "net-profiles.json",
+        "err-profile-width.json",
+        "err-profile-nocurb.json",
+        "err-profile-lane-order.json",
+        "err-profile-lane-width.json",
+        "err-profile-mm.json",
+        "err-profile-ref.json",
+        "err-profile-lanes.json",
+    ] {
         assert!(checked.iter().any(|n| n == must), "{must} не проверен");
     }
 }
@@ -155,7 +188,7 @@ fn headings_hash_matches_csharp_golden_on_linux() {
         let (Some(Json::Str(scenario)), Some(expected)) = (field(&g, "scenario"), hex(&g, "headings_hash")) else {
             continue;
         };
-        let desc = load_str(&fs::read_to_string(repo_root().join(scenario)).unwrap()).unwrap();
+        let desc = load_scenario(scenario).unwrap();
         let sim = Sim::create(&desc).unwrap();
         let got = format!("{:016x}", sim.headings_hash());
         if got != expected {
