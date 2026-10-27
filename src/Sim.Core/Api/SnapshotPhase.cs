@@ -16,88 +16,6 @@ internal static class SnapshotPhase
 {
     public static void Run(World w) => RunFor(w, w.Tick + 1);
 
-    /// <summary>
-    /// Курс, непрерывный по <paramref name="s"/>: в середине куска полилинии - курс куска, на вершине - среднее соседних (кратчайший угол).
-    /// У коннектора концы стыкуются с соседними полосами: в s = 0 курс последнего куска FromLane, в s = Length - курс первого куска ToLane.
-    /// У обычной полосы на её концах курс куска держится (соседа не знаем). Без тригонометрии, без аллокаций; только для рендера (вне хэша).
-    /// </summary>
-    internal static float SmoothHeading(NetworkStore net, int lane, int piece, float s)
-    {
-        ref readonly LaneData l = ref net.Lanes[lane];
-        int first = l.FirstPoint;
-        int last = first + l.PointCount - 2;
-        float sa = net.LanePointS[piece];
-        float mid = (sa + net.LanePointS[piece + 1]) * 0.5f;
-        float h = net.LanePieceHeading[piece];
-        float h0;
-        float h1;
-        float t;
-        if (s >= mid)
-        {
-            float end;
-            if (piece < last)
-            {
-                end = (net.LanePointS[piece + 1] + net.LanePointS[piece + 2]) * 0.5f;
-                h1 = net.LanePieceHeading[piece + 1];
-            }
-            else if (l.Kind == LaneKind.Connector && (uint)l.ToLane < (uint)net.LaneCount)
-            {
-                end = net.LanePointS[piece + 1];
-                h1 = net.LanePieceHeading[net.Lanes[l.ToLane].FirstPoint];
-            }
-            else
-            {
-                return h;
-            }
-
-            h0 = h;
-            t = end - mid > 1e-6f ? (s - mid) / (end - mid) : 1f;
-        }
-        else
-        {
-            float start;
-            if (piece > first)
-            {
-                start = (net.LanePointS[piece - 1] + sa) * 0.5f;
-                h0 = net.LanePieceHeading[piece - 1];
-            }
-            else if (l.Kind == LaneKind.Connector && (uint)l.FromLane < (uint)net.LaneCount)
-            {
-                start = 0f;
-                ref readonly LaneData f = ref net.Lanes[l.FromLane];
-                h0 = net.LanePieceHeading[f.FirstPoint + f.PointCount - 2];
-            }
-            else
-            {
-                return h;
-            }
-
-            h1 = h;
-            t = mid - start > 1e-6f ? (s - start) / (mid - start) : 1f;
-        }
-
-        if (t < 0f)
-        {
-            t = 0f;
-        }
-        else if (t > 1f)
-        {
-            t = 1f;
-        }
-
-        float diff = h1 - h0;
-        if (diff > MathF.PI)
-        {
-            diff -= 2f * MathF.PI;
-        }
-        else if (diff < -MathF.PI)
-        {
-            diff += 2f * MathF.PI;
-        }
-
-        return h0 + (diff * t);
-    }
-
     /// <summary>Заполняет <c>Render[snapTick &amp; 1]</c> и ставит <c>SnapshotTick</c>; загрузка сейва зовёт её с <c>snapTick = Tick</c> (снапшот состояния «сейчас»).</summary>
     public static void RunFor(World w, long snapTick)
     {
@@ -190,6 +108,13 @@ internal sealed class SnapshotJob : IRangeJob
     private World _w = null!;
     private VehicleRenderData[] _buf = Array.Empty<VehicleRenderData>();
     private int[]? _list;
+    private float[] _rearX = Array.Empty<float>();   // задняя ось (двухосная модель рендера): состояние на машину, вне хэша и сейва
+    private float[] _rearZ = Array.Empty<float>();
+    private int[] _rearGen = Array.Empty<int>();     // поколение + 1; 0 - нет состояния
+    private float[] _oldX = Array.Empty<float>();    // задняя ось до последнего обновления: повторный прогон в тот же тик (сейв, смена вида) идемпотентен
+    private float[] _oldZ = Array.Empty<float>();
+    private int[] _oldGen = Array.Empty<int>();
+    private long[] _rearTick = Array.Empty<long>();  // w.Tick последнего обновления
 
     /// <summary><paramref name="list"/> = null: индексы диапазона - слоты; иначе слот = <c>list[k]</c> (вид, <see cref="RenderViewState"/>).</summary>
     public void Prepare(World w, VehicleRenderData[] buf, int[]? list = null)
@@ -197,6 +122,17 @@ internal sealed class SnapshotJob : IRangeJob
         _w = w;
         _buf = buf;
         _list = list;
+        int cap = w.Vehicles.Lane.Length;
+        if (_rearGen.Length < cap)
+        {
+            _rearX = new float[cap];
+            _rearZ = new float[cap];
+            _rearGen = new int[cap];
+            _oldX = new float[cap];
+            _oldZ = new float[cap];
+            _oldGen = new int[cap];
+            _rearTick = new long[cap];
+        }
     }
 
     public void RunRange(int worker, int begin, int end)
@@ -218,6 +154,13 @@ internal sealed class SnapshotJob : IRangeJob
         }
     }
 
+    /// <summary>Доли длины ТС для двухосной модели рендера: база (между осями) и свес спереди (сзади - остаток, равный переднему).</summary>
+    private const float WheelBase = 0.6f;
+    private const float FrontOverhang = 0.2f;
+
+    /// <summary>Допуск (м) отклонения |F - R_prev| от базы; больше - разрыв (телепорт, сейв, долгий пропуск в виде): задняя ось ставится заново.</summary>
+    private const float ResyncDistance = 4f;
+
     private void Slot(int i)
     {
         World w = _w;
@@ -225,6 +168,20 @@ internal sealed class SnapshotJob : IRangeJob
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
         int lane = v.Lane[i];
+        float s = v.S[i];
+        float lateral = v.Lateral[i];
+        if (lane < 0 && v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+        {
+            // Автобус в виртуальном кармане (ADR-0029): на полосе его нет, рисуется на остановке, сдвинутым за правый край полосы на её ширину (из опций построителя).
+            int si = Transit.BusStopRules.TargetStop(net, v, i);
+            if (si >= 0)
+            {
+                lane = net.BusStops[si].Lane;
+                s = net.BusStops[si].S;
+                lateral = -w.Builder.Options.LaneWidth;
+            }
+        }
+
         if (!v.Pool.IsAlive(i) || (uint)lane >= (uint)net.LaneCount)
         {
             if (buf[i].Flags != 0)
@@ -232,10 +189,11 @@ internal sealed class SnapshotJob : IRangeJob
                 buf[i] = default;
             }
 
+            _rearGen[i] = 0;
+            _oldGen[i] = 0;
             return;
         }
 
-        float s = v.S[i];
         float speed = v.Speed[i];
         Lod.QueueMeso? q = w.Queue;
         if (q != null && q.IsQueued(i))
@@ -244,47 +202,72 @@ internal sealed class SnapshotJob : IRangeJob
             speed = q.ViewSpeed[i];
         }
 
-        float centerS = s - (v.Length[i] * 0.5f);
-        Vec2 pos;
-        int piece;
-        bool smooth = false;
-        if (centerS < 0f && net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
+        // Двухосная модель (только рендер): нос F на полосе, задняя ось R тянется за ним на (свес_перед + база), курс R->F, центр = F - dir * L/2.
+        float length = v.Length[i];
+        // PointHint входит в сейв: обновляем его ровно как раньше (по центру кузова), иначе байтовый корпус сейвов разойдётся.
+        float centerS = s - (length * 0.5f);
+        int savedHint = v.PointHint[i];
+        if (centerS >= 0f)
         {
-            // Въезд на коннектор: хвост кузова ещё на подъездной полосе - берём точку на ней (точная непрерывность).
-            int from = net.Lanes[lane].FromLane;
-            float fromS = net.Lanes[from].Length + centerS;
-            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, from, fromS, ref v.PointHint[i], out pos, out piece);
+            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out _, out _);
         }
-        else if (centerS < 0f)
+
+        int frontHint = savedHint;
+        // Только нос F привязан к полосе (s >= 0 всегда): без спецслучаев на въезде и выезде с перекрёстка.
+        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref frontHint, out Vec2 front, out int fp);
+        Vec2 pd = net.LanePoints[fp + 1] - net.LanePoints[fp];
+        float plen = MathF.Sqrt((pd.X * pd.X) + (pd.Z * pd.Z));
+        Vec2 pdir = plen > 1e-9f ? pd * (1f / plen) : new Vec2(1f, 0f);
+        if (lateral != 0f)
         {
-            // Центр кузова ещё «позади» начала полосы (сразу после перехода): продлеваем первый отрезок назад по прямой,
-            // иначе EvaluatePos прижмёт s к 0 и центр рывком уйдёт вперёд на Length/2.
-            piece = net.Lanes[lane].FirstPoint;
-            Vec2 p0 = net.LanePoints[piece];
-            Vec2 d0 = net.LanePoints[piece + 1] - p0;
-            float len0 = MathF.Sqrt((d0.X * d0.X) + (d0.Z * d0.Z));
-            Vec2 dir0 = len0 > 1e-9f ? d0 * (1f / len0) : new Vec2(1f, 0f);
-            pos = p0 + (dir0 * centerS);
+            // Смещение (смена полосы) применяется к передней оси; задняя догоняет сама - боковое скольжение кузова плавное.
+            front = new Vec2(front.X + (pdir.Z * lateral), front.Z - (pdir.X * lateral));
+        }
+
+        // Задняя ось: своё состояние на машину (не в хэше и не в сейве), тянется за передней: R = F - norm(F - R_prev) * база.
+        float wheelBase = length * (WheelBase + FrontOverhang);   // нос -> задняя ось
+        int gen = v.Pool.GenerationOf(i) + 1;
+        Vec2 rear;
+        long tick = w.Tick;
+        if (_rearTick[i] != tick)
+        {
+            // Первый прогон в этом тике: текущая задняя ось становится базой, прежняя база запоминается для повторных прогонов.
+            _oldX[i] = _rearX[i];
+            _oldZ[i] = _rearZ[i];
+            _oldGen[i] = _rearGen[i];
+        }
+
+        bool have = _oldGen[i] == gen;
+        Vec2 rd = default;
+        float rlen = 0f;
+        if (have)
+        {
+            rd = new Vec2(front.X - _oldX[i], front.Z - _oldZ[i]);
+            rlen = MathF.Sqrt((rd.X * rd.X) + (rd.Z * rd.Z));
+            have = rlen > 0.25f * wheelBase && rlen < wheelBase + ResyncDistance;
+        }
+
+        if (have)
+        {
+            rear = new Vec2(front.X - (rd.X * (wheelBase / rlen)), front.Z - (rd.Z * (wheelBase / rlen)));
         }
         else
         {
-            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out pos, out piece);
-            smooth = true;
+            // Спавн, новое поколение слота, сейв/разрыв: по курсу куска полосы под передней осью (без поиска на траектории).
+            rear = new Vec2(front.X - (pdir.X * wheelBase), front.Z - (pdir.Z * wheelBase));
         }
 
-        float lateral = v.Lateral[i];
-        float heading = smooth ? SnapshotPhase.SmoothHeading(net, lane, piece, centerS) : net.LanePieceHeading[piece];
-        float x = pos.X;
-        float z = pos.Z;
-        if (lateral != 0f)
-        {
-            // Смещение по нормали к курсу: нужен нормированный dir (как в LaneGeometry.Evaluate).
-            Vec2 d = net.LanePoints[piece + 1] - net.LanePoints[piece];
-            float len = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
-            Vec2 dir = len > 1e-9f ? d * (1f / len) : new Vec2(1f, 0f);
-            x = pos.X + (dir.Z * lateral);
-            z = pos.Z - (dir.X * lateral);
-        }
+        _rearX[i] = rear.X;
+        _rearZ[i] = rear.Z;
+        _rearGen[i] = gen;
+        _rearTick[i] = tick;
+        Vec2 ax = front - rear;
+        float alen = MathF.Sqrt((ax.X * ax.X) + (ax.Z * ax.Z));
+        Vec2 dir = alen > 1e-4f ? ax * (1f / alen) : pdir;
+        float heading = MathF.Atan2(dir.Z, dir.X);
+        // Кузов покрывает [s - L, s] вдоль курса: центр на L/2 позади носа.
+        float x = front.X - (dir.X * length * 0.5f);
+        float z = front.Z - (dir.Z * length * 0.5f);
 
         ref VehicleRenderData r = ref buf[i];
         r.X = x;

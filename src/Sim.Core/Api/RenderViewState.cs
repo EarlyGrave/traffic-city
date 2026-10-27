@@ -185,6 +185,24 @@ internal sealed class RenderViewState
             }
         }
 
+        // Автобусы в виртуальных карманах (ADR-0029) в списках полос не состоят: добавляем по остановке, если полоса остановки пересекает вид.
+        NetworkStore net = w.Net;
+        int[] bayBus = w.BayBus;
+        for (int si = 0; si < net.BusStopCount; si++)
+        {
+            int bus = bayBus[si];
+            if (bus < 0)
+            {
+                continue;
+            }
+
+            int lane = net.BusStops[si].Lane;
+            if ((uint)lane < (uint)_laneStamp.Length && !(_bx1[lane] < X0 || _bx0[lane] > X1 || _bz1[lane] < Z0 || _bz0[lane] > Z1))
+            {
+                list[n++] = bus;
+            }
+        }
+
         return n;
     }
 

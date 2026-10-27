@@ -46,7 +46,7 @@ internal static class BusStopPhase
         int hw = v.HighWater;
         for (int i = 0; i < hw; i++)
         {
-            if (!v.Pool.IsAlive(i) || (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0 || v.Lane[i] < 0)
+            if (!v.Pool.IsAlive(i) || (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0 || (v.Lane[i] < 0 && (v.Flags[i] & (byte)VehicleFlags.InBay) == 0))
             {
                 continue;
             }
@@ -114,7 +114,7 @@ internal static class BusStopPhase
             {
                 if (++v.DwellTicks[i] >= GiveUpTicks)
                 {
-                    Advance(w, i, v.BusRoute[i], ref net.BusRoutes[v.BusRoute[i]]);
+                    Advance(w, i, v.BusRoute[i], ref net.BusRoutes[v.BusRoute[i]], v.Lane[i], v.S[i]);
                 }
             }
             else
@@ -189,6 +189,113 @@ internal static class BusStopPhase
 
         stop.LastArrivalTick = w.Tick;
         w.Emit(SimEventKind.BusStopArrived, 0, r, si);
+        if (stop.Kind == BusStopKind.Bay && BusStopRules.BayVirtual(w))
+        {
+            EnterBay(w, i, si, ref stop);
+        }
+    }
+
+    /// <summary>
+    /// Въезд в виртуальный карман (bus-bays.md §2 п. 1): карман свободен и точка остановки вне горизонта ворот - автобус снимается со списка полосы (<c>Lane = -1</c>),
+    /// стоит «вне сети» в <c>S = stop.S</c> с флагами <c>AtStop | InBay</c>. Иначе обслуживание у обочины, как раньше (<c>BayFallbacks++</c>).
+    /// Метрики фазы 9 карман не трогает: автобус остаётся живым и учтённым фазой 6 (скорость 0, <c>StillTicks</c> не растёт - <c>Move</c> для <c>Lane &lt; 0</c> не вызывается).
+    /// </summary>
+    private static void EnterBay(World w, int i, int si, ref BusStopData stop)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        if (stop.BayUsed != 0 || net.LaneLength[stop.Lane] - stop.S < BusStopRules.BayHorizon(w))
+        {
+            w.Counters.BayFallbacks++;
+            return;
+        }
+
+        w.Occupancy.Unlink(i);
+        v.S[i] = stop.S;
+        v.Speed[i] = 0f;
+        v.LaneChangeDir[i] = 0;
+        v.Flags[i] |= (byte)VehicleFlags.InBay;
+        stop.BayUsed = 1;
+        stop.BayExitFrom = -1;
+        w.BayBus[si] = i;
+        w.Counters.BayEntries++;
+    }
+
+    /// <summary>
+    /// Конец стоянки автобуса в кармане (bus-bays.md §2 п. 3-4): ждёт зазор в полосе остановки (<see cref="BusStopRules.ExitGap"/>); на конечной зазор не нужен (автобус исчезает).
+    /// Как только зазор есть, строится маршрут к следующей остановке от точки остановки (отложенное построение - повтор на следующем тике) и автобус вставляется в полосу.
+    /// </summary>
+    private static void ExitBay(World w, int i)
+    {
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        int si = BusStopRules.TargetStop(net, v, i);
+        if (si < 0)
+        {
+            return;   // инвариант InBay нарушен (валидатор сейва не пропускает): ждём, не падаем
+        }
+
+        ref BusStopData stop = ref net.BusStops[si];
+        int r = v.BusRoute[i];
+        ref BusRouteData br = ref net.BusRoutes[r];
+        if (stop.Lane < 0)
+        {
+            Remove(w, i, r, ref br);   // остановку снесли инструментом, пока автобус стоял в кармане: вставлять некуда (полное сопровождение правок сети - BB2)
+            return;
+        }
+
+        if (stop.BayExitFrom < 0)
+        {
+            stop.BayExitFrom = w.Tick;
+        }
+
+        int ahead = -1;
+        int behind = -1;
+        bool terminal = v.BusNextStop[i] >= br.StopCount - 1;
+        if (!terminal && !BusStopRules.ExitGap(w, i, in stop, out ahead, out behind))
+        {
+            return;
+        }
+
+        int lane = stop.Lane;
+        long waited = w.Tick - stop.BayExitFrom;
+        if (Advance(w, i, r, ref br, lane, stop.S) != AdvanceResult.Advanced)
+        {
+            return;   // отложено (повтор на следующем тике) либо автобус исчез вместе с карманом (ReleaseBay в Remove)
+        }
+
+        ReleaseBay(w, i, si, ref stop, waited);
+        w.Occupancy.InsertBetween(lane, i, ahead, behind);
+        v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
+    }
+
+    /// <summary>Карман остановки <paramref name="si"/> освобождён: автобус <paramref name="i"/> больше не <c>InBay</c>.</summary>
+    private static void ReleaseBay(World w, int i, int si, ref BusStopData stop, long waitedTicks)
+    {
+        w.Vehicles.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.InBay);
+        stop.BayUsed = 0;
+        stop.BayFlags = 0;
+        stop.BayExitFrom = -1;
+        w.BayBus[si] = -1;
+        w.Counters.BayExitWaitTicksTotal += waitedTicks;
+    }
+
+    /// <summary>После загрузки сейва: <see cref="World.BayBus"/> по автобусам <c>InBay</c> (производное).</summary>
+    internal static void RebuildBay(World w)
+    {
+        System.Array.Fill(w.BayBus, -1);
+        VehicleStore v = w.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (v.Pool.IsAlive(i) && (v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+            {
+                int si = BusStopRules.TargetStop(w.Net, v, i);
+                if (si >= 0)
+                {
+                    w.BayBus[si] = i;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -220,23 +327,39 @@ internal static class BusStopPhase
             return;
         }
 
+        if ((v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+        {
+            ExitBay(w, i);
+            return;
+        }
+
         int r = v.BusRoute[i];
         ref BusRouteData br = ref w.Net.BusRoutes[r];
-        Advance(w, i, r, ref br);
+        Advance(w, i, r, ref br, v.Lane[i], v.S[i]);
     }
 
-    /// <summary>Едет к следующей остановке после целевой (Build от текущей позиции); без пути остановки пропускаются; дальше нет - деспаун.</summary>
-    private static void Advance(World w, int i, int r, ref BusRouteData br)
+    private enum AdvanceResult
+    {
+        Deferred,   // построение маршрута отложено: автобус стоит, повтор на следующем тике
+        Advanced,   // маршрут к следующей остановке назначен
+        Removed,    // дальше остановок нет - автобус деспаунен
+    }
+
+    /// <summary>
+    /// Едет к следующей остановке после целевой (Build от точки <paramref name="lane"/>/<paramref name="s"/>: полоса и позиция автобуса или, для кармана, его остановки);
+    /// без пути остановки пропускаются; дальше нет - деспаун.
+    /// </summary>
+    private static AdvanceResult Advance(World w, int i, int r, ref BusRouteData br, int lane, float s)
     {
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
         for (int k = v.BusNextStop[i] + 1; k < br.StopCount; k++)
         {
             ref readonly BusStopData next = ref net.BusStops[br.FirstStop + k];
-            BuildStatus st = w.Router.Build(v.Lane[i], v.S[i], next.Lane, next.S, w.Tick, out RouteHandle h);
+            BuildStatus st = w.Router.Build(lane, s, next.Lane, next.S, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
-                return; // стоим и повторяем на следующем тике (DwellTicks уже 0)
+                return AdvanceResult.Deferred; // стоим и повторяем на следующем тике (DwellTicks уже 0)
             }
 
             if (st != BuildStatus.Ok)
@@ -264,10 +387,11 @@ internal static class BusStopPhase
             v.BusNextStop[i] = k;
             v.DwellTicks[i] = 0;
             v.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.AtStop);
-            return;
+            return AdvanceResult.Advanced;
         }
 
         Remove(w, i, r, ref br);
+        return AdvanceResult.Removed;
     }
 
     /// <summary>Остановка, на которой высаживаются оставшиеся пассажиры исчезающего автобуса: целевая (или последняя маршрута).</summary>
@@ -286,6 +410,16 @@ internal static class BusStopPhase
         if (w.Peds != null && w.Peds.PaxHead[i] >= 0)
         {
             Stops.DropAll(w, i, TargetStopOrLast(w, i, in br));
+        }
+
+        if ((v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+        {
+            int si = BusStopRules.TargetStop(w.Net, v, i);
+            if (si >= 0)
+            {
+                ref BusStopData bs = ref w.Net.BusStops[si];
+                ReleaseBay(w, i, si, ref bs, bs.BayExitFrom >= 0 ? w.Tick - bs.BayExitFrom : 0L);
+            }
         }
 
         w.Occupancy.UnlinkAll(i);
