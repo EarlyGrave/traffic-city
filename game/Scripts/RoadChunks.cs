@@ -74,6 +74,9 @@ public sealed class RoadChunks
         _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
         _material.SetShaderParameter("line_center_alpha", Palette.LaneLineCenterAlpha);
         _material.SetShaderParameter("line_px", LinePx);
+        _material.SetShaderParameter("asphalt_color", Palette.Asphalt);
+        _material.SetShaderParameter("asphalt_fade_begin", lod.RoadLod0 * Palette.AsphaltFadeBegin);
+        _material.SetShaderParameter("asphalt_fade_end", lod.RoadLod0 * Palette.AsphaltFadeEnd);
         _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
         _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };

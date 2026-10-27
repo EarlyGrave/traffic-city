@@ -21,11 +21,16 @@ public static class Palette
     public static readonly Color Ambient = Srgb("#D9E6FF");
 
     /// <summary>Линии полос и направляющие коннекторов (VS3a): смешиваются с асфальтом долей <see cref="LaneLineAlpha"/>, то есть читаются слабым тёмным оттенком.</summary>
-    public static readonly Color LaneLine = Srgb("#4A463F");
-    public const float LaneLineAlpha = 0.26f;
+    /// <summary>Асфальт вблизи (все классы и площадки); дальше плавно переходит в цвет класса (Street/Arterial) - «картографический» вид.</summary>
+    public static readonly Color Asphalt = Srgb("#8A8884");
+    public const float AsphaltFadeBegin = 0.5f; // доли дистанции LOD0
+    public const float AsphaltFadeEnd = 1.0f;
+
+    public static readonly Color LaneLine = Srgb("#E2DED6");
+    public const float LaneLineAlpha = 0.30f;
 
     /// <summary>Осевая (граница направлений) заметнее разделителей полос того же направления.</summary>
-    public const float LaneLineCenterAlpha = 0.42f;
+    public const float LaneLineCenterAlpha = 0.45f;
 
     /// <summary>Heatmap дорог: свободно - средне - затор (HeatPalette.cs берёт отсюда).</summary>
     public static readonly Color HeatRoadLow = Srgb("#1AD933");
