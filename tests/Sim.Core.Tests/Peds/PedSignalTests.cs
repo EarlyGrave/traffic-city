@@ -169,6 +169,36 @@ public sealed class PedSignalTests
     }
 
     [Fact]
+    public void Adaptive_GreenRestingPastMaxGreen_PedestrianArrivingLaterStillGetsWalk()
+    {
+        // L14: ось отдыхала в зелёном дольше MaxGreen (встречного спроса нет), Walk уже был обслужен: поздний пешеход не помещался в «до max-out»
+        // и не вызывал ось (она и так зелёная) - ждал часами. Теперь при отдыхе дольше MaxGreen Walk стартует снова.
+        using Simulation sim = Cross(peds: true, adaptive: true);
+        World w = sim.World;
+        PedWorld pw = w.Peds!;
+        SignalStore s = w.Signals;
+        int xe = XOf(w, 0);
+        int xw = XOf(w, 2);
+        PedCrossingTests.AddPed(w, xe, 0);
+        int guard = 0;
+        while (guard++ < 4000 && !(s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.GreenElapsed[0] >= s.GreenTicks[1] + 200))
+        {
+            sim.Step(1);
+        }
+
+        Assert.Equal(1, s.Phase[0]);
+        Assert.True(s.GreenElapsed[0] >= s.GreenTicks[1] + 200, "фикстура: зелёная ось должна отдыхать дольше MaxGreen");
+        Assert.Equal(0, pw.X.QCount[xe]);
+        int q = PedCrossingTests.AddPed(w, xw, 1);
+        for (int t = 0; t < 400 && pw.P.State[q] == (byte)PedState.AtCrossing; t++)
+        {
+            sim.Step(1);
+        }
+
+        Assert.NotEqual((byte)PedState.AtCrossing, pw.P.State[q]);
+    }
+
+    [Fact]
     public void Fixed_WalkOnlyAtGreenStart_PedestrianWaitsForNextGreen()
     {
         using Simulation sim = Cross(peds: true, adaptive: false);
