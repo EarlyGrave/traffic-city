@@ -202,7 +202,9 @@ public sealed class Simulation : IDisposable
     public bool TryGetResidentInfo(int index, int generation, out ResidentInfo info);   // EntityRef - с волной инструментов T1
     public bool TryGetBuildingInfo(int index, int generation, out BuildingInfo info);
     public int GetAccessibility(Span<int> perCell, AccessKind kind); // heatmap; Z1 - нули, поле считает Z3
-    public bool CopyFlowTotals(Span<long> dst, FlowPeriod period);   // 13 видов потоков за вчера/сегодня/всё время
+    public bool CopyFlowTotals(Span<long> dst, FlowPeriod period);   // Simulation.FlowKindCount = 17 видов потоков за вчера/сегодня/всё время (виды 13-16 - казна, 4.2)
+    public bool GetCityBudget(out CityBudgetInfo info);              // 4.2 (E1): казна; false - города или city_budget нет. Потоки по видам за вчера - CopyFlowTotals
+    public int GetLandValue(Span<int> perCell);                      // 4.2 (E1): цена места по ячейкам (heatmap, тот же массив, что берёт земельный налог); 0 - бюджета нет
     public ReadOnlySpan<uint> NodeThroughput { get; }                // [MaxNodes] машин, проехавших узел (всего)
     public ReadOnlySpan<BusRouteStats> BusRouteStats { get; }        // [MaxBusRoutes]
 
@@ -396,6 +398,8 @@ public enum CommandKind : int
     // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера; T3: 28-30, T4: 25 и отмена `BuildRoad(RestoreOf)` работают; остальные - NotSupported до T5..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
     RemoveRoad = 25, UpgradeRoad = 26, SplitRoad = 27, SetArmControl = 28, SetTurnBan = 29, SetLaneFlags = 30,
     InsertBusStop = 31, RemoveBusStop = 32, RemoveBusRoute = 33, SetBusRouteParams = 34, MergeAtNode = 35,
+    // 4.2, ADR-0025, city-economy.md §11 (E1): номер 25 из спеки занят инструментами - взят следующий свободный
+    SetBudgetPolicy = 36,       // {BudgetPolicy (16 Б)}: ожидающая политика, действует с границы суток; без города - NotSupported; Enable на городе без бюджета - NotSupported (тело - E2); бюджет не выключить; ставки > max_* - BudgetRule
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
@@ -724,6 +728,8 @@ public enum SimEventKind : int
     SegmentRemapped = 50, NodeRemapped = 51, BusStopRemapped = 52, BusRouteRemapped = 53,   // A = старый индекс, B = новый
 }
 // RejectReason 6..15 (4.3): TooShort, TooSharp, Overlap, NodeLimit, Busy, CreatesTrap, InsufficientFunds, Unreachable, ZoneRule, OutOfBounds.
+// RejectReason 16 (4.2, E1): BudgetRule (политика бюджета вне пределов, выключение бюджета, политика без бюджета). InsufficientFunds (12) выдаёт E4.
+// События 4.2 (E1): BudgetNegative = 55, BudgetLimitReached = 56, BudgetRecovered = 57, PolicyApplied = 58 (A = номер суток; PolicyApplied.B = Fare новой политики).
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 24)]
 public struct SimEvent
@@ -1209,9 +1215,9 @@ public struct Fnv1a64
 11. Пешеходы (только при `peds`, `hash_version` 2; `Peds/PedHash.cs`): `Peds`-PRNG, `TargetPeds`; пул и поля пешеходов (живые слоты; путь - шаги `[0, PathCount)`); жители и очередь готовых; состояние переходов
     (по индексу `x`), очереди остановок, `PaxHead`; очередь путей; гистограммы ожидания; счётчики группы «пешеходы». Списки по рёбрам, колесо таймеров, `RenderHint` - производные, не хэшируются.
 
-12. Город (только при `demand.model = residents`, `hash_version` 3; `City/CityHash.cs`): `Demand`-PRNG, сутки и режим исполнения, курсоры, сглаженный спрос; участки (состояние), здания и жители (живые слоты, планы, ноги),
+12. Город (только при `demand.model = residents`, `hash_version` 4; `City/CityHash.cs`): `Demand`-PRNG, сутки и режим исполнения, курсоры, сглаженный спрос; участки (состояние), здания и жители (живые слоты, планы, ноги),
     очередь ищущих работу; `External`/`City` и потоки; скимы (данные, `K`, накопители отсортированным слепком, `LS_ref`), `CellLoads`; `Resident` живых машин; счётчики группы «город». Геометрия участков, колесо жителей, сетка занятости
-    нарезки - производные, не хэшируются.
+    нарезки - производные, не хэшируются. С `hash_version` 4 при `economy.city_budget` дописывается раздел казны (политики, цена земли, сглаженные доход и расход, переносы остатков, долг, кредиты undo, потоки 13-16, фонд оплаты живых зданий, счётчики казны); вне бюджета хэш прежний.
 
 13. Состояние инструментов (4.3, T2; только при `World.ToolsTouched = 1` - после первой структурной правки сети; `NetworkStore.AddToolStateToHash`): `ToolsTouched`; пулы узлов, сегментов, остановок и
     маршрутов (`HighWater`, длина и содержимое free-list); арены `Lanes, LanePoints, SegmentPoints, NodeArms, LaneNext, ZoneLanes, BusRouteStops` и строк/конфликтов connector'ов (хвост, потери,

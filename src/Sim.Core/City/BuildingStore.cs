@@ -22,6 +22,7 @@ internal sealed class BuildingStore
     public readonly long[] Account;
     public readonly long[] RevenueEwma;
     public readonly long[] ProfitEwma;
+    public readonly long[] PayrollEwma;    // сглаженный фонд оплаты фирмы (city-economy.md §2.2, §7.2): буфер дивидендов; без бюджета 0
     public readonly int[] VisitsDay;       // [2 * Capacity]
     public readonly long[] RevenueDay;     // [2 * Capacity]
     public readonly long[] CostDay;        // [2 * Capacity]
@@ -45,6 +46,7 @@ internal sealed class BuildingStore
         Account = new long[capacity];
         RevenueEwma = new long[capacity];
         ProfitEwma = new long[capacity];
+        PayrollEwma = new long[capacity];
         VisitsDay = new int[2 * capacity];
         RevenueDay = new long[2 * capacity];
         CostDay = new long[2 * capacity];
@@ -103,6 +105,7 @@ internal sealed class BuildingStore
         Account[i] = 0;
         RevenueEwma[i] = 0;
         ProfitEwma[i] = 0;
+        PayrollEwma[i] = 0;
         VisitsDay[2 * i] = 0;
         VisitsDay[(2 * i) + 1] = 0;
         RevenueDay[2 * i] = 0;

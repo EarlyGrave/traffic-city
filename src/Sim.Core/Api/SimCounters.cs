@@ -134,6 +134,10 @@ public struct SimCounters
     public long ExecSwitches;             // переключений micro/aggregate
     public long CityDays;                 // пройденных границ суток
     public long AggregateLegs;            // ног, исполненных агрегатом
+    // --- казна города (4.2, city-economy.md §12): в хэше (раздел бюджета) и сейве (CNTR) всегда; считает E2, без city_budget - нули ---
+    public long FareEvaded;               // ног на автобусе без оплаты (не хватило на проезд)
+    public long DebtEvictions;            // выселений за долг
+    public long InsufficientFunds;        // отказов инструментов из-за нехватки казны
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

@@ -171,6 +171,9 @@ internal static class WorldLoader
             case "LEDG":
                 expected = c.Desc.Demand.Model == DemandModel.Residents;
                 break;
+            case "CBGT":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Economy.CityBudget;
+                break;
             case "PEDS":
             case "PPTH":
             case "RESI":

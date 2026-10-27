@@ -21,7 +21,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 15L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ
+    private const long BudgetBytes = 21L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -36,6 +36,7 @@ public sealed class SaveCorpusTests
         new("small-edited", 600, SmallEdited, EvolveEdited),   // 4.3 (T2): сеть с дырами (ToolsTouched = 1), общие случаи w4 без дыр - остальные файлы
         new("cross-prof", 600, CrossProf),   // w8 (ADR-0030): режим профилей - каталог RPRF, Profile/Mirrored, Width, начало сетки
         new("s1k-prof", 2400, S1kProf),
+        new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025, E1): s1k-res с city_budget, ожидающая политика в сейве (E2 заменит сценарием s1k-res-econ)
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -245,6 +246,32 @@ public sealed class SaveCorpusTests
         return (sc.Desc, sc.TypeNames);
     }
 
+    private static (ScenarioDesc, string[]) S1kResEcon()
+    {
+        // E1: сценария s1k-res-econ ещё нет (его добавляет E2) - тот же s1k-res с economy.city_budget = true.
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res.json"));
+        ScenarioDesc d = sc.Desc;
+        d.Town.Economy.CityBudget = true;
+        return (d, sc.TypeNames);
+    }
+
+    // За 100 тиков до конца - SetBudgetPolicy: в сейве ожидающая политика (граница суток ещё впереди: тик 216500 > 216000, следующая - 288000).
+    private static void EvolveBudget(Simulation sim, int ticks)
+    {
+        sim.Step(ticks - 100);
+        BudgetPolicy p = default;
+        p.TaxRBp = 800;
+        p.TaxCBp = 1500;
+        p.TaxIBp = 1500;
+        p.LandTaxBpDay = 20;
+        p.Fare = 3;
+        p.Flags = BudgetPolicyFlags.Enable;
+        sim.Enqueue(Command.MakeSetBudgetPolicy(in p, 1));
+        sim.Step(100);
+        Assert.True(sim.GetCityBudget(out CityBudgetInfo info));
+        Assert.Equal(1, info.HasPending);
+    }
+
     private static (ScenarioDesc, string[]) S1kPeds()
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-peds.json"));
@@ -379,6 +406,51 @@ public sealed class SaveCorpusTests
                     {
                         Assert.Equal(Sim.Core.City.LotOrient.Legacy, sim.World.City.Lots.Orient[i]);
                     }
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W8Files_AreKeptAndMigrate_ToNoBudget()
+    {
+        // Файлы w8 (до казны города, ADR-0025) остаются навсегда: миграция 8 -> 9 даёт «бюджета нет» - дефолты параметров, потоки 13..16 и фонд оплаты нулевые,
+        // хэш продолжения не меняется (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w8-*.tcsave");
+        Assert.True(old.Length >= 9, "корпус w8 должен остаться в репозитории");
+        CityEconomyDesc def = CityDesc.Default().Economy;
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(8, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 8, rep.MigrationsApplied);
+                Assert.False(sim!.GetCityBudget(out _));
+                Assert.Equal(0, sim.Counters.FareEvaded + sim.Counters.DebtEvictions + sim.Counters.InsufficientFunds);
+                Sim.Core.City.CityWorld? city = sim.World.City;
+                if (city == null)
+                {
+                    Assert.False(sim.World.Town.Economy.CityBudget);
+                    continue;
+                }
+
+                Assert.Null(city.Budget);
+                CityEconomyDesc got = city.Cfg.Economy;
+                Assert.False(got.CityBudget);
+                Assert.Equal((def.TaxRBp, def.TaxCProfitBp, def.LandTaxBpDay, def.BusFare, def.CreditDays, def.LvRef, def.LvMax, def.VotPct), (got.TaxRBp, got.TaxCProfitBp, got.LandTaxBpDay, got.BusFare, got.CreditDays, got.LvRef, got.LvMax, got.VotPct));
+                Assert.True(Sim.Core.City.CityBudget.IsValid(in got));
+                for (int k = Sim.Core.City.Ledger.LegacyFlowCount; k < Sim.Core.City.Ledger.FlowCount; k++)
+                {
+                    Assert.Equal(0, city.Ledger.FlowDay[k] + city.Ledger.FlowYesterday[k] + city.Ledger.FlowTotal[k]);
+                }
+
+                for (int i = 0; i < city.Buildings.HighWater; i++)
+                {
+                    Assert.Equal(0, city.Buildings.PayrollEwma[i]);
                 }
             }
         }

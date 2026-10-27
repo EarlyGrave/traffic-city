@@ -211,7 +211,7 @@ public sealed class ZoningDataTests
         Assert.True(sim.GetCityStats(out CityStats s));
         Assert.Equal(0L, s.BalanceResidents + s.BalanceFirms + s.BalanceExternal + s.BalanceCity);
         Assert.Equal(c.Ledger.FlowTotal[(int)FlowKind.Endowment], -c.Ledger.External);
-        var total = new long[13];
+        var total = new long[Simulation.FlowKindCount];
         Assert.True(sim.CopyFlowTotals(total, FlowPeriod.Total));
         Assert.Equal(-c.Ledger.External, total[(int)FlowKind.Endowment]);
     }

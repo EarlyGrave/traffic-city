@@ -224,7 +224,7 @@ public static class CityRunCommand
             Immigrants = sim.Counters.Immigrants,
             Emigrants = sim.Counters.Emigrants,
             Exec = s.ExecMode,
-            Flows = new long[16],
+            Flows = new long[Simulation.FlowKindCount],
         };
         p.CarKm = p.CarCrossings * sim.CityCellM / 1000.0;
         sim.CopyFlowTotals(p.Flows, FlowPeriod.Yesterday);
