@@ -1,77 +1,91 @@
 {
   "scenario": "s1k",
+  "content_fingerprint": "ef46db3751d8e999",
   "ticks": 2000,
   "warmup_ticks": 2400,
   "threads": 1,
-  "commit": "d32717e",
+  "view": "all",
+  "seed": 20261024,
+  "signal_mode": "adaptive",
+  "signal_coordination": "legacy",
+  "commit": "8c3d4aa",
   "environment": {
     "runtime": ".NET 10.0.13",
     "os": "Ubuntu 24.04.5 LTS",
-    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
     "cpu_count": 4
   },
   "perf": {
     "tick_ms": {
-      "p50": 0.16274,
-      "p95": 0.291443,
-      "p99": 0.494192,
-      "max": 3.703227
+      "p50": 0.30723,
+      "p95": 0.418318,
+      "p99": 0.542876,
+      "max": 1.564176
     },
     "work_per_tick": {
-      "behaviour_vehicles": 998.579,
-      "leader_lookahead_hops": 1211.33,
-      "obstacle_gap_calls": 999.914,
-      "conflict_gap_calls_behaviour": 425.4565,
+      "behaviour_vehicles": 998.6635,
+      "leader_lookahead_hops": 1234.7435,
+      "obstacle_gap_calls": 999.8385,
+      "conflict_gap_calls_behaviour": 470.126,
       "conflict_gap_calls_integrate": 0,
-      "conflict_gap_mask_rejects": 313.5555,
-      "conflict_entries_scanned": 340.8,
-      "conflict_occupants_scanned": 82.5435,
-      "gate_candidates": 110.192,
-      "gate_trygrant_calls": 110.192,
-      "gate_trygrant_entries": 109.73,
-      "route_refill_checks": 7.0545,
-      "next_conn_recomputes": 6.4165,
-      "snapshot_slots": 1000.9965
+      "conflict_gap_mask_rejects": 339.627,
+      "conflict_entries_scanned": 401.543,
+      "conflict_occupants_scanned": 94.9605,
+      "gate_candidates": 114.0205,
+      "gate_trygrant_calls": 114.0205,
+      "gate_trygrant_entries": 90.106,
+      "route_refill_checks": 7.292,
+      "next_conn_recomputes": 6.6325,
+      "snapshot_slots": 1000.9975
     },
     "tick_ms_runs": [
       {
-        "p50": 0.16274,
-        "p95": 0.291443
+        "p50": 0.310418,
+        "p95": 0.438084
       },
       {
-        "p50": 0.215925,
-        "p95": 0.400454
+        "p50": 0.262609,
+        "p95": 0.406087
       },
       {
-        "p50": 0.138112,
-        "p95": 0.191062
+        "p50": 0.30723,
+        "p95": 0.418318
       }
     ],
-    "ticks_per_sec": 5517.041746105976,
-    "vehicle_updates_per_sec": 5516034.885987312,
+    "ticks_per_sec": 3331.2036282297336,
+    "vehicle_updates_per_sec": 3330304.2032501115,
     "alloc_bytes_per_tick": 0,
     "gc_gen0": 0,
     "gc_gen1": 0,
     "gc_gen2": 0,
-    "peak_memory_mb": 43.83203125,
-    "bytes_per_vehicle": 6796.512,
+    "peak_memory_mb": 51.859375,
+    "bytes_per_vehicle": 7928.696,
     "bytes_per_vehicle_note": "(GC.GetTotalMemory(true) after run - GC.GetTotalMemory(true) before Simulation.Create) / active vehicles at end",
     "active_vehicles": 1000,
     "active_vehicles_start": 998,
     "target_vehicles": 1000,
     "ramp_complete": true,
     "warmup_ticks_actual": 2400,
-    "pathfind_queries": 1578,
+    "pathfind_queries": 1539,
     "pathfind_ms_p95": null,
     "pathfind_ms_p95_note": "core public API does not expose per-query search time"
   },
   "traffic": {
-    "avg_speed_kmh": 33.354183197021484,
-    "avg_trip_time_s": 136.44509887695312,
-    "trips_completed_per_min": 58.3636360168457,
+    "avg_speed_kmh": 34.27839279174805,
+    "avg_trip_time_s": 138.83987426757812,
+    "trips_completed_per_min": 64.63636016845703,
     "stuck_vehicles": 0,
     "gridlock_flag": false,
     "bus_headway_deviation_s": null,
+    "max_still_s": 35.35,
+    "still_episodes_60s": 0,
+    "still_episodes_120s": 0,
+    "still_concurrent_60s_max": 0,
+    "still_share_60s": 0,
+    "lane_share_max_mean": 0.751837148217636,
+    "lane_share_max_p95": 1,
+    "lane_share_samples": 5330,
+    "lane_miss_share": 0.37327188940092165,
     "top10_intersections": [
       {
         "node": 138,
@@ -79,66 +93,97 @@
         "vehicles_per_min": 24.272726911035456
       },
       {
-        "node": 130,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
-      },
-      {
-        "node": 134,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
-      },
-      {
         "node": 301,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
-      },
-      {
-        "node": 213,
-        "total": 71,
-        "vehicles_per_min": 19.3636360750957
-      },
-      {
-        "node": 305,
-        "total": 70,
-        "vehicles_per_min": 19.09090880643238
+        "total": 84,
+        "vehicles_per_min": 22.909090567718856
       },
       {
         "node": 385,
-        "total": 69,
-        "vehicles_per_min": 18.81818153776906
+        "total": 80,
+        "vehicles_per_min": 21.818181493065577
       },
       {
-        "node": 217,
-        "total": 67,
-        "vehicles_per_min": 18.272727000442423
+        "node": 55,
+        "total": 79,
+        "vehicles_per_min": 21.54545422440226
+      },
+      {
+        "node": 221,
+        "total": 77,
+        "vehicles_per_min": 20.99999968707562
       },
       {
         "node": 51,
-        "total": 66,
-        "vehicles_per_min": 17.999999731779102
+        "total": 75,
+        "vehicles_per_min": 20.45454514974898
       },
       {
-        "node": 117,
-        "total": 66,
-        "vehicles_per_min": 17.999999731779102
+        "node": 134,
+        "total": 75,
+        "vehicles_per_min": 20.45454514974898
+      },
+      {
+        "node": 130,
+        "total": 73,
+        "vehicles_per_min": 19.90909061242234
+      },
+      {
+        "node": 217,
+        "total": 73,
+        "vehicles_per_min": 19.90909061242234
+      },
+      {
+        "node": 47,
+        "total": 72,
+        "vehicles_per_min": 19.63636334375902
       }
     ],
-    "note": "traffic counters are cumulative since simulation start (include warmup)"
+    "note": "traffic counters above are cumulative since simulation start (include warmup); the signal_* / *_window fields below are deltas over the measured window",
+    "signal_wait_s": {
+      "straight": 5.6049200492004925,
+      "right": 6.541968911917099,
+      "left": 11.237179487179487,
+      "uturn": null
+    },
+    "signal_wait_p95_s": {
+      "straight": 27,
+      "right": 29,
+      "left": 32,
+      "uturn": null
+    },
+    "signal_grants": {
+      "straight": 813,
+      "right": 193,
+      "left": 195,
+      "uturn": 0
+    },
+    "left_wait_max_s": 42.050000000000004,
+    "arterial_signal_grants": 1201,
+    "arterial_stop_share": 0.5195670274771024,
+    "stuck_episodes": 0,
+    "starve_denials": 1769,
+    "grants_revoked": 17,
+    "arrow_phases": 18,
+    "spill_outs": 0,
+    "exit_claims": 0,
+    "exit_claim_denials": 0,
+    "gate_denied_exit": 28133,
+    "trips_completed_window": 217,
+    "avg_speed_kmh_window": 34.209541496203975
   },
   "routing": {
-    "pathfind_queries": 1578,
-    "pathfind_work": 1411655,
-    "pathfind_expanded_nodes": 286503,
+    "pathfind_queries": 1539,
+    "pathfind_work": 1337362,
+    "pathfind_expanded_nodes": 271951,
     "route_failed": 0,
     "route_deferred": 0,
-    "reroutes": 107,
-    "timed_checks": 959,
-    "timed_triggered": 245,
-    "timed_reroutes": 70,
-    "plan_unpacks": 981,
-    "unpack_work": 46561,
-    "window_refills": 1492,
+    "reroutes": 87,
+    "timed_checks": 895,
+    "timed_triggered": 165,
+    "timed_reroutes": 50,
+    "plan_unpacks": 946,
+    "unpack_work": 37663,
+    "window_refills": 1550,
     "refill_late": 0,
     "plan_compactions": 0,
     "cost_recalcs": 7,
