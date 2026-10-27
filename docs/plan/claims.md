@@ -6,3 +6,6 @@
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
 | L8-долг облака (update-baseline s1k, golden Rust на Linux) + финальная проверка бюджетов на тихой машине (s1k, s10k-peds, повтор S1) | облако | claude/adoring-ritchie-cxzib8 | perf/baseline.json, rust/**/golden*, perf/results/, docs/REPORT-* | 2026-10-27 |
+| RP2 сейв v8 профилей (L17) | локал | local/rp2-save-v8 | src/Sim.Core/Save/**, tests/SaveCorpus/w8-*, tests/Sim.Core.Tests/Save/** | 2026-10-27 |
+| RP3 Rust-пилот профилей (L18) | локал | local/rp3-rust-profiles | rust/** | 2026-10-27 |
+| RP4 тротуары по профилю (L19) | локал | local/rp4-ped-sidewalks | src/Sim.Core/Peds/**, tests/Sim.Core.Tests/Peds/** | 2026-10-27 |
