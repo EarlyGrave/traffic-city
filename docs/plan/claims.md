@@ -5,5 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| VS1 палитра + глобальные uniform + инфо-режим (visual-style.md §9) | локал | local/vs1-palette | game/Scripts (Palette, InfoMode, HeatPalette, RoadChunks/PedChunks цвета, SimHost), game/Shaders, game/project.godot | 2026-10-27 |
 | corner_radius: отступ узла по ширине дорог (резкий правый поворот) | локал | local/corner-radius | src/Sim.Core/Network/**, src/Sim.Core/Tools/ToolValidator.cs, src/Sim.Scenarios/**, scenarios/, tests (сеть, golden, SaveCorpus), docs/adr, docs/design/scenario-format.md; baseline — потом в облаке | 2026-10-27 |
