@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return desc.Town.Economy.CityBudget ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget только при residents (city-economy.md §1)
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget и parking только при residents (city-economy.md §1, parking.md §1)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -42,6 +42,11 @@ internal static class CityBuild
         }
 
         if (desc.Lod.CellM < 0f || !float.IsFinite(desc.Lod.CellM))
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        if (desc.Parking.Enabled && (!desc.Parking.IsValid() || caps.MaxParking < 0 || caps.MaxParking > MaxBigCount))
         {
             return CreateStatus.InvalidCity;
         }
@@ -123,6 +128,11 @@ internal static class CityBuild
         }
 
         w.City = new CityWorld(in w.Town, in grid, in w.Caps, w);
+        if (w.ParkCfg.Enabled)
+        {
+            w.City.Parking = new Parking.ParkingStore(in w.ParkCfg, in w.Caps, in grid);
+        }
+
         return create ? CityInit.Run(w) : CreateStatus.Ok;
     }
 }

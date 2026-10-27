@@ -21,7 +21,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 21L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ
+    private const long BudgetBytes = 25L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -37,6 +37,7 @@ public sealed class SaveCorpusTests
         new("cross-prof", 600, CrossProf),   // w8 (ADR-0030): режим профилей - каталог RPRF, Profile/Mirrored, Width, начало сетки
         new("s1k-prof", 2400, S1kProf),
         new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
+        new("s1k-res-park", 24000, S1kResPark),   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -253,6 +254,15 @@ public sealed class SaveCorpusTests
         return (sc.Desc, sc.TypeNames);
     }
 
+    private static (ScenarioDesc, string[]) S1kResPark()
+    {
+        // K1: s1k-res-park (parking.model = resource) плюс землепользование генератора: участки обходят парки и воду, в сейве блок LUSE.
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res-park.json"));
+        ScenarioDesc d = sc.Desc;
+        d.City.LandUse = new LandUseDesc { Enabled = true, ParkShare = 0.08f, PondShare = 0.25f, Coast = LandUseCoast.South, CoastWidthM = 300f };
+        return (d, sc.TypeNames);
+    }
+
     // За 100 тиков до конца - SetBudgetPolicy: в сейве ожидающая политика (граница суток ещё впереди: тик 216500 > 216000, следующая - 288000).
     private static void EvolveBudget(Simulation sim, int ticks)
     {
@@ -449,6 +459,39 @@ public sealed class SaveCorpusTests
                 for (int i = 0; i < city.Buildings.HighWater; i++)
                 {
                     Assert.Equal(0, city.Buildings.PayrollEwma[i]);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W9Files_AreKeptAndMigrate_ToNoParking()
+    {
+        // Файлы w9 (до парковки и землепользования в сейве, ADR-0026) остаются навсегда: миграция 9 -> 10 даёт «режима парковки нет, полигонов нет»,
+        // хэш продолжения не меняется (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w9-*.tcsave");
+        Assert.True(old.Length >= 10, "корпус w9 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveFile.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(9, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 9, rep.MigrationsApplied);
+                Assert.False(sim!.World.ParkCfg.Enabled);
+                Assert.Null(sim.World.City?.Parking);
+                Assert.Empty(sim.LandUse.ToArray());
+                Assert.Equal(0, sim.Counters.ParkCarShed + sim.Counters.ParkOverflow + sim.Counters.ParkSearchTimeCount);
+                if (sim.World.City != null)
+                {
+                    Sim.Core.City.CityResidents r = sim.World.City.Residents;
+                    for (int i = 0; i < r.HighWater; i++)
+                    {
+                        Assert.Equal((-1, -1, -1), (r.HomeFac[i], r.CarFac[i], r.CarLot[i]));
+                    }
                 }
             }
         }

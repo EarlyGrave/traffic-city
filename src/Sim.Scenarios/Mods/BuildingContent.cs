@@ -78,7 +78,8 @@ internal static class BuildingContent
             "residential" => LotZone.Residential,
             "commercial" => LotZone.Commercial,
             "industrial" => LotZone.Industrial,
-            _ => throw new ScenarioException($"{p}.kind: expected \"residential\", \"commercial\" or \"industrial\""),
+            "parking" => LotZone.Parking,
+            _ => throw new ScenarioException($"{p}.kind: expected \"residential\", \"commercial\", \"industrial\" or \"parking\""),
         };
         string densityText = r.Str("density");
         byte density = densityText switch
@@ -87,7 +88,14 @@ internal static class BuildingContent
             "high" => 1,
             _ => throw new ScenarioException($"{p}.density: expected \"low\" or \"high\""),
         };
-        bool firm = kind != LotZone.Residential;
+        bool firm = kind is LotZone.Commercial or LotZone.Industrial;
+        string accessText = r.Str("parking_access", "private");
+        ParkingAccess access = accessText switch
+        {
+            "private" => ParkingAccess.Private,
+            "public" => ParkingAccess.Public,
+            _ => throw new ScenarioException($"{p}.parking_access: expected \"private\" or \"public\""),
+        };
         var t = new BuildingTypeDesc
         {
             Kind = kind,
@@ -98,6 +106,9 @@ internal static class BuildingContent
             ShiftSlots = r.Int("shift_slots", firm ? 96 : 0, min: 0, max: 288),
             ConstructDays = r.Int("construct_days", 3, min: 0, max: 3650),
             AttractQ8 = CityDesc.Q8(r.Num("attract", kind == LotZone.Commercial ? 1.0 : 0.0, min: 0, max: 4096)),
+            ParkingCapacity = r.Int("parking", 0, min: 0, max: ModLimits.MaxBuildingCapacity),
+            ParkingAccess = access,
+            ParkingFee = r.Int("parking_fee", 0, min: 0, max: 1_000_000),
         };
         string? model = VehicleContent.ReadVisual(r, "model");
         r.Finish();

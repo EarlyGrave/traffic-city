@@ -394,6 +394,11 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res-econ.json` (E2) - `s1k-res` с `economy.city_budget = true` и содержанием сети и автобусов (`maint_*`, подбор на s1k ≈ 90% дохода казны). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
 `peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
 
+**Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
+`access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
+`curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,
+доли в Q16 одним округлением (f64 -> f32, затем к ближайшему; ADR-0022). `capacities.max_parking` (только с секцией; 0 или нет ключа = `max_lots + max_buildings + 64`, раскрывается загрузчиком). Типы зданий `buildings.json`:
+`parking` (мест, дефолт 0), `parking_access` (`private`/`public`), `parking_fee`; `kind: "parking"` — гараж (ставит игрок, K6). Сценарий `scenarios/s1k-res-park.json` = `s1k-res` + `"parking": {"model": "resource"}`.
 ### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
 
 Загрузчик принимает 2 и 3. Отличия v3 от v2:

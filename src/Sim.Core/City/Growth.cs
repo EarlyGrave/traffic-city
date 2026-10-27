@@ -28,6 +28,7 @@ internal static class Growth
             c.Ledger.Transfer(c.Ledger.AccountOfBuilding(bi), c.Ledger.ExternalAccount, c.Cfg.Economy.ConstructCost, FlowKind.Construction);
         }
 
+        Parking.ParkingBuild.OnBuildingActive(w, c, bi);   // стоянка здания (parking.md §3); без режима - ничего
         w.Counters.BuildingsBuilt++;
     }
 
@@ -66,6 +67,7 @@ internal static class Growth
         b.StateTick[bi] = w.Tick;
         b.Version++;
         c.Lots.Version++;
+        Parking.ParkingBuild.OnBuildingAbandoned(w, c, bi);   // стоянка здания закрывается
         w.Counters.BuildingsAbandoned++;
     }
 
@@ -248,6 +250,7 @@ internal static class Growth
             marked[i] = false;
             int lot = b.Lot[i];
             c.Ledger.Transfer(c.Ledger.AccountOfBuilding(i), c.Ledger.ExternalAccount, b.Account[i], FlowKind.Emigration);
+            Parking.ParkingBuild.OnBuildingRemoved(w, c, i);   // стоянка здания снесена (до Destroy: слот ещё хранит участок)
             b.Destroy(i);
             if (lot >= 0)
             {

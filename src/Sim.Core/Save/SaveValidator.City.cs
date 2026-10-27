@@ -73,7 +73,8 @@ internal static partial class SaveValidator
             return st;
         }
 
-        return ValidateCityMisc(c, w, city);
+        st = ValidateCityMisc(c, w, city);
+        return st != LoadStatus.Ok ? st : ValidateParking(c);
     }
 
     private static LoadStatus ValidateLots(LoadContext c, World w, CityWorld city)

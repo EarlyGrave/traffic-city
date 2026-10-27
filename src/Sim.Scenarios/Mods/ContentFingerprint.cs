@@ -45,7 +45,7 @@ public static class ContentFingerprint
     /// <summary>xxh64 симуляционных полей типа здания (все, кроме <c>VisualRow</c>: он зависит от порядка каталога, а не от контента).</summary>
     public static ulong BuildingHash(BuildingTypeDesc d)
     {
-        Span<byte> b = stackalloc byte[28];
+        Span<byte> b = stackalloc byte[40];
         b[0] = (byte)d.Kind;
         b[1] = d.Density;
         BinaryPrimitives.WriteUInt16LittleEndian(b[2..], d.Reserved);
@@ -55,6 +55,14 @@ public static class ContentFingerprint
         BinaryPrimitives.WriteInt32LittleEndian(b[16..], d.ShiftSlots);
         BinaryPrimitives.WriteInt32LittleEndian(b[20..], d.ConstructDays);
         BinaryPrimitives.WriteInt32LittleEndian(b[24..], d.AttractQ8);
+        if (d.ParkingCapacity == 0 && d.ParkingAccess == ParkingAccess.Private && d.ParkingFee == 0)
+        {
+            return XxHash64.HashToUInt64(b[..28]);   // без парковки отпечаток прежний (пакеты до world_version 10)
+        }
+
+        BinaryPrimitives.WriteInt32LittleEndian(b[28..], d.ParkingCapacity);
+        BinaryPrimitives.WriteInt32LittleEndian(b[32..], (int)d.ParkingAccess);
+        BinaryPrimitives.WriteInt32LittleEndian(b[36..], d.ParkingFee);
         return XxHash64.HashToUInt64(b);
     }
 

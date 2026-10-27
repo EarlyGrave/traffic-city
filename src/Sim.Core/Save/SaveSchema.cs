@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 9;
+    public const int WorldVersion = 10;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 4;
@@ -31,13 +31,13 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
-        BuildingTypesBlock(),
+        Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns()),
         Extend(WorldState(), PedWorldState(), CityWorldState()),
-        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters()),
+        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters()),
         NetworkCounts(),
         Nodes(),
         Extend(Segments(), new[] { SegmentProfileColumn() }),
@@ -53,8 +53,8 @@ internal static partial class SaveSchema
         LaneDynamic(),
         SegmentDynamic(),
         BusDynamic(),
-        Extend(Vehicles(), new[] { VehicleResident() }),
-        Trips(),
+        Extend(Vehicles(), new[] { VehicleResident() }, ParkingVehicleColumns()),
+        Extend(Trips(), ParkingTripColumns()),
         Queues(),
         Routes(),
         RouteGraphBlock(),
@@ -69,10 +69,12 @@ internal static partial class SaveSchema
         PedPathQueue(),
         Extend(LotsBlock(), LotGridColumns()),
         Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
-        ResidentsCityBlock(),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns()),
         SkimsBlock(),
         LedgerBlock(),
         BudgetBlock(),
+        ParkingBlock(),
+        LandUseBlock(),
         Manifest(),
     });
 

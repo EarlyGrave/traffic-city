@@ -36,6 +36,7 @@ internal sealed class World : IDisposable
     public ToolsDesc ToolsCfg;                 // стоимости и границы инструментов игрока (конфигурация хоста: вне сейва и хэша)
     public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
     public CityDesc Town;           // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
+    public readonly ParkingDesc ParkCfg;     // секция parking (parking.md §14); нули, если режима нет (нужен demand.model = residents)
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -70,7 +71,7 @@ internal sealed class World : IDisposable
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
-    public LandUsePoly[] LandUse = System.Array.Empty<LandUsePoly>();   // VS8: производное city.landuse (seed + desc), в сейв и хэш не входит; после Load пусто (desc в сейве нет)
+    public LandUsePoly[] LandUse = System.Array.Empty<LandUsePoly>();   // VS8: city.landuse (seed + desc, строится в Create); в хэш не входит, в сейве - блок LUSE (w10), Load восстанавливает полигоны
     public int LandUseVersion;
     public SignalPlanSeed[] SignalPlanSeeds = System.Array.Empty<SignalPlanSeed>();
     public GenTransit? Transit;
@@ -203,6 +204,7 @@ internal sealed class World : IDisposable
         WorldGridOriginX = desc.WorldGridOriginX;
         WorldGridOriginZ = desc.WorldGridOriginZ;
         Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
+        ParkCfg = desc.Demand.Model == DemandModel.Residents && desc.Parking.Enabled ? desc.Parking : default;
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);

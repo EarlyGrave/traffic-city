@@ -402,6 +402,7 @@ internal sealed class Market
             return;
         }
 
+        Parking.HomeAssign.Release(c, r);   // домашнее место и машина уходят с жителем (parking.md §4); без режима - ничего
         Ensure(c);
         BuildingStore b = c.Buildings;
         int before = FreeOf(c, home);
@@ -758,6 +759,7 @@ internal sealed class Market
 
         MoveOut(c, r);
         MoveIn(c, r, to);
+        Parking.HomeAssign.OnMoveIn(w, c, r);   // домашнее место на новом доме; нет места - машина не переезжает (parking.md §4)
         w.Counters.ResRelocations++;
         return true;
     }
@@ -855,6 +857,7 @@ internal sealed class Market
             }
 
             res.Flags[r] = flags;
+            Parking.HomeAssign.OnMoveIn(w, c, r);   // домашнее место; нет места - HasCar снимается (parking.md §4)
             res.State[r] = (byte)ResidentState.AtHome;
             res.StateTick[r] = w.Tick;
             c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(r), c.Cfg.Economy.InitialResidentBalance, FlowKind.Endowment);

@@ -75,7 +75,7 @@ public sealed partial class Simulation
     /// <summary>Сторона ячейки города, м (0 без города).</summary>
     public float CityCellM => _disposed || _w.City == null ? 0f : _w.City.Grid.CellM;
 
-    /// <summary>Парки и вода генератора (city.landuse, visual-style.md §8): снапшот-чтение полигонов, пусто без землепользования. Статично после Create; после Load пусто (производное от desc, которого в сейве нет).</summary>
+    /// <summary>Парки и вода генератора (city.landuse, visual-style.md §8): снапшот-чтение полигонов, пусто без землепользования. Статично после Create; сохраняется в блоке LUSE (world_version 10) и восстанавливается в Load (сейвы до v10 полигонов не несут - после их миграции пусто).</summary>
     public ReadOnlySpan<LandUsePoly> LandUse => _disposed ? default : _w.LandUse;
 
     /// <summary>Версия землепользования: 0 - нет, 1 - построено в Create (инструменты игрока полигоны не меняют); клиент перечитывает <see cref="LandUse"/> только при смене.</summary>
