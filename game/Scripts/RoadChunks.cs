@@ -18,7 +18,7 @@ namespace TrafficCity;
 /// Цвет heatmap берёт шейдер <c>road.gdshader</c> из текстуры <see cref="HeatTexture"/> по <c>CUSTOM0.x</c> (сегмент; у площадок -1 - нейтрально); меши не пересобираются.
 /// </summary>
 #pragma warning disable CA1001 // ресурсы Godot принадлежат узлам сцены и освобождаются вместе с ними
-public sealed class RoadChunks
+public sealed partial class RoadChunks
 {
     public const float NearCell = 250f;
     public const float FarCell = 2000f;
@@ -72,6 +72,7 @@ public sealed class RoadChunks
         _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
         _material.SetShaderParameter("line_center_alpha", Palette.LaneLineCenterAlpha);
         _material.SetShaderParameter("line_px", LinePx);
+        _material.SetShaderParameter("stop_alpha", Palette.StopLineAlpha);
         _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
         _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };
@@ -96,8 +97,9 @@ public sealed class RoadChunks
     /// </summary>
     private readonly struct SegGeom
     {
-        public SegGeom(bool ok, float half, float shift, float sgn, bool baseAB, float vPlus, float code, float w, bool measured)
+        public SegGeom(bool ok, float half, float shift, float sgn, bool baseAB, float vPlus, float code, float w, bool measured, RoadProfileLayouts.Layout? lay = null)
         {
+            Lay = lay;
             Ok = ok;
             Half = half;
             Shift = shift;
@@ -133,6 +135,11 @@ public sealed class RoadChunks
 
         /// <summary>Ширина и сторона измерены по полосам (а не взяты по умолчанию).</summary>
         public bool Measured { get; }
+
+        /// <summary>Сечение профиля (RP6): сегмент строится по элементам профиля, а не по ширине полосы; null - legacy.</summary>
+        public RoadProfileLayouts.Layout? Lay { get; }
+
+        public bool Profiled => Lay != null;
     }
 
     /// <summary>Рукав узла: торец ленты сегмента, обращённый к узлу.</summary>
@@ -158,6 +165,19 @@ public sealed class RoadChunks
         if (nTot <= 0 || (uint)baseLane >= (uint)net.Lanes.Length || net.Lanes[baseLane].PointCount < 2)
         {
             return default;
+        }
+
+        RoadProfileLayouts.Layout? lay = RoadProfileLayouts.ForSegment(in sd);
+        if (lay != null)
+        {
+            // профиль: ленты строятся от оси по элементам сечения; система A→B сегмента, правая сторона - +N (Sgn = -1)
+            float cb = baseAB ? lay.CBaseAB : lay.CBaseBA;
+            if (float.IsNaN(cb))
+            {
+                return default;
+            }
+
+            return new SegGeom(true, (lay.CurbL + lay.CurbR) * 0.5f, (lay.CurbR - lay.CurbL) * 0.5f, -1f, baseAB, 0f, 0f, baseAB ? lay.WFwd : lay.WBwd, false, lay);
         }
 
         LaneData bl = net.Lanes[baseLane];
@@ -281,6 +301,7 @@ public sealed class RoadChunks
         var ends0 = new Vec2[segCount * 4];
         var ends1 = new Vec2[segCount * 4];
         var endsF = new Vec2[segCount * 4];
+        int profiled = 0;
         for (int s = 0; s < segCount; s++)
         {
             if (!geo[s].Ok)
@@ -293,6 +314,15 @@ public sealed class RoadChunks
             MeshBuilder b0 = ChunkGrid.Get(lod0, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4, true);
             MeshBuilder b1 = ChunkGrid.Get(lod1, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4);
             MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], FarCell), 4);
+            if (geo[s].Profiled)
+            {
+                AddProfileRoad(net, s, geo[s], b0, 0f, y, col, Detail.Full, true, ends0);
+                AddProfileRoad(net, s, geo[s], b1, Lod1Tolerance, y, col, Detail.Walk, false, ends1);
+                AddProfileRoad(net, s, geo[s], bf, FarTolerance, FarY, col, Detail.Asphalt, false, endsF);
+                profiled++;
+                continue;
+            }
+
             AddRoad(net, s, geo[s], b0, 0f, y, col, true, ends0);
             AddRoad(net, s, geo[s], b1, Lod1Tolerance, y, col, false, ends1);
             AddRoad(net, s, geo[s], bf, FarTolerance, FarY, col, false, endsF);
@@ -309,14 +339,14 @@ public sealed class RoadChunks
             ReadOnlySpan<int> arms = armSeg.AsSpan(armStart[n], armStart[n + 1] - armStart[n]);
             float py = NodeY(net, arms);
             Color pc = Palette.AsphaltVertex;
-            AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue);
-            AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints);
-            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0);
+            AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue, Detail.Full);
+            AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints, Detail.Walk);
+            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0, Detail.Asphalt);
         }
 
         GD.Print(string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{FarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {FarBegin(lod) + FarOverlap:0} м; полоса {defW:0.##} м)"));
+            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{FarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {FarBegin(lod) + FarOverlap:0} м; полоса {defW:0.##} м, сегментов с профилем {profiled})"));
         ChunkGrid.Emit(Root, lod0, "Road0", _material, 0f, lod.RoadLod0 + NearHalfDiag);
         ChunkGrid.Emit(Root, lod1, "Road1", _material, lod.RoadLod0 + NearHalfDiag, FarBegin(lod) + FarOverlap);
         // дальняя лента от FarBegin; ближний LOD1 держится до FarBegin + FarOverlap, чтобы не было дыр (центры чанков разных сеток)
@@ -418,7 +448,7 @@ public sealed class RoadChunks
     /// внешней кромки правого поворота lane0 -> lane0 (connector, смещённый вправо на полполосы); нет такого connector'а - прямой отрезок.
     /// Порядок рукавов и сторона обхода - по геометрии торцов. LOD0 дополнительно рисует направляющие всех connector'ов узла.
     /// </summary>
-    private void AddJunction(NetworkView net, in NodeData nd, ReadOnlySpan<int> armRefs, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col, bool guides, int cornerKeep)
+    private void AddJunction(NetworkView net, in NodeData nd, ReadOnlySpan<int> armRefs, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col, bool guides, int cornerKeep, Detail detail)
     {
         _arms.Clear();
         Vec2 c = nd.Position;
@@ -460,6 +490,7 @@ public sealed class RoadChunks
             _ring.Add(a.ROut);
             _ring.Add(a.RIn);
             Corner(net, nd, a, nx, geo[a.Seg], cornerKeep);
+            AddCornerStrips(nd, a, nx, geo, ends, b, detail);
             foreach (Vec2 p in _corner)
             {
                 _ring.Add(p);
@@ -495,6 +526,13 @@ public sealed class RoadChunks
         Vec2 r = dir == 0 ? right : left;
         Vec2 l = dir == 0 ? left : right;
         float t = bnd / (float)(net.Segments[seg].LanesAB + net.Segments[seg].LanesBA);
+        if (g.Profiled)
+        {
+            // граница полосы номер bnd - от внешней кромки своего направления на bnd ширин полосы (между направлениями может быть разделитель)
+            float len = MathF.Sqrt(((l.X - r.X) * (l.X - r.X)) + ((l.Z - r.Z) * (l.Z - r.Z)));
+            t = len > 1e-4f ? bnd * (dir == 0 ? g.Lay!.WFwd : g.Lay!.WBwd) / len : 0f;
+        }
+
         return new Vec2(r.X + ((l.X - r.X) * t), r.Z + ((l.Z - r.Z) * t));
     }
 
@@ -544,7 +582,8 @@ public sealed class RoadChunks
                     continue;
                 }
 
-                float off = (side == 0 ? -geo[from.Segment].Sgn : geo[from.Segment].Sgn) * geo[from.Segment].W * 0.5f; // вправо / влево по ходу connector'а
+                float lw = geo[from.Segment].Profiled && from.Width > 0f ? from.Width : geo[from.Segment].W;
+                float off = (side == 0 ? -geo[from.Segment].Sgn : geo[from.Segment].Sgn) * lw * 0.5f; // вправо / влево по ходу connector'а
                 EnsureScratch(pts.Length);
                 _scratch[0] = BoundaryPoint(net, geo, ends, from.Segment, fromA, from.Direction, bs);
                 for (int k = 1; k < pts.Length - 1; k++)
@@ -587,7 +626,7 @@ public sealed class RoadChunks
             }
 
             ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(cn.FirstPoint, cn.PointCount);
-            float side = -ga.Sgn * ga.W * 0.5f; // вправо по ходу connector'а
+            float side = -ga.Sgn * (ga.Profiled && from.Width > 0f ? from.Width : ga.W) * 0.5f; // вправо по ходу connector'а
             int inner = pts.Length - 2;
             int take = Math.Min(inner, keep);
             for (int t = 0; t < take; t++)

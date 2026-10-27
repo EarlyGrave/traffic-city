@@ -516,6 +516,7 @@ public partial class SimHost : Node3D
         }
 
         _sim = sim;
+        RoadProfileLayouts.Set(in desc.RoadProfiles); // сечения дорог для RoadChunks/PedChunks (RP6); без каталога - legacy
         _types = desc.VehicleTypes;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
