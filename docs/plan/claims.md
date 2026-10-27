@@ -5,3 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
+| Рывок машин на въезде/выезде с перекрёстка (центр кузова при centerS<0) | локал | local/junction-jitter | src/Sim.Core/Api/SnapshotPhase.cs, tests/Sim.Core.Tests/Api/ | 2026-10-27 |
