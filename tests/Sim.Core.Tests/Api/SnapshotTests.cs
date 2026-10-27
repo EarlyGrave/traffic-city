@@ -14,27 +14,6 @@ public class SnapshotTests
     /// <summary>Прежняя реализация фазы 10 (этап 1) - эталон: полный Evaluate + Atan2 на каждую машину.</summary>
     private static class LegacySnapshot
     {
-        private static Vec2 Axle(NetworkStore net, int lane, float s, ref int hint, out Vec2 dir)
-        {
-            int h = 0;
-            Vec2 pos;
-            if (s < 0f)
-            {
-                if (net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
-                {
-                    int from = net.Lanes[lane].FromLane;
-                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, from, net.Lanes[from].Length + s, ref h, out pos, out dir);
-                    return pos;
-                }
-
-                LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, 0f, ref h, out pos, out dir);
-                return net.LanePoints[net.Lanes[lane].FirstPoint] + (dir * s);
-            }
-
-            LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref hint, out pos, out dir);
-            return pos;
-        }
-
         public static void Fill(World w, int[] hints, VehicleRenderData[] buf, Vec2[] rearState, int[] rearGen)
         {
             VehicleStore v = w.Vehicles;
@@ -50,14 +29,14 @@ public class SnapshotTests
 
                 float length = v.Length[i];
                 float st = v.S[i];
-                Vec2 front = Axle(net, lane, st - (length * 0.2f), ref hints[i], out Vec2 pdir);
+                LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, st, ref hints[i], out Vec2 front, out Vec2 pdir);
                 float lateral = v.Lateral[i];
                 if (lateral != 0f)
                 {
                     front = new Vec2(front.X + (pdir.Z * lateral), front.Z - (pdir.X * lateral));
                 }
 
-                float wb = length * 0.6f;
+                float wb = length * 0.8f;
                 int gen = v.Pool.GenerationOf(i) + 1;
                 Vec2 rear;
                 Vec2 rd = front - rearState[i];
@@ -76,7 +55,7 @@ public class SnapshotTests
                 Vec2 ax = front - rear;
                 float alen = MathF.Sqrt((ax.X * ax.X) + (ax.Z * ax.Z));
                 Vec2 dir = alen > 1e-4f ? ax * (1f / alen) : pdir;
-                Vec2 pos = (front + rear) * 0.5f;
+                Vec2 pos = front - (dir * (length * 0.5f));
                 ref VehicleRenderData r = ref buf[i];
                 r.X = pos.X;
                 r.Y = 0f;
@@ -164,7 +143,7 @@ public class SnapshotTests
     [Fact]
     public void Snapshot_HeadingSmooth_OnConnectors_S1k()
     {
-        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        ScenarioDesc d = Step3.S1k();
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
         NetworkStore net = w.Net;
@@ -213,7 +192,7 @@ public class SnapshotTests
     [Fact]
     public void Snapshot_RearAxleCutsInside_In90DegreeTurn_AndFollowsOnStraight_S1k()
     {
-        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        ScenarioDesc d = Step3.S1k();
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
         NetworkStore net = w.Net;
@@ -240,15 +219,14 @@ public class SnapshotTests
                 LaneData cl = net.Lanes[lane];
                 float len = w.Vehicles.Length[i];
                 float s = w.Vehicles.S[i];
-                float baseLen = 0.6f * len;
                 // Задняя ось из снапшота: центр - половина базы назад вдоль курса.
-                float rx = a.X - (MathF.Cos(a.Heading) * baseLen * 0.5f);
-                float rz = a.Z - (MathF.Sin(a.Heading) * baseLen * 0.5f);
+                float rx = a.X - (MathF.Cos(a.Heading) * len * 0.3f);
+                float rz = a.Z - (MathF.Sin(a.Heading) * len * 0.3f);
                 if (cl.Kind == LaneKind.Connector)
                 {
                     float turn = AngleSigned(net.LanePieceHeading[cl.FirstPoint], net.LanePieceHeading[cl.FirstPoint + cl.PointCount - 2]);
                     float sRear = s - (0.8f * len);
-                    float sFront = s - (0.2f * len);
+                    float sFront = s;
                     if (MathF.Abs(turn) < 1.3f || MathF.Abs(turn) > 1.9f || sRear < 0f || sFront > cl.Length || sFront < cl.Length * 0.4f || sFront > cl.Length * 0.67f)
                     {
                         continue;
@@ -312,16 +290,20 @@ public class SnapshotTests
     }
 
     [Fact]
-    public void Snapshot_NoJump_OnJunctionEnterAndExit_S1k()
+    public void Snapshot_NoJump_OnJunctionEnterAndExit_S1k() => AssertNoJump(Step3.S1k(), 4000, 100);
+
+    [Fact]
+    public void Snapshot_NoJump_OnJunctionEnterAndExit_Buses() => AssertNoJump(CityWorldTests.Desc("s1k"), 4000, 20);
+
+    private static void AssertNoJump(ScenarioDesc d, int ticks, int minTransitions)
     {
-        ScenarioDesc d = CityWorldTests.Desc("s1k");
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
         const float dt = 1f / 20f;
         var prev = new VehicleRenderData[d.Capacities.MaxVehicles];
         var prevLane = new int[prev.Length];
         int checkedTransitions = 0;
-        for (int tick = 0; tick < 4000; tick++)
+        for (int tick = 0; tick < ticks; tick++)
         {
             sim.Step(1);
             ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
@@ -335,9 +317,7 @@ public class SnapshotTests
                     float dx = a.X - prev[i].X;
                     float dz = a.Z - prev[i].Z;
                     float dist = MathF.Sqrt((dx * dx) + (dz * dz));
-                    // Въезд на коннектор - точная непрерывность; выезд - прямая экстраполяция назад, запас на кривизну коннектора.
-                    bool enter = (a.Flags & (byte)VehicleRenderFlags.OnConnector) != 0;
-                    float limit = (MathF.Max(a.Speed, prev[i].Speed) * dt) + (enter ? 0.3f : 0.35f * w.Vehicles.Length[i]);
+                    float limit = (MathF.Max(a.Speed, prev[i].Speed) * dt) + 0.3f;
                     Assert.True(dist <= limit, $"tick {tick} slot {i}: сдвиг {dist} м > {limit} м на смене полосы {prevLane[i]}->{lane}");
                     checkedTransitions++;
                 }
@@ -352,7 +332,7 @@ public class SnapshotTests
             }
         }
 
-        Assert.True(checkedTransitions > 20, $"мало переходов: {checkedTransitions}");
+        Assert.True(checkedTransitions > minTransitions, $"мало переходов: {checkedTransitions}");
     }
 
     [Fact]

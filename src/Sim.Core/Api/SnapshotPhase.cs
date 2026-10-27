@@ -161,36 +161,6 @@ internal sealed class SnapshotJob : IRangeJob
     /// <summary>Допуск (м) отклонения |F - R_prev| от базы; больше - разрыв (телепорт, сейв, долгий пропуск в виде): задняя ось ставится заново.</summary>
     private const float ResyncDistance = 4f;
 
-    /// <summary>
-    /// Точка на траектории на расстоянии <paramref name="s"/> от начала полосы. При s &lt; 0: на коннекторе - точка на подъездной полосе
-    /// (<c>FromLane</c>), на обычной полосе - прямая экстраполяция первого куска назад. Без аллокаций.
-    /// </summary>
-    private static Vec2 AxlePos(NetworkStore net, int lane, float s, ref int hint, out int piece)
-    {
-        Vec2 pos;
-        if (s < 0f)
-        {
-            ref readonly LaneData l = ref net.Lanes[lane];
-            if (l.Kind == LaneKind.Connector && (uint)l.FromLane < (uint)net.LaneCount)
-            {
-                int from = l.FromLane;
-                int h = 0;
-                LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, from, net.Lanes[from].Length + s, ref h, out pos, out piece);
-                return pos;
-            }
-
-            piece = l.FirstPoint;
-            Vec2 p0 = net.LanePoints[piece];
-            Vec2 d0 = net.LanePoints[piece + 1] - p0;
-            float len0 = MathF.Sqrt((d0.X * d0.X) + (d0.Z * d0.Z));
-            Vec2 dir0 = len0 > 1e-9f ? d0 * (1f / len0) : new Vec2(1f, 0f);
-            return p0 + (dir0 * s);
-        }
-
-        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref hint, out pos, out piece);
-        return pos;
-    }
-
     private void Slot(int i)
     {
         World w = _w;
@@ -219,17 +189,19 @@ internal sealed class SnapshotJob : IRangeJob
             speed = q.ViewSpeed[i];
         }
 
-        // Двухосная модель (только рендер): оси на s - свес_перед и s - свес_перед - база, кузов - между ними, курс - задняя->передняя.
+        // Двухосная модель (только рендер): нос F на полосе, задняя ось R тянется за ним на (свес_перед + база), курс R->F, центр = F - dir * L/2.
         float length = v.Length[i];
         // PointHint входит в сейв: обновляем его ровно как раньше (по центру кузова), иначе байтовый корпус сейвов разойдётся.
         float centerS = s - (length * 0.5f);
+        int savedHint = v.PointHint[i];
         if (centerS >= 0f)
         {
             LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out _, out _);
         }
 
-        int frontHint = v.PointHint[i];
-        Vec2 front = AxlePos(net, lane, s - (length * FrontOverhang), ref frontHint, out int fp);
+        int frontHint = savedHint;
+        // Только нос F привязан к полосе (s >= 0 всегда): без спецслучаев на въезде и выезде с перекрёстка.
+        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref frontHint, out Vec2 front, out int fp);
         float lateral = v.Lateral[i];
         Vec2 pd = net.LanePoints[fp + 1] - net.LanePoints[fp];
         float plen = MathF.Sqrt((pd.X * pd.X) + (pd.Z * pd.Z));
@@ -241,7 +213,7 @@ internal sealed class SnapshotJob : IRangeJob
         }
 
         // Задняя ось: своё состояние на машину (не в хэше и не в сейве), тянется за передней: R = F - norm(F - R_prev) * база.
-        float wheelBase = length * WheelBase;
+        float wheelBase = length * (WheelBase + FrontOverhang);   // нос -> задняя ось
         int gen = v.Pool.GenerationOf(i) + 1;
         Vec2 rear;
         long tick = w.Tick;
@@ -281,9 +253,9 @@ internal sealed class SnapshotJob : IRangeJob
         float alen = MathF.Sqrt((ax.X * ax.X) + (ax.Z * ax.Z));
         Vec2 dir = alen > 1e-4f ? ax * (1f / alen) : pdir;
         float heading = MathF.Atan2(dir.Z, dir.X);
-        // Кузов покрывает [R - свес_зад, F + свес_перед] вдоль dir; свесы равны, поэтому центр - середина осей.
-        float x = (front.X + rear.X) * 0.5f;
-        float z = (front.Z + rear.Z) * 0.5f;
+        // Кузов покрывает [s - L, s] вдоль курса: центр на L/2 позади носа.
+        float x = front.X - (dir.X * length * 0.5f);
+        float z = front.Z - (dir.Z * length * 0.5f);
 
         ref VehicleRenderData r = ref buf[i];
         r.X = x;
