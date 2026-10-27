@@ -46,6 +46,7 @@ public partial class SimHost : Node3D
     private bool _infoArg;
     private int _infoArgLayer;
     private PedChunks? _pedStatic;
+    private LandUseChunks? _landUse;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -362,6 +363,11 @@ public partial class SimHost : Node3D
             RebuildRoads(_sim);
         }
 
+        if (_landUse != null && _landUse.IsStale(_sim))
+        {
+            _landUse.Rebuild(_sim);
+        }
+
         _info.Update(delta, _camera?.Distance ?? 1000f);
         if (_roadHeat != null && _info.Visible)
         {
@@ -424,7 +430,7 @@ public partial class SimHost : Node3D
                     _pedHeatTimer = 0;
                     break;
                 case Key.Key3 when _info.Active:
-                    _info.SetLayer(InfoMode.LayerZones); // заглушка: участки «Зоны» рисует VS9
+                    _info.SetLayer(InfoMode.LayerZones); // слой «Зоны»: землепользование и участки рисует LandUseChunks (VS9)
                     break;
                 case Key.F2:
                     _signalsOn = !_signalsOn;
@@ -615,6 +621,14 @@ public partial class SimHost : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             MaterialOverride = GroundMaterial(),
         });
+
+        if (LandUseChunks.Needed(sim))
+        {
+            // слой земли VS9: парки/вода/берег и тон кварталов, один меш на дальний чанк
+            _landUse = new LandUseChunks(new Vec2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f));
+            _landUse.Rebuild(sim);
+            AddChild(_landUse.Root);
+        }
 
         _roadHeat = new HeatTexture(sim.Network.Segments.Length);
         _roadHeat.UpdateRoads(sim.SegmentLoads);

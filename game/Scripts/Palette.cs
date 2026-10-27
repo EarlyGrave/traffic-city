@@ -10,6 +10,13 @@ namespace TrafficCity;
 /// </summary>
 public static class Palette
 {
+    /// <summary>
+    /// Compatibility (gl_compatibility) считает освещение прямо в sRGB-пространстве: линейные числа вершин и инстансов там выходили тёмными
+    /// (асфальт #8A8884 давал ~#2D2B26, lessons.md RP6). В Forward+/Mobile (рабочий метод проекта) пространство линейное.
+    /// Поле объявлено первым: статические инициализаторы цветов ниже зовут <see cref="Lin"/>.
+    /// </summary>
+    private static readonly bool _srgbWorkspace = RenderingServer.GetCurrentRenderingMethod() == "gl_compatibility";
+
     // ---- sRGB: материалы, uniform'ы с source_color, окружение ----
     public static readonly Color Ground = Srgb("#EEEAE2");
     public static readonly Color SkyTop = Srgb("#8EC5F2");
@@ -23,7 +30,7 @@ public static class Palette
     /// <summary>Линии полос и направляющие коннекторов (VS3a): смешиваются с асфальтом долей <see cref="LaneLineAlpha"/>, то есть читаются слабым тёмным оттенком.</summary>
     /// <summary>Асфальт: единственный цвет дорог на всех дистанциях и LOD (класс дороги цветом не различается; heatmap инфо-режима - поверх).</summary>
     public static readonly Color Asphalt = Srgb("#8A8884");
-    public static readonly Color AsphaltVertex = Lin("#8A8884"); // тот же цвет в линейном пространстве - для вершин дорог
+    public static readonly Color AsphaltVertex = Lin("#8A8884"); // тот же цвет в пространстве вершин (линейном; в Compatibility sRGB, см. _srgbWorkspace) - для вершин дорог
 
     public static readonly Color LaneLine = Srgb("#E2DED6");
     public const float LaneLineAlpha = 0.30f;
@@ -56,6 +63,23 @@ public static class Palette
     public static readonly Color Closing = Lin("#B5766B"); // тон «закрыто» поверх серого асфальта
     public static readonly Color Sidewalk = Lin("#E4E1DA");
     public static readonly Color Zebra = Lin("#FFFFFF");
+
+    /// <summary>Слой земли (VS9, visual-style.md §8): основной вид - спокойные тона, вершинные цвета, линейные.</summary>
+    public static readonly Color ParkTone = Lin("#C7D8A6");
+    public static readonly Color WaterTone = Lin("#A9CDE8");
+    public static readonly Color ShoreTone = Srgb("#EAF3F8"); // светлая кромка пруда и берега (uniform шейдера земли, sRGB)
+
+    /// <summary>Тон квартала по зоне участков (почти незаметный, чтобы не спорить с землёй): жилая, коммерческая, промзона.</summary>
+    public static readonly Color LotResidentialTone = Lin("#EFE4CC");
+    public static readonly Color LotCommercialTone = Lin("#E4E6EE");
+    public static readonly Color LotIndustrialTone = Lin("#E3DDE6");
+
+    /// <summary>Инфо-слой «Зоны» (3): насыщенные цвета поверх беж.</summary>
+    public static readonly Color ZoneResidential = Lin("#F2C04A");
+    public static readonly Color ZoneCommercial = Lin("#4A8CF2");
+    public static readonly Color ZoneIndustrial = Lin("#9A63D6");
+    public static readonly Color ZonePark = Lin("#52BD5A");
+    public static readonly Color ZoneWater = Lin("#3F9BE6");
 
     // элементы профиля дороги (RP6, road-profiles.md §7); асфальт и тротуар - выше. Вершинные цвета, линейные.
     public static readonly Color Lawn = Lin("#C9D4B2");
@@ -98,5 +122,8 @@ public static class Palette
 
     public static Color Srgb(string hex) => Color.FromHtml(hex);
 
-    public static Color Lin(string hex) => Color.FromHtml(hex).SrgbToLinear();
+    public static Color Lin(string hex) => ToWorld(Color.FromHtml(hex));
+
+    /// <summary>sRGB-цвет в число для <c>COLOR</c> вершин/инстансов и глобальных uniform: линейное в Forward+/Mobile, исходное в Compatibility.</summary>
+    public static Color ToWorld(Color srgb) => _srgbWorkspace ? srgb : srgb.SrgbToLinear();
 }
