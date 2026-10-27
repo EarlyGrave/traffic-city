@@ -76,7 +76,11 @@ public sealed class LodConfig
             RenderBudgets? rb = RenderBudgets.Load(path, issues);
             if (rb == null)
             {
-                GD.PushWarning(string.Create(CultureInfo.InvariantCulture, $"render-budgets: {path} не загрузился ({issues.Count} замечаний), дефолты §3.1/§3.3"));
+                // Пустой contentDir - заглушка инициализатора поля SimHost до _Ready: предупреждать нечего.
+                if (contentDir.Length > 0)
+                {
+                    GD.PushWarning(string.Create(CultureInfo.InvariantCulture, $"render-budgets: {path} не загрузился ({issues.Count} замечаний), дефолты §3.1/§3.3"));
+                }
             }
             else
             {
