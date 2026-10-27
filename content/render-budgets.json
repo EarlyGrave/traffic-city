@@ -13,7 +13,7 @@
   "pedestrian": { "lod_distances_m": [40, 150], "far": "points", "far_distance_m": 900 },
   "presets": {
     "low": { "lod_scale": 0.7, "point_min_px": 2, "scaling_3d": 0.75,
-             "shadow": { "distance_m": 300, "splits": 2, "atlas": 2048 },
+             "shadow": { "distance_m": 250, "splits": 1, "atlas": 2048 },
              "frame": { "draw_calls": 1000, "shadow_draw_calls": 250, "primitives": 2000000, "shadow_primitives": 500000, "objects": 1500, "texture_mb": 512, "video_mb": 1536 },
              "caps": { "vehicle": [100, 800, 4000, 30000], "pedestrian": [200, 2000, 0, 20000], "building": [50, 300, 0, 0] } },
     "high": { "lod_scale": 1.0, "point_min_px": 2, "scaling_3d": 1.0,
