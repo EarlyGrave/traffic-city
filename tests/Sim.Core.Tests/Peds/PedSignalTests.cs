@@ -145,6 +145,85 @@ public sealed class PedSignalTests
     }
 
     [Fact]
+    public void Adaptive_Walk_StartsAfterHeadStartOfCars_NotAtGreenStart()
+    {
+        // Головной старт машин: Walk не в первый тик зелёного, а через 3 с (60 тиков) - очередь поворачивающих успевает войти в узел до заявки перехода.
+        using Simulation sim = Cross(peds: true, adaptive: true);
+        World w = sim.World;
+        SignalStore s = w.Signals;
+        int x = XOf(w, 0);
+        PedCrossingTests.AddPed(w, x, 0);
+        int idx = 0;
+        for (int j = 0; j < s.SigXCount[0]; j++)
+        {
+            if (s.SigXIdx[j] == x)
+            {
+                idx = j;
+            }
+        }
+
+        Assert.True(s.GreenTicks[1] >= 60 + w.Peds!.Cfg.WalkTicks + s.SigXClear[idx], "фикстура: зелёный оси Z вмещает головной старт + Walk + Clear");
+        int startElapsed = -1;
+        for (int t = 0; t < 1200 && startElapsed < 0; t++)
+        {
+            sim.Step(1);
+            if (s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.XWalkLeft[idx] != 0)
+            {
+                startElapsed = s.GreenElapsed[0];
+            }
+        }
+
+        Assert.True(startElapsed >= 0, "Walk не начался");
+        Assert.InRange(startElapsed, 60, 62);
+    }
+
+    [Fact]
+    public void Adaptive_HoldEndsWhenCrossingIsEmpty_EvenIfClearTimerIsRunning()
+    {
+        // Clear держит зелёный, пока на переходе есть пешеходы; когда все сошли, остаток таймера ось не задерживает.
+        using Simulation sim = Cross(peds: true, adaptive: true);
+        World w = sim.World;
+        PedWorld pw = w.Peds!;
+        SignalStore s = w.Signals;
+        int x = XOf(w, 0);
+        PedCrossingTests.AddPed(w, x, 0);
+        int idx = 0;
+        for (int j = 0; j < s.SigXCount[0]; j++)
+        {
+            if (s.SigXIdx[j] == x)
+            {
+                idx = j;
+            }
+        }
+
+        bool sawHeld = false;
+        bool sawReleasedWithTimer = false;
+        for (int t = 0; t < 1200 && !sawReleasedWithTimer; t++)
+        {
+            sim.Step(1);
+            bool main = s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.Sub[0] == 0;
+            if (!main)
+            {
+                continue;
+            }
+
+            if (s.XClearLeft[idx] != 0 && pw.X.OnCross[x] > 0)
+            {
+                Assert.True(PedSignals.Hold(w, s, 0), "на переходе идут пешеходы: зелёный удержан");
+                sawHeld = true;
+            }
+            else if (s.XClearLeft[idx] != 0 && pw.X.OnCross[x] == 0 && sawHeld)
+            {
+                Assert.False(PedSignals.Hold(w, s, 0), "переход пуст: остаток Clear не удерживает ось");
+                sawReleasedWithTimer = true;
+            }
+        }
+
+        Assert.True(sawHeld);
+        Assert.True(sawReleasedWithTimer, "не наблюдали пустой переход при идущем таймере Clear");
+    }
+
+    [Fact]
     public void Adaptive_LateCall_StartsWalkInsideGreen_WhenWalkAndClearFit()
     {
         using Simulation sim = Cross(peds: true, adaptive: true);
@@ -155,7 +234,7 @@ public sealed class PedSignalTests
         int xw = XOf(w, 2);   // тот же фазовый набор: оба поперёк оси X, обслуживает ось Z
         PedCrossingTests.AddPed(w, xe, 0);
         int guard = 0;
-        while (guard++ < 1200 && !(s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.GreenElapsed[0] >= 40))
+        while (guard++ < 1200 && !(s.Phase[0] == 1 && s.Interval[0] == SignalInterval.Green && s.GreenElapsed[0] >= 70))   // после головного старта машин (3 с)
         {
             sim.Step(1);
         }

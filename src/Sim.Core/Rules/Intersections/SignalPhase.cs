@@ -53,7 +53,7 @@ internal static class SignalPhase
                         envReady = true;
                     }
 
-                    StepAdaptive(w, s, slot, in env, peds && PedSignals.Hold(s, slot));
+                    StepAdaptive(w, s, slot, in env, peds && PedSignals.Hold(w, s, slot));
                 }
                 else
                 {
@@ -295,7 +295,7 @@ internal static class SignalPhase
 
     private static void StepAdaptive(World w, SignalStore s, int slot, in RuleEnv e, bool hold)
     {
-        Detect(w, s, slot, in e, out int call, out bool ext, out int leftWait, out int leftDemand, out int spillAxes);
+        Detect(w, s, slot, in e, out int call, out bool ext, out bool extPed, out int leftWait, out int leftDemand, out int spillAxes);
         if (w.Peds != null && PedSignals.Enabled)
         {
             call |= PedSignals.CallMask(w, s, slot);   // вызов пешехода: ось перехода обслуживается и без машин (pedestrians.md §6)
@@ -334,7 +334,13 @@ internal static class SignalPhase
         bool forceOff = coord && owner != k && elapsed > sinceStart && elapsed >= s.MinGreenTicks[slot];
         if (s.Sub[slot] == 0)
         {
-            s.GapLeft[slot] = ext ? s.GapTicks[slot] : (ushort)(s.GapLeft[slot] > 0 ? s.GapLeft[slot] - 1 : 0);
+            int maxTicks = s.GreenTicks[(slot * SignalStore.MaxPhases) + k];
+            if (extPed && w.Peds != null)
+            {
+                maxTicks = System.Math.Max(maxTicks, PedSignals.OvertimeTicks(w, s, slot, k));
+            }
+
+            s.GapLeft[slot] = (ext || extPed) ? s.GapTicks[slot] : (ushort)(s.GapLeft[slot] > 0 ? s.GapLeft[slot] - 1 : 0);
             bool spill = (spillAxes & (1 << k)) != 0 && (call & (1 << k)) == 0;
             s.SpillTicks[slot] = spill ? (ushort)(s.SpillTicks[slot] < ushort.MaxValue ? s.SpillTicks[slot] + 1 : ushort.MaxValue) : (ushort)0;
             int otherCall = call & ~(1 << k);
@@ -356,7 +362,7 @@ internal static class SignalPhase
             bool arrowBeforeEnd = coord && owner == k && myLeft != 0 && elapsed >= s.MinGreenTicks[slot]
                 && remaining <= s.YellowTicks[slot] + s.AllRedTicks[slot] + s.ArrowMaxTicks[slot];
             bool spillEnd = s.SpillTicks[slot] >= SpillOutTicks;
-            bool normalEnd = s.GapLeft[slot] == 0 || elapsed >= s.GreenTicks[(slot * SignalStore.MaxPhases) + k];
+            bool normalEnd = s.GapLeft[slot] == 0 || elapsed >= maxTicks;
             if (arrowBeforeEnd || (others && elapsed >= s.MinGreenTicks[slot] && (normalEnd || spillEnd)))
             {
                 if (myLeft != 0)
@@ -419,7 +425,7 @@ internal static class SignalPhase
     /// со спросом на стрелку (уступание левого на зелёном не короче <c>ArrowTrigger</c>), <paramref name="spillAxes"/> - биты осей, у которых есть голова,
     /// упёршаяся в стоящий выезд (6.8; спил оси = бит есть и вызова оси нет). Обновляет <c>ArmLeftYield/ArmLeftHead</c>.
     /// </summary>
-    private static void Detect(World w, SignalStore s, int slot, in RuleEnv e, out int call, out bool ext, out int leftWait, out int leftDemand, out int spillAxes)
+    private static void Detect(World w, SignalStore s, int slot, in RuleEnv e, out int call, out bool ext, out bool extPed, out int leftWait, out int leftDemand, out int spillAxes)
     {
         VehicleStore v = w.Vehicles;
         LaneOccupancy occ = e.Occ;
@@ -427,6 +433,7 @@ internal static class SignalPhase
         byte[] deny = w.Gate.DenyReason;
         call = 0;
         ext = false;
+        extPed = false;
         leftWait = 0;
         leftDemand = 0;
         spillAxes = 0;
@@ -507,6 +514,10 @@ internal static class SignalPhase
             if (green && !yieldDeny)
             {
                 ext = true;
+            }
+            else if (green && dr == (byte)GateDeny.Ped)
+            {
+                extPed = true;   // голова ждёт пешеходов своего зелёного: после Walk/Clear машинам нужно окно (сверх MaxGreen, до PedSignals.OvertimeTicks)
             }
 
             if (s.SigLaneLeft[baseLane + k])
