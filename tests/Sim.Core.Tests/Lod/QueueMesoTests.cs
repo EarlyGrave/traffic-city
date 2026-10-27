@@ -206,6 +206,40 @@ public class QueueMesoTests
         Assert.Equal(c.DistanceTotalMm, c.MesoDistanceMm);
     }
 
+    /// <summary>
+    /// S3 (N3): допуск, выданный у въезда на полосу на скорости <c>v_ff</c> (дистанция решения ~ вся полоса), не держится за машиной, которая встала далеко от
+    /// стоп-линии (автобус на остановке у обочины, очередь за ним): иначе поперечный поток получает <c>Box</c> от машины, которая в узел не въедет (на s10k stuck-событий
+    /// 420 против 168 без этого правила). Выборка раз в 20 тиков: допущенная стоящая (v &lt; 0.3) дальше 30 м от линии не живёт больше 5 выборок подряд.
+    /// </summary>
+    [Fact]
+    public void City_StandingVehicleFarFromLine_DoesNotKeepGrant()
+    {
+        ScenarioDesc d = City();
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        VehicleStore v = w.Vehicles;
+        var streak = new int[v.Capacity];
+        int worst = 0;
+        long standingFar = 0;
+        for (int t = 0; t < 24000; t += 20)
+        {
+            sim.Step(20);
+            for (int i = 0; i < v.HighWater; i++)
+            {
+                int lane = v.Pool.IsAlive(i) ? v.Lane[i] : -1;
+                bool far = lane >= 0 && w.Net.Lanes[lane].Kind == Sim.Core.Network.LaneKind.Normal && Sim.Core.Rules.Intersections.GateRules.IsGranted(v, i)
+                    && v.Speed[i] < Sim.Core.Rules.Intersections.GateRules.CreepSpeed && w.Net.LaneLength[lane] - v.S[i] > QueueMeso.StaleGrantM;
+                streak[i] = far ? streak[i] + 1 : 0;
+                standingFar += far ? 1 : 0;
+                worst = Math.Max(worst, streak[i]);
+            }
+        }
+
+        _out.WriteLine($"standing-far granted samples {standingFar}, longest streak {worst} samples, stuck events {sim.Counters.StuckEventsTotal}, meso {sim.Work.StuckEventsMeso}, trips {sim.Counters.TripsCompleted}");
+        Assert.True(worst <= 5, $"granted vehicle stood >30 m from the line for {worst} samples (20 ticks each)");
+        Assert.Equal(sim.Counters.StuckEventsTotal, sim.Work.StuckEventsMeso);   // all_meso: все stuck-события - события meso-уровня
+    }
+
     [Fact]
     public void City_Step_Allocates_ZeroBytes_InSteadyState()
     {
