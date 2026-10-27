@@ -255,7 +255,8 @@ internal static class PedSignals
 
                 // Зелёная ось «отдыхает» дольше MaxGreen (встречного спроса нет, иначе Main уже закончился): вызова оси нет, а следующего greenStart без спроса не будет -
                 // обслуженный переход и поздний вызов не должны ждать его вечно (корень «пешеходы часами у переходов», L14).
-                bool rest = s.Mode[slot] == SignalMode.Adaptive && s.GreenElapsed[slot] >= s.GreenTicks[(slot * SignalStore.MaxPhases) + k];
+                // Но не при вызове другой оси (L15): иначе непрерывный поток пешеходов раз за разом продлевает зелёный и морит встречную ось; при вызове Main кончается, пешеход ждёт своего greenStart.
+                bool rest = s.Mode[slot] == SignalMode.Adaptive && s.GreenElapsed[slot] >= s.GreenTicks[(slot * SignalStore.MaxPhases) + k] && s.PendingOther[slot] == 0;
                 if (walk == 0 && clear == 0 && ((served & bit) == 0 || rest) && xs.QCount[x] > 0)
                 {
                     int dur = WalkTicks(w, s, slot, idx, k, greenStart, in cfg);
@@ -321,6 +322,11 @@ internal static class PedSignals
 
         // Поздний вызов: Walk + Clear помещаются до max-out оси и (в координации) до силового конца своего окна.
         int need = cfg.WalkTicks + clear;
+        if (s.GreenElapsed[slot] >= green && s.PendingOther[slot] != 0)
+        {
+            return 0;   // L15: зелёный уже за MaxGreen и другая ось ждёт - Main кончается, Walk не продлевает его
+        }
+
         if (s.GreenElapsed[slot] + need > green && s.GreenElapsed[slot] < green)
         {
             return 0;   // не помещается до max-out: ждёт его (при отдыхе зелёного дольше MaxGreen Walk всё равно стартует, Hold держит Main на Walk + Clear)
