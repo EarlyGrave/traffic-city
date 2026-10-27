@@ -18,9 +18,6 @@ uniform float line_center_alpha = 0.36;  // то же, для границы н�
 uniform float line_px = 1.2;             // толщина линии, пикселей экрана
 uniform float line_fade_begin = 90.0;    // линии гаснут между этими дистанциями, м (от LodConfig.RoadLod0)
 uniform float line_fade_end = 175.0;
-uniform vec3 asphalt_color : source_color = vec3(0.5, 0.5, 0.5); // вблизи весь асфальт - этот цвет
-uniform float asphalt_fade_begin = 125.0;  // дальше цвет плавно переходит в цвет класса дороги (COLOR вершин)
-uniform float asphalt_fade_end = 250.0;
 
 varying flat float v_kind;
 varying vec2 v_uv;
@@ -40,7 +37,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 base = mix(asphalt_color, COLOR.rgb, smoothstep(asphalt_fade_begin, asphalt_fade_end, length(VERTEX)));
+	vec3 base = COLOR.rgb; // асфальт (Palette.Asphalt) на всех LOD; Closing - тон поверх
 	float k = 0.0;
 	int code = int(v_kind + 0.5);
 	float fade = 1.0 - smoothstep(line_fade_begin, line_fade_end, v_dist);

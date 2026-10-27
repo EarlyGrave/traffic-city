@@ -52,9 +52,6 @@ public sealed class RoadChunks
     // Ширина полосы, если в сети нет ни одного сегмента с двумя и более полосами (иначе её не измерить): значение NetworkOptions.LaneWidth по умолчанию.
     private const float FallbackLaneWidth = 3.5f;
 
-    private static readonly Color _streetColor = Palette.Street;
-    private static readonly Color _arterialColor = Palette.Arterial;
-    private static readonly Color _junctionColor = Palette.Connector;
 
     private readonly ShaderMaterial _material;
     private readonly List<int> _keep = new();
@@ -75,9 +72,6 @@ public sealed class RoadChunks
         _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
         _material.SetShaderParameter("line_center_alpha", Palette.LaneLineCenterAlpha);
         _material.SetShaderParameter("line_px", LinePx);
-        _material.SetShaderParameter("asphalt_color", Palette.Asphalt);
-        _material.SetShaderParameter("asphalt_fade_begin", lod.RoadLod0 * Palette.AsphaltFadeBegin);
-        _material.SetShaderParameter("asphalt_fade_end", lod.RoadLod0 * Palette.AsphaltFadeEnd);
         _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
         _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };
@@ -86,18 +80,9 @@ public sealed class RoadChunks
 
     public Node3D Root { get; }
 
-    private static Color KindColor(NetworkView net, int segment)
-    {
-        if ((uint)segment >= (uint)net.Segments.Length)
-        {
-            return _streetColor;
-        }
-
-        Color c = net.Segments[segment].Kind == RoadKind.Arterial ? _arterialColor : _streetColor;
-
-        // закрывающийся сегмент (4.3, T4: Closing, дренаж) - свой цвет палитры; меши пересобираются при смене Version сети
-        return (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? Palette.Closing : c;
-    }
+    /// <summary>Асфальт одного цвета на всех LOD и у всех классов; закрывающийся сегмент (4.3, T4: Closing, дренаж) - тон <see cref="Palette.Closing"/> поверх (меши пересобираются при смене Version сети).</summary>
+    private static Color KindColor(NetworkView net, int segment) =>
+        (uint)segment < (uint)net.Segments.Length && (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? Palette.Closing : Palette.AsphaltVertex;
 
     private static float KindY(NetworkView net, int segment) =>
         segment >= 0 && segment < net.Segments.Length && net.Segments[segment].Kind == RoadKind.Arterial ? 0.02f : 0f;
@@ -323,7 +308,7 @@ public sealed class RoadChunks
 
             ReadOnlySpan<int> arms = armSeg.AsSpan(armStart[n], armStart[n + 1] - armStart[n]);
             float py = NodeY(net, arms);
-            Color pc = NodeColor(net, arms);
+            Color pc = Palette.AsphaltVertex;
             AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue);
             AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints);
             AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0);
@@ -348,20 +333,6 @@ public sealed class RoadChunks
         }
 
         return y;
-    }
-
-    /// <summary>Площадка: цвет артерии, если среди рукавов есть артерия (магистраль идёт через узел сплошной), иначе цвет улицы.</summary>
-    private static Color NodeColor(NetworkView net, ReadOnlySpan<int> arms)
-    {
-        foreach (int a in arms)
-        {
-            if (net.Segments[a >> 1].Kind == RoadKind.Arterial)
-            {
-                return _arterialColor;
-            }
-        }
-
-        return _junctionColor;
     }
 
     /// <summary>
