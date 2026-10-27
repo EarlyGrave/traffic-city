@@ -33,7 +33,7 @@ public sealed class LegacyCornerGoldenTests
     public void S1k_FixedLegacy_CornerOff_MatchesPreAdr0028Golden(int threads)
     {
         using Simulation sim = Create("s1k", threads, fixedLegacy: true);
-        string[] expected = { "8e7670c4e70230d6", "5e8b5be6ec751616", "c141e37bf04ddfcb", "4079d8b13b566ce7" };
+        string[] expected = { "86b053c16c320e1a", "577458b344bf0d86", "a6df8be544479ad8", "0e56ca8689b2fe28" };
         foreach (string e in expected)
         {
             sim.Step(1000);
@@ -48,7 +48,7 @@ public sealed class LegacyCornerGoldenTests
     public void S10k_Adaptive_CornerOff_MatchesPreAdr0028Golden(int threads)
     {
         using Simulation sim = Create("s10k", threads, fixedLegacy: false);
-        string[] expected = { "41e484b2dfde848b", "342c2f1b4f50889a", "a46b6ed830102e37" };
+        string[] expected = { "6cff314d255c0970", "180a98e3c6d7f20c", "d7748f09e319d72c" };
         foreach (string e in expected)
         {
             sim.Step(200);

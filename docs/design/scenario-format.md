@@ -44,6 +44,7 @@
     "lane_width_m": number,             // дефолт 3.5
     "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт round(12·scale²) — считает загрузчик, если ключ опущен; генератор сам не масштабирует
     "irregular_jitter_m": number,       // макс. сдвиг нерегулярного узла, м. Дефолт 40
+    "snap_nodes": bool,                 // RP9 (road-profiles.md §5): узлы решётки (после джиттера, сдвига, слияния) на сетку module_m, шаг = block_m точно. Дефолт true с road_profiles_file, иначе false (прежнее поведение). block_m кратен module_m (8 м)
     "node_jitter_m": number,            // фоновый джиттер всех внутренних узлов, м (0..0.45·block_m). Дефолт 0 — улицы и артерии прямые. PRNG-draw делается всегда
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8

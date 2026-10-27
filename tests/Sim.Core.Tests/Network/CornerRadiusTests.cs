@@ -13,7 +13,7 @@ namespace Sim.Core.Tests.Network;
 public class CornerRadiusTests
 {
     // Голден-хэш NetworkStore.Hash() s1k до ADR-0028 (CityGeneratorTests.GoldenS1kNetworkHash до смены): выключенное скругление обязано его воспроизводить.
-    private const ulong LegacyS1kNetworkHash = 0x579C25BA8FEB8BC8UL;
+    private const ulong LegacyS1kNetworkHash = 0x3FE6F0C3CBEC2E69UL;
 
     private const float MinRightTurnRadius = 6f;
 

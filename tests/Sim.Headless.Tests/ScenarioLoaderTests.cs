@@ -139,6 +139,18 @@ public class ScenarioLoaderTests
     }
 
     [Fact]
+    public void SnapNodes_DefaultOffWithoutProfiles_ExplicitOnNeedsBlockMultipleOfModule()
+    {
+        Assert.False(Load(Minimal()).City.SnapNodes);
+        Assert.False(Load(Minimal("\"city\": { \"block_m\": 150 }")).City.SnapNodes);
+        Assert.True(Load(Minimal("\"city\": { \"block_m\": 152, \"size_m\": [3040, 3040], \"snap_nodes\": true }")).City.SnapNodes);
+        ScenarioException e = Fails(Minimal("\"city\": { \"block_m\": 150, \"snap_nodes\": true }"));
+        Assert.Contains("$.city.block_m", e.Message, StringComparison.Ordinal);
+        Assert.Contains("multiple of module_m", e.Message, StringComparison.Ordinal);
+        Assert.Contains("$.city.snap_nodes", Fails(Minimal("\"city\": { \"snap_nodes\": 1 }")).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DefaultsApplied()
     {
         ScenarioDesc d = Load(Minimal());
@@ -212,7 +224,7 @@ public class ScenarioLoaderTests
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
         RoutingDesc r = d.Routing;
         Assert.Equal(levels, r.Levels);
-        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(1016f, r.CellSize);
         Assert.Equal(4, r.Fanout);
         Assert.Equal(16, r.WindowSteps);
         Assert.Equal(pathfind, r.PathfindBudgetPerTick);

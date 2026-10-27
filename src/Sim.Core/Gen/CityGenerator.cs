@@ -35,6 +35,7 @@ internal struct CityGenResult
 /// </summary>
 internal static class CityGenerator
 {
+    internal const float DefaultModuleM = 8f;   // module_m без каталога профилей (road-profiles.md §4.1)
     internal const float MinSegmentLength = 30f;
     internal const float MinArmAngle = 0.43633232f; // 25°
     internal const int MaxArms = 6;
@@ -58,18 +59,22 @@ internal static class CityGenerator
         out CityGenResult result)
     {
         result = default;
-        if (!ValidateDesc(in city))
+        // Модуль мировой сетки: из каталога профилей, иначе 8 м (road-profiles.md §4.1).
+        float module = b.Store.Profiles != null ? b.Store.Profiles.ModuleMm / 1000f : DefaultModuleM;
+        if (!ValidateDesc(in city, module))
         {
             return CreateStatus.InvalidNetwork;
         }
+
+        bool snap = city.SnapNodes;
 
         // ---- производные величины (§1) ----
         float w = city.SizeX * city.Scale;
         float h = city.SizeZ * city.Scale;
         int nx = Math.Max(2, RoundI(w / city.BlockSize));
         int nz = Math.Max(2, RoundI(h / city.BlockSize));
-        float bx = w / nx;
-        float bz = h / nz;
+        float bx = snap ? city.BlockSize : w / nx;   // snap: шаг = block_m точно (кратен модулю); без snap - прежнее w / nx
+        float bz = snap ? city.BlockSize : h / nz;
         float g = city.NodeJitter;
         float halfW = w * 0.5f;
         float halfH = h * 0.5f;
@@ -109,6 +114,13 @@ internal static class CityGenerator
                 if (!bj)
                 {
                     z += dz;
+                }
+
+                if (snap)
+                {
+                    // draw сделан всегда, снап - после него: число и порядок обращений к PRNG прежние
+                    x = SnapToModule(x, module);
+                    z = SnapToModule(z, module);
                 }
 
                 pl.X[p] = x;
@@ -252,7 +264,7 @@ internal static class CityGenerator
 
             if ((k & 1) == 1)
             {
-                int mr = TryMerge(pl, p);
+                int mr = TryMerge(pl, p, snap ? module : 0f);
                 if (mr == 1)
                 {
                     merged++;
@@ -266,7 +278,7 @@ internal static class CityGenerator
                 }
             }
 
-            if (TryShift(pl, p, rr * MathF.Cos(theta), rr * MathF.Sin(theta)))
+            if (TryShift(pl, p, rr * MathF.Cos(theta), rr * MathF.Sin(theta), snap ? module : 0f))
             {
                 shifted++;
             }
@@ -592,9 +604,20 @@ internal static class CityGenerator
         return CreateStatus.Ok;
     }
 
-    private static bool ValidateDesc(in CityGenDesc c)
+    /// <summary>Округление координаты до ближайшего кратного модуля (от нуля на .5, как <see cref="RoundI"/>); module &lt;= 0 - без изменений.</summary>
+    internal static float SnapToModule(float v, float module) => module > 0f ? RoundI(v / module) * module : v;
+
+    /// <summary>block_m кратен модулю сетки (допуск 1e-3 м на запись в float).</summary>
+    internal static bool IsMultipleOfModule(float blockSize, float module)
     {
-        return c.BlockSize >= 50f &&
+        float k = blockSize / module;
+        return MathF.Abs(k - MathF.Round(k)) * module < 1e-3f;
+    }
+
+    private static bool ValidateDesc(in CityGenDesc c, float module)
+    {
+        return (!c.SnapNodes || (module > 0f && IsMultipleOfModule(c.BlockSize, module))) &&
+            c.BlockSize >= 50f &&
             c.SizeX >= 2f * c.BlockSize && c.SizeZ >= 2f * c.BlockSize &&
             c.Scale > 0f && float.IsFinite(c.Scale) &&
             c.ArterialEvery >= 2 &&
@@ -690,12 +713,12 @@ internal static class CityGenerator
         return true;
     }
 
-    private static bool TryShift(GridPlan pl, int p, float dx, float dz)
+    private static bool TryShift(GridPlan pl, int p, float dx, float dz, float module)
     {
         float ox = pl.X[p];
         float oz = pl.Z[p];
-        pl.X[p] = ox + dx;
-        pl.Z[p] = oz + dz;
+        pl.X[p] = SnapToModule(ox + dx, module);   // module = 0 - без снапа; Validate (углы, длины) идёт уже по снапнутым координатам
+        pl.Z[p] = SnapToModule(oz + dz, module);
         if (ValidateAround(pl, p))
         {
             pl.NodeFlags[p] |= GridPlan.FlagShifted;
@@ -708,7 +731,7 @@ internal static class CityGenerator
     }
 
     /// <summary>0 — условия слияния не выполнены (делается сдвиг), 1 — слито, 2 — отменено валидацией (пропуск).</summary>
-    private static int TryMerge(GridPlan pl, int p)
+    private static int TryMerge(GridPlan pl, int p, float module)
     {
         int q = p + 1;
         if (q >= pl.NodeCap || pl.NodeAlive[q] == 0 ||
@@ -767,8 +790,8 @@ internal static class CityGenerator
             pl.SaveEdgeB[s] = pl.EdgeB[e];
         }
 
-        float mx = (pl.X[p] + pl.X[q]) * 0.5f;
-        float mz = (pl.Z[p] + pl.Z[q]) * 0.5f;
+        float mx = SnapToModule((pl.X[p] + pl.X[q]) * 0.5f, module);
+        float mz = SnapToModule((pl.Z[p] + pl.Z[q]) * 0.5f, module);
         pl.EdgeAlive[epq] = 0;
         pl.RemoveAdj(p, epq);
         pl.RemoveAdj(q, epq);

@@ -169,6 +169,7 @@ public struct CityGenDesc
     public float ProgressionSpeedFactor;               // city.progression_speed_factor: v_p = ArterialSpeed * factor (0 = 1.0), калибровка волны alternate
     public int StreetProfile;                          // city.profiles.street: индекс профиля + 1 (0 - нет; в режиме профилей обязателен); число полос - из профиля
     public int ArterialProfile;                        // city.profiles.arterial: индекс профиля + 1
+    public bool SnapNodes;                             // city.snap_nodes (road-profiles.md §5): узлы на мировую сетку module_m, шаг решётки = block_m точно; дефолт загрузчика: true в режиме профилей, иначе false (прежнее поведение)
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----

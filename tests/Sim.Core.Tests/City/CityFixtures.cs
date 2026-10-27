@@ -19,7 +19,7 @@ internal static class CityFixtures
         ScenarioDesc d = Step2.S1k(buses: true);
         d.Demand.Model = DemandModel.Residents;
         d.Town = CityDesc.Default();
-        d.Lod.CellM = 1000f;
+        d.Lod.CellM = 1016f;
         SimCapacities c = d.Capacities;
         c.MaxLots = MaxLots;
         c.MaxBuildings = MaxBuildings;
