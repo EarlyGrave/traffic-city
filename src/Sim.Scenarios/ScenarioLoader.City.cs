@@ -11,6 +11,40 @@ public static partial class ScenarioLoader
     private static readonly string[] _citySectionKeys = { "calendar", "zoning", "residents", "economy", "choice" };
     private static readonly string[] _cityCapacityKeys = { "max_lots", "max_buildings", "max_city_residents", "skim_obs_capacity" };
 
+    /// <summary>
+    /// <c>city.landuse</c> (visual-style.md §8, ADR-0027): парки, пруды и береговая полоса генератора. Нет секции или <c>enabled = false</c> - выключено (нулевая структура, сценарий побитово прежний).
+    /// У явной сети (<c>city.enabled = false</c>) землепользования нет.
+    /// </summary>
+    private static LandUseDesc ParseLandUse(JsonObjectReader? r, bool cityEnabled)
+    {
+        if (r == null)
+        {
+            return default;
+        }
+
+        if (!cityEnabled)
+        {
+            throw new ScenarioException($"{r.Path}: allowed only with a generated city (city.enabled = true)");
+        }
+
+        var d = new LandUseDesc { Enabled = r.Bool("enabled", false) };
+        d.ParkShare = (float)r.Num("park_share", 0.08, min: 0, max: 1);
+        d.PondShare = (float)r.Num("pond_share", 0.25, min: 0, max: 1);
+        string coast = r.Str("coast", "none");
+        d.Coast = coast switch
+        {
+            "none" => LandUseCoast.None,
+            "south" => LandUseCoast.South,
+            "east" => LandUseCoast.East,
+            "north" => LandUseCoast.North,
+            "west" => LandUseCoast.West,
+            _ => throw new ScenarioException($"{r.ChildPath("coast")}: expected \"none\", \"south\", \"east\", \"north\" or \"west\""),
+        };
+        d.CoastWidthM = (float)r.Num("coast_width_m", 400, min: 1);
+        r.Finish();
+        return d.Enabled ? d : default;
+    }
+
     /// <summary>Децисекунды из секунд: <c>round((float)s * 10)</c>.</summary>
     private static int Ds(double seconds) => (int)Math.Round((float)seconds * 10.0, MidpointRounding.AwayFromZero);
 

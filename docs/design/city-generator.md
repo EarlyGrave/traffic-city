@@ -279,6 +279,21 @@ internal struct SignalPlanSeed
 Больше генератор сети PRNG не трогает. Добавление вызова — изменение этого раздела и голден-хэша
 в тестах (§8).
 
+### 3.10 Землепользование (VS8, ADR-0027, `Gen/LandUseGenerator.cs`)
+
+Необязательный шаг при `city.landuse.enabled`: вызывается по **финальному плану** (после §3.5, до эмиссии §3.7), поэтому сеть, хэши и порядок §3.9 не меняются. Своего потока
+`RngStream.LandUse = 9` (локальный `Pcg32`, seed мира; живёт только в `Create`, в `World` и хэш состояния не входит).
+- Клетки `(kx, kz)` по `kz·Nx + kx`; **на клетку всегда 2 вызова**: `u1` (парк, если `u1 < park_share · (2, если одно из 4 рёбер клетки мертво)`) и `u2` (пруд: `u2 < pond_share`, флаг `Pond`).
+  Клетки периметра (`kx` или `kz` крайние) не парки (вызовы всё равно делаются).
+- Углы полигона — позиции узлов плана `(kx,kz), (kx+1,kz), (kx+1,kz+1), (kx,kz+1)`; слитый узел (§3.5, `q = p + 1`, мёртв) заменяется выжившим `p` (клетка становится треугольником).
+  При `snap_nodes` углы лежат на сетке `module_m` (8 м), береговая полоса округляется до `module_m` тоже.
+- `coast != none`: последним полигоном идёт `Water` + флаг `Coast` (прямоугольник за краем карты на `coast_width_m`, вне сети).
+- Выход: `CityGenResult.LandUse` (`LandUsePoly[]`, 36 Б: 4 × `Vec2`, `Kind` Park=1/Water=2, `Flags` Pond=1/Coast=2); `Urban` отдельно не выдаётся. Наружу — `Simulation.LandUse` + `LandUseVersion`.
+- Единственное влияние на симуляцию: `LotBuilder` не режет участок, центр которого внутри парка или воды (point-in-quad). Участки есть только при `demand.model = residents`.
+- **Ограничения:** данные производные от desc, которого в сейве нет, поэтому после `Load` `Simulation.LandUse` пуст (участки в сейве уже есть — они не меняются; новые дороги после `Load`
+  режут участки без учёта парков). Правило «клетки с конечной остановкой — не парк» не сделано: маршруты строятся позже генератора сети (на отказ участкам и сеть не влияет).
+  Восстановление после `Load` потребует сохранить параметры `landuse` в сейве (`world_version`) — отдельная задача.
+
 ## 4. Масштаб и оценки по лестнице
 
 `Scale` умножает размер карты; шаг квартала, скорости, доля удалённых улиц — неизменны
@@ -464,6 +479,7 @@ internal struct CityGenResult
     public int   RemovedStreets, RepairedEdges, ShiftedNodes, MergedNodes, IrregularSkipped;
     public int   SignalizedNodes;
     public SignalPlanSeed[] SignalPlans;      // длина SignalizedNodes; выделяется в Generate
+    public LandUsePoly[]? LandUse;            // VS8 (§3.10): парки/вода, null - city.landuse выключено
 }
 
 internal struct ZoneGenResult  { public int ZoneCount, InternalZones, ExternalZones, SpawnLanesTotal, EmptyZones; }
