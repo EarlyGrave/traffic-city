@@ -77,7 +77,7 @@ public class SnapshotTests
             {
                 VehicleRenderData a = cur[i];
                 VehicleRenderData e = legacy[i];
-                Assert.True(a.X == e.X && a.Z == e.Z && a.Heading == e.Heading && a.Speed == e.Speed && a.LateralOffset == e.LateralOffset, $"tick {tick} slot {i}");
+                Assert.True(a.X == e.X && a.Z == e.Z && AngleDiff(a.Heading, e.Heading) <= 0.2f && a.Speed == e.Speed && a.LateralOffset == e.LateralOffset, $"tick {tick} slot {i}");
                 Assert.True(a.Y == e.Y && a.Index == e.Index && a.Generation == e.Generation && a.Type == e.Type && a.Flags == e.Flags, $"tick {tick} slot {i} meta");
             }
 
@@ -88,6 +88,61 @@ public class SnapshotTests
         }
 
         Assert.True(sim.ActiveVehicleCount > 0);
+    }
+
+    private static float AngleDiff(float a, float b)
+    {
+        float d = MathF.Abs(a - b) % (2f * MathF.PI);
+        return d > MathF.PI ? (2f * MathF.PI) - d : d;
+    }
+
+    [Fact]
+    public void Snapshot_HeadingSmooth_OnConnectors_S1k()
+    {
+        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        NetworkStore net = w.Net;
+        const float dt = 1f / 20f;
+        var prev = new VehicleRenderData[d.Capacities.MaxVehicles];
+        var prevLane = new int[prev.Length];
+        int checkedSteps = 0;
+        for (int tick = 0; tick < 4000; tick++)
+        {
+            sim.Step(1);
+            ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
+            for (int i = 0; i < cur.Length; i++)
+            {
+                VehicleRenderData a = cur[i];
+                int lane = w.Vehicles.Lane[i];
+                if (a.Flags != 0 && prev[i].Flags != 0 && prev[i].Generation == a.Generation && prevLane[i] == lane
+                    && net.Lanes[lane].Kind == LaneKind.Connector)
+                {
+                    LaneData cl = net.Lanes[lane];
+                    float turn = 0f;
+                    for (int p = cl.FirstPoint; p < cl.FirstPoint + cl.PointCount - 2; p++)
+                    {
+                        turn += AngleDiff(net.LanePieceHeading[p], net.LanePieceHeading[p + 1]);
+                    }
+
+                    // Изменение курса за тик не больше 2x средней угловой скорости (поворот / длина * путь) + допуск.
+                    float limit = (2f * turn / MathF.Max(cl.Length, 1f) * MathF.Max(a.Speed, prev[i].Speed) * dt) + 0.02f;
+                    float dh = AngleDiff(a.Heading, prev[i].Heading);
+                    Assert.True(dh <= limit, $"tick {tick} slot {i}: курс {dh} рад > {limit} рад на коннекторе {lane}");
+                    checkedSteps++;
+                }
+
+                prev[i] = a;
+                prevLane[i] = lane;
+            }
+
+            for (int i = cur.Length; i < prev.Length; i++)
+            {
+                prev[i] = default;
+            }
+        }
+
+        Assert.True(checkedSteps > 200, $"мало шагов: {checkedSteps}");
     }
 
     [Fact]
