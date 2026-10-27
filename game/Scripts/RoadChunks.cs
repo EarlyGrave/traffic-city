@@ -162,7 +162,7 @@ public sealed partial class RoadChunks
         bool baseAB = n1 > 0;
         int baseLane = baseAB ? sd.FirstLaneAB : sd.FirstLaneBA;
         int nTot = n1 + n2;
-        if (nTot <= 0 || (uint)baseLane >= (uint)net.Lanes.Length || net.Lanes[baseLane].PointCount < 2)
+        if (nTot <= 0 || !net.IsLaneAlive(baseLane) || net.Lanes[baseLane].PointCount < 2)
         {
             return default;
         }
@@ -190,7 +190,7 @@ public sealed partial class RoadChunks
             bool opposite = baseAB && n2 > 0;
             // крайняя полоса сегмента: у встречного направления - его lane 0 (правая для него, дальняя для нас), иначе - левая полоса своего
             int far = opposite ? sd.FirstLaneBA : baseAB ? sd.FirstLaneAB + n1 - 1 : sd.FirstLaneBA + n2 - 1;
-            if ((uint)far < (uint)net.Lanes.Length && net.Lanes[far].PointCount >= 1)
+            if (net.IsLaneAlive(far) && net.Lanes[far].PointCount >= 1)
             {
                 LaneData fl = net.Lanes[far];
                 Vec2 q = net.LanePoints[opposite ? fl.FirstPoint + fl.PointCount - 1 : fl.FirstPoint];
@@ -233,7 +233,7 @@ public sealed partial class RoadChunks
 
             SegmentData sd = net.Segments[s];
             int lane = sd.LanesAB > 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
-            Vec2 fb = (uint)lane < (uint)net.Lanes.Length && net.Lanes[lane].PointCount > 0 ? net.LanePoints[net.Lanes[lane].FirstPoint] : default;
+            Vec2 fb = net.IsLaneAlive(lane) && net.Lanes[lane].PointCount > 0 ? net.LanePoints[net.Lanes[lane].FirstPoint] : default;
             Vec2 a = NodePos(net, sd.NodeA, fb);
             Vec2 b = NodePos(net, sd.NodeB, fb);
             segCx[s] = (a.X + b.X) * 0.5f;
@@ -554,7 +554,7 @@ public sealed partial class RoadChunks
             }
 
             LaneData cn = net.Lanes[li];
-            if ((uint)cn.FromLane >= (uint)net.Lanes.Length || (uint)cn.ToLane >= (uint)net.Lanes.Length)
+            if (!net.IsLaneAlive(cn.FromLane) || !net.IsLaneAlive(cn.ToLane))
             {
                 continue;
             }
@@ -613,7 +613,7 @@ public sealed partial class RoadChunks
             }
 
             LaneData cn = net.Lanes[li];
-            if ((uint)cn.FromLane >= (uint)net.Lanes.Length || (uint)cn.ToLane >= (uint)net.Lanes.Length || cn.PointCount < 3)
+            if (!net.IsLaneAlive(cn.FromLane) || !net.IsLaneAlive(cn.ToLane) || cn.PointCount < 3)
             {
                 continue;
             }

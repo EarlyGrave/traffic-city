@@ -68,6 +68,8 @@ public partial class SimHost : Node3D
     private double _inspectTimer;
     private bool _pedHeatShown;
     private int _warmupTicks;
+    private int _demolishCount;      // --demolish-test N: снести N сегментов после прогрева (проверка мёртвых слотов сети в слоях клиента)
+    private int _demolishTicks = 1200; // --demolish-ticks M: сколько тиков прогнать после команд (дренаж, затем снос)
     private int _stopWaitCache;
     private bool _hasCamArgs;
     private Vector3 _camCenter;
@@ -168,7 +170,7 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
-    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
+    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов).
     /// </summary>
     /// <summary>Час суток из <c>HH:MM</c> или десятичных часов (<c>19</c>, <c>19.5</c>).</summary>
     private static bool TryParseHour(string v, out float hour)
@@ -254,6 +256,14 @@ public partial class SimHost : Node3D
             else if (a == "--warmup-ticks" && i + 1 < args.Length)
             {
                 int.TryParse(args[++i], NumberStyles.Integer, inv, out _warmupTicks);
+            }
+            else if (a == "--demolish-test" && i + 1 < args.Length)
+            {
+                int.TryParse(args[++i], NumberStyles.Integer, inv, out _demolishCount);
+            }
+            else if (a == "--demolish-ticks" && i + 1 < args.Length)
+            {
+                int.TryParse(args[++i], NumberStyles.Integer, inv, out _demolishTicks);
             }
             else if (a == "--info" && i + 1 < args.Length)
             {
@@ -381,6 +391,11 @@ public partial class SimHost : Node3D
         {
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"[frame-alloc] tick {_sim.Tick} SetRenderView {allocView} B, vehicle layer {allocLayer} B"));
         }
+        if (_roads != null && _roads.Version != _sim.Network.Version)
+        {
+            RebuildNetworkLayers(_sim);
+        }
+
         if (_peds != null && _cross != null)
         {
             UpdatePeds(_sim, alpha, dist, delta);
@@ -391,11 +406,6 @@ public partial class SimHost : Node3D
         if (_signalsOn)
         {
             UpdateSignals(_sim);
-        }
-
-        if (_roads != null && _roads.Version != _sim.Network.Version)
-        {
-            RebuildRoads(_sim);
         }
 
         if (_landUse != null && _landUse.IsStale(_sim))
@@ -581,6 +591,11 @@ public partial class SimHost : Node3D
         GD.Print(RenderPreset.Describe(_lod));
         BuildScene(sim);
         sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
+        if (_demolishCount > 0)
+        {
+            DemolishTest(sim);
+        }
+
         if (_showHud)
         {
             LogInfo(sim);
@@ -609,14 +624,149 @@ public partial class SimHost : Node3D
         return true;
     }
 
-    /// <summary>Сеть изменилась (4.3, T2-T4: снос, перенос, закрытие): дороги и текстура heatmap пересобираются целиком (инкрементальный оверлей - T6, бэклог).</summary>
-    private void RebuildRoads(Simulation sim)
+    /// <summary>
+    /// Сеть изменилась (4.3, T2-T4: снос, перенос, закрытие): всё, что построено по массивам сети, пересобирается целиком
+    /// (инкрементальный оверлей - T6, бэклог): дороги и heatmap, тротуары/переходы, маркеры переходов и очереди остановок, полосы сигналов.
+    /// Слои сами пропускают мёртвые слоты сети (<c>Generation</c> чётное).
+    /// </summary>
+    private void RebuildNetworkLayers(Simulation sim)
     {
         _roads!.Root.QueueFree();
         _roadHeat = new HeatTexture(sim.Network.Segments.Length);
         _roadHeat.UpdateRoads(sim.SegmentLoads);
         _roads = new RoadChunks(sim, _roadHeat, _lod);
         AddChild(_roads.Root);
+        if (_pedStatic != null)
+        {
+            _pedStatic.Root.QueueFree();
+            _pedStatic = new PedChunks(sim, _lod);
+            _pedStatic.RefreshHeat(sim);
+            AddChild(_pedStatic.Root);
+        }
+
+        _cross?.Refresh(sim);
+        if (_signals != null)
+        {
+            CollectSignalLanes(sim.Network);
+        }
+
+        _routeDirty = true;
+        _routeTick = -1;
+    }
+
+    /// <summary>
+    /// Отладка (<c>--demolish-test N [--demolish-ticks M]</c>): ставит <c>RemoveRoad</c> на N живых сегментов (сначала несущие остановки, затем равномерно по сети)
+    /// и прогоняет M тиков. Слои клиента пересобираются в первом кадре по смене версии сети; в лог пишутся счётчики до/после.
+    /// </summary>
+    private void DemolishTest(Simulation sim)
+    {
+        NetworkView net = sim.Network;
+        // выбор детерминирован и кучный (ближе к центру карты), чтобы дыра была видна на скриншоте
+        float cx = (_mapX0 + _mapX1) * 0.5f;
+        float cz = (_mapZ0 + _mapZ1) * 0.5f;
+        var stopSegs = new System.Collections.Generic.List<(float D, int Seg)>();
+        for (int i = 0; i < net.BusStops.Length; i++)
+        {
+            if (net.IsBusStopAlive(i) && net.IsLaneAlive(net.BusStops[i].Lane))
+            {
+                int seg = net.Lanes[net.BusStops[i].Lane].Segment;
+                if (net.IsSegmentAlive(seg))
+                {
+                    stopSegs.Add((SegDist(net, seg, cx, cz), seg));
+                }
+            }
+        }
+
+        stopSegs.Sort((x, y) => x.D != y.D ? x.D.CompareTo(y.D) : x.Seg.CompareTo(y.Seg));
+        var picked = new System.Collections.Generic.List<int>();
+        for (int i = 0; i < stopSegs.Count && picked.Count < _demolishCount / 2; i++)
+        {
+            if (!picked.Contains(stopSegs[i].Seg))
+            {
+                picked.Add(stopSegs[i].Seg);
+            }
+        }
+
+        var alive = new System.Collections.Generic.List<(float D, int Seg)>();
+        for (int i = 0; i < net.Segments.Length; i++)
+        {
+            if (net.IsSegmentAlive(i) && !picked.Contains(i))
+            {
+                alive.Add((SegDist(net, i, cx, cz), i));
+            }
+        }
+
+        alive.Sort((x, y) => x.D != y.D ? x.D.CompareTo(y.D) : x.Seg.CompareTo(y.Seg));
+        int rest = _demolishCount - picked.Count;
+        int pool = Math.Min(alive.Count, rest * 3);
+        for (int k = 0; k < rest && pool > 0; k++)
+        {
+            picked.Add(alive[(int)((long)k * pool / rest)].Seg);
+        }
+
+        int ver0 = net.Version;
+        int segs0 = CountAliveSegments(net);
+        int cross0 = net.Crossings.Length;
+        foreach (int seg in picked)
+        {
+            sim.Enqueue(Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = net.SegmentRef(seg), Flags = 0 }));
+        }
+
+        sim.Step(Math.Max(1, _demolishTicks));
+        net = sim.Network;
+        int closing = 0;
+        for (int i = 0; i < net.Segments.Length; i++)
+        {
+            if (net.IsSegmentAlive(i) && (net.Segments[i].Flags & SegmentFlags.Closing) != 0)
+            {
+                closing++;
+            }
+        }
+
+        GD.Print(string.Create(
+            CultureInfo.InvariantCulture,
+            $"[demolish-test] requested {picked.Count} (incl. {Math.Min(picked.Count, _demolishCount / 2)} with stops); segments alive {segs0} -> {CountAliveSegments(net)} of {net.Segments.Length} slots, closing {closing}; crossings {cross0} -> {net.Crossings.Length}; version {ver0} -> {net.Version}"));
+    }
+
+    private static float SegDist(NetworkView net, int seg, float cx, float cz)
+    {
+        Vec2 a = net.Nodes[net.Segments[seg].NodeA].Position;
+        Vec2 b = net.Nodes[net.Segments[seg].NodeB].Position;
+        float dx = ((a.X + b.X) * 0.5f) - cx;
+        float dz = ((a.Z + b.Z) * 0.5f) - cz;
+        return (dx * dx) + (dz * dz);
+    }
+
+    private static int CountAliveSegments(NetworkView net)
+    {
+        int n = 0;
+        for (int i = 0; i < net.Segments.Length; i++)
+        {
+            if (net.IsSegmentAlive(i))
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
+
+    /// <summary>Живые не-connector полосы с геометрией: по ним рисуются сигналы (пересобирается при смене версии сети).</summary>
+    private void CollectSignalLanes(NetworkView net)
+    {
+        int lanes = net.Lanes.Length;
+        int[] tmp = new int[lanes];
+        int n = 0;
+        for (int i = 0; i < lanes; i++)
+        {
+            if (net.IsLaneAlive(i) && net.Lanes[i].Kind != LaneKind.Connector && net.Lanes[i].PointCount >= 2)
+            {
+                tmp[n++] = i;
+            }
+        }
+
+        _signalLanes = new int[n];
+        Array.Copy(tmp, _signalLanes, n);
     }
 
     private static ShaderMaterial GroundMaterial()
@@ -713,19 +863,7 @@ public partial class SimHost : Node3D
         _signals = new BoxBatch("Signals", new Vector3(0.7f, 0.5f, 3.0f), true);
         _signals.Node.Visible = false;
         AddChild(_signals.Node);
-        int lanes = net.Lanes.Length;
-        int[] tmp = new int[lanes];
-        int n = 0;
-        for (int i = 0; i < lanes; i++)
-        {
-            if (net.IsLaneAlive(i) && net.Lanes[i].Kind != LaneKind.Connector && net.Lanes[i].PointCount >= 2)
-            {
-                tmp[n++] = i;
-            }
-        }
-
-        _signalLanes = new int[n];
-        Array.Copy(tmp, _signalLanes, n);
+        CollectSignalLanes(net);
 
         _routeMesh = new ImmediateMesh();
         _routeNode = new MeshInstance3D
@@ -1195,6 +1333,7 @@ public partial class SimHost : Node3D
             int li = route.Steps[s].Lane;
             if (!net.IsLaneAlive(li))
             {
+                havePrev = false; // снесённая полоса: ленту через дыру не тянем
                 continue;
             }
 
