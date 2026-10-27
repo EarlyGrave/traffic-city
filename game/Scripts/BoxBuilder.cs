@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace TrafficCity;
@@ -30,6 +31,46 @@ public static class BoxBuilder
         st.Begin(Mesh.PrimitiveType.Triangles);
         Append(st, size, center);
         return st.Commit();
+    }
+
+    /// <summary>
+    /// Бокс в меш чанка (<see cref="MeshBuilder"/> с нормалями): стоит на земле в (<paramref name="x"/>, <paramref name="y0"/>, <paramref name="z"/>), размер (вдоль курса, вверх, поперёк),
+    /// поворот как у <see cref="BoxBatch"/> (локальная +X смотрит вдоль <c>(cos h, 0, sin h)</c>), один цвет вершин. <paramref name="bottom"/> = false - без дна
+    /// (5 граней, 10 треугольников: LOD2 и бокс-импостор, render.md §4.3).
+    /// </summary>
+    public static void AppendTo(MeshBuilder b, float x, float y0, float z, float heading, Vector3 size, Color color, bool bottom)
+    {
+        float c = MathF.Cos(heading);
+        float s = MathF.Sin(heading);
+        Vector3 h = size * 0.5f;
+        var o = new Vector3(x, y0 + h.Y, z);
+        // нормаль, ось u, ось v - те же, что в Append; локальные векторы поворачиваются вокруг Y
+        Quad(b, o, h, c, s, Vector3.Right, Vector3.Forward, Vector3.Up, color);
+        Quad(b, o, h, c, s, Vector3.Left, Vector3.Back, Vector3.Up, color);
+        Quad(b, o, h, c, s, Vector3.Back, Vector3.Right, Vector3.Up, color);
+        Quad(b, o, h, c, s, Vector3.Forward, Vector3.Left, Vector3.Up, color);
+        Quad(b, o, h, c, s, Vector3.Up, Vector3.Back, Vector3.Right, color);
+        if (bottom)
+        {
+            Quad(b, o, h, c, s, Vector3.Down, Vector3.Right, Vector3.Back, color);
+        }
+    }
+
+    private static Vector3 Rot(Vector3 v, float c, float s) => new((v.X * c) - (v.Z * s), v.Y, (v.X * s) + (v.Z * c));
+
+    private static void Quad(MeshBuilder b, Vector3 center, Vector3 h, float c, float s, Vector3 n, Vector3 u, Vector3 v, Color color)
+    {
+        Vector3 o = n * h;
+        Vector3 hu = u * h;
+        Vector3 hv = v * h;
+        Vector3 nw = Rot(n, c, s);
+        int p00 = b.AddLit(center + Rot(o - hu - hv, c, s), nw, color, new Vector2(0f, 0f));
+        int p10 = b.AddLit(center + Rot(o + hu - hv, c, s), nw, color, new Vector2(1f, 0f));
+        int p11 = b.AddLit(center + Rot(o + hu + hv, c, s), nw, color, new Vector2(1f, 1f));
+        int p01 = b.AddLit(center + Rot(o - hu + hv, c, s), nw, color, new Vector2(0f, 1f));
+        // тот же порядок обхода, что в Face (лицевая по часовой)
+        b.Tri(p00, p11, p10);
+        b.Tri(p00, p01, p11);
     }
 
     private static void Face(SurfaceTool st, Vector3 c, Vector3 h, Vector3 n, Vector3 u, Vector3 v)
