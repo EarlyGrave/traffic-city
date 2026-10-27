@@ -123,6 +123,12 @@ public static class Palette
     public const float BuildingAoMin = 0.72f;    // AO у земли: mix(0.72, 1, smoothstep(0, BuildingAoHeight, y_world))
     public const float BuildingAoHeight = 6f;
 
+    /// <summary>X-ray ближних высоток (VS6): здания от 15 м, чья верхушка ближе min(1.5 x фокус, 200 м), выбрасываются дизерингом (доля 0.75 дистанции - полностью, до 1.0 - плавно).</summary>
+    public const float BuildingXrayMinHeight = 15f;
+    public const float BuildingXrayMaxDist = 200f;
+    public const float BuildingXrayFocusK = 1.5f;
+    public const float BuildingXrayBegin = 0.75f;
+
     public static readonly Color Selected = Lin("#FFFFFF");
     public static readonly Color Stuck = Lin("#FF2E2E"); // только в инфо-слое «Трафик»
 
