@@ -36,6 +36,8 @@ internal static class CityInit
             AssignJobs(w, c);   // начальная работа - тем же рынком, что и днём (§2.5 п. 3, §8.1)
         }
 
+        BudgetFlows.InitCreated(w, c);   // казна (city-economy.md §3): вклад, LV = T, содержание, оценка дохода; без city_budget ничего не делает
+
         return CreateStatus.Ok;
     }
 

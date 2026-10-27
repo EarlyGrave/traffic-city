@@ -14,7 +14,7 @@ internal sealed class CityWorld
 {
     public const int SlotsPerDay = 288;
 
-    public readonly CityDesc Cfg;              // с нормализованной таблицей типов зданий
+    public CityDesc Cfg;           // с нормализованной таблицей типов зданий
     public readonly BuildingTypes Types;
     public readonly CityGrid Grid;
     public readonly int DayTicks;
@@ -105,6 +105,7 @@ internal sealed class CityWorld
         LotGen.RestoreDerived(w);
         Market.Invalidate();
         Budget?.RecomputeDerived(this);
+        BudgetFlows.RecomputeMaintenance(w, this);   // содержание - производное сети и маршрутов (city-economy.md §6.1)
         RebuildWheel(w.Tick - 1);
         TripLegs.RestoreDerived(w);
     }

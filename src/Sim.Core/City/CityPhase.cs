@@ -157,6 +157,11 @@ internal static class CityPhase
             {
                 if (res.Pool.IsAlive(r))
                 {
+                    if (c.Budget != null)
+                    {
+                        BudgetFlows.ResidentDay(c, r);   // земля и утечка (city-economy.md §3, §7.2); до рынка: выезд жителя забирает уже остаток
+                    }
+
                     c.Market.ResidentDay(w, c, r);
                 }
             }
