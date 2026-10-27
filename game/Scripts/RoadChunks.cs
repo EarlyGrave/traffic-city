@@ -8,10 +8,14 @@ using Sim.Core.Util;
 namespace TrafficCity;
 
 /// <summary>
-/// Дороги чанками (docs/design/render.md §5.2, §4.3): ближние чанки 250 м - LOD0 (ленты по полосам и connector'ам, до <see cref="LodConfig.RoadLod0"/>)
-/// и LOD1 (по ленте на направление сегмента + квадрат узла, до <see cref="LodConfig.RoadLod1"/>); дальние чанки 2 000 м - лента по сегменту с
-/// упрощённой полилинией (клиент строит сам), видны от камеры и без верхней границы (<see cref="LodConfig.RoadFar"/> - бюджет, на общем плане s10k+ камера дальше). Штатные <c>visibility_range</c> и frustum culling движка.
-/// Цвет heatmap берёт шейдер <c>road.gdshader</c> из текстуры <see cref="HeatTexture"/> по <c>CUSTOM0.x</c> (сегмент); меши не пересобираются.
+/// Дороги чанками (docs/design/render.md §5.2, §4.3; visual-style.md §4, урезанная VS3a): ближние чанки 250 м - LOD0 (до <see cref="LodConfig.RoadLod0"/>) и LOD1
+/// (до <see cref="LodConfig.RoadLod1"/>), дальние чанки 2 000 м - дальняя лента (клиент строит сам, видна от камеры и без верхней границы:
+/// <see cref="LodConfig.RoadFar"/> - бюджет, на общем плане s10k+ камера дальше). Штатные <c>visibility_range</c> и frustum culling движка.
+/// На каждом уровне - сплошной асфальт: одна лента на сегмент на всю ширину проезжей части (оба направления) и сплошная площадка перекрёстка - многоугольник
+/// из торцов лент рукавов и внешней кромки правых поворотов (connector'ы lane0 -> lane0, смещённые наружу на полполосы). Ширины, смещения и концы полос берутся
+/// из данных сети (полосы сегмента, <see cref="NodeData"/>, connector'ы), констант ширины нет: профили дорог (RP6) поменяют только источник ширин.
+/// LOD0 добавляет слабые линии полос (в шейдере, постоянной толщины в пикселях, гаснут с дистанцией) и направляющие connector'ов на площадках.
+/// Цвет heatmap берёт шейдер <c>road.gdshader</c> из текстуры <see cref="HeatTexture"/> по <c>CUSTOM0.x</c> (сегмент; у площадок -1 - нейтрально); меши не пересобираются.
 /// </summary>
 #pragma warning disable CA1001 // ресурсы Godot принадлежат узлам сцены и освобождаются вместе с ними
 public sealed class RoadChunks
@@ -31,22 +35,32 @@ public sealed class RoadChunks
     /// </summary>
     public const float FarOverlap = 1240f;
 
-    /// <summary>Дальняя лента видна от этой дистанции (до центра её чанка): ниже ближние чанки полнее, а лента заполняла бы зазоры между полосами LOD0.</summary>
+    /// <summary>Дальняя лента видна от этой дистанции (до центра её чанка).</summary>
     public static float FarBegin(LodConfig lod) => lod.RoadLod1;
 
-    private const float LaneHalfWidth = 1.55f;
-    private const float ConnectorHalfWidth = 1.1f;
     private const float Lod1Tolerance = 0.4f;
     private const float FarTolerance = 6f;
     private const float FarY = -0.10f; // под дорогами ближних чанков (y >= 0), над землёй (-0.15)
+    private const float GuideLift = 0.03f; // направляющие коннекторов над площадкой
+
+    // Линии полос: доли дистанции LOD0, на которых они гаснут (в шейдере - метры). Цвет и прозрачность - Palette.
+    private const float LineFadeBegin = 0.35f;
+    private const float LineFadeEnd = 0.70f;
+    private const float LinePx = 1.2f;
+
+    // Ширина полосы, если в сети нет ни одного сегмента с двумя и более полосами (иначе её не измерить): значение NetworkOptions.LaneWidth по умолчанию.
+    private const float FallbackLaneWidth = 3.5f;
 
     private static readonly Color _streetColor = Palette.Street;
     private static readonly Color _arterialColor = Palette.Arterial;
-    private static readonly Color _connectorColor = Palette.Connector;
+    private static readonly Color _junctionColor = Palette.Connector;
 
     private readonly ShaderMaterial _material;
     private readonly List<int> _keep = new();
-    private readonly Vec2[] _scratch = new Vec2[256];
+    private readonly List<Arm> _arms = new();
+    private readonly List<Vec2> _ring = new();
+    private readonly List<Vec2> _corner = new();
+    private Vec2[] _scratch = new Vec2[256];
 
     /// <summary>Версия сети (<c>NetworkView.Version</c>), по которой построены меши; при расхождении <see cref="SimHost"/> пересобирает дороги целиком.</summary>
     public int Version { get; }
@@ -55,6 +69,12 @@ public sealed class RoadChunks
     {
         Version = sim.Network.Version;
         _material = HeatPalette.CreateMaterial(GD.Load<Shader>("res://Shaders/road.gdshader"), heat.Texture, false, lod.PointRange);
+        _material.SetShaderParameter("line_color", Palette.LaneLine);
+        _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
+        _material.SetShaderParameter("line_center_alpha", Palette.LaneLineCenterAlpha);
+        _material.SetShaderParameter("line_px", LinePx);
+        _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
+        _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };
         Build(sim.Network, lod);
     }
@@ -78,6 +98,111 @@ public sealed class RoadChunks
         segment >= 0 && segment < net.Segments.Length && net.Segments[segment].Kind == RoadKind.Arterial ? 0.02f : 0f;
 
     private static Vec2 NodePos(NetworkView net, int node, Vec2 fallback) => (uint)node < (uint)net.Nodes.Length ? net.Nodes[node].Position : fallback;
+
+    /// <summary>
+    /// Измерение проезжей части сегмента по данным полос. Базовая полоса - крайняя правая (lane 0) направления A→B, а если его нет - B→A.
+    /// Полосы идут от базовой в одну сторону на <c>d</c> (знак - сторона их роста по нормали базовой полилинии), поэтому по крайней полосе сегмента
+    /// <c>d = смещение / (n - 1)</c>: ширина полосы <c>w = |d|</c>, ось проезжей части сдвинута от базовой полосы на <c>(n - 1) d / 2</c>.
+    /// </summary>
+    private readonly struct SegGeom
+    {
+        public SegGeom(bool ok, float half, float shift, float sgn, bool baseAB, float vPlus, float code, float w, bool measured)
+        {
+            Ok = ok;
+            Half = half;
+            Shift = shift;
+            Sgn = sgn;
+            BaseAB = baseAB;
+            VPlus = vPlus;
+            Code = code;
+            W = w;
+            Measured = measured;
+        }
+
+        public bool Ok { get; }
+
+        /// <summary>Полуширина проезжей части (n * w / 2).</summary>
+        public float Half { get; }
+
+        /// <summary>Сдвиг оси проезжей части от базовой полилинии вдоль её нормали (-dz, dx), в канонической ориентации A→B.</summary>
+        public float Shift { get; }
+
+        /// <summary>Знак нормали (-dz, dx) базовой полосы, в сторону которой растёт номер полосы (знак <c>d</c>); правая сторона - противоположная.</summary>
+        public float Sgn { get; }
+
+        /// <summary>Базовая полилиния идёт A→B (иначе её переворачиваем).</summary>
+        public bool BaseAB { get; }
+
+        /// <summary>Поперечная координата в полосах (0..n) у вершины на стороне +N ленты; на стороне -N - n минус это значение.</summary>
+        public float VPlus { get; }
+
+        /// <summary><c>CUSTOM0.y</c> ленты: n + 16 * (число полос базового направления, если есть встречное; иначе 0); 0 - без линий.</summary>
+        public float Code { get; }
+
+        public float W { get; }
+
+        /// <summary>Ширина и сторона измерены по полосам (а не взяты по умолчанию).</summary>
+        public bool Measured { get; }
+    }
+
+    /// <summary>Рукав узла: торец ленты сегмента, обращённый к узлу.</summary>
+    private struct Arm
+    {
+        public int Seg;
+        public bool AtA;
+        public Vec2 ROut;   // правая кромка для движения от узла
+        public Vec2 RIn;    // правая кромка для движения к узлу
+        public Vec2 Mid;
+        public float Angle; // угол середины торца от центра узла
+        public float Key;   // угол, умноженный на сторону обхода
+    }
+
+    private static SegGeom Measure(NetworkView net, int s, float defW, float defSgn)
+    {
+        SegmentData sd = net.Segments[s];
+        int n1 = sd.LanesAB;
+        int n2 = sd.LanesBA;
+        bool baseAB = n1 > 0;
+        int baseLane = baseAB ? sd.FirstLaneAB : sd.FirstLaneBA;
+        int nTot = n1 + n2;
+        if (nTot <= 0 || (uint)baseLane >= (uint)net.Lanes.Length || net.Lanes[baseLane].PointCount < 2)
+        {
+            return default;
+        }
+
+        LaneData bl = net.Lanes[baseLane];
+        float w = defW;
+        float sgn = defSgn;
+        float off = 0f;
+        bool measured = false;
+        if (nTot > 1)
+        {
+            bool opposite = baseAB && n2 > 0;
+            // крайняя полоса сегмента: у встречного направления - его lane 0 (правая для него, дальняя для нас), иначе - левая полоса своего
+            int far = opposite ? sd.FirstLaneBA : baseAB ? sd.FirstLaneAB + n1 - 1 : sd.FirstLaneBA + n2 - 1;
+            if ((uint)far < (uint)net.Lanes.Length && net.Lanes[far].PointCount >= 1)
+            {
+                LaneData fl = net.Lanes[far];
+                Vec2 q = net.LanePoints[opposite ? fl.FirstPoint + fl.PointCount - 1 : fl.FirstPoint];
+                ReadOnlySpan<Vec2> bp = net.LanePoints.Slice(bl.FirstPoint, bl.PointCount);
+                MeshBuilder.EdgeNormal(bp, 0, out float ox, out float oz);
+                float o = (ox * (q.X - bp[0].X)) + (oz * (q.Z - bp[0].Z));
+                if (MathF.Abs(o) > 0.1f)
+                {
+                    off = o;
+                    sgn = o > 0f ? 1f : -1f;
+                    w = MathF.Abs(o) / (nTot - 1);
+                    measured = true;
+                }
+            }
+        }
+
+        int nBase = baseAB ? n1 : n2;
+        float vPlus = sgn * (baseAB ? 1f : -1f) > 0f ? nTot : 0f;
+        float code = nTot >= 2 ? nTot + (16 * (nTot > nBase ? nBase : 0)) : 0f;
+        float shift = baseAB ? off * 0.5f : -off * 0.5f;
+        return new SegGeom(true, nTot * w * 0.5f, shift, sgn, baseAB, vPlus, code, w, measured);
+    }
 
     private void Build(NetworkView net, LodConfig lod)
     {
@@ -105,77 +230,103 @@ public sealed class RoadChunks
             segCz[s] = (a.Z + b.Z) * 0.5f;
         }
 
-        // LOD0: ленты по всем полосам, как раньше (connector'ы - по узлу)
-        for (int li = 0; li < net.Lanes.Length; li++)
-        {
-            LaneData lane = net.Lanes[li];
-            if (!net.IsLaneAlive(li) || lane.PointCount < 2)
-            {
-                continue;
-            }
-
-            bool connector = lane.Kind == LaneKind.Connector;
-            int seg = connector ? -1 : lane.Segment;
-            float cx;
-            float cz;
-            if (connector && (uint)lane.Node < (uint)net.Nodes.Length)
-            {
-                cx = net.Nodes[lane.Node].Position.X;
-                cz = net.Nodes[lane.Node].Position.Z;
-            }
-            else if ((uint)seg < (uint)segCount)
-            {
-                cx = segCx[seg];
-                cz = segCz[seg];
-            }
-            else
-            {
-                Vec2 p0 = net.LanePoints[lane.FirstPoint];
-                cx = p0.X;
-                cz = p0.Z;
-            }
-
-            Color col = connector ? _connectorColor : KindColor(net, seg);
-            float y = connector ? 0.04f : KindY(net, seg);
-            MeshBuilder b = ChunkGrid.Get(lod0, ChunkGrid.Key(cx, cz, NearCell), 1);
-            b.Ribbon(net.LanePoints.Slice(lane.FirstPoint, lane.PointCount), connector ? ConnectorHalfWidth : LaneHalfWidth, 0f, y, col, seg);
-        }
-
-        // LOD1 и лента: по направлению сегмента; узлы - квадратом
+        // ширина полосы и сторона роста номеров: по умолчанию - первое измеренное в сети значение (для сегментов с одной полосой)
+        float defW = FallbackLaneWidth;
+        float defSgn = -1f; // правостороннее движение в системе Godot: правая сторона - +N
         for (int s = 0; s < segCount; s++)
         {
-            if (!net.IsSegmentAlive(s))
+            if (net.IsSegmentAlive(s))
+            {
+                SegGeom m = Measure(net, s, defW, defSgn);
+                if (m.Measured)
+                {
+                    defW = m.W;
+                    defSgn = m.Sgn;
+                    break;
+                }
+            }
+        }
+
+        var geo = new SegGeom[segCount];
+        for (int s = 0; s < segCount; s++)
+        {
+            if (net.IsSegmentAlive(s))
+            {
+                geo[s] = Measure(net, s, defW, defSgn);
+            }
+        }
+
+        // рукава узлов: сегменты по обоим концам
+        var armCount = new int[net.Nodes.Length + 1];
+        for (int s = 0; s < segCount; s++)
+        {
+            if (geo[s].Ok)
+            {
+                armCount[net.Segments[s].NodeA]++;
+                armCount[net.Segments[s].NodeB]++;
+            }
+        }
+
+        var armStart = new int[net.Nodes.Length + 1];
+        for (int n = 0; n < net.Nodes.Length; n++)
+        {
+            armStart[n + 1] = armStart[n] + armCount[n];
+        }
+
+        var armFill = new int[net.Nodes.Length];
+        var armSeg = new int[armStart[net.Nodes.Length]]; // seg * 2 + (на конце A ? 0 : 1)
+        for (int s = 0; s < segCount; s++)
+        {
+            if (!geo[s].Ok)
             {
                 continue;
             }
 
-            SegmentData sd = net.Segments[s];
-            MeshBuilder b1 = ChunkGrid.Get(lod1, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 1);
-            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], FarCell), 1);
+            int na = net.Segments[s].NodeA;
+            int nb = net.Segments[s].NodeB;
+            armSeg[armStart[na] + armFill[na]++] = s * 2;
+            armSeg[armStart[nb] + armFill[nb]++] = (s * 2) + 1;
+        }
+
+        var ends0 = new Vec2[segCount * 4];
+        var ends1 = new Vec2[segCount * 4];
+        var endsF = new Vec2[segCount * 4];
+        for (int s = 0; s < segCount; s++)
+        {
+            if (!geo[s].Ok)
+            {
+                continue;
+            }
+
             Color col = KindColor(net, s);
             float y = KindY(net, s);
-            AddGroup(net, sd.FirstLaneAB, sd.LanesAB, s, b1, Lod1Tolerance, y, col);
-            AddGroup(net, sd.FirstLaneBA, sd.LanesBA, s, b1, Lod1Tolerance, y, col);
-            AddGroup(net, sd.FirstLaneAB, sd.LanesAB, s, bf, FarTolerance, FarY, col);
-            AddGroup(net, sd.FirstLaneBA, sd.LanesBA, s, bf, FarTolerance, FarY, col);
+            MeshBuilder b0 = ChunkGrid.Get(lod0, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4, true);
+            MeshBuilder b1 = ChunkGrid.Get(lod1, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4);
+            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], FarCell), 4);
+            AddRoad(net, s, geo[s], b0, 0f, y, col, true, ends0);
+            AddRoad(net, s, geo[s], b1, Lod1Tolerance, y, col, false, ends1);
+            AddRoad(net, s, geo[s], bf, FarTolerance, FarY, col, false, endsF);
         }
 
         for (int n = 0; n < net.Nodes.Length; n++)
         {
             NodeData nd = net.Nodes[n];
-            if (!net.IsNodeAlive(n) || nd.ArmCount <= 0)
+            if (!net.IsNodeAlive(n) || armStart[n + 1] == armStart[n])
             {
                 continue;
             }
 
-            float h = MathF.Max(nd.Radius, 3f);
-            AddNodeQuad(ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 1), nd.Position, h, 0.04f);
-            AddNodeQuad(ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 1), nd.Position, h, FarY + 0.01f);
+            ReadOnlySpan<int> arms = armSeg.AsSpan(armStart[n], armStart[n + 1] - armStart[n]);
+            float py = NodeY(net, arms);
+            Color pc = NodeColor(net, arms);
+            AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true);
+            AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false);
+            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false);
         }
 
         GD.Print(string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{FarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {FarBegin(lod) + FarOverlap:0} м)"));
+            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{FarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {FarBegin(lod) + FarOverlap:0} м; полоса {defW:0.##} м)"));
         ChunkGrid.Emit(Root, lod0, "Road0", _material, 0f, lod.RoadLod0 + NearHalfDiag);
         ChunkGrid.Emit(Root, lod1, "Road1", _material, lod.RoadLod0 + NearHalfDiag, FarBegin(lod) + FarOverlap);
         // дальняя лента от FarBegin; ближний LOD1 держится до FarBegin + FarOverlap, чтобы не было дыр (центры чанков разных сеток)
@@ -183,52 +334,244 @@ public sealed class RoadChunks
         ChunkGrid.Emit(Root, far, "RoadFar", _material, FarBegin(lod), 0f);
     }
 
-    private static void AddNodeQuad(MeshBuilder b, Vec2 p, float half, float y)
+    private static float NodeY(NetworkView net, ReadOnlySpan<int> arms)
     {
-        int a = b.Add(new Vector3(p.X - half, y, p.Z - half), _connectorColor, -1f);
-        int c = b.Add(new Vector3(p.X + half, y, p.Z - half), _connectorColor, -1f);
-        int d = b.Add(new Vector3(p.X - half, y, p.Z + half), _connectorColor, -1f);
-        int e = b.Add(new Vector3(p.X + half, y, p.Z + half), _connectorColor, -1f);
-        b.Quad(a, c, d, e);
+        float y = 0f;
+        foreach (int a in arms)
+        {
+            y = MathF.Max(y, KindY(net, a >> 1));
+        }
+
+        return y;
     }
 
-    /// <summary>Лента на все полосы одного направления сегмента: по полилинии крайней правой полосы, сдвиг к середине группы, упрощение.</summary>
-    private void AddGroup(NetworkView net, int firstLane, int n, int seg, MeshBuilder b, float tol, float y, Color col)
+    /// <summary>Площадка: цвет артерии, если среди рукавов есть артерия (магистраль идёт через узел сплошной), иначе цвет улицы.</summary>
+    private static Color NodeColor(NetworkView net, ReadOnlySpan<int> arms)
     {
-        if (n <= 0 || (uint)firstLane >= (uint)net.Lanes.Length)
+        foreach (int a in arms)
         {
-            return;
-        }
-
-        LaneData l0 = net.Lanes[firstLane];
-        if (l0.PointCount < 2)
-        {
-            return;
-        }
-
-        ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(l0.FirstPoint, l0.PointCount);
-        float shift = 0f;
-        if (n > 1 && (uint)(firstLane + n - 1) < (uint)net.Lanes.Length)
-        {
-            LaneData ll = net.Lanes[firstLane + n - 1];
-            if (ll.PointCount >= 1)
+            if (net.Segments[a >> 1].Kind == RoadKind.Arterial)
             {
-                Vec2 p0 = pts[0];
-                Vec2 p1 = pts[1];
-                Vec2 q = net.LanePoints[ll.FirstPoint];
-                // нормаль как у MeshBuilder.Ribbon: (-dz, dx)
-                float side = ((-(p1.Z - p0.Z)) * (q.X - p0.X)) + ((p1.X - p0.X) * (q.Z - p0.Z));
-                shift = (side >= 0f ? 1f : -1f) * (n - 1) * LaneHalfWidth;
+                return _arterialColor;
             }
         }
 
-        ChunkGrid.Simplify(pts, tol, _keep);
-        int m = Math.Min(_keep.Count, _scratch.Length);
-        for (int k = 0; k < m; k++)
+        return _junctionColor;
+    }
+
+    /// <summary>
+    /// Лента сегмента на всю проезжую часть: полилиния базовой полосы (упрощённая при <paramref name="tol"/> &gt; 0), развёрнутая в A→B, сдвинутая к оси проезжей части.
+    /// В <paramref name="ends"/> пишутся кромки (+N, -N) в первой и последней точке: площадка перекрёстка стыкуется с ними без зазора.
+    /// </summary>
+    private void AddRoad(NetworkView net, int seg, in SegGeom g, MeshBuilder b, float tol, float y, Color col, bool lines, Vec2[] ends)
+    {
+        LaneData bl = net.Lanes[g.BaseAB ? net.Segments[seg].FirstLaneAB : net.Segments[seg].FirstLaneBA];
+        ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(bl.FirstPoint, bl.PointCount);
+        int m;
+        if (tol > 0f)
         {
-            _scratch[k] = pts[_keep[k]];
+            ChunkGrid.Simplify(pts, tol, _keep);
+            m = _keep.Count;
+            EnsureScratch(m);
+            for (int k = 0; k < m; k++)
+            {
+                _scratch[k] = pts[_keep[k]];
+            }
+        }
+        else
+        {
+            m = pts.Length;
+            EnsureScratch(m);
+            pts.CopyTo(_scratch);
         }
 
-        b.Ribbon(_scratch.AsSpan(0, m), n * LaneHalfWidth, shift, y, col, seg);
+        if (!g.BaseAB)
+        {
+            Array.Reverse(_scratch, 0, m);
+        }
+
+        if (m < 2)
+        {
+            return;
+        }
+
+        var span = new ReadOnlySpan<Vec2>(_scratch, 0, m);
+        float code = lines ? g.Code : 0f;
+        float nTot = g.Half * 2f / g.W;
+        float vMin = nTot - g.VPlus;
+        int first = b.VertexCount;
+        for (int k = 0; k < m; k++)
+        {
+            MeshBuilder.EdgeNormal(span, k, out float ox, out float oz);
+            float cx = span[k].X + (ox * g.Shift);
+            float cz = span[k].Z + (oz * g.Shift);
+            var plus = new Vec2(cx + (ox * g.Half), cz + (oz * g.Half));
+            var minus = new Vec2(cx - (ox * g.Half), cz - (oz * g.Half));
+            b.Add(new Vector3(plus.X, y, plus.Z), col, seg, code, 0f, 0f, new Vector2(0f, g.VPlus));
+            b.Add(new Vector3(minus.X, y, minus.Z), col, seg, code, 0f, 0f, new Vector2(0f, vMin));
+            if (k == 0)
+            {
+                ends[(seg * 4) + 0] = plus;
+                ends[(seg * 4) + 1] = minus;
+            }
+
+            if (k == m - 1)
+            {
+                ends[(seg * 4) + 2] = plus;
+                ends[(seg * 4) + 3] = minus;
+            }
+        }
+
+        for (int k = 0; k + 1 < m; k++)
+        {
+            int a = first + (k * 2);
+            b.Quad(a, a + 1, a + 2, a + 3);
+        }
+    }
+
+    private void EnsureScratch(int n)
+    {
+        if (_scratch.Length < n)
+        {
+            _scratch = new Vec2[Math.Max(n, _scratch.Length * 2)];
+        }
+    }
+
+    /// <summary>
+    /// Площадка перекрёстка: центр узла + кольцо из торцов рукавов (правая кромка движения от узла, затем к узлу) и угловых кривых между соседними рукавами -
+    /// внешней кромки правого поворота lane0 -> lane0 (connector, смещённый вправо на полполосы); нет такого connector'а - прямой отрезок.
+    /// Порядок рукавов и сторона обхода - по геометрии торцов. LOD0 дополнительно рисует направляющие всех connector'ов узла.
+    /// </summary>
+    private void AddJunction(NetworkView net, in NodeData nd, ReadOnlySpan<int> armRefs, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col, bool guides)
+    {
+        _arms.Clear();
+        Vec2 c = nd.Position;
+        float turn = 0f;
+        foreach (int r in armRefs)
+        {
+            int s = r >> 1;
+            bool atA = (r & 1) == 0;
+            SegGeom g = geo[s];
+            Vec2 plus = ends[(s * 4) + (atA ? 0 : 2)];
+            Vec2 minus = ends[(s * 4) + (atA ? 1 : 3)];
+            Vec2 right = g.Sgn < 0f ? plus : minus; // правая кромка движения A→B
+            Vec2 left = g.Sgn < 0f ? minus : plus;
+            // от узла - по направлению A→B на конце A, к узлу - на конце B
+            Vec2 rOut = atA ? right : left;
+            Vec2 rIn = atA ? left : right;
+            var mid = new Vec2((rOut.X + rIn.X) * 0.5f, (rOut.Z + rIn.Z) * 0.5f);
+            float dx = mid.X - c.X;
+            float dz = mid.Z - c.Z;
+            turn += MathF.Sign((dx * (rIn.Z - mid.Z)) - (dz * (rIn.X - mid.X)));
+            _arms.Add(new Arm { Seg = s, AtA = atA, ROut = rOut, RIn = rIn, Mid = mid, Angle = MathF.Atan2(dz, dx) });
+        }
+
+        float rho = turn >= 0f ? 1f : -1f;
+        for (int i = 0; i < _arms.Count; i++)
+        {
+            Arm a = _arms[i];
+            a.Key = a.Angle * rho;
+            _arms[i] = a;
+        }
+
+        _arms.Sort(static (p, q) => p.Key.CompareTo(q.Key));
+
+        _ring.Clear();
+        for (int i = 0; i < _arms.Count; i++)
+        {
+            Arm a = _arms[i];
+            Arm nx = _arms[(i + 1) % _arms.Count];
+            _ring.Add(a.ROut);
+            _ring.Add(a.RIn);
+            Corner(net, nd, a, nx, geo[a.Seg]);
+            foreach (Vec2 p in _corner)
+            {
+                _ring.Add(p);
+            }
+        }
+
+        int centerIdx = b.Add(new Vector3(c.X, y, c.Z), col, -1f);
+        int firstRing = b.VertexCount;
+        foreach (Vec2 p in _ring)
+        {
+            b.Add(new Vector3(p.X, y, p.Z), col, -1f);
+        }
+
+        for (int k = 0; k < _ring.Count; k++)
+        {
+            b.Tri(centerIdx, firstRing + k, firstRing + ((k + 1) % _ring.Count));
+        }
+
+        if (guides)
+        {
+            for (int ci = 0; ci < nd.ConnectorCount; ci++)
+            {
+                int li = nd.FirstConnector + ci;
+                if (!net.IsLaneAlive(li) || net.Lanes[li].PointCount < 2)
+                {
+                    continue;
+                }
+
+                LaneData lane = net.Lanes[li];
+                AddGuide(b, net.LanePoints.Slice(lane.FirstPoint, lane.PointCount), y + GuideLift, col);
+            }
+        }
+    }
+
+    /// <summary>Внутренние точки угловой кривой от правой кромки входа рукава <paramref name="a"/> до правой кромки выхода рукава <paramref name="b"/> (в <see cref="_corner"/>).</summary>
+    private void Corner(NetworkView net, in NodeData nd, in Arm a, in Arm b, in SegGeom ga)
+    {
+        _corner.Clear();
+        int inDir = a.AtA ? 1 : 0;
+        int outDir = b.AtA ? 0 : 1;
+        for (int ci = 0; ci < nd.ConnectorCount; ci++)
+        {
+            int li = nd.FirstConnector + ci;
+            if (!net.IsLaneAlive(li))
+            {
+                continue;
+            }
+
+            LaneData cn = net.Lanes[li];
+            if ((uint)cn.FromLane >= (uint)net.Lanes.Length || (uint)cn.ToLane >= (uint)net.Lanes.Length || cn.PointCount < 3)
+            {
+                continue;
+            }
+
+            LaneData from = net.Lanes[cn.FromLane];
+            LaneData to = net.Lanes[cn.ToLane];
+            if (from.LaneNo != 0 || to.LaneNo != 0 || from.Segment != a.Seg || to.Segment != b.Seg || from.Direction != inDir || to.Direction != outDir)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(cn.FirstPoint, cn.PointCount);
+            float side = -ga.Sgn * ga.W * 0.5f; // вправо по ходу connector'а
+            for (int k = 1; k < pts.Length - 1; k++)
+            {
+                MeshBuilder.EdgeNormal(pts, k, out float ox, out float oz);
+                _corner.Add(new Vec2(pts[k].X + (ox * side), pts[k].Z + (oz * side)));
+            }
+
+            return;
+        }
+    }
+
+    /// <summary>Направляющая: лента нулевой ширины, кромки раздвигает вершинный шейдер до постоянной толщины в пикселях (<c>CUSTOM0.y = -1</c>, <c>zw</c> - смещение кромки).</summary>
+    private static void AddGuide(MeshBuilder b, ReadOnlySpan<Vec2> pts, float y, Color col)
+    {
+        int first = b.VertexCount;
+        for (int k = 0; k < pts.Length; k++)
+        {
+            MeshBuilder.EdgeNormal(pts, k, out float ox, out float oz);
+            b.Add(new Vector3(pts[k].X, y, pts[k].Z), col, -1f, -1f, ox, oz, new Vector2(1f, 0f));
+            b.Add(new Vector3(pts[k].X, y, pts[k].Z), col, -1f, -1f, -ox, -oz, new Vector2(-1f, 0f));
+        }
+
+        for (int k = 0; k + 1 < pts.Length; k++)
+        {
+            int a = first + (k * 2);
+            b.Quad(a, a + 1, a + 2, a + 3);
+        }
     }
 }
