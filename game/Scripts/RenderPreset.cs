@@ -17,6 +17,22 @@ public static class RenderPreset
         ? new PresetBudget(0.7, 2, 0.75, new ShadowBudget(300, 2, 2048), new Dictionary<string, IReadOnlyList<int>>())
         : new PresetBudget(1.0, 2, 1.0, new ShadowBudget(800, 4, 4096), new Dictionary<string, IReadOnlyList<int>>());
 
+    /// <summary>Текущий час суток (0..24) для света; меняется <see cref="SetHour"/>, учитывается в <see cref="Apply"/> (F4 не сбрасывает время).</summary>
+    public static float Hour { get; private set; } = VisualPreset.DefaultHour;
+
+    /// <summary>Задать час до <see cref="Apply"/> (аргумент запуска): узлов ещё не трогает.</summary>
+    public static void SetStartHour(float hour) => Hour = ((hour % 24f) + 24f) % 24f;
+
+    /// <summary>Сменить час суток и обновить свет/небо/<c>light_tint</c> (только значения, без пересоздания объектов).</summary>
+    public static void SetHour(Node root, float hour)
+    {
+        Hour = ((hour % 24f) + 24f) % 24f;
+        VisualPreset.ApplyTime(
+            root.GetNodeOrNull<WorldEnvironment>("WorldEnvironment")?.Environment,
+            root.GetNodeOrNull<DirectionalLight3D>("DirectionalLight3D"),
+            Hour);
+    }
+
     /// <summary>Применить пресет к сцене: свет, окружение, вьюпорт, атлас теней. <paramref name="root"/> - корень сцены (Main).</summary>
     public static void Apply(Node root, LodConfig cfg)
     {
@@ -47,6 +63,8 @@ public static class RenderPreset
             sun.DirectionalShadowMaxDistance = (float)b.Shadow.DistanceM;
             sun.DirectionalShadowBlendSplits = high;
         }
+
+        SetHour(root, Hour); // свет суток поверх базового (полдень = значения VisualPreset)
 
         // Атлас и фильтр теней - глобальные настройки сервера (общие для всех направленных источников).
         RenderingServer.DirectionalShadowAtlasSetSize(b.Shadow.Atlas, true);
