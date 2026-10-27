@@ -53,7 +53,14 @@
     "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
     "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
     "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт пока "legacy" (S3: "alternate" реализован, но по замеру s10k ухудшает stuck_episodes - ADR-0018); "legacy" — формула этапа 1
-    "progression_speed_factor": number                             // скорость волны = arterial_speed · k. Дефолт 1.0
+    "progression_speed_factor": number,                            // скорость волны = arterial_speed · k. Дефолт 1.0
+    "landuse": {                                                   // VS8 (visual-style.md §8, ADR-0027): парки, пруды, берег. Необязательный объект, версия формата не меняется. Только при city.enabled = true
+      "enabled": bool,                                             // дефолт false: без секции или с false сценарий побитово прежний
+      "park_share": number,                                        // 0..1, доля внутренних клеток решётки под парк (x2 у клетки рядом с удалённой улицей). Дефолт 0.08
+      "pond_share": number,                                        // 0..1, доля парков с прудом (флаг; пруд рисует клиент). Дефолт 0.25
+      "coast": "none" | "south" | "east" | "north" | "west",       // полоса воды за краем карты: south = +Z, north = -Z, east = +X, west = -X. Дефолт "none"
+      "coast_width_m": number                                      // ширина полосы, м; округляется до module_m, не меньше module_m. Дефолт 400
+    }
   },
 
   "network": {                          // явная сеть (тесты, ручные карты); взаимоисключима с city.enabled

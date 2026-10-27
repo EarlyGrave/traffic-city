@@ -702,6 +702,7 @@ public static partial class ScenarioLoader
             }
         }
 
+        c.LandUse = ParseLandUse(r.OptObject("landuse"), c.Enabled);
         r.Finish();
         return c;
     }

@@ -70,6 +70,8 @@ internal sealed class World : IDisposable
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
+    public LandUsePoly[] LandUse = System.Array.Empty<LandUsePoly>();   // VS8: производное city.landuse (seed + desc), в сейв и хэш не входит; после Load пусто (desc в сейве нет)
+    public int LandUseVersion;
     public SignalPlanSeed[] SignalPlanSeeds = System.Array.Empty<SignalPlanSeed>();
     public GenTransit? Transit;
 

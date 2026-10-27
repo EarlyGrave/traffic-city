@@ -337,7 +337,22 @@ internal sealed class LotBuilder
         Frame(w, c, seg, side, s0, s1, out cx, out cz, out tx, out tz, out nx, out nz);
         float halfL = (s1 - s0) * 0.0005f;
         float halfD = c.Cfg.Zoning.LotDepthMm * 0.0005f;
-        return Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+        return !InLandUse(w, cx, cz) && Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+    }
+
+    /// <summary>Центр участка внутри парка или воды (city.landuse, visual-style.md §8): такой участок не нарезается. Без землепользования - всегда false.</summary>
+    private static bool InLandUse(World w, float x, float z)
+    {
+        LandUsePoly[] polys = w.LandUse;
+        for (int i = 0; i < polys.Length; i++)
+        {
+            if (polys[i].Contains(x, z))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Mark(float cx, float cz, float tx, float tz, float nx, float nz, int lengthMm)

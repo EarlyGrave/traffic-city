@@ -26,6 +26,7 @@ internal struct CityGenResult
     public int RemovedStreets, RepairedEdges, ShiftedNodes, MergedNodes, IrregularSkipped;
     public int SignalizedNodes;
     public SignalPlanSeed[] SignalPlans;      // длина SignalizedNodes; выделяется в Generate
+    public LandUsePoly[]? LandUse;            // city.landuse: полигоны парков/воды (null - выключено)
 }
 
 /// <summary>
@@ -56,7 +57,8 @@ internal static class CityGenerator
         in SimCapacities caps,
         NetworkBuilder b,
         ref Pcg32 rng,
-        out CityGenResult result)
+        out CityGenResult result,
+        ulong seed = 0)
     {
         result = default;
         // Модуль мировой сетки: из каталога профилей, иначе 8 м (road-profiles.md §4.1).
@@ -291,6 +293,12 @@ internal static class CityGenerator
         result.ShiftedNodes = shifted;
         result.MergedNodes = merged;
         result.IrregularSkipped = skipped;
+
+        // ---- землепользование (visual-style.md §8): по финальному плану, свой PRNG - общий поток не затрагивается ----
+        if (city.LandUse.Enabled)
+        {
+            result.LandUse = LandUseGenerator.Generate(in city.LandUse, pl, halfW, halfH, module, seed);
+        }
 
         // ---- шаг 5: эмиссия (§3.7) ----
         int aliveNodes = 0;
