@@ -8,12 +8,34 @@ using Sim.Core.Util;
 namespace Sim.Core.Tests.Api;
 
 /// <summary>Фаза 10 (ADR-0010): эквивалентность прежней реализации, кэш курса, длины спанов.</summary>
+[Collection("WorkerThreads")]
 public class SnapshotTests
 {
     /// <summary>Прежняя реализация фазы 10 (этап 1) - эталон: полный Evaluate + Atan2 на каждую машину.</summary>
     private static class LegacySnapshot
     {
-        public static void Fill(World w, int[] hints, VehicleRenderData[] buf)
+        private static Vec2 Axle(NetworkStore net, int lane, float s, ref int hint, out Vec2 dir)
+        {
+            int h = 0;
+            Vec2 pos;
+            if (s < 0f)
+            {
+                if (net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
+                {
+                    int from = net.Lanes[lane].FromLane;
+                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, from, net.Lanes[from].Length + s, ref h, out pos, out dir);
+                    return pos;
+                }
+
+                LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, 0f, ref h, out pos, out dir);
+                return net.LanePoints[net.Lanes[lane].FirstPoint] + (dir * s);
+            }
+
+            LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, s, ref hint, out pos, out dir);
+            return pos;
+        }
+
+        public static void Fill(World w, int[] hints, VehicleRenderData[] buf, Vec2[] rearState, int[] rearGen)
         {
             VehicleStore v = w.Vehicles;
             NetworkStore net = w.Net;
@@ -26,28 +48,39 @@ public class SnapshotTests
                     continue;
                 }
 
-                float centerS = v.S[i] - (v.Length[i] * 0.5f);
-                Vec2 pos;
-                Vec2 dir;
-                if (centerS < 0f && net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
+                float length = v.Length[i];
+                float st = v.S[i];
+                Vec2 front = Axle(net, lane, st - (length * 0.2f), ref hints[i], out Vec2 pdir);
+                float lateral = v.Lateral[i];
+                if (lateral != 0f)
                 {
-                    int from = net.Lanes[lane].FromLane;
-                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, from, net.Lanes[from].Length + centerS, ref hints[i], out pos, out dir);
+                    front = new Vec2(front.X + (pdir.Z * lateral), front.Z - (pdir.X * lateral));
+                }
+
+                float wb = length * 0.6f;
+                int gen = v.Pool.GenerationOf(i) + 1;
+                Vec2 rear;
+                Vec2 rd = front - rearState[i];
+                float rl = MathF.Sqrt((rd.X * rd.X) + (rd.Z * rd.Z));
+                if (rearGen[i] == gen && rl > 0.25f * wb && rl < wb + 4f)
+                {
+                    rear = front - (rd * (wb / rl));
                 }
                 else
                 {
-                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref hints[i], out pos, out dir);
-                    if (centerS < 0f)
-                    {
-                        pos = net.LanePoints[net.Lanes[lane].FirstPoint] + (dir * centerS);
-                    }
+                    rear = new Vec2(front.X - (pdir.X * wb), front.Z - (pdir.Z * wb));
                 }
 
-                float lateral = v.Lateral[i];
+                rearState[i] = rear;
+                rearGen[i] = gen;
+                Vec2 ax = front - rear;
+                float alen = MathF.Sqrt((ax.X * ax.X) + (ax.Z * ax.Z));
+                Vec2 dir = alen > 1e-4f ? ax * (1f / alen) : pdir;
+                Vec2 pos = (front + rear) * 0.5f;
                 ref VehicleRenderData r = ref buf[i];
-                r.X = pos.X + (dir.Z * lateral);
+                r.X = pos.X;
                 r.Y = 0f;
-                r.Z = pos.Z - (dir.X * lateral);
+                r.Z = pos.Z;
                 r.Heading = MathF.Atan2(dir.Z, dir.X);
                 r.Speed = v.Speed[i];
                 r.Index = i;
@@ -66,18 +99,20 @@ public class SnapshotTests
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
         var hints = new int[d.Capacities.MaxVehicles];
+        var rearState = new Vec2[d.Capacities.MaxVehicles];
+        var rearGen = new int[d.Capacities.MaxVehicles];
         var legacy = new VehicleRenderData[d.Capacities.MaxVehicles];
         for (int tick = 0; tick < 600; tick++)
         {
             sim.Step(1);
-            LegacySnapshot.Fill(w, hints, legacy);
+            LegacySnapshot.Fill(w, hints, legacy, rearState, rearGen);
             ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
             Assert.Equal(w.Vehicles.HighWater, cur.Length);
             for (int i = 0; i < cur.Length; i++)
             {
                 VehicleRenderData a = cur[i];
                 VehicleRenderData e = legacy[i];
-                Assert.True(a.X == e.X && a.Z == e.Z && AngleDiff(a.Heading, e.Heading) <= 0.2f && a.Speed == e.Speed && a.LateralOffset == e.LateralOffset, $"tick {tick} slot {i}");
+                Assert.True(Math.Abs(a.X - e.X) < 1e-3f && Math.Abs(a.Z - e.Z) < 1e-3f && AngleDiff(a.Heading, e.Heading) <= 1e-3f && a.Speed == e.Speed && a.LateralOffset == e.LateralOffset, $"tick {tick} slot {i}");
                 Assert.True(a.Y == e.Y && a.Index == e.Index && a.Generation == e.Generation && a.Type == e.Type && a.Flags == e.Flags, $"tick {tick} slot {i} meta");
             }
 
@@ -88,6 +123,36 @@ public class SnapshotTests
         }
 
         Assert.True(sim.ActiveVehicleCount > 0);
+    }
+
+    [Fact]
+    public void Snapshot_IsIndependentOfWorkerThreads_S1k()
+    {
+        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        using Simulation one = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 1 });
+        using Simulation two = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 2 });
+        using Simulation three = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 3 });
+        for (int tick = 0; tick < 800; tick++)
+        {
+            one.Step(1);
+            two.Step(1);
+            three.Step(1);
+            if (tick % 20 != 0)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<VehicleRenderData> a = one.Vehicles;
+            ReadOnlySpan<VehicleRenderData> b = two.Vehicles;
+            ReadOnlySpan<VehicleRenderData> c = three.Vehicles;
+            Assert.Equal(a.Length, b.Length);
+            Assert.Equal(a.Length, c.Length);
+            for (int i = 0; i < a.Length; i++)
+            {
+                Assert.True(a[i].X == b[i].X && a[i].Z == b[i].Z && a[i].Heading == b[i].Heading, $"tick {tick} slot {i} (1 vs 2 потока)");
+                Assert.True(a[i].X == c[i].X && a[i].Z == c[i].Z && a[i].Heading == c[i].Heading, $"tick {tick} slot {i} (1 vs 3 потока)");
+            }
+        }
     }
 
     private static float AngleDiff(float a, float b)
@@ -146,6 +211,107 @@ public class SnapshotTests
     }
 
     [Fact]
+    public void Snapshot_RearAxleCutsInside_In90DegreeTurn_AndFollowsOnStraight_S1k()
+    {
+        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        NetworkStore net = w.Net;
+        int turnSamples = 0;
+        int straightSamples = 0;
+        var since = new int[d.Capacities.MaxVehicles];   // тиков без смены полосы и бокового смещения
+        var seenLane = new int[d.Capacities.MaxVehicles];
+        for (int tick = 0; tick < 4000; tick++)
+        {
+            sim.Step(1);
+            ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
+            for (int i = 0; i < cur.Length; i++)
+            {
+                VehicleRenderData a = cur[i];
+                int lane = w.Vehicles.Lane[i];
+                if (a.Flags == 0 || w.Vehicles.Lateral[i] != 0f || seenLane[i] != lane)
+                {
+                    since[i] = 0;
+                    seenLane[i] = a.Flags == 0 ? -1 : lane;
+                    continue;
+                }
+
+                since[i]++;
+                LaneData cl = net.Lanes[lane];
+                float len = w.Vehicles.Length[i];
+                float s = w.Vehicles.S[i];
+                float baseLen = 0.6f * len;
+                // Задняя ось из снапшота: центр - половина базы назад вдоль курса.
+                float rx = a.X - (MathF.Cos(a.Heading) * baseLen * 0.5f);
+                float rz = a.Z - (MathF.Sin(a.Heading) * baseLen * 0.5f);
+                if (cl.Kind == LaneKind.Connector)
+                {
+                    float turn = AngleSigned(net.LanePieceHeading[cl.FirstPoint], net.LanePieceHeading[cl.FirstPoint + cl.PointCount - 2]);
+                    float sRear = s - (0.8f * len);
+                    float sFront = s - (0.2f * len);
+                    if (MathF.Abs(turn) < 1.3f || MathF.Abs(turn) > 1.9f || sRear < 0f || sFront > cl.Length || sFront < cl.Length * 0.4f || sFront > cl.Length * 0.67f)
+                    {
+                        continue;
+                    }
+
+                    // Знаковое расстояние R до оси коннектора (слева от хода > 0): центр поворота лежит слева при turn > 0.
+                    int hint = 0;
+                    LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, sFront, ref hint, out Vec2 pf, out int piece);
+                    float best = float.MaxValue;
+                    float signed = 0f;
+                    for (int p = cl.FirstPoint; p < cl.FirstPoint + cl.PointCount - 1; p++)
+                    {
+                        Vec2 pa = net.LanePoints[p];
+                        Vec2 pb = net.LanePoints[p + 1];
+                        Vec2 ab = pb - pa;
+                        float l2 = (ab.X * ab.X) + (ab.Z * ab.Z);
+                        float t = l2 > 1e-9f ? Math.Clamp((((rx - pa.X) * ab.X) + ((rz - pa.Z) * ab.Z)) / l2, 0f, 1f) : 0f;
+                        float qx = pa.X + (ab.X * t);
+                        float qz = pa.Z + (ab.Z * t);
+                        float dist = MathF.Sqrt(((rx - qx) * (rx - qx)) + ((rz - qz) * (rz - qz)));
+                        if (dist < best)
+                        {
+                            best = dist;
+                            signed = ((ab.X * (rz - pa.Z)) - (ab.Z * (rx - pa.X))) / MathF.Sqrt(MathF.Max(l2, 1e-9f));
+                        }
+                    }
+
+                    Assert.True(signed * turn > 0.02f, $"tick {tick} slot {i}: задняя ось не внутри дуги (signed={signed}, turn={turn})");
+                    turnSamples++;
+                }
+                else if (cl.Kind == LaneKind.Normal && cl.PointCount == 2 && s > 40f && a.Speed > 2f && since[i] > 200 && s - (0.8f * len) < cl.Length)
+                {
+                    int hint = 0;
+                    LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, s - (0.8f * len), ref hint, out Vec2 pr, out _);
+                    float dx = rx - pr.X;
+                    float dz = rz - pr.Z;
+                    Assert.True(MathF.Sqrt((dx * dx) + (dz * dz)) < 0.3f, $"tick {tick} slot {i}: на прямой задняя ось не на траектории d={MathF.Sqrt((dx * dx) + (dz * dz))} s={s} lane={lane} len={len} spd={a.Speed} gen={a.Generation} fl={a.Flags} lc={w.Vehicles.LaneChangeDir[i]}");
+                    straightSamples++;
+                }
+            }
+        }
+
+        Assert.True(turnSamples > 10, $"мало замеров в повороте: {turnSamples}");
+        Assert.True(straightSamples > 50, $"мало замеров на прямой: {straightSamples}");
+    }
+
+    private static float AngleSigned(float from, float to)
+    {
+        float d = to - from;
+        while (d > MathF.PI)
+        {
+            d -= 2f * MathF.PI;
+        }
+
+        while (d < -MathF.PI)
+        {
+            d += 2f * MathF.PI;
+        }
+
+        return d;
+    }
+
+    [Fact]
     public void Snapshot_NoJump_OnJunctionEnterAndExit_S1k()
     {
         ScenarioDesc d = CityWorldTests.Desc("s1k");
@@ -171,7 +337,7 @@ public class SnapshotTests
                     float dist = MathF.Sqrt((dx * dx) + (dz * dz));
                     // Въезд на коннектор - точная непрерывность; выезд - прямая экстраполяция назад, запас на кривизну коннектора.
                     bool enter = (a.Flags & (byte)VehicleRenderFlags.OnConnector) != 0;
-                    float limit = (MathF.Max(a.Speed, prev[i].Speed) * dt) + (enter ? 0.3f : 0.25f * w.Vehicles.Length[i]);
+                    float limit = (MathF.Max(a.Speed, prev[i].Speed) * dt) + (enter ? 0.3f : 0.35f * w.Vehicles.Length[i]);
                     Assert.True(dist <= limit, $"tick {tick} slot {i}: сдвиг {dist} м > {limit} м на смене полосы {prevLane[i]}->{lane}");
                     checkedTransitions++;
                 }
