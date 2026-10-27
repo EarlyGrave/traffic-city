@@ -47,6 +47,7 @@ public partial class SimHost : Node3D
     private int _infoArgLayer;
     private PedChunks? _pedStatic;
     private LandUseChunks? _landUse;
+    private BuildingLayer? _buildings;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -402,6 +403,11 @@ public partial class SimHost : Node3D
             _landUse.Rebuild(_sim);
         }
 
+        if (_buildings != null && _camera != null)
+        {
+            _buildings.Update(_sim, _camera.Camera.GlobalPosition);
+        }
+
         _info.Update(delta, _camera?.Distance ?? 1000f);
         if (_roadHeat != null && _info.Visible)
         {
@@ -677,6 +683,7 @@ public partial class SimHost : Node3D
         AddChild(_roads.Root);
 
         _vehicles = new VehicleLayer(this, _types, _lod) { Info = _info };
+        _buildings = new BuildingLayer(this, _lod); // здания V8 + VS5
 
         if (sim.HasPeds)
         {

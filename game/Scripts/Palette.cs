@@ -104,6 +104,25 @@ public static class Palette
     public const float VehicleAoMin = 0.8f;    // AO-градиент у земли: mix(0.8, 1, smoothstep(0, VehicleAoHeight, y))
     public const float VehicleAoHeight = 0.8f;
 
+    /// <summary>Здания (VS5, visual-style.md §2): цвет крыши по зоне, стены - светом и face shading; строится / заброшено - без прозрачности.</summary>
+    public static readonly Color BuildingResidential = Lin("#EDE3D1");
+    public static readonly Color BuildingCommercial = Lin("#E2E5EB");
+    public static readonly Color BuildingIndustrial = Lin("#DAD4CA");
+    public static readonly Color BuildingConstructing = Lin("#F4F1EA");
+    public static readonly Color BuildingAbandoned = Lin("#C8C2B7");
+
+    /// <summary>Разброс яркости зданий по хэшу участка (доля): единая палитра, но ряд одинаковых коробок не сливается в полосу.</summary>
+    public const float BuildingToneJitter = 0.04f;
+
+    /// <summary>Рёбра и объём зданий (<c>building.gdshader</c>): ширина ребра, px; гашение 1 000 -> 1 500 м (x <c>lod_scale</c> пресета); цвет ребра = заливка x K.</summary>
+    public const float BuildingEdgePx = 1.25f;
+    public const float BuildingEdgeFadeBegin = 1000f;
+    public const float BuildingEdgeFadeEnd = 1500f;
+    public const float BuildingEdgeK = 0.62f;
+    public const float BuildingWallShade = 0.9f; // стены x mix(0.9, 1, n.y), крыша - цвет палитры
+    public const float BuildingAoMin = 0.72f;    // AO у земли: mix(0.72, 1, smoothstep(0, BuildingAoHeight, y_world))
+    public const float BuildingAoHeight = 6f;
+
     public static readonly Color Selected = Lin("#FFFFFF");
     public static readonly Color Stuck = Lin("#FF2E2E"); // только в инфо-слое «Трафик»
 
