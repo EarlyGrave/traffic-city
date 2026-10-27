@@ -41,6 +41,7 @@ public sealed class RoadChunks
     private const float Lod1Tolerance = 0.4f;
     private const float FarTolerance = 6f;
     private const float FarY = -0.10f; // под дорогами ближних чанков (y >= 0), над землёй (-0.15)
+    private const int Lod1CornerPoints = 2; // точек угловой кривой площадки на LOD1; на дальней ленте - прямой срез, LOD0 - все точки connector'а
     private const float GuideLift = 0.03f; // направляющие коннекторов над площадкой
 
     // Линии полос: доли дистанции LOD0, на которых они гаснут (в шейдере - метры). Цвет и прозрачность - Palette.
@@ -319,9 +320,9 @@ public sealed class RoadChunks
             ReadOnlySpan<int> arms = armSeg.AsSpan(armStart[n], armStart[n + 1] - armStart[n]);
             float py = NodeY(net, arms);
             Color pc = NodeColor(net, arms);
-            AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true);
-            AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false);
-            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false);
+            AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue);
+            AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints);
+            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0);
         }
 
         GD.Print(string.Create(
@@ -442,7 +443,7 @@ public sealed class RoadChunks
     /// внешней кромки правого поворота lane0 -> lane0 (connector, смещённый вправо на полполосы); нет такого connector'а - прямой отрезок.
     /// Порядок рукавов и сторона обхода - по геометрии торцов. LOD0 дополнительно рисует направляющие всех connector'ов узла.
     /// </summary>
-    private void AddJunction(NetworkView net, in NodeData nd, ReadOnlySpan<int> armRefs, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col, bool guides)
+    private void AddJunction(NetworkView net, in NodeData nd, ReadOnlySpan<int> armRefs, SegGeom[] geo, Vec2[] ends, MeshBuilder b, float y, Color col, bool guides, int cornerKeep)
     {
         _arms.Clear();
         Vec2 c = nd.Position;
@@ -483,7 +484,7 @@ public sealed class RoadChunks
             Arm nx = _arms[(i + 1) % _arms.Count];
             _ring.Add(a.ROut);
             _ring.Add(a.RIn);
-            Corner(net, nd, a, nx, geo[a.Seg]);
+            Corner(net, nd, a, nx, geo[a.Seg], cornerKeep);
             foreach (Vec2 p in _corner)
             {
                 _ring.Add(p);
@@ -519,7 +520,7 @@ public sealed class RoadChunks
     }
 
     /// <summary>Внутренние точки угловой кривой от правой кромки входа рукава <paramref name="a"/> до правой кромки выхода рукава <paramref name="b"/> (в <see cref="_corner"/>).</summary>
-    private void Corner(NetworkView net, in NodeData nd, in Arm a, in Arm b, in SegGeom ga)
+    private void Corner(NetworkView net, in NodeData nd, in Arm a, in Arm b, in SegGeom ga, int keep)
     {
         _corner.Clear();
         int inDir = a.AtA ? 1 : 0;
@@ -547,8 +548,11 @@ public sealed class RoadChunks
 
             ReadOnlySpan<Vec2> pts = net.LanePoints.Slice(cn.FirstPoint, cn.PointCount);
             float side = -ga.Sgn * ga.W * 0.5f; // вправо по ходу connector'а
-            for (int k = 1; k < pts.Length - 1; k++)
+            int inner = pts.Length - 2;
+            int take = Math.Min(inner, keep);
+            for (int t = 0; t < take; t++)
             {
+                int k = 1 + (int)(((t + 0.5f) * inner / take));
                 MeshBuilder.EdgeNormal(pts, k, out float ox, out float oz);
                 _corner.Add(new Vec2(pts[k].X + (ox * side), pts[k].Z + (oz * side)));
             }
