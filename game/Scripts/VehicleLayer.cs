@@ -46,12 +46,7 @@ public sealed class VehicleLayer
         _len = new float[types.Length];
         _wid = new float[types.Length];
         _hgt = new float[types.Length];
-        var lit = new StandardMaterial3D
-        {
-            VertexColorUseAsAlbedo = true,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
-            Roughness = 0.7f,
-        };
+        ShaderMaterial lit = CreateMaterial();
         var flat = new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
@@ -71,7 +66,7 @@ public sealed class VehicleLayer
                 _lod[t * 3].Node.CastShadow = GeometryInstance3D.ShadowCastingSetting.On; // тень - только LOD0 (render.md §6)
             }
 
-            _lod[(t * 3) + 1] = new BoxBatch("Vehicles_" + tn + "_lod1", new BoxMesh { Size = new Vector3(_len[t], _hgt[t], _wid[t]) }, lit);
+            _lod[(t * 3) + 1] = new BoxBatch("Vehicles_" + tn + "_lod1", BoxBuilder.Box(new Vector3(_len[t], _hgt[t], _wid[t]), new Vector3(0f, _hgt[t] * 0.5f, 0f)), lit);
             _lod[(t * 3) + 2] = new BoxBatch("Vehicles_" + tn + "_lod2", new PlaneMesh { Size = new Vector2(_len[t], _wid[t]), CenterOffset = new Vector3(0f, _hgt[t] * 0.5f, 0f) }, flat);
         }
 
@@ -218,7 +213,9 @@ public sealed class VehicleLayer
             }
             else
             {
-                _lod[(type * 3) + e].Add(x, c.Y + (_hgt[type] * 0.5f) + 0.05f, z, heading, color);
+                // LOD0/LOD1: низ меша на y = 0 (AO-градиент шейдера считает от земли), LOD2: плоскость поднята на высоту
+                float y = e < 2 ? c.Y + 0.05f : c.Y + (_hgt[type] * 0.5f) + 0.05f;
+                _lod[(type * 3) + e].Add(x, y, z, heading, color);
             }
         }
 
@@ -289,24 +286,34 @@ public sealed class VehicleLayer
         return from + (d * t);
     }
 
-    /// <summary>LOD0 процедурного ТС: кузов + кабина (24 треугольника, одна поверхность); автобус - кузов + крыша.</summary>
+    /// <summary>Материал LOD0/LOD1: <c>vehicle.gdshader</c>, числа - из <see cref="Palette"/>.</summary>
+    private static ShaderMaterial CreateMaterial()
+    {
+        var mat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/vehicle.gdshader") };
+        mat.SetShaderParameter("edge_px", Palette.VehicleEdgePx);
+        mat.SetShaderParameter("edge_fade_begin", Palette.VehicleEdgeFadeBegin);
+        mat.SetShaderParameter("edge_fade_end", Palette.VehicleEdgeFadeEnd);
+        mat.SetShaderParameter("edge_k", Palette.VehicleEdgeK);
+        mat.SetShaderParameter("wall_shade", Palette.VehicleWallShade);
+        mat.SetShaderParameter("ao_min", Palette.VehicleAoMin);
+        mat.SetShaderParameter("ao_height", Palette.VehicleAoHeight);
+        return mat;
+    }
+
+    /// <summary>LOD0 процедурного ТС: кузов + кабина (24 треугольника, одна поверхность, низ на y = 0); автобус - кузов + крыша.</summary>
     private static ArrayMesh BuildLod0(float len, float hgt, float wid, bool bus)
     {
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
         if (bus)
         {
-            var body = new BoxMesh { Size = new Vector3(len, hgt * 0.9f, wid) };
-            var roof = new BoxMesh { Size = new Vector3(len * 0.3f, hgt * 0.1f, wid * 0.6f) };
-            st.AppendFrom(body, 0, new Transform3D(Basis.Identity, new Vector3(0f, -hgt * 0.05f, 0f)));
-            st.AppendFrom(roof, 0, new Transform3D(Basis.Identity, new Vector3(0f, hgt * 0.45f, 0f)));
+            BoxBuilder.Append(st, new Vector3(len, hgt * 0.9f, wid), new Vector3(0f, hgt * 0.45f, 0f));
+            BoxBuilder.Append(st, new Vector3(len * 0.3f, hgt * 0.1f, wid * 0.6f), new Vector3(0f, hgt * 0.95f, 0f));
         }
         else
         {
-            var body = new BoxMesh { Size = new Vector3(len, hgt * 0.55f, wid) };
-            var cabin = new BoxMesh { Size = new Vector3(len * 0.5f, hgt * 0.45f, wid * 0.85f) };
-            st.AppendFrom(body, 0, new Transform3D(Basis.Identity, new Vector3(0f, -hgt * 0.225f, 0f)));
-            st.AppendFrom(cabin, 0, new Transform3D(Basis.Identity, new Vector3(-len * 0.05f, hgt * 0.275f, 0f)));
+            BoxBuilder.Append(st, new Vector3(len, hgt * 0.55f, wid), new Vector3(0f, hgt * 0.275f, 0f));
+            BoxBuilder.Append(st, new Vector3(len * 0.5f, hgt * 0.45f, wid * 0.85f), new Vector3(-len * 0.05f, hgt * 0.775f, 0f));
         }
 
         return st.Commit();

@@ -95,6 +95,15 @@ public static class Palette
     public static readonly Color Bus = Lin("#F28C28");
     public static readonly Color CarPoint = Lin("#2F6FE0");
     public static readonly Color BusPoint = Lin("#E07A1F");
+    /// <summary>Объём и рёбра ТС (VS2, visual-style.md §3, §5; <c>vehicle.gdshader</c>): ширина ребра, px; дистанции гашения, м; множители заливки.</summary>
+    public const float VehicleEdgePx = 1.0f;
+    public const float VehicleEdgeFadeBegin = 120f;
+    public const float VehicleEdgeFadeEnd = 200f;
+    public const float VehicleEdgeK = 0.5f;   // цвет ребра = заливка x K
+    public const float VehicleWallShade = 0.9f; // стены x mix(0.9, 1, n.y), крыша - цвет палитры
+    public const float VehicleAoMin = 0.8f;    // AO-градиент у земли: mix(0.8, 1, smoothstep(0, VehicleAoHeight, y))
+    public const float VehicleAoHeight = 0.8f;
+
     public static readonly Color Selected = Lin("#FFFFFF");
     public static readonly Color Stuck = Lin("#FF2E2E"); // только в инфо-слое «Трафик»
 
