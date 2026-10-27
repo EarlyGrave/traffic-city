@@ -6,3 +6,4 @@
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
 | VS3b: линии полос на сегментах и перекрёстках не сходятся — стык | локал | local/vs3b-lines | game/Scripts (ChunkMesh, RoadChunks), game/Shaders/road.gdshader | 2026-10-27 |
+| L3b: двухосная модель ТС в снапшоте рендера (курс зад→перед, без PrevLane) | локал | local/two-axle | src/Sim.Core/Api/SnapshotPhase.cs, tests/Sim.Core.Tests/Api/SnapshotTests.cs | 2026-10-27 |
