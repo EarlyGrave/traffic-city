@@ -91,6 +91,13 @@ internal static class ToolPreview
         }
         else
         {
+            // Обратная запись для undo: нет вовсе или не влезет в запись (> InverseLog.MaxPerRecord команд) - предупреждаем заранее (player-tools.md §8.1).
+            if (!InverseBuilder.HasInverse(cmd.Kind) ||
+                (cmd.Kind == CommandKind.RemoveRoad && c.Seg >= 0 && InverseBuilder.MaxRemoveRoadInverse(w, c.Seg) > InverseLog.MaxPerRecord))
+            {
+                iw.Add(IssueCode.UndoUnavailable, IssueSeverity.Warning, EntityKind.None, -1, 0, c.AX, c.AZ);
+            }
+
             switch (cmd.Kind)
             {
                 case CommandKind.BuildRoad:

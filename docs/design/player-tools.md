@@ -346,7 +346,7 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 - `BuildRoad(RestoreOf = H)`: `H` жив и в дренаже - переоткрытие; `H` жив и не в дренаже - `InvalidHandle`; `H` мёртв - пересоздание в новом слоте: `SegmentRemapped`/`NodeRemapped` (`A` = старый индекс, `B` = новый; `Tag` = тег команды), запись scratch-таблицы `old -> new` с точным старым поколением;
   таблица применяется к командам той же фазы 1 (`CommandRefs.Remap`) и очищается в её конце. Хост берёт старое поколение из команды-источника (по `Tag` события), новое - из `NetworkView.SegmentRef/NodeRef`.
 - Отступление от §4.3 (дренаж): финал `RemoveRoad` понижает режим выжившего узла `RightHandRule` -> `None`, если у узла осталось <= 2 рукава (как у узла степени 2 из генератора): иначе `BuildRoad`+`RemoveRoad` не возвращают узел в прежнее состояние (`SetNodeControl(None)` на узле с >= 3 рукавами нормализуется в `RightHandRule`, а дренаж завершается позже).
-- Не сделано: `UndoUnavailable` в превью (буфер очищается каждый `Step`, переполнение возможно только при > 64 командах в записи).
+- `UndoUnavailable` в превью (T8): предупреждение, если у команды нет обратной (`InverseBuilder.HasInverse`) или верхняя оценка обратных команд сноса (`MaxRemoveRoadInverse`) > 64; оценка консервативна (все запреты манёвров узла, план при сигнале).
 
 ## 9. Журнал команд = реплей (`src/Sim.Scenarios/Tools/ReplayLog.cs`, `Sim.Headless replay|bugreport`)
 

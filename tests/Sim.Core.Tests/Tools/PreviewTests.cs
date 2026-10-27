@@ -272,6 +272,45 @@ public sealed class PreviewTests
     }
 
     [Fact]
+    public void Preview_RemoveRoad_WarnsUndoUnavailable_OnlyWhenInverseWouldNotFit()
+    {
+        using Simulation sim = ToolsFixture.Small(400);
+        sim.SetToolsConfig(_costs);
+        int seg = ToolsFixture.BusiestSegment(sim);
+        Assert.True(seg >= 0);
+        var issues = new PreviewIssue[16];
+        Command rm = Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = ToolsFixture.Segment(sim, seg) });
+
+        Assert.Equal(RejectReason.None, sim.Preview(in rm, out PreviewResult r, issues));
+        Assert.True(InverseBuilder.MaxRemoveRoadInverse(sim.World, seg) <= InverseLog.MaxPerRecord);
+        Assert.False(HasIssue(issues, r.IssuesWritten, IssueCode.UndoUnavailable), "обычный снос помещается в запись");
+
+        // Раздутые запреты манёвров на конце: верхняя граница обратных команд > 64 - превью предупреждает заранее, состояние не меняется.
+        sim.World.Net.Nodes[sim.World.Net.Segments[seg].NodeA].TurnBan = ulong.MaxValue;
+        Assert.True(InverseBuilder.MaxRemoveRoadInverse(sim.World, seg) > InverseLog.MaxPerRecord);
+        Assert.Equal(RejectReason.None, sim.Preview(in rm, out r, issues));
+        Assert.True(HasIssue(issues, r.IssuesWritten, IssueCode.UndoUnavailable));
+
+        // Простые инструменты (режим узла и т.п.) всегда обратимы.
+        Assert.True(InverseBuilder.HasInverse(CommandKind.SetTurnBan));
+        Assert.False(InverseBuilder.HasInverse(CommandKind.UpgradeRoad));
+        Assert.False(InverseBuilder.HasInverse(CommandKind.SplitRoad));
+    }
+
+    private static bool HasIssue(PreviewIssue[] issues, int n, IssueCode code)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            if (issues[i].Code == code)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [Fact]
     public void Preview_RemoveRoad_Counts_Drain_AndLotsFromTables()
     {
         using Simulation sim = ToolsFixture.Small(600);
