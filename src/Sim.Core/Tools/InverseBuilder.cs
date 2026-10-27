@@ -141,6 +141,33 @@ internal static class InverseBuilder
         ctx.N++;
     }
 
+    /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
+    public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan;
+
+    /// <summary>
+    /// Верхняя граница числа обратных команд сноса сегмента (для превью, <see cref="IssueCode.UndoUnavailable"/>): сам сегмент, полосы с флагами,
+    /// на каждый конец - режим, план (если есть сигнал), переопределение рукава и все запреты манёвров узла. Консервативна: не читает планы и не знает, какие запреты именно рукава.
+    /// </summary>
+    public static int MaxRemoveRoadInverse(World w, int seg)
+    {
+        NetworkStore n = w.Net;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        int total = 1 + sd.LanesAB + sd.LanesBA;
+        for (int e = 0; e < 2; e++)
+        {
+            ref readonly NodeData nd = ref n.Nodes[e == 0 ? sd.NodeA : sd.NodeB];
+            if (nd.FirstArm < 0)
+            {
+                continue;
+            }
+
+            total += 1 + (nd.Signal >= 0 ? 1 : 0) + 1 + System.Numerics.BitOperations.PopCount(nd.TurnBan);
+        }
+
+        return total;
+    }
+
     private static void BeginBuildRoad(World w, in Command cmd, ref InvCtx ctx)
     {
         BuildRoadCmd b = cmd.BuildRoad;
