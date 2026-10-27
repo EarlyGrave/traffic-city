@@ -19,10 +19,10 @@ public static class VisualPreset
     public const float SunAzimuthDeg = 30f;
 
     /// <summary>Подобрано так, чтобы горизонтальная поверхность с альбедо 1 в сумме с ambient давала ~1 (цвета heatmap не темнеют).</summary>
-    public const float SunEnergy = 0.7f;
+    public const float SunEnergy = 0.30f;
 
     // --- Небо и ambient (В3) ---
-    public const float AmbientEnergy = 0.45f;
+    public const float AmbientEnergy = 0.18f;
 
     // --- Туман на краю вида (В4): выключен до решения владельца ---
     public const bool FogEnabled = false;
@@ -50,13 +50,14 @@ public static class VisualPreset
 
     public const float ShadowNormalBias = 1.0f;
 
-    public static readonly Color SunColor = new(1.0f, 0.97f, 0.9f);
-    public static readonly Color SkyTop = new(0.36f, 0.55f, 0.85f);
-    public static readonly Color SkyHorizon = new(0.72f, 0.82f, 0.92f);
-    public static readonly Color GroundHorizon = new(0.55f, 0.58f, 0.58f);
-    public static readonly Color GroundBottom = new(0.25f, 0.27f, 0.27f);
-    public static readonly Color AmbientColor = new(0.85f, 0.9f, 1.0f);
-    public static readonly Color FogColor = new(0.72f, 0.82f, 0.92f);
+    // цвета неба и света - в Palette.cs (visual-style.md §2); здесь только ссылки, VS10 будет менять их по времени суток
+    public static readonly Color SunColor = Palette.Sun;
+    public static readonly Color SkyTop = Palette.SkyTop;
+    public static readonly Color SkyHorizon = Palette.SkyHorizon;
+    public static readonly Color GroundHorizon = Palette.SkyGroundHorizon;
+    public static readonly Color GroundBottom = Palette.SkyGroundBottom;
+    public static readonly Color AmbientColor = Palette.Ambient;
+    public static readonly Color FogColor = Palette.Fog;
 
     /// <summary>Строит окружение (небо, ambient, туман, SSAO/glow) для пресета.</summary>
     public static Godot.Environment BuildEnvironment(bool high)

@@ -34,7 +34,7 @@ public sealed partial class NodePicker : Node3D
             Mesh = new TorusMesh { InnerRadius = 13f, OuterRadius = 15f, Rings = 24, RingSegments = 4 },
             MaterialOverride = new StandardMaterial3D
             {
-                AlbedoColor = new Color(0.3f, 0.8f, 1f),
+                AlbedoColor = Palette.NodePick,
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 NoDepthTest = true,
             },

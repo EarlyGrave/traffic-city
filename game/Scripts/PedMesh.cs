@@ -21,12 +21,12 @@ public sealed class PedMesh
     private const float Hysteresis = 0.9f;
 
     // Плейсхолдер палитры (цвет точек и состояний решает владелец) - все цвета пешеходов здесь, больше нигде.
-    private static readonly Color _walking = new(0.95f, 0.95f, 0.85f);
-    private static readonly Color _atCrossing = new(1f, 0.85f, 0.2f);
-    private static readonly Color _crossing = new(1f, 0.5f, 0.1f);
-    private static readonly Color _atStop = new(0.8f, 0.4f, 1f);
-    private static readonly Color _passenger = new(0.45f, 0.8f, 1f);
-    private static readonly Color _selected = new(1f, 1f, 1f);
+    private static readonly Color _walking = Palette.PedWalking;
+    private static readonly Color _atCrossing = Palette.PedAtCrossing;
+    private static readonly Color _crossing = Palette.PedCrossing;
+    private static readonly Color _atStop = Palette.PedAtStop;
+    private static readonly Color _passenger = Palette.PedPassenger;
+    private static readonly Color _selected = Palette.Selected;
 
     private readonly LodConfig _cfg;
     private readonly BoxBatch[] _batch = new BoxBatch[3]; // LOD0, LOD1, точки

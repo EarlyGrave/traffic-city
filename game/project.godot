@@ -23,3 +23,30 @@ project/assembly_name="TrafficCity"
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="mobile"
 renderer/rendering_method.web="gl_compatibility"
+
+[shader_globals]
+
+info_mode={
+"type": "float",
+"value": 0.0
+}
+info_layer={
+"type": "int",
+"value": 1
+}
+light_tint={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}
+cam_focus_dist={
+"type": "float",
+"value": 1000.0
+}
+info_bg_dark={
+"type": "vec3",
+"value": Vector3(0.6867, 0.6038, 0.4564)
+}
+info_bg_light={
+"type": "vec3",
+"value": Vector3(0.9215, 0.8797, 0.7914)
+}

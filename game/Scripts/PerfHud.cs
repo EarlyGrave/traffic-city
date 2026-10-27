@@ -29,8 +29,8 @@ public partial class PerfHud : Label
     {
         Visible = false;
         Position = new Vector2(8, 8);
-        AddThemeColorOverride("font_color", new Color(0.9f, 1f, 0.9f));
-        AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.9f));
+        AddThemeColorOverride("font_color", Palette.HudText);
+        AddThemeColorOverride("font_shadow_color", Palette.TextShadow);
         AddThemeConstantOverride("shadow_offset_x", 1);
         AddThemeConstantOverride("shadow_offset_y", 1);
     }

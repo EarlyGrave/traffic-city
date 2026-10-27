@@ -40,9 +40,9 @@ public sealed class RoadChunks
     private const float FarTolerance = 6f;
     private const float FarY = -0.10f; // под дорогами ближних чанков (y >= 0), над землёй (-0.15)
 
-    private static readonly Color _streetColor = new(0.23f, 0.25f, 0.30f);
-    private static readonly Color _arterialColor = new(0.34f, 0.38f, 0.46f);
-    private static readonly Color _connectorColor = new(0.17f, 0.18f, 0.22f);
+    private static readonly Color _streetColor = Palette.Street;
+    private static readonly Color _arterialColor = Palette.Arterial;
+    private static readonly Color _connectorColor = Palette.Connector;
 
     private readonly ShaderMaterial _material;
     private readonly List<int> _keep = new();
@@ -61,15 +61,6 @@ public sealed class RoadChunks
 
     public Node3D Root { get; }
 
-    /// <summary>F1: heatmap везде (иначе только дальше дистанции точек).</summary>
-    public bool Heat { get; private set; }
-
-    public void SetHeat(bool on)
-    {
-        Heat = on;
-        _material.SetShaderParameter("heat_force", on ? 1f : 0f);
-    }
-
     private static Color KindColor(NetworkView net, int segment)
     {
         if ((uint)segment >= (uint)net.Segments.Length)
@@ -79,8 +70,8 @@ public sealed class RoadChunks
 
         Color c = net.Segments[segment].Kind == RoadKind.Arterial ? _arterialColor : _streetColor;
 
-        // закрывающийся сегмент (4.3, T4: Closing, дренаж) - затемнён и сдвинут к красно-коричневому; меши пересобираются при смене Version сети
-        return (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? new Color(c.R * 0.45f + 0.10f, c.G * 0.35f, c.B * 0.35f) : c;
+        // закрывающийся сегмент (4.3, T4: Closing, дренаж) - свой цвет палитры; меши пересобираются при смене Version сети
+        return (net.Segments[segment].Flags & SegmentFlags.Closing) != 0 ? Palette.Closing : c;
     }
 
     private static float KindY(NetworkView net, int segment) =>

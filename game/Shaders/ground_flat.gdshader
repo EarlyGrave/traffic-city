@@ -1,0 +1,13 @@
+// Плоскость земли (docs/design/visual-style.md §2): цвет из Palette.cs, тонирование инфо-режима. Заменяется слоем землепользования (VS9).
+shader_type spatial;
+render_mode diffuse_lambert, specular_disabled, depth_draw_opaque, shadows_disabled;
+
+#include "res://Shaders/world.gdshaderinc"
+
+uniform vec3 ground_color : source_color = vec3(0.9, 0.9, 0.9);
+
+void fragment() {
+	ALBEDO = world_info(ground_color, 1.0);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}

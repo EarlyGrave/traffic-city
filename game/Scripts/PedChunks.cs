@@ -21,8 +21,8 @@ public sealed class PedChunks
     private const float FarWalkY = 0.05f;
     private const float ZebraY = 0.07f;
 
-    private static readonly Color _sidewalkColor = new(0.50f, 0.52f, 0.55f);
-    private static readonly Color _zebraColor = new(0.92f, 0.92f, 0.92f);
+    private static readonly Color _sidewalkColor = Palette.Sidewalk;
+    private static readonly Color _zebraColor = Palette.Zebra;
 
     private readonly ShaderMaterial _material;
     private readonly float[] _edgeLenM;
@@ -79,12 +79,7 @@ public sealed class PedChunks
 
         ChunkGrid.Emit(Root, near, "Walk", _material, 0f, RoadChunks.FarBegin(lod) + RoadChunks.FarOverlap);
         ChunkGrid.Emit(Root, far, "WalkFar", _material, RoadChunks.FarBegin(lod), 0f);
-        var zebraMat = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            VertexColorUseAsAlbedo = true,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-        };
+        var zebraMat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/flat.gdshader") };
         ChunkGrid.Emit(Root, zebra, "Zebra", zebraMat, 0f, lod.PedPointRange + RoadChunks.NearHalfDiag);
     }
 

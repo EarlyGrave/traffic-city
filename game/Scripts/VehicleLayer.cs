@@ -19,11 +19,6 @@ public sealed class VehicleLayer
     private const float Hysteresis = 0.9f;
     private const float MinThresholdScale = 0.25f;
 
-    private static readonly Color _carColor = new(0.2f, 0.85f, 1f);
-    private static readonly Color _busColor = new(1f, 0.63f, 0.12f);
-    private static readonly Color _stuckColor = new(1f, 0.18f, 0.18f);
-    private static readonly Color _selectedColor = new(1f, 1f, 1f);
-
     private readonly LodConfig _cfg;
     private readonly VehicleTypeDesc[] _types;
     private readonly BoxBatch[] _lod;   // [тип * 3 + уровень]
@@ -39,6 +34,9 @@ public sealed class VehicleLayer
     private readonly int[] _placed = new int[LodConfig.Levels];
     private readonly int[] _desired = new int[LodConfig.Levels];
     private byte[] _level = Array.Empty<byte>();
+
+    /// <summary>Информационный режим: stuck-красный показывается только в слое «Трафик».</summary>
+    public InfoMode? Info { get; set; }
 
     public VehicleLayer(Node parent, VehicleTypeDesc[] types, LodConfig cfg)
     {
@@ -212,8 +210,9 @@ public sealed class VehicleLayer
             }
 
             int type = Math.Min((int)c.Type, types - 1);
-            Color color = VehicleColor(c.Flags, _types[type].Category);
-            if (e == LodConfig.Levels - 1)
+            bool point = e == LodConfig.Levels - 1;
+            Color color = VehicleColor(c.Flags, _types[type].Category, c.Index, point);
+            if (point)
             {
                 _points.Add(x, c.Y + (_hgt[type] * 0.5f), z, heading, color, _len[type], 1f, _wid[type]);
             }
@@ -250,19 +249,28 @@ public sealed class VehicleLayer
         }
     }
 
-    private static Color VehicleColor(byte flags, VehicleCategory category)
+    /// <summary>
+    /// Цвет экземпляра (Palette.cs). Точки вдали темнее карты, ближние уровни - по слоту (5 цветов легковой). Выделение и stuck
+    /// (stuck - только в инфо-слое «Трафик») идут с a = 0: шейдер не тонирует их в беж (visual-style.md §7).
+    /// </summary>
+    private Color VehicleColor(byte flags, VehicleCategory category, int slot, bool point)
     {
         if ((flags & (byte)VehicleRenderFlags.Selected) != 0)
         {
-            return _selectedColor;
+            return Palette.SelectedOverlay;
         }
 
-        if ((flags & (byte)VehicleRenderFlags.Stuck) != 0)
+        if ((flags & (byte)VehicleRenderFlags.Stuck) != 0 && Info is { ShowStuck: true })
         {
-            return _stuckColor;
+            return Palette.StuckOverlay;
         }
 
-        return category == VehicleCategory.Bus ? _busColor : _carColor;
+        if (category == VehicleCategory.Bus)
+        {
+            return point ? Palette.BusPoint : Palette.Bus;
+        }
+
+        return point ? Palette.CarPoint : Palette.CarSlots[slot % Palette.CarSlots.Length];
     }
 
     private static float LerpAngle(float from, float to, float t)

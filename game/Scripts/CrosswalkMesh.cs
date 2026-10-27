@@ -15,10 +15,10 @@ public sealed class CrosswalkMesh
 {
     private const float MarkerSize = 0.5f;
 
-    private static readonly Color _dontWalk = new(1f, 0.2f, 0.2f);
-    private static readonly Color _walk = new(0.24f, 0.9f, 0.35f);
-    private static readonly Color _clear = new(1f, 0.86f, 0.15f);
-    private static readonly Color _stopQueue = new(0.8f, 0.4f, 1f);
+    private static readonly Color _dontWalk = Palette.SignalDontWalk;
+    private static readonly Color _walk = Palette.SignalWalk;
+    private static readonly Color _clear = Palette.SignalClear;
+    private static readonly Color _stopQueue = Palette.StopQueue;
 
     private readonly PedEdgeData[] _crossings;
     private readonly Vec2[] _points;
