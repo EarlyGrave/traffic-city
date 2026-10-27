@@ -86,7 +86,7 @@ internal sealed class CityWorld
 
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
-        LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm);
+        LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm, cfg.Zoning.LotFrontageMm, w);
         Market = new Market(grid.Cells, caps.MaxBuildings, Math.Max(1, cfg.Zoning.MaxNewBuildingsPerDay));
         Wheel = new TimerWheel(caps.MaxCityResidents);
         Arrivals = new ArrivalRing(caps.MaxCityResidents);

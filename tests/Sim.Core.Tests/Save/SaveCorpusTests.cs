@@ -37,6 +37,7 @@ public sealed class SaveCorpusTests
         new("cross-prof", 600, CrossProf),   // w8 (ADR-0030): режим профилей - каталог RPRF, Profile/Mirrored, Width, начало сетки
         new("s1k-prof", 2400, S1kProf),
         new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
+        new("s1k-res-prof", 4800, S1kResProf),   // w10, RP5 (ADR-0030): s1k-res по профилям фикстуры - участки на мировой сетке 8 м (CellX/CellZ/CellsF/CellsD/Orient в LOTS)
         new("s1k-res-park", 24000, S1kResPark),   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
     };
 
@@ -244,6 +245,12 @@ public sealed class SaveCorpusTests
     {
         // Z2: сценарий s1k-res (жители, peds.source = city); тик 24000 - ночь позади, в пути машины и пешеходы, часть жителей в WaitDepart.
         LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res.json"));
+        return (sc.Desc, sc.TypeNames);
+    }
+
+    private static (ScenarioDesc, string[]) S1kResProf()
+    {
+        LoadedScenario sc = ProfileSaveFixtures.Res();
         return (sc.Desc, sc.TypeNames);
     }
 
