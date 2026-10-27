@@ -45,7 +45,11 @@ fn desc(nodes: Vec<NodeDesc>, segments: Vec<SegmentDesc>) -> ScenarioDesc {
     ScenarioDesc {
         seed: 1,
         capacities: caps(),
-        network: NetworkDesc { nodes, segments },
+        network: NetworkDesc {
+            nodes,
+            segments,
+            corner_radius: 0.0,
+        },
     }
 }
 

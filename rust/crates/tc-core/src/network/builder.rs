@@ -7,6 +7,7 @@
 use crate::api::desc::{NetworkOptions, NodeControl, RoadKind};
 use crate::util::Vec2;
 
+use super::connectors::STRAIGHT_COS;
 use super::store::NetworkStore;
 use super::types::{ConnectorRules, LaneData, LaneKind, Maneuver, NetworkStatus, NodeData, SegmentData};
 
@@ -156,8 +157,9 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         Ok(idx)
     }
 
-    /// Сегмент A->B, ось проходит через `via`. Ось обрезается на `node_setback` у обоих узлов;
-    /// `SegmentData::length` - длина обрезанной оси (= длина всех Normal-полос сегмента).
+    /// Сегмент A->B, ось проходит через `via`, с отступами концов `setback_a`/`setback_b` от осей узлов (ADR-0028, C# `AddSegment` с отступами):
+    /// ось короче `2 * node_setback + min_lane_length` - `SegmentTooShort`; если короче суммы отступов + `min_lane_length`, надбавки сверх `node_setback`
+    /// сжимаются пропорционально. `radius` концов - максимум отступов их рукавов. `SegmentData::length` - длина обрезанной оси (= длина всех Normal-полос сегмента).
     #[allow(clippy::too_many_arguments, clippy::neg_cmp_op_on_partial_ord)]
     pub fn add_segment(
         &mut self,
@@ -169,6 +171,8 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
         lanes_ba: i32,
         speed_limit: f32,
         kind: RoadKind,
+        setback_a: f32,
+        setback_b: f32,
     ) -> Result<i32, NetworkStatus> {
         if node_a < 0
             || node_a >= s.node_count
@@ -183,6 +187,8 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             || !(speed_limit > 0.0)
             || speed_limit.is_infinite()
             || via.len() > MAX_VIA
+            || !setback_a.is_finite()
+            || !setback_b.is_finite()
         {
             return Err(NetworkStatus::InvalidArgument);
         }
@@ -215,9 +221,11 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             return Err(NetworkStatus::SegmentTooShort);
         }
 
+        let (setback_a, setback_b) = self.clamp_setbacks(total, setback_a, setback_b);
+
         // Обрезка по отступам.
-        let start = setback;
-        let end = total - setback;
+        let start = setback_a;
+        let end = total - setback_b;
         let mut m = 0usize;
         self.axis[m] = self.point_at(start, n);
         self.axis_s[m] = 0.0;
@@ -283,8 +291,16 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
             generation: 1,
         };
 
-        // Инцидентность (для build_connectors).
+        // Отступ стоп-линий узла (radius) - наибольший из отступов его рукавов.
         let (a, b) = (node_a as usize, node_b as usize);
+        if setback_a > s.nodes[a].radius {
+            s.nodes[a].radius = setback_a;
+        }
+        if setback_b > s.nodes[b].radius {
+            s.nodes[b].radius = setback_b;
+        }
+
+        // Инцидентность (для build_connectors).
         s.inc_next[2 * seg as usize] = s.inc_head[a];
         s.inc_head[a] = 2 * seg;
         s.inc_next[(2 * seg as usize) + 1] = s.inc_head[b];
@@ -373,6 +389,106 @@ impl<R: ConnectorRules> NetworkBuilder<R> {
                 self.miter[i] = (n_prev + n_next) * (1.0_f32 / denom);
             }
         }
+    }
+
+    // ---- отступы рукавов (ADR-0028, C# NetworkBuilder.Setback.cs) ----
+
+    fn half_width(&self, lane_total: i32) -> f32 {
+        lane_total as f32 * self.o.lane_width * 0.5
+    }
+
+    /// Отступ рукава узла степени `degree` при полуширине самой широкой поперечной дороги `cross_half` (0 - поперечных нет).
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
+    pub fn arm_setback(o: &NetworkOptions, degree: i32, cross_half: f32) -> f32 {
+        if !(o.corner_radius > 0.0) || degree < 3 || !(cross_half > 0.0) {
+            return o.node_setback;
+        }
+        let s = cross_half + o.corner_radius;
+        if s > o.node_setback { s } else { o.node_setback }
+    }
+
+    /// Рукав `v` поперечен рукаву `u` (направления от узла): не его продолжение «прямо».
+    fn crosses(u: Vec2, v: Vec2) -> bool {
+        (u.x * v.x) + (u.z * v.z) > -STRAIGHT_COS
+    }
+
+    fn dir(from: Vec2, to: Vec2) -> Vec2 {
+        let dx = to.x - from.x;
+        let dz = to.z - from.z;
+        let len = ((dx * dx) + (dz * dz)).sqrt();
+        if len > 0.0 {
+            Vec2::new(dx / len, dz / len)
+        } else {
+            Vec2::new(0.0, 0.0)
+        }
+    }
+
+    /// Отступы концов прямых сегментов `a[e] -> b[e]` (узлы уже в хранилище) по полному списку рукавов (явная сеть): `(setback_a, setback_b)` на сегмент.
+    /// Сегменты с неверными узлами получают `node_setback` и в рукава не идут.
+    pub fn plan_setbacks(&self, s: &NetworkStore, a: &[i32], b: &[i32], lane_total: &[i32]) -> Vec<(f32, f32)> {
+        let m = a.len();
+        let nodes = s.node_count;
+        let valid = |na: i32, nb: i32| na >= 0 && nb >= 0 && na < nodes && nb < nodes && na != nb;
+        let mut head = vec![-1_i32; nodes.max(0) as usize];
+        let mut next = vec![-1_i32; 2 * m];
+        let mut degree = vec![0_i32; nodes.max(0) as usize];
+        let mut dir = vec![Vec2::new(0.0, 0.0); 2 * m];
+        let mut half = vec![0.0_f32; m];
+        for e in 0..m {
+            let (na, nb) = (a[e], b[e]);
+            half[e] = self.half_width(lane_total[e]);
+            if !valid(na, nb) {
+                continue;
+            }
+            let pa = s.nodes[na as usize].position;
+            let pb = s.nodes[nb as usize].position;
+            dir[2 * e] = Self::dir(pa, pb);
+            dir[(2 * e) + 1] = Self::dir(pb, pa);
+            next[2 * e] = head[na as usize];
+            head[na as usize] = (2 * e) as i32;
+            next[(2 * e) + 1] = head[nb as usize];
+            head[nb as usize] = ((2 * e) + 1) as i32;
+            degree[na as usize] += 1;
+            degree[nb as usize] += 1;
+        }
+
+        let end_setback = |code: usize, node: usize| -> f32 {
+            let mut cross = 0.0_f32;
+            let mut c = head[node];
+            while c >= 0 {
+                let cu = c as usize;
+                if cu != code && Self::crosses(dir[code], dir[cu]) && half[cu >> 1] > cross {
+                    cross = half[cu >> 1];
+                }
+                c = next[cu];
+            }
+            Self::arm_setback(&self.o, degree[node], cross)
+        };
+
+        let mut out = vec![(self.o.node_setback, self.o.node_setback); m];
+        for e in 0..m {
+            let (na, nb) = (a[e], b[e]);
+            if valid(na, nb) {
+                out[e] = (end_setback(2 * e, na as usize), end_setback((2 * e) + 1, nb as usize));
+            }
+        }
+        out
+    }
+
+    // Надбавки сверх node_setback сжимаются пропорционально, если ось не вмещает оба отступа и min_lane_length.
+    fn clamp_setbacks(&self, total: f32, setback_a: f32, setback_b: f32) -> (f32, f32) {
+        let b = self.o.node_setback;
+        let mut sa = if setback_a < b { b } else { setback_a };
+        let mut sb = if setback_b < b { b } else { setback_b };
+        let avail = total - self.o.min_lane_length;
+        if sa + sb > avail {
+            let ea = sa - b;
+            let eb = sb - b;
+            let k = (avail - (2.0 * b)) / (ea + eb);
+            sa = b + (ea * k);
+            sb = b + (eb * k);
+        }
+        (sa, sb)
     }
 
     fn point_at(&self, d: f32, n: usize) -> Vec2 {

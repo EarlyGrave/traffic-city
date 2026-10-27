@@ -206,6 +206,7 @@ unsafe fn read_desc(d: &TcScenarioDesc) -> Result<ScenarioDesc, i32> {
     let mut out = NetworkDesc {
         nodes: Vec::with_capacity(nodes.len()),
         segments: Vec::with_capacity(segments.len()),
+        corner_radius: 0.0, // дефолт ADR-0028 (C-API радиус не передаёт)
     };
     for n in nodes {
         let control = node_control(n.control).ok_or(bad_network)?;

@@ -79,7 +79,9 @@ impl Sim {
         }
 
         let mut net = NetworkStore::new(c);
-        let mut builder = NetworkBuilder::new(NetworkOptions::DEFAULT, DefaultConnectorRules);
+        let mut options = NetworkOptions::DEFAULT;
+        options.corner_radius = NetworkOptions::corner_radius_from_desc(desc.network.corner_radius);
+        let mut builder = NetworkBuilder::new(options, DefaultConnectorRules);
 
         // 0 = по умолчанию (intersections.md §4): max_nodes * 16 connector'ов, max_connectors * 6 записей конфликтов.
         let max_connectors = if c.max_connectors > 0 {
@@ -104,9 +106,26 @@ impl Sim {
                 return Err(CreateStatus::InvalidNetwork);
             }
         }
-        for sg in &desc.network.segments {
+        // Отступы концов по всем рукавам узла (ADR-0028): явная сеть известна целиком до эмиссии сегментов.
+        let segs = &desc.network.segments;
+        let sa: Vec<i32> = segs.iter().map(|s| s.a).collect();
+        let sb: Vec<i32> = segs.iter().map(|s| s.b).collect();
+        let lanes: Vec<i32> = segs.iter().map(|s| s.lanes_ab.wrapping_add(s.lanes_ba)).collect();
+        let setbacks = builder.plan_setbacks(&net, &sa, &sb, &lanes);
+        for (sg, &(set_a, set_b)) in segs.iter().zip(setbacks.iter()) {
             builder
-                .add_segment(&mut net, sg.a, sg.b, &[], sg.lanes_ab, sg.lanes_ba, sg.speed_limit, sg.kind)
+                .add_segment(
+                    &mut net,
+                    sg.a,
+                    sg.b,
+                    &[],
+                    sg.lanes_ab,
+                    sg.lanes_ba,
+                    sg.speed_limit,
+                    sg.kind,
+                    set_a,
+                    set_b,
+                )
                 .map_err(NetworkStatus::to_create_status)?;
         }
         let built = builder.build_all_connectors(&mut net);

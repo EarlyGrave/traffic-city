@@ -269,6 +269,8 @@ pub fn load_str(text: &str) -> Res<ScenarioDesc> {
 fn parse_network(r: &mut Obj<'_>) -> Res<NetworkDesc> {
     let nodes_j = r.req_arr("nodes")?;
     let segs_j = r.req_arr("segments")?;
+    // ADR-0028: 0 в JSON - скругление выключено (в desc -1), как C# ParseNetwork.
+    let corner = r.num("corner_radius_m", Some(6.0), 0.0, 50.0)?;
     r.finish()?;
 
     let np = r.child("nodes");
@@ -334,7 +336,12 @@ fn parse_network(r: &mut Obj<'_>) -> Res<NetworkDesc> {
         });
     }
 
-    Ok(NetworkDesc { nodes, segments })
+    let corner_radius = if corner == 0.0 { -1.0 } else { corner as f32 };
+    Ok(NetworkDesc {
+        nodes,
+        segments,
+        corner_radius,
+    })
 }
 
 fn node_ref(s: &mut Obj<'_>, key: &str, ids: &[&str]) -> Res<i32> {
