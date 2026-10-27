@@ -119,6 +119,12 @@ internal static partial class SaveSchema
         PreWorld = true,
     };
 
+    // ---- PARM, w6 (ADR-0028): радиус скругления построителя (нужен BuildRoad после загрузки); ids продолжают 184 ----
+    private static ColumnDef[] NetGeometryParams() => new[]
+    {
+        Col.Scalar<float>(185, "NetCornerRadius", w => w.Builder.Options.CornerRadius, (c, v) => c.NetCornerRadius = v, "0"),
+    };
+
     private static BlockDef Demand() => new("DEMD", "спрос: смесь типов, зоны и OD-пары", new[]
     {
         Col.Custom(

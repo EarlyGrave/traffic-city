@@ -9,6 +9,7 @@ namespace Sim.Headless.Tests;
 /// (офсеты не используются; 2.5 S3 хэш не изменила). Меняется осознанно, отдельным коммитом с объяснением. Хэш не зависит от числа потоков (ADR-0017).
 /// Полная загрузка s10k (<c>hash --scenario s10k --warmup-until-full --ticks 400 --every 200</c>, 1/2/3 потока одинаково):
 /// tick=6100 6faccbd453296b01, tick=6300 8c951ad4eb5e2099. Прежний эталон (fixed + legacy) - в <c>HotPathGoldenHashTests</c>.
+/// ADR-0028 (отступы рукавов + <c>corner_radius</c>): все эталоны сняты заново командой <c>hash</c>; с интергрином по длине коробки - полная загрузка s10k: tick=6100 37bf4332bf3354f3, tick=6300 25c1e949df9b381f.
 /// </summary>
 public sealed class AdaptiveGoldenHashTests
 {
@@ -28,7 +29,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "764c5b6de750ae15", "34a5c23411d36b7e", "aeca0135024eff72", "ae9bce579a59f785" };
+        string[] expected = { "99c73ad945b1538d", "0e09772ea44cacea", "d9b1d2bbd0a7d7fc", "6af78860f3ab14c6" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -43,7 +44,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S10k_AdaptiveStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s10k", threads);
-        string[] expected = { "41e484b2dfde848b", "342c2f1b4f50889a", "a46b6ed830102e37" };
+        string[] expected = { "63138a8354fa79a6", "46ee94acad0450ad", "99dfe41460fae69f" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);
@@ -67,7 +68,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S1k_AlternateStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = CreateAlternate("s1k", threads);
-        string[] expected = { "051a65bf8d19afc4", "6eafe4fbb862fd2c", "58fe8dbcd642bdc9", "d3d1e1f44f0f3c1e" };
+        string[] expected = { "cdc4bca28e3b84ad", "5d509961bd6a744a", "a7ac5c5caf05cc0d", "57d311629c095ec0" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -82,7 +83,7 @@ public sealed class AdaptiveGoldenHashTests
     public void S10k_AlternateStateHash_MatchesGolden(int threads)
     {
         using Simulation sim = CreateAlternate("s10k", threads);
-        string[] expected = { "4e30a5ae8b1b2267", "30385626eaee0e4b", "91fe982b3e452846" };
+        string[] expected = { "d3a40a733de42411", "faa3642bd6659f32", "7805cd013088bfe5" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);

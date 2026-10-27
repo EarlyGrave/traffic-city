@@ -327,7 +327,30 @@ internal static class CityGenerator
             pl.NodeOut[p] = ni;
         }
 
+        // Отступы концов по всем рукавам узла (ADR-0028): рукава известны до эмиссии сегментов.
+        int[] segA = new int[aliveEdges];
+        int[] segB = new int[aliveEdges];
+        int[] segLanes = new int[aliveEdges];
+        float[] setA = new float[aliveEdges];
+        float[] setB = new float[aliveEdges];
+        int ek = 0;
+        for (int e = 0; e < pl.EdgeCap; e++)
+        {
+            if (pl.EdgeAlive[e] == 0)
+            {
+                continue;
+            }
+
+            segA[ek] = pl.NodeOut[pl.EdgeA[e]];
+            segB[ek] = pl.NodeOut[pl.EdgeB[e]];
+            segLanes[ek] = pl.EdgeKind[e] == (byte)RoadKind.Arterial ? 4 : 2;
+            ek++;
+        }
+
+        b.PlanSetbacks(segA, segB, segLanes, setA, setB);
+
         int normalLanes = 0;
+        ek = 0;
         for (int e = 0; e < pl.EdgeCap; e++)
         {
             if (pl.EdgeAlive[e] == 0)
@@ -338,7 +361,8 @@ internal static class CityGenerator
             bool art = pl.EdgeKind[e] == (byte)RoadKind.Arterial;
             int lanes = art ? 2 : 1;
             float speed = art ? city.ArterialSpeed : city.StreetSpeed;
-            NetworkStatus st = b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], out int si);
+            NetworkStatus st = b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], setA[ek], setB[ek], out int si);
+            ek++;
             if (st != NetworkStatus.Ok)
             {
                 return st.ToCreateStatus();
@@ -492,7 +516,7 @@ internal static class CityGenerator
                 }
 
                 int yellow = rules.DefaultYellowTicks;
-                int allRed = rules.DefaultAllRedTicks;
+                int allRed = rules.DefaultAllRedTicks + Rules.Intersections.SignalStore.ClearanceExtraTicks(store, n, b.Options);   // очистка коробки (ADR-0028); 0 при коробке 14 м
                 int cycle = g0 + g1 + (2 * (yellow + allRed));
                 int offset;
                 int seedCycle = 0;

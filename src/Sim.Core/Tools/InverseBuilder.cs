@@ -336,7 +336,7 @@ internal static class InverseBuilder
 
         SetSignalPlanCmd cur = w.Signals.ReadPlan(nd.Signal);
         int axes = w.Signals.PhaseCount[nd.Signal];
-        SetSignalPlanCmd def = Rules.Intersections.SignalStore.Resolve(Rules.Intersections.SignalStore.DefaultPlan(axes, in w.Rules), axes, in w.Rules);
+        SetSignalPlanCmd def = Rules.Intersections.SignalStore.Resolve(Rules.Intersections.SignalStore.DefaultPlan(w, node, axes), axes, in w.Rules);
         bool same = cur.Mode == def.Mode && cur.PhaseCount == def.PhaseCount && cur.YellowTicks == def.YellowTicks && cur.AllRedTicks == def.AllRedTicks && cur.OffsetTicks == def.OffsetTicks &&
             cur.MinGreenTicks == def.MinGreenTicks && cur.GapTicks == def.GapTicks && cur.Flags == def.Flags;
         for (int k = 0; same && k < axes; k++)

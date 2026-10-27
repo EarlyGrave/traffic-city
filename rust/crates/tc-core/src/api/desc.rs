@@ -77,6 +77,8 @@ pub struct SegmentDesc {
 pub struct NetworkDesc {
     pub nodes: Vec<NodeDesc>,
     pub segments: Vec<SegmentDesc>,
+    /// `network.corner_radius_m` (ADR-0028): 0 - дефолт (6 м), < 0 - выключено (фиксированный отступ `node_setback`), иначе радиус.
+    pub corner_radius: f32,
 }
 
 /// Подмножество `ScenarioDesc` пилота (`city.enabled = false`).
@@ -87,7 +89,7 @@ pub struct ScenarioDesc {
     pub network: NetworkDesc,
 }
 
-/// `NetworkOptions.Default` (C# `NetworkTypes.cs`): зашиты, из JSON не читаются.
+/// `NetworkOptions.Default` (C# `NetworkTypes.cs`): зашиты, из JSON читается только `corner_radius` (`network.corner_radius_m`, ADR-0028).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NetworkOptions {
     pub lane_width: f32,
@@ -95,6 +97,8 @@ pub struct NetworkOptions {
     pub node_setback: f32,
     pub connector_samples: i32,
     pub min_lane_length: f32,
+    /// Радиус скругления бордюра (ADR-0028): отступ рукава узла степени >= 3 = max(node_setback, полуширина поперечной + corner_radius); 0 - фиксированный `node_setback`.
+    pub corner_radius: f32,
 }
 
 impl NetworkOptions {
@@ -104,8 +108,23 @@ impl NetworkOptions {
         node_setback: 7.0,
         connector_samples: 8,
         min_lane_length: 1.0,
+        corner_radius: DEFAULT_CORNER_RADIUS,
     };
+
+    /// Опция из поля сценария (`NetworkDesc::corner_radius`): 0 - дефолт, < 0 - выключено, иначе радиус (C# `CornerRadiusFromDesc`).
+    pub fn corner_radius_from_desc(desc: f32) -> f32 {
+        if desc == 0.0 {
+            DEFAULT_CORNER_RADIUS
+        } else if desc < 0.0 {
+            0.0
+        } else {
+            desc
+        }
+    }
 }
+
+/// Радиус скругления по умолчанию (ADR-0028).
+pub const DEFAULT_CORNER_RADIUS: f32 = 6.0;
 
 impl Default for NetworkOptions {
     fn default() -> Self {
@@ -175,5 +194,6 @@ pub fn desc_hash(d: &ScenarioDesc) -> u64 {
     h.add_f32(o.node_setback);
     h.add_i32(o.connector_samples);
     h.add_f32(o.min_lane_length);
+    h.add_f32(NetworkOptions::corner_radius_from_desc(d.network.corner_radius)); // ADR-0028: действующий радиус явной сети
     h.value()
 }

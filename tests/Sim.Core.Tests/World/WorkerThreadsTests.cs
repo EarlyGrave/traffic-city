@@ -187,6 +187,7 @@ public class WorkerThreadsTests
     public void Phases6And10_HardClampsAndSnapshot_EqualForOneAndManyThreads(int threads)
     {
         ScenarioDesc d = Step3.S1k();
+        d.City.CornerRadius = -1f;   // клэмпы на резких поворотах коробки 14 м: с отступами ADR-0028 за 3000 тиков их нет, а тест должен их ловить
         using Simulation one = Simulation.Create(in d);
         using Simulation many = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         for (int k = 0; k < 6; k++)
@@ -290,11 +291,20 @@ public class WorkerThreadsTests
 
     private static void Poison(World w, int hw)
     {
+        // Только живые слоты: фаза 5 мёртвые слоты ниже HighWater не пишет (дыра от деспауна дала бы ложное «отличается»).
         Sim.Core.Agents.VehicleStore v = w.Vehicles;
-        Array.Fill(v.Accel, 123f, 0, hw);
-        Array.Fill(v.LaneChangeDir, (sbyte)7, 0, hw);
-        Array.Fill(v.ClampLeadGap, 123f, 0, hw);
-        Array.Fill(v.ClampFlags, (byte)255, 0, hw);
-        Array.Fill(v.ClampGateGap, 123f, 0, hw);
+        for (int i = 0; i < hw; i++)
+        {
+            if (!v.Pool.IsAlive(i))
+            {
+                continue;
+            }
+
+            v.Accel[i] = 123f;
+            v.LaneChangeDir[i] = 7;
+            v.ClampLeadGap[i] = 123f;
+            v.ClampFlags[i] = 255;
+            v.ClampGateGap[i] = 123f;
+        }
     }
 }

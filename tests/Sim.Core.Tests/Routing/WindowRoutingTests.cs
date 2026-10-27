@@ -176,7 +176,12 @@ public class WindowRoutingTests
         ScenarioDesc d = S10k(0);
         d.Routing.CostRecalcTicks = 1_000_000; // веса меняет только тест
         using Simulation calm = OneLongTrip(d, out _, out _);
-        calm.Step(4000); // машина индекс 0: проверка в тиках 1200, 2400, 3600 (пропускается, если до конца сегмента < 80 м)
+        // Проверка раз в 1200 тиков пропускается, если до конца сегмента < 80 м: шагаем до первой проверки (ADR-0028: с интергрином по длине коробки
+        // в тиках 1200/2400/3600 машина стояла у стоп-линий), но не дольше 12 000 тиков.
+        for (int t = 0; t < 12000 && calm.Counters.TimedChecks == 0 && (t < 200 || calm.World.Vehicles.AliveCount > 0); t += 100)
+        {
+            calm.Step(100);
+        } // машина индекс 0: проверка в тиках 1200, 2400, 3600 (пропускается, если до конца сегмента < 80 м)
         Assert.True(calm.Counters.TimedChecks > 0);
         Assert.Equal(0, calm.Counters.TimedTriggered);
 
@@ -192,7 +197,10 @@ public class WindowRoutingTests
 
         w.Graph.RecalcCosts(loads, w.Net.SegmentCount);
         w.Overlay!.AfterRecalc(w.Graph.WeightsVersion);
-        jam.Step(3900);
+        for (int t = 0; t < 12000 && jam.Counters.TimedChecks == 0 && w.Vehicles.AliveCount > 0; t += 100)   // как у calm: до первой проверки дрейфа
+        {
+            jam.Step(100);
+        }
         Assert.True(jam.Counters.TimedChecks > 0);
         Assert.True(jam.Counters.TimedTriggered > 0, "остаток стоимости вырос в разы - запрос поставлен");
     }

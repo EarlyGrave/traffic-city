@@ -82,7 +82,8 @@ internal static partial class SaveValidator
             return LoadStatus.InvalidValue;   // Q-meso только в all_meso (WorldBuilder.BuildLod)
         }
 
-        if (!Fin(c.NetLaneWidth) || c.NetLaneWidth <= 0f || c.NetLaneWidth > 100f || c.NetConnectorSamples < 2 || c.NetConnectorSamples > 64)
+        if (!Fin(c.NetLaneWidth) || c.NetLaneWidth <= 0f || c.NetLaneWidth > 100f || c.NetConnectorSamples < 2 || c.NetConnectorSamples > 64 ||
+            !Fin(c.NetCornerRadius) || c.NetCornerRadius < 0f || c.NetCornerRadius > 50f)
         {
             return LoadStatus.InvalidValue;
         }

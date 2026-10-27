@@ -294,6 +294,7 @@ internal static class WorldLoader
         c.Desc.City.Enabled = true;   // построитель сети с сохранённой геометрией полос (нужен BuildRoad после загрузки)
         c.Desc.City.LaneWidth = c.NetLaneWidth;
         c.Desc.City.ConnectorSamples = c.NetConnectorSamples;
+        c.Desc.City.CornerRadius = c.NetCornerRadius > 0f ? c.NetCornerRadius : -1f;   // опция построителя 0 = выключено, в desc это -1
         c.W = new World(in c.Desc, c.Rules, c.Routing, c.Types);
         if (WorldBuilder.BuildPeds(c.W, create: false) != CreateStatus.Ok)   // пешеходы: структуры без жителей, состояние - из блоков
         {

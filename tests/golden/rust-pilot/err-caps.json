@@ -3,5 +3,5 @@
   "scenario": "tests/golden/rust-pilot/scenarios/err-caps.json",
   "load_ok": true,
   "create_status": 2,
-  "desc_hash": "aa6d530d5a01f23e"
+  "desc_hash": "adbb1c6161abcb1e"
 }

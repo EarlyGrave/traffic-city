@@ -3,5 +3,5 @@
   "scenario": "tests/golden/rust-pilot/scenarios/err-short.json",
   "load_ok": true,
   "create_status": 4,
-  "desc_hash": "10fefa2762e65d94"
+  "desc_hash": "114296b1481f5354"
 }

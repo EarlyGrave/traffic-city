@@ -166,6 +166,7 @@ internal static class ToolValidator
             return RejectReason.InvalidArgument;
         }
 
+        // Минимум оси - по базовому отступу: увеличенные отступы ADR-0028 у коротких сегментов сжимаются построителем, а не отклоняют их.
         if (len < (2f * o.NodeSetback) + o.MinLaneLength)
         {
             Mark(ref c, EntityKind.None, -1, 0, pa);
@@ -313,7 +314,7 @@ internal static class ToolValidator
         }
 
         c.Mechanism = 2;
-        c.LengthM = sd.Length + (2f * w.Builder.Options.NodeSetback);
+        c.LengthM = w.Builder.FullAxisLength(seg);   // от узла до узла: отступы концов по рукавам (ADR-0028), не 2 * NodeSetback
         long build = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0);
         c.Cost = -(build * w.ToolsCfg.Costs.DemolishRefundPct / 100);
         return RejectReason.None;

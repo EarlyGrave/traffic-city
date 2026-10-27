@@ -3,9 +3,9 @@
   "scenario": "tests/golden/rust-pilot/scenarios/net-oneway.json",
   "load_ok": true,
   "create_status": 0,
-  "desc_hash": "0a4887e980a721bf",
-  "network_hash": "d93ff43e7c8bc51b",
-  "conflicts_hash": "599610c58b77b36b",
-  "headings_hash": "124bd6981c3903e7",
+  "desc_hash": "9005dfa4c1442a2f",
+  "network_hash": "b9d1549ff9af929f",
+  "conflicts_hash": "a035cb685fd7b8e7",
+  "headings_hash": "9d499cdf4fbee65c",
   "counts": { "nodes": 5, "segments": 4, "lanes": 13, "lane_points": 68, "segment_points": 8, "arms": 8, "lane_next": 14, "connectors": 7, "conflicts": 14 }
 }
