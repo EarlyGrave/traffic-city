@@ -18,7 +18,7 @@ namespace Sim.Headless.Tests.Mods;
 public sealed class AssetManifestHostTests : IDisposable
 {
     /// <summary>Отпечаток <c>base</c> v1.0.0 (s1k-v3): если контент <c>base</c> менялся намеренно, обновить вместе с описанием коммита.</summary>
-    private const string BaseFingerprint = "8345a96e7adc282c";
+    private const string BaseFingerprint = "c3ba046c5562f937";   // K1 (ADR-0026): в отпечаток base вошли поля парковки зданий
 
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "tc-mani-" + Guid.NewGuid().ToString("N"));
 

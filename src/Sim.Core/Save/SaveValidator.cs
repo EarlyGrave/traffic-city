@@ -63,6 +63,12 @@ internal static partial class SaveValidator
             return pst;
         }
 
+        pst = ValidateParkingParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         pst = ValidateCityParams(c);
         if (pst != LoadStatus.Ok)
         {
@@ -112,6 +118,7 @@ internal static partial class SaveValidator
         b += (long)c.MaxLots * 96L;   // город: участки, здания, жители (скимы проверяет ValidateCityParams)
         b += (long)c.MaxBuildings * 260L;
         b += (long)c.MaxCityResidents * 150L;
+        b += (long)Math.Max(0, c.MaxParking) * 220L;   // парковка (parking.md §16): объекты и окрестности; 0 (= лоты + здания + 64) уже учтён ёмкостями города
         return b;
     }
 

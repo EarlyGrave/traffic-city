@@ -81,6 +81,9 @@ internal static partial class CommandDispatcher
             case CommandKind.SetTripExecution:
                 Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
                 break;
+            case CommandKind.SetBudgetPolicy:
+                Result(w, in cmd, City.BudgetFlows.SetPolicy(w, in cmd));
+                break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
                 break;

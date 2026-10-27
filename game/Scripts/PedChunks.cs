@@ -73,7 +73,21 @@ public sealed class PedChunks
             bf.Ribbon(_scratch.AsSpan(0, m), half, 0f, FarWalkY, _sidewalkColor, e, flag);
             if (cross)
             {
-                AddZebra(ChunkGrid.Get(zebra, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 1), poly[0], poly[^1], czWidth);
+                // VS4: зебра - от кромки до кромки проезжей части (CurbL..CurbR), а не между центрами тротуаров, если у сегмента есть профиль
+                Vec2 za = poly[0];
+                Vec2 zb = poly[^1];
+                if (ed.Segment >= 0 && RoadProfileLayouts.ZebraTrim(net, ed.Segment, za, zb, out float ta, out float tb))
+                {
+                    float zl = MathF.Sqrt(((zb.X - za.X) * (zb.X - za.X)) + ((zb.Z - za.Z) * (zb.Z - za.Z)));
+                    if (zl > ta + tb + 1f)
+                    {
+                        float ux = (zb.X - za.X) / zl;
+                        float uz = (zb.Z - za.Z) / zl;
+                        (za, zb) = (new Vec2(za.X + (ux * ta), za.Z + (uz * ta)), new Vec2(zb.X - (ux * tb), zb.Z - (uz * tb)));
+                    }
+                }
+
+                AddZebra(ChunkGrid.Get(zebra, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 1), za, zb, czWidth);
             }
         }
 

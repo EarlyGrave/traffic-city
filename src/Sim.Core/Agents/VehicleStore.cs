@@ -68,6 +68,9 @@ internal sealed class VehicleStore
     public readonly ushort[] DwellTicks;
     public readonly ushort[] Passengers;
     public readonly int[] Resident;        // 3.2 (zoning-demand.md §4.1): житель-владелец поездки или -1 (OD-генератор, автобусы); пишет Z2
+    public readonly int[] ParkFac;         // parking.md §2.3 (K1): резерв машины жителя в пути (объект стоянки) или -1 (OD, автобусы, машины без режима)
+    public readonly int[] ParkFacGen;
+    public readonly long[] ParkSearchTick; // начало поиска после потери резерва (§7, K3) или -1
 
     // --- уровни детализации (ADR-0013, sim-lod.md §1): выделены только при Lod.Mode != Off, иначе пустые (длина 0) ---
     public readonly byte[] Lod;            // бит0 meso, бит1 MesoFresh (LodBits)
@@ -123,6 +126,9 @@ internal sealed class VehicleStore
         DwellTicks = new ushort[maxVehicles];
         Passengers = new ushort[maxVehicles];
         Resident = new int[maxVehicles];
+        ParkFac = new int[maxVehicles];
+        ParkFacGen = new int[maxVehicles];
+        ParkSearchTick = new long[maxVehicles];
         Lod = lod ? new byte[maxVehicles] : Array.Empty<byte>();
         MesoAllow = lod ? new float[maxVehicles] : Array.Empty<float>();
         MesoNext = lod ? new float[maxVehicles] : Array.Empty<float>();
@@ -231,6 +237,9 @@ internal sealed class VehicleStore
         DwellTicks[i] = 0;
         Passengers[i] = 0;
         Resident[i] = -1;
+        ParkFac[i] = -1;
+        ParkFacGen[i] = 0;
+        ParkSearchTick[i] = -1;
         if (Lod.Length != 0)
         {
             Lod[i] = 0;

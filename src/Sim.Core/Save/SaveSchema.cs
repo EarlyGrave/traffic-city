@@ -14,10 +14,10 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 8;
+    public const int WorldVersion = 10;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
-    public const int HashVersion = 3;
+    public const int HashVersion = 4;
 
     /// <summary>Версия ядра-писателя: <c>major &lt;&lt; 20 | minor &lt;&lt; 10 | patch</c> (справочно).</summary>
     public const int WriterVersion = (0 << 20) | (1 << 10) | 0;
@@ -31,13 +31,13 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
-        BuildingTypesBlock(),
+        Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns()),
         Extend(WorldState(), PedWorldState(), CityWorldState()),
-        Extend(Counters(), PedCounters(), CityCounters(), BayCounters()),
+        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters()),
         NetworkCounts(),
         Nodes(),
         Extend(Segments(), new[] { SegmentProfileColumn() }),
@@ -53,8 +53,8 @@ internal static partial class SaveSchema
         LaneDynamic(),
         SegmentDynamic(),
         BusDynamic(),
-        Extend(Vehicles(), new[] { VehicleResident() }),
-        Trips(),
+        Extend(Vehicles(), new[] { VehicleResident() }, ParkingVehicleColumns()),
+        Extend(Trips(), ParkingTripColumns()),
         Queues(),
         Routes(),
         RouteGraphBlock(),
@@ -68,10 +68,13 @@ internal static partial class SaveSchema
         CrossingsBlock(),
         PedPathQueue(),
         Extend(LotsBlock(), LotGridColumns()),
-        BuildingsBlock(),
-        ResidentsCityBlock(),
+        Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns()),
         SkimsBlock(),
         LedgerBlock(),
+        BudgetBlock(),
+        ParkingBlock(),
+        LandUseBlock(),
         Manifest(),
     });
 

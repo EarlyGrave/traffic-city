@@ -512,6 +512,11 @@ internal static class TripLegs
         c.LegsDay[slot]++;
         c.LegCostDay[slot] += cost;
 
+        if (mode == TravelMode.Bus && c.Budget != null)
+        {
+            BudgetFlows.ChargeFare(w, c, r);   // плата за проезд на закрытии ноги, micro и aggregate по одному пути (city-economy.md §3)
+        }
+
         res.Agent[r] = -1;
         res.AgentGen[r] = 0;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];

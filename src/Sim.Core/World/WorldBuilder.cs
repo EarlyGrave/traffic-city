@@ -277,13 +277,15 @@ internal static class WorldBuilder
     /// </summary>
     private static CreateStatus BuildCity(World w, in ScenarioDesc desc)
     {
-        CreateStatus st = CityGenerator.Generate(in desc.City, in w.Rules, in w.Caps, w.Builder, ref w.RngCityGen, out CityGenResult city);
+        CreateStatus st = CityGenerator.Generate(in desc.City, in w.Rules, in w.Caps, w.Builder, ref w.RngCityGen, out CityGenResult city, w.Seed);
         if (st != CreateStatus.Ok)
         {
             return st;
         }
 
         w.CityInfo = city;
+        w.LandUse = city.LandUse ?? System.Array.Empty<LandUsePoly>();
+        w.LandUseVersion = w.LandUse.Length > 0 ? 1 : 0;
         w.SignalPlanSeeds = city.SignalPlans ?? System.Array.Empty<SignalPlanSeed>();
         w.SignalCount = w.SignalPlanSeeds.Length;
         if (w.SignalCount > w.SignalStates.Length)

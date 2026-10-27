@@ -6,6 +6,8 @@
 //   CUSTOM0.y = 0  - голый асфальт (LOD1, дальняя лента, площадки перекрёстков);
 //   CUSTOM0.y >= 2 - лента сегмента: nTot + 16 * nBase (nTot полос, nBase - полос направления, от правого края которого отсчитан UV.y; 0 - без осевой);
 //                    UV.y = поперечная координата в полосах от 0 до nTot, разделители - целые значения 1..nTot-1;
+//                    CUSTOM0.z = 1 (лента профиля, RP6): разделители полос одного направления - пунктир по UV.x (длина вдоль оси, м); осевая сплошная;
+//   CUSTOM0.y = -2 - стоп-линия (RP6): сплошная, доля line_color = stop_alpha;
 //   CUSTOM0.y = -1 - направляющая коннектора: UV.x = -1..1 поперёк, CUSTOM0.zw = смещение кромки (нормаль * сторона), расширяется в вершинном шейдере до line_px.
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled, cull_disabled, depth_draw_opaque;
@@ -18,16 +20,21 @@ uniform float line_center_alpha = 0.36;  // то же, для границы н�
 uniform float line_px = 1.2;             // толщина линии, пикселей экрана
 uniform float line_fade_begin = 90.0;    // линии гаснут между этими дистанциями, м (от LodConfig.RoadLod0)
 uniform float line_fade_end = 175.0;
+uniform float stop_alpha = 0.6;          // доля line_color в стоп-линии
+uniform float dash_len = 3.0;            // пунктир разделителей полос (профили): штрих и период, м
+uniform float dash_period = 9.0;
 
 varying flat float v_kind;
+varying flat float v_dash;
 varying vec2 v_uv;
 
 void vertex() {
 	v_idx = CUSTOM0.x;
 	v_kind = CUSTOM0.y;
+	v_dash = CUSTOM0.z;
 	v_uv = UV;
 	vec3 vp = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	if (CUSTOM0.y < -0.5) {
+	if (CUSTOM0.y < -0.5 && CUSTOM0.y > -1.5) {
 		// метров на пиксель на этой глубине: кромка линии сдвигается на полтолщины (+ запас под сглаживание)
 		float mpp = 2.0 * max(-vp.z, 0.01) / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
 		VERTEX.xz += CUSTOM0.zw * (0.5 * line_px + 0.5) * mpp;
@@ -50,8 +57,17 @@ void fragment() {
 		float d_px = abs(v - ln) / px;                // расстояние до ближайшего разделителя, пикселей
 		float cov = clamp(0.5 * line_px + 0.5 - d_px, 0.0, 1.0);
 		cov *= 1.0 - smoothstep(0.25, 0.5, px);       // полоса уже ~2-4 px: линии превращаются в муар - гасим
-		float a = (nb > 0 && int(ln + 0.5) == nb) ? line_center_alpha : line_alpha;
+		bool center = nb > 0 && int(ln + 0.5) == nb;
+		if (v_dash > 0.5 && !center) {
+			float ph = fract(v_uv.x / dash_period);
+			float f = dash_len / dash_period;
+			float aa = max(fwidth(v_uv.x) / dash_period, 1e-4);
+			cov *= 1.0 - smoothstep(f - aa, f + aa, ph);
+		}
+		float a = center ? line_center_alpha : line_alpha;
 		k = cov * a * fade;
+	} else if (v_kind < -1.5 && fade > 0.0) {
+		k = stop_alpha * fade;
 	} else if (v_kind < -0.5 && fade > 0.0) {
 		float d_px = abs(v_uv.x) * (0.5 * line_px + 0.5);
 		k = clamp(0.5 * line_px + 0.5 - d_px, 0.0, 1.0) * line_alpha * fade;

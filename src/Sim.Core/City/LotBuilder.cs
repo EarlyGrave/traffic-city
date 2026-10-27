@@ -108,6 +108,8 @@ internal sealed class LotBuilder
         {
             Derive(w, c, lot, comp);
         }
+
+        Parking.ParkingBuild.RefreshAll(w, c);   // производные объектов стоянки и окрестности (parking.md §2.4); без режима - ничего
     }
 
     /// <summary>
@@ -142,11 +144,17 @@ internal sealed class LotBuilder
     {
         CityWorld c = w.City!;
         RebuildOccupancy(w, c);
+        int firstNew = c.Lots.Count;
         AppendSegment(w, c, seg, derive: false);
         int[] comp = RoadLabels(w.Net);
         for (int lot = 0; lot < c.Lots.Count; lot++)
         {
             Derive(w, c, lot, comp);
+        }
+
+        if (c.Parking != null)
+        {
+            Parking.ParkingBuild.OnLotsAdded(w, c, firstNew);   // обочины новых участков; производные всех объектов (индексы полос и рёбра тротуара старых могли сместиться) и окрестности целиком
         }
     }
 
@@ -173,6 +181,7 @@ internal sealed class LotBuilder
 
             l.Flags[lot] |= LotFlags.Lost;
             MakeCanonicalDerived(l, lot);
+            Parking.ParkingBuild.OnLotLost(w, c, lot);   // обочина участка снесена (parking.md §7); стоянка здания закрыта в Growth.Abandon
             lost++;
         }
 
@@ -332,12 +341,44 @@ internal sealed class LotBuilder
         cz = pz + (nz * off);
     }
 
+    /// <summary>
+    /// Точка фасада участка на кромке тротуара (parking.md §2.1, производное): ось сегмента в середине отрезка плюс нормаль на <c>FrontOffsetM</c>. Без тригонометрии
+    /// (нормаль из касательной), чтобы положение объектов стоянки считалось одинаково в <c>Create</c>, <c>Load</c> и Rust-порту. Участок обязан быть живым.
+    /// </summary>
+    internal static void FrontPoint(World w, CityWorld c, int lot, out float x, out float z)
+    {
+        LotStore l = c.Lots;
+        ref readonly SegmentData sd = ref w.Net.Segments[l.Seg[lot]];
+        float sc = (l.S0Mm[lot] + l.S1Mm[lot]) * 0.0005f;
+        PointAt(w.Net, in sd, sc, out float px, out float pz, out float tx, out float tz);
+        float nx = l.Side[lot] == 0 ? -tz : tz;
+        float nz = l.Side[lot] == 0 ? tx : -tx;
+        float off = FrontOffsetM(w, in sd);
+        x = px + (nx * off);
+        z = pz + (nz * off);
+    }
+
     private bool Fits(World w, CityWorld c, int seg, int side, int s0, int s1, out float cx, out float cz, out float tx, out float tz, out float nx, out float nz)
     {
         Frame(w, c, seg, side, s0, s1, out cx, out cz, out tx, out tz, out nx, out nz);
         float halfL = (s1 - s0) * 0.0005f;
         float halfD = c.Cfg.Zoning.LotDepthMm * 0.0005f;
-        return Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+        return !InLandUse(w, cx, cz) && Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+    }
+
+    /// <summary>Центр участка внутри парка или воды (city.landuse, visual-style.md §8): такой участок не нарезается. Без землепользования - всегда false.</summary>
+    internal static bool InLandUse(World w, float x, float z)
+    {
+        LandUsePoly[] polys = w.LandUse;
+        for (int i = 0; i < polys.Length; i++)
+        {
+            if (polys[i].Contains(x, z))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Mark(float cx, float cz, float tx, float tz, float nx, float nz, int lengthMm)

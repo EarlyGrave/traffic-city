@@ -46,6 +46,8 @@ public partial class SimHost : Node3D
     private bool _infoArg;
     private int _infoArgLayer;
     private PedChunks? _pedStatic;
+    private LandUseChunks? _landUse;
+    private BuildingLayer? _buildings;
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -54,6 +56,8 @@ public partial class SimHost : Node3D
     private PerfHud? _hud;
     private RenderStats? _renderStats;
     private string _pose = string.Empty;
+    private bool _timeAuto;        // --time-of-day auto: час суток из игрового времени (только при demand.model = residents)
+    private int _dayTicks;         // calendar.day_s * 20; 0 - нет календаря (фиксированный час)
     private Label? _status;
     private Label? _inspector;
     private PedMesh? _peds;
@@ -164,8 +168,22 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
-    /// <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
+    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>.
     /// </summary>
+    /// <summary>Час суток из <c>HH:MM</c> или десятичных часов (<c>19</c>, <c>19.5</c>).</summary>
+    private static bool TryParseHour(string v, out float hour)
+    {
+        CultureInfo inv = CultureInfo.InvariantCulture;
+        int c = v.IndexOf(':', StringComparison.Ordinal);
+        if (c > 0 && int.TryParse(v.AsSpan(0, c), NumberStyles.Integer, inv, out int h) && int.TryParse(v.AsSpan(c + 1), NumberStyles.Integer, inv, out int m))
+        {
+            hour = h + (m / 60f);
+            return true;
+        }
+
+        return float.TryParse(v, NumberStyles.Float, inv, out hour);
+    }
+
     private void ParseArgs(string[] args, ref string name)
     {
         CultureInfo inv = CultureInfo.InvariantCulture;
@@ -183,6 +201,18 @@ public partial class SimHost : Node3D
             else if (a == "--log-step-alloc")
             {
                 _logStepAlloc = true;
+            }
+            else if (a == "--time-of-day" && i + 1 < args.Length)
+            {
+                string v = args[++i];
+                if (v == "auto")
+                {
+                    _timeAuto = true;
+                }
+                else if (TryParseHour(v, out float hh))
+                {
+                    RenderPreset.SetStartHour(hh);
+                }
             }
             else if (a == "--pose" && i + 1 < args.Length)
             {
@@ -310,6 +340,12 @@ public partial class SimHost : Node3D
             _hudPending = false;
         }
 
+        if (_timeAuto && _dayTicks > 0)
+        {
+            // тик 0 = 00:00; обновляем раз в ~секунду игрового времени (20 тиков), не каждый кадр
+            RenderPreset.SetHour(GetParent(), 24f * (_sim.Tick % _dayTicks) / _dayTicks);
+        }
+
         long allocA = GC.GetAllocatedBytesForCurrentThread();
         UpdateRenderView(_sim);
         long allocView = GC.GetAllocatedBytesForCurrentThread() - allocA;
@@ -360,6 +396,16 @@ public partial class SimHost : Node3D
         if (_roads != null && _roads.Version != _sim.Network.Version)
         {
             RebuildRoads(_sim);
+        }
+
+        if (_landUse != null && _landUse.IsStale(_sim))
+        {
+            _landUse.Rebuild(_sim);
+        }
+
+        if (_buildings != null && _camera != null)
+        {
+            _buildings.Update(_sim, _camera.Camera.GlobalPosition);
         }
 
         _info.Update(delta, _camera?.Distance ?? 1000f);
@@ -424,7 +470,7 @@ public partial class SimHost : Node3D
                     _pedHeatTimer = 0;
                     break;
                 case Key.Key3 when _info.Active:
-                    _info.SetLayer(InfoMode.LayerZones); // заглушка: участки «Зоны» рисует VS9
+                    _info.SetLayer(InfoMode.LayerZones); // слой «Зоны»: землепользование и участки рисует LandUseChunks (VS9)
                     break;
                 case Key.F2:
                     _signalsOn = !_signalsOn;
@@ -433,6 +479,12 @@ public partial class SimHost : Node3D
                         _signals.Node.Visible = _signalsOn;
                     }
 
+                    break;
+                case Key.T:
+                    // ручной час суток: T - +1 ч, Shift+T - -1 ч (выключает привязку к игровому времени)
+                    _timeAuto = false;
+                    RenderPreset.SetHour(GetParent(), RenderPreset.Hour + (key.ShiftPressed ? -1f : 1f));
+                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
                     break;
                 case Key.F4:
                     // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
@@ -516,7 +568,9 @@ public partial class SimHost : Node3D
         }
 
         _sim = sim;
+        RoadProfileLayouts.Set(in desc.RoadProfiles); // сечения дорог для RoadChunks/PedChunks (RP6); без каталога - legacy
         _types = desc.VehicleTypes;
+        _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
@@ -615,12 +669,21 @@ public partial class SimHost : Node3D
             MaterialOverride = GroundMaterial(),
         });
 
+        if (LandUseChunks.Needed(sim))
+        {
+            // слой земли VS9: парки/вода/берег и тон кварталов, один меш на дальний чанк
+            _landUse = new LandUseChunks(new Vec2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f));
+            _landUse.Rebuild(sim);
+            AddChild(_landUse.Root);
+        }
+
         _roadHeat = new HeatTexture(sim.Network.Segments.Length);
         _roadHeat.UpdateRoads(sim.SegmentLoads);
         _roads = new RoadChunks(sim, _roadHeat, _lod);
         AddChild(_roads.Root);
 
         _vehicles = new VehicleLayer(this, _types, _lod) { Info = _info };
+        _buildings = new BuildingLayer(this, _lod); // здания V8 + VS5
 
         if (sim.HasPeds)
         {

@@ -34,6 +34,9 @@ public enum CommandKind : int
     RemoveBusRoute = 33,
     SetBusRouteParams = 34,
     MergeAtNode = 35,
+
+    // Экономика города (4.2, city-economy.md §11, E1). Номер 25 из спеки занят инструментами (T1) - взят следующий свободный.
+    SetBudgetPolicy = 36,   // политика бюджета: ожидающая, действует с границы суток; без режима city_budget - см. BudgetFlows.SetPolicy
 }
 
 public enum SignalMode : int
@@ -136,6 +139,9 @@ public struct Command
 
     [FieldOffset(8)]
     public MergeAtNodeCmd MergeAtNode;
+
+    [FieldOffset(8)]
+    public SetBudgetPolicyCmd SetBudgetPolicy;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -242,6 +248,15 @@ public struct Command
         c.Kind = CommandKind.SetTripExecution;
         c.Tag = tag;
         c.SetTripExecution = new SetTripExecutionCmd { Mode = (byte)mode };
+        return c;
+    }
+
+    public static Command MakeSetBudgetPolicy(in BudgetPolicy policy, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetBudgetPolicy;
+        c.Tag = tag;
+        c.SetBudgetPolicy = new SetBudgetPolicyCmd { Policy = policy };
         return c;
     }
 
@@ -473,4 +488,11 @@ public struct PaintZoneCmd
 public struct SetTripExecutionCmd
 {
     public byte Mode;
+}
+
+/// <summary>Политика бюджета (city-economy.md §2.2, §11): 16 байт.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct SetBudgetPolicyCmd
+{
+    public BudgetPolicy Policy;
 }

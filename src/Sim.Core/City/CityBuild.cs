@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return CreateStatus.Ok;
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget и parking только при residents (city-economy.md §1, parking.md §1)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -42,6 +42,11 @@ internal static class CityBuild
         }
 
         if (desc.Lod.CellM < 0f || !float.IsFinite(desc.Lod.CellM))
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        if (desc.Parking.Enabled && (!desc.Parking.IsValid() || caps.MaxParking < 0 || caps.MaxParking > MaxBigCount))
         {
             return CreateStatus.InvalidCity;
         }
@@ -69,6 +74,7 @@ internal static class CityBuild
         ok &= e.WagePerShift >= 0 && e.BasketPrice >= 0 && e.GoodsPct is >= 0 and <= 100 && e.ImportPct is >= 0 and <= 100 && e.ExportPerShift >= 0;
         ok &= e.InitialResidentBalance >= 0 && e.InitialFirmBalance >= 0 && e.ConstructCost >= 0 && e.HireMarginPct >= 0;
         ok &= e.LossDaysFire is >= 1 and <= 3650 && e.LossDaysClose is >= 1 and <= 3650 && e.EwmaShift is >= 0 and <= 16 && e.CTargetPct >= 0;
+        ok &= CityBudget.IsValid(in e);   // казна (city-economy.md §13)
         ok &= ch.ThetaMode64 >= 0 && ch.ThetaDest64 >= 0 && ch.ThetaTime64 >= 0 && ch.ThetaFreq64 >= 0;
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;
@@ -122,6 +128,11 @@ internal static class CityBuild
         }
 
         w.City = new CityWorld(in w.Town, in grid, in w.Caps, w);
+        if (w.ParkCfg.Enabled)
+        {
+            w.City.Parking = new Parking.ParkingStore(in w.ParkCfg, in w.Caps, in grid);
+        }
+
         return create ? CityInit.Run(w) : CreateStatus.Ok;
     }
 }
