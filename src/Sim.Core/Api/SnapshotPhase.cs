@@ -163,7 +163,31 @@ internal sealed class SnapshotJob : IRangeJob
         }
 
         float centerS = s - (v.Length[i] * 0.5f);
-        LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out Vec2 pos, out int piece);
+        Vec2 pos;
+        int piece;
+        if (centerS < 0f && net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
+        {
+            // Въезд на коннектор: хвост кузова ещё на подъездной полосе - берём точку на ней (точная непрерывность).
+            int from = net.Lanes[lane].FromLane;
+            float fromS = net.Lanes[from].Length + centerS;
+            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, from, fromS, ref v.PointHint[i], out pos, out piece);
+        }
+        else if (centerS < 0f)
+        {
+            // Центр кузова ещё «позади» начала полосы (сразу после перехода): продлеваем первый отрезок назад по прямой,
+            // иначе EvaluatePos прижмёт s к 0 и центр рывком уйдёт вперёд на Length/2.
+            piece = net.Lanes[lane].FirstPoint;
+            Vec2 p0 = net.LanePoints[piece];
+            Vec2 d0 = net.LanePoints[piece + 1] - p0;
+            float len0 = MathF.Sqrt((d0.X * d0.X) + (d0.Z * d0.Z));
+            Vec2 dir0 = len0 > 1e-9f ? d0 * (1f / len0) : new Vec2(1f, 0f);
+            pos = p0 + (dir0 * centerS);
+        }
+        else
+        {
+            LaneGeometry.EvaluatePos(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref v.PointHint[i], out pos, out piece);
+        }
+
         float lateral = v.Lateral[i];
         float heading = net.LanePieceHeading[piece];
         float x = pos.X;

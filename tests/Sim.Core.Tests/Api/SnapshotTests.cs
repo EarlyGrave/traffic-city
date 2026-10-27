@@ -27,7 +27,22 @@ public class SnapshotTests
                 }
 
                 float centerS = v.S[i] - (v.Length[i] * 0.5f);
-                LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref hints[i], out Vec2 pos, out Vec2 dir);
+                Vec2 pos;
+                Vec2 dir;
+                if (centerS < 0f && net.Lanes[lane].Kind == LaneKind.Connector && (uint)net.Lanes[lane].FromLane < (uint)net.LaneCount)
+                {
+                    int from = net.Lanes[lane].FromLane;
+                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, from, net.Lanes[from].Length + centerS, ref hints[i], out pos, out dir);
+                }
+                else
+                {
+                    LaneGeometry.Evaluate(net.Lanes, net.LanePoints, net.LanePointS, lane, centerS, ref hints[i], out pos, out dir);
+                    if (centerS < 0f)
+                    {
+                        pos = net.LanePoints[net.Lanes[lane].FirstPoint] + (dir * centerS);
+                    }
+                }
+
                 float lateral = v.Lateral[i];
                 ref VehicleRenderData r = ref buf[i];
                 r.X = pos.X + (dir.Z * lateral);
@@ -73,6 +88,50 @@ public class SnapshotTests
         }
 
         Assert.True(sim.ActiveVehicleCount > 0);
+    }
+
+    [Fact]
+    public void Snapshot_NoJump_OnJunctionEnterAndExit_S1k()
+    {
+        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        const float dt = 1f / 20f;
+        var prev = new VehicleRenderData[d.Capacities.MaxVehicles];
+        var prevLane = new int[prev.Length];
+        int checkedTransitions = 0;
+        for (int tick = 0; tick < 4000; tick++)
+        {
+            sim.Step(1);
+            ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
+            for (int i = 0; i < cur.Length; i++)
+            {
+                VehicleRenderData a = cur[i];
+                int lane = w.Vehicles.Lane[i];
+                if (a.Flags != 0 && prev[i].Flags != 0 && prev[i].Generation == a.Generation && prevLane[i] != lane
+                    && ((prev[i].Flags ^ a.Flags) & (byte)VehicleRenderFlags.OnConnector) != 0)
+                {
+                    float dx = a.X - prev[i].X;
+                    float dz = a.Z - prev[i].Z;
+                    float dist = MathF.Sqrt((dx * dx) + (dz * dz));
+                    // Въезд на коннектор - точная непрерывность; выезд - прямая экстраполяция назад, запас на кривизну коннектора.
+                    bool enter = (a.Flags & (byte)VehicleRenderFlags.OnConnector) != 0;
+                    float limit = (MathF.Max(a.Speed, prev[i].Speed) * dt) + (enter ? 0.3f : 0.25f * w.Vehicles.Length[i]);
+                    Assert.True(dist <= limit, $"tick {tick} slot {i}: сдвиг {dist} м > {limit} м на смене полосы {prevLane[i]}->{lane}");
+                    checkedTransitions++;
+                }
+
+                prev[i] = a;
+                prevLane[i] = lane;
+            }
+
+            for (int i = cur.Length; i < prev.Length; i++)
+            {
+                prev[i] = default;
+            }
+        }
+
+        Assert.True(checkedTransitions > 20, $"мало переходов: {checkedTransitions}");
     }
 
     [Fact]
