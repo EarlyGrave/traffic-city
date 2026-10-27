@@ -438,6 +438,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 4 | 4.3, ADR-0023, задача T2: сеть с дырами (пулы узлов, сегментов, остановок, маршрутов; арены блоков). Столбцы `NETW` 13-49 (`ToolsTouched`, длины и списки free-list'ов четырёх пулов, у каждой из семи арен `Lane/LanePoint/SegmentPoint/Arm/LaneNext/ZoneLane/BusRouteStop` четыре столбца: число дыр, потерянные элементы, дыры `класс<<32 \| первый`, битовая карта лестницы), `CONN` 18-25 (арены строк и конфликтов connector'ов), `NNOD` 13-14 (`Flags`, `TurnBan`), `NSEG` 13-15 (`Flags`, `Cx`, `Cz`), `NBUS` 11 (поколение остановки); `hash_version` 3 (раздел хэша «состояние инструментов» только при `ToolsTouched = 1`). Теги `RefKind` на столбцах-ссылках (`SaveSchema.Refs`) - не столбцы, а признак схемы | `MigrationV4` (`Save/MigrationV4.cs`): все столбцы с дефолтами «правок не было, всё живо» (`ToolsTouched = 0`, free-list'ы пусты, поколение остановок 1), блоков не создаёт; w1-w3 продолжаются тем же хэшем |
 | 5 | 4.3, ADR-0023, задача T4: операции дренажа инструментов. Столбцы `NETW` 50-60 (`ToolOpCount`, `ToolOpNextId`, девять массивов полей операций); раздел хэша «операции» - только если операции заводились (`NextId != 1`); `DenyReason` допускает 8 | `MigrationV5` (`Save/MigrationV5.cs`): «операций нет» (`Count = 0`, `NextId = 1`), блоков не создаёт; w1-w4 продолжаются тем же хэшем |
 | 6 | ADR-0028, отступ рукава узла по ширине поперечной дороги + `corner_radius`. Столбец `PARM` 185 `NetCornerRadius` (f32, опция построителя: 0 - фиксированный отступ 7 м); геометрия сети по-прежнему сохраняется целиком (`NNOD.Radius`, точки полос), поэтому загрузка от радиуса не зависит - он нужен только `BuildRoad` после загрузки | `MigrationV6` (`Save/MigrationV6.cs`): `NetCornerRadius = 0` - дороги, построенные в старом сейве после загрузки, получают геометрию до ADR-0028; блоков не создаёт; w1-w5 продолжаются тем же хэшем |
+| 7 | ADR-0029, карман автобусных остановок (`docs/design/bus-bays.md`). Столбцы `PARM` 186-187 (`TransitBayModel`: 0 curb, 1 virtual, 2 lane - резерв под настоящую полосу-карман; `TransitBayYieldTicks`), `BDYN` 10-12 (`BayUsed`, `BayFlags`, `BayExitFrom` по остановкам), `CNTR` 150-153 (`BayEntries`, `BayFallbacks`, `BayYields`, `BayExitWaitTicksTotal`); флаг машины `InBay = 64` (`VEHC.Flags` до 127); раздел хэша «карманы» - только при `bay_model = virtual` и наличии остановок `Bay` | `MigrationV7` (`Save/MigrationV7.cs`): `TransitBayModel = 0` (curb), `TransitBayYieldTicks = 60`, поля кармана нулевые (`BayExitFrom = -1`), счётчики 0 - старые сейвы ведут себя как раньше; блоков не создаёт; w1-w6 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -651,6 +652,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 183 | CityGridCellsX | i32 | 1 | 0 |
 | `PARM` | 184 | CityGridCellsZ | i32 | 1 | 0 |
 | `PARM` | 185 | NetCornerRadius | f32 | 1 | 0 |
+| `PARM` | 186 | TransitBayModel | i32 | 1 | 0 |
+| `PARM` | 187 | TransitBayYieldTicks | i32 | 1 | 60 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -851,6 +854,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 147 | ExecSwitches | i64 | 1 | 0 |
 | `CNTR` | 148 | CityDays | i64 | 1 | 0 |
 | `CNTR` | 149 | AggregateLegs | i64 | 1 | 0 |
+| `CNTR` | 150 | BayEntries | i64 | 1 | 0 |
+| `CNTR` | 151 | BayFallbacks | i64 | 1 | 0 |
+| `CNTR` | 152 | BayYields | i64 | 1 | 0 |
+| `CNTR` | 153 | BayExitWaitTicksTotal | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1072,6 +1079,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `BDYN` | 7 | StatsHeadwayDeviationTicksTotal | i64 | BusRouteCount | 0 |
 | `BDYN` | 8 | StatsLastDispatchTick | i64 | BusRouteCount | -1 |
 | `BDYN` | 9 | LastDepartTick | i64 | BusStopCount | -1 |
+| `BDYN` | 10 | BayUsed | u8 | BusStopCount | 0 |
+| `BDYN` | 11 | BayFlags | u8 | BusStopCount | 0 |
+| `BDYN` | 12 | BayExitFrom | i64 | BusStopCount | -1 |
 | `VEHC` | 1 | HighWater | i32 | 1 | 0 |
 | `VEHC` | 2 | FreeCount | i32 | 1 | 0 |
 | `VEHC` | 3 | FreeList | i32 | FreeCount | 0 |
