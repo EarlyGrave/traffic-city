@@ -57,6 +57,15 @@ public static class Palette
     public static readonly Color Sidewalk = Lin("#E4E1DA");
     public static readonly Color Zebra = Lin("#FFFFFF");
 
+    // элементы профиля дороги (RP6, road-profiles.md §7); асфальт и тротуар - выше. Вершинные цвета, линейные.
+    public static readonly Color Lawn = Lin("#C9D4B2");
+    public static readonly Color Curb = Lin("#BDB9B0");
+    public static readonly Color Median = Lin("#AEBB98");
+    public static readonly Color Reserve = Lin("#7E8A88"); // bike, parking, tram, bus_bay: резерв, пока только ширина
+
+    /// <summary>Стоп-линия (VS3): доля <see cref="LaneLine"/> в смеси с асфальтом, плотнее осевой.</summary>
+    public const float StopLineAlpha = 0.60f;
+
     /// <summary>Легковая: набор по <c>slot % 5</c> (решение владельца 2026-10-27).</summary>
     public static readonly Color[] CarSlots = { Lin("#E5484D"), Lin("#3E7BFA"), Lin("#F4F4F2"), Lin("#3A3F47"), Lin("#F2B33D") };
     public static readonly Color Bus = Lin("#F28C28");

@@ -1,0 +1,42 @@
+{
+  "format_version": 2,
+  "name": "demo-profiles",
+  "seed": 1,
+  "duration_s": 60,
+  "road_profiles_file": "road-profiles.json",
+  "city": { "enabled": false },
+  "network": {
+    "nodes": [
+      { "id": "n0",  "x": 0,    "z": 0,    "control": "none" },
+      { "id": "nW",  "x": -160, "z": 0,    "control": "none" },
+      { "id": "nWW", "x": -320, "z": 0,    "control": "none" },
+      { "id": "nE",  "x": 160,  "z": 0,    "control": "none" },
+      { "id": "nN",  "x": 0,    "z": -160, "control": "none" },
+      { "id": "nS",  "x": 0,    "z": 160,  "control": "none" },
+      { "id": "nSW", "x": -160, "z": 160,  "control": "none" },
+      { "id": "nNE", "x": 160,  "z": -160, "control": "none" },
+      { "id": "nSE", "x": 160,  "z": 160,  "control": "none" }
+    ],
+    "segments": [
+      { "a": "nW",  "b": "n0",  "profile": "arterial_4", "speed_kmh": 60 },
+      { "a": "n0",  "b": "nE",  "profile": "arterial_4", "speed_kmh": 60 },
+      { "a": "nN",  "b": "n0",  "profile": "street_2", "speed_kmh": 40 },
+      { "a": "n0",  "b": "nS",  "profile": "street_2", "speed_kmh": 40 },
+      { "a": "nWW", "b": "nW",  "profile": "arterial_6", "speed_kmh": 60 },
+      { "a": "nW",  "b": "nSW", "profile": "street_2", "speed_kmh": 40 },
+      { "a": "nE",  "b": "nNE", "profile": "oneway_2", "speed_kmh": 40 },
+      { "a": "nE",  "b": "nSE", "profile": "asym_1_2", "mirrored": false, "speed_kmh": 50 },
+      { "a": "nSE", "b": "nS",  "profile": "asym_1_2", "mirrored": true, "speed_kmh": 50 }
+    ]
+  },
+  "vehicles": { "count": 24, "spawn_ramp_s": 10 },
+  "peds": { "count": 30, "activity_s": [30, 120] },
+  "demand": { "zone_m": 200, "model": "uniform", "external_share": 0, "min_trip_m": 0 },
+  "routing": { "levels": 1, "cell_m": 250, "pathfind_budget_per_tick": 8 },
+  "capacities": {
+    "max_vehicles": 64, "max_nodes": 16, "max_segments": 16, "max_lanes": 1024, "max_lane_points": 8192,
+    "max_zones": 16, "max_bus_routes": 1, "max_bus_stops": 1, "max_routes": 256,
+    "max_plan_steps": 8192, "max_pending_trips": 64, "max_signalized_nodes": 1,
+    "max_connectors": 512, "max_conflicts": 4096, "max_peds": 64, "max_residents": 64, "max_ped_path_steps": 64
+  }
+}
