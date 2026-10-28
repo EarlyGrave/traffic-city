@@ -67,7 +67,7 @@ public sealed partial class UiLegend
 
         _zonesBox = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         box.AddChild(_zonesBox);
-        Color[] zc = { Palette.ZoneResidentialUi, Palette.ZoneCommercialUi, Palette.ZoneIndustrialUi };
+        Color[] zc = { Palette.ZoneResidentialSrgb, Palette.ZoneCommercialSrgb, Palette.ZoneIndustrialSrgb };
         for (int i = 0; i < 3; i++)
         {
             var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
