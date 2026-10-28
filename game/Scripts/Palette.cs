@@ -52,6 +52,13 @@ public static class Palette
     public static readonly Color InfoBgDark = Srgb("#D8CCB4");
     public static readonly Color InfoBgLight = Srgb("#F6F1E6");
 
+    /// <summary>Линии мировой сетки 8 м (RP10): шейдер земли смешивает его с землёй долей alpha (world.gdshaderinc, world_grid).</summary>
+    public static readonly Color GridLine = Srgb("#334052");
+
+    /// <summary>Метка превью снапа (RP10): сырая точка курсора / точка после привязки к сетке.</summary>
+    public static readonly Color SnapRaw = Srgb("#F26B3A");
+    public static readonly Color SnapSnapped = Srgb("#1FB86B");
+
     // служебные цвета отладочных материалов и UI
     public static readonly Color NodePick = Srgb("#4DCCFF");
     public static readonly Color RouteLine = Srgb("#FFF233");
