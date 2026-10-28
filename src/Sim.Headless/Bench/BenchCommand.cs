@@ -256,6 +256,7 @@ public static class BenchCommand
 
         long vtBefore = sim.Counters.VehicleTicksTotal;
         SimCounters cBefore = sim.Counters;
+        long[] batchBefore = BatchStats(sim);
         var sigBefore = new SignalMetrics();
         sim.CopySignalMetrics(sigBefore);
         sim.ResetSignalWindow();
@@ -363,6 +364,13 @@ public static class BenchCommand
         r.BayYields = c.BayYields;
         r.BayExitWaitS = c.BayEntries > 0 ? c.BayExitWaitTicksTotal * 0.05 / c.BayEntries : null;
         r.Counters = c;
+        long[] batchAfter = BatchStats(sim);
+        r.Batch = new long[batchAfter.Length];
+        for (int bi = 0; bi < batchAfter.Length; bi++)
+        {
+            r.Batch[bi] = batchAfter[bi] - batchBefore[bi];
+        }
+
         r.RouteDeferredWindow = c.RouteDeferred - cBefore.RouteDeferred;
         r.PathfindQueriesWindow = c.PathfindQueries - cBefore.PathfindQueries;
         r.PathfindWorkWindow = c.PathfindWork - cBefore.PathfindWork;
@@ -689,11 +697,28 @@ public static class BenchCommand
             w.WriteNumber("customize_work_window", r.CustomizeWorkWindow);
             w.WriteNumber("refill_late_window", r.RefillLateWindow);
             w.WriteNumber("customize_lag_ticks_window", r.CustomizeLagWindow);
+            if (r.Batch != null)
+            {
+                // Пакет параллельных запросов фазы 3 (ADR-0032), приращения за окно замера; вне хэша, compare не гейтит.
+                for (int bi = 0; bi < _batchNames.Length; bi++)
+                {
+                    w.WriteNumber("batch_" + _batchNames[bi], r.Batch[bi]);
+                }
+            }
+
             w.WriteEndObject();
             w.WriteEndObject();
         }
 
         return Encoding.UTF8.GetString(ms.ToArray()) + "\n";
+    }
+
+    private static readonly string[] _batchNames = ["batches", "candidates", "committed", "discarded", "inline", "mismatch", "computed_work", "discarded_work", "inline_work"];
+
+    private static long[] BatchStats(Simulation sim)
+    {
+        Sim.Core.Routing.RouteBatch b = sim.World.Router.Batch;
+        return [b.Batches, b.Candidates, b.Committed, b.Discarded, b.Inline, b.Mismatch, b.ComputedWork, b.DiscardedWork, b.InlineWork];
     }
 
     /// <summary>Уровни детализации за окно замера (scale.md §5 S3, sim-lod.md §8): машины, машино-тики, средние скорости и stuck-события по уровням; <c>compare</c> их не гейтит.</summary>
@@ -882,6 +907,7 @@ internal sealed class BenchResult
     public long BayEntries, BayFallbacks, BayYields;
     public double? BayExitWaitS;
     public SimCounters Counters;
+    public long[]? Batch;   // RouteBatch за окно замера, порядок BenchCommand._batchNames
     public long RouteDeferredWindow, PathfindQueriesWindow, PathfindWorkWindow, RefillLateWindow, CustomizeLagWindow, ReroutesWindow, TimedReroutesWindow, CustomizeWorkWindow;   // приращения за окно замера (routing.* - накопительные с начала)
     public SimWork Work;
     public LodWindow? Lod;

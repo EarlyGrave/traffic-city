@@ -62,10 +62,16 @@ internal static class RoutePhase
         };
 
         EnqueueTimed(w);
+        bool batched = rt.Batch.Prepare(budget.MaxQueries, budget.MaxWork);   // (A)+(B) routing-parallel.md 3.2-3.3; дальше (C) - прежний цикл
         RerouteVehicles(w, rt, ref budget);
         if (!budget.Stopped)
         {
             RouteTrips(w, rt, ref budget);
+        }
+
+        if (batched)
+        {
+            rt.Batch.Finish();
         }
 
         if (budget.Stopped)
@@ -262,7 +268,7 @@ internal static class RoutePhase
 
             RouteHandle h = RouteHandle.Null;
             BuildStatus st = lane >= 0
-                ? rt.Build(lane, s, v.DestLane[i], v.DestS[i], w.Tick, out h)
+                ? rt.BuildBatched(lane, s, v.DestLane[i], v.DestS[i], w.Tick, out h)
                 : BuildStatus.NoPath;
             if (st == BuildStatus.Deferred)
             {
@@ -347,7 +353,7 @@ internal static class RoutePhase
         }
 
         float oldCost = rt.RemainingCost(i);
-        BuildStatus st = rt.Build(lane, v.S[i], v.DestLane[i], v.DestS[i], w.Tick, out RouteHandle h);
+        BuildStatus st = rt.BuildBatched(lane, v.S[i], v.DestLane[i], v.DestS[i], w.Tick, out RouteHandle h);
         if (st != BuildStatus.Ok)
         {
             return st;
@@ -418,7 +424,7 @@ internal static class RoutePhase
                 return;
             }
 
-            BuildStatus st = rt.Build(t.FromLane, t.FromS, t.DestLane, t.DestS, w.Tick, out RouteHandle h);
+            BuildStatus st = rt.BuildBatched(t.FromLane, t.FromS, t.DestLane, t.DestS, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
                 trips.Set(k, in t);

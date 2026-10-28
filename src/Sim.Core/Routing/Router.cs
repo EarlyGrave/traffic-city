@@ -46,10 +46,18 @@ internal sealed class Router
         Scratch = [_s0];
         _maxDirs = _s0.MaxDirs;
         _newWin = new RouteStep[_store.WindowSteps + 2];
+        Batch = new RouteBatch(this, w);
         EnsureWorkers(w.Pool?.Workers ?? 1);
     }
 
     public RouteGraph Graph { get; }
+
+    /// <summary>Пакет параллельных запросов фазы 3 (routing-parallel.md 3.2-3.4, ADR-0032).</summary>
+    public RouteBatch Batch { get; }
+
+    internal NetworkStore Net => _net;
+
+    internal Overlay? OverlayOrNull => _overlay;
 
     /// <summary>Поисковик главного потока (scratch 0).</summary>
     public OverlaySearcher Searcher => _s0.Searcher;
@@ -66,6 +74,11 @@ internal sealed class Router
     /// </summary>
     public void EnsureWorkers(int workers)
     {
+        if (workers > 1)
+        {
+            _s0.PlanArena ??= new int[RouteScratch.PlanArenaCapacity];
+        }
+
         int have = Scratch.Length;
         if (workers <= have)
         {
@@ -116,7 +129,11 @@ internal sealed class Router
     /// Последовательная фиксация результата <see cref="RouteCompute.Run"/> (routing-parallel.md 3.1): счётчики и бюджет, слот <see cref="RouteStore"/>,
     /// план, окно. <paramref name="src"/> - scratch, на котором шёл счёт (шаги и стек плана ещё не перезаписаны).
     /// </summary>
-    public BuildStatus Commit(in RouteQuery q, in QueryResult r, RouteScratch src, long tick, out RouteHandle handle)
+    public BuildStatus Commit(in RouteQuery q, in QueryResult r, RouteScratch src, long tick, out RouteHandle handle) =>
+        Commit(in r, src.Stk, 0, src.Steps, 0, tick, out handle);
+
+    /// <summary>То же, но стек плана и шаги окна лежат в произвольных массивах (результат пакета: арена воркера и массив шагов кандидатов).</summary>
+    public BuildStatus Commit(in QueryResult r, int[] stk, int stkOff, RouteStep[] steps, int stepOff, long tick, out RouteHandle handle)
     {
         handle = RouteHandle.Null;
         SyncGraph();
@@ -144,18 +161,32 @@ internal sealed class Router
         }
 
         int slot = handle.Index;
-        if (!_store.SetPlan(slot, new ReadOnlySpan<int>(src.Stk, 0, r.StackLen)))
+        if (!_store.SetPlan(slot, new ReadOnlySpan<int>(stk, stkOff, r.StackLen)))
         {
             _store.Free(handle);
             handle = RouteHandle.Null;
             return BuildStatus.Deferred;
         }
 
-        Array.Copy(src.Steps, 0, _store.Window, slot * _store.WindowSteps, r.StepCount);
+        Array.Copy(steps, stepOff, _store.Window, slot * _store.WindowSteps, r.StepCount);
         _store.WinCount[slot] = (byte)r.StepCount;
         _store.PlanCost[slot] = r.Cost;
         _store.PlanTick[slot] = tick;
         return BuildStatus.Ok;
+    }
+
+    /// <summary>
+    /// <see cref="Build"/> фазы 3: при активном пакете берёт готовый результат кандидата с тем же ключом (<see cref="RouteBatch.Take"/>), иначе считает
+    /// сам. Результат и состояние после вызова те же, что у <see cref="Build"/>.
+    /// </summary>
+    public BuildStatus BuildBatched(int startLane, float startS, int destLane, float destS, long tick, out RouteHandle handle)
+    {
+        int w0 = WorkThisTick;
+        BuildStatus st = Batch.Active
+            ? Batch.Take(new RouteQuery(startLane, startS, destLane, destS), tick, out handle)
+            : Build(startLane, startS, destLane, destS, tick, out handle);
+        Batch.NoteWork(WorkThisTick - w0);
+        return st;
     }
 
     /// <summary>

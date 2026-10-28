@@ -10,7 +10,7 @@ namespace Sim.Core.Routing;
 /// </summary>
 internal sealed class RouteScratch
 {
-    /// <summary>Ёмкость арены плана воркера (int) под результаты пакета (P2); у scratch 0 её нет - план остаётся в <see cref="Stk"/>.</summary>
+    /// <summary>Ёмкость арены плана воркера (int): стеки результатов пакета (RouteBatch); scratch 0 получает арену в <see cref="Router.EnsureWorkers"/>.</summary>
     public const int PlanArenaCapacity = 16_384;
 
     public readonly OverlaySearcher Searcher;
@@ -20,7 +20,8 @@ internal sealed class RouteScratch
     public readonly int[] Dirs;
     public readonly int[] Ubuf = new int[OverlaySearcher.UnpackCap];
     public readonly RouteStep[] Steps;
-    public readonly int[]? PlanArena;
+    public int[]? PlanArena;
+    public int ArenaUsed;   // занято в PlanArena текущим пакетом (RouteBatch), сбрасывает главный поток
     public int Sp;
     public int Nd;
 
