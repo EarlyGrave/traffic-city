@@ -15,7 +15,16 @@ internal sealed class ToolInFlight
     public int NotQueued;
     public long Tick;
     public Command[] Forward = Array.Empty<Command>();
+
+    /// <summary>Описание пункта стека (для тултипа и тоста): у undo/redo берётся из снятого пункта, у прямого действия считается по группе.</summary>
+    public ActionMeta Meta;
+
+    /// <summary>Прямое действие дописывается в предыдущий пункт undo, если тот создан действием с этим id (цепочка дорог = одна группа).</summary>
+    public uint MergeInto;
 }
+
+/// <summary>Что делает пункт стека undo/redo: тип первой команды прямого действия и число команд в группе.</summary>
+public readonly record struct ActionMeta(CommandKind Kind, int Pieces);
 
 /// <summary>
 /// Стек undo/redo и разбор итогов действий инструментов на потоке симуляции (player-tools.md §8.3, T13). Логика повторяет <c>Sim.Scenarios.Tools.UndoStack</c>,
@@ -28,23 +37,35 @@ internal sealed class ToolLedger
 
     private readonly List<Command[]> _undo = new();
     private readonly List<Command[]> _redo = new();
+    private readonly List<ActionMeta> _undoMeta = new();
+    private readonly List<ActionMeta> _redoMeta = new();
+    private uint _lastDoId;
     private readonly List<RemapEntry> _remaps = new();
 
     public int UndoCount => _undo.Count;
 
     public int RedoCount => _redo.Count;
 
+    /// <summary>Пункт, который отменит следующий undo (default, если стек пуст).</summary>
+    public ActionMeta NextUndo => _undoMeta.Count > 0 ? _undoMeta[^1] : default;
+
+    public ActionMeta NextRedo => _redoMeta.Count > 0 ? _redoMeta[^1] : default;
+
     /// <summary>Группа обратных команд для undo/redo (снимается со стека сразу); null - стек пуст.</summary>
-    public Command[]? Take(ToolActionKind kind)
+    public Command[]? Take(ToolActionKind kind, out ActionMeta meta)
     {
         List<Command[]> from = kind == ToolActionKind.Undo ? _undo : _redo;
+        List<ActionMeta> fromMeta = kind == ToolActionKind.Undo ? _undoMeta : _redoMeta;
         if (from.Count == 0)
         {
+            meta = default;
             return null;
         }
 
         Command[] g = from[^1];
+        meta = fromMeta[^1];
         from.RemoveAt(from.Count - 1);
+        fromMeta.RemoveAt(fromMeta.Count - 1);
         return g;
     }
 
@@ -135,17 +156,36 @@ internal sealed class ToolLedger
                 }
             }
 
+            ActionMeta meta = a.Kind == ToolActionKind.Do ? new ActionMeta(a.Forward.Length > 0 ? a.Forward[0].Kind : CommandKind.None, a.Forward.Length) : a.Meta;
             switch (a.Kind)
             {
                 case ToolActionKind.Do:
                     _redo.Clear();
-                    Push(_undo, inverse);
+                    _redoMeta.Clear();
+                    if (inverse != null && a.MergeInto != 0 && a.MergeInto == _lastDoId && _undo.Count > 0)
+                    {
+                        // цепочка: обратная нового куска идёт первой (откатываем с конца), затем обратная накопленного
+                        Command[] prev = _undo[^1];
+                        var joined = new Command[inverse.Length + prev.Length];
+                        inverse.CopyTo(joined, 0);
+                        prev.CopyTo(joined, inverse.Length);
+                        _undo[^1] = joined;
+                        _undoMeta[^1] = new ActionMeta(_undoMeta[^1].Kind, _undoMeta[^1].Pieces + meta.Pieces);
+                    }
+                    else
+                    {
+                        Push(_undo, _undoMeta, inverse, meta);
+                    }
+
+                    _lastDoId = inverse != null ? a.ActionId : 0;
                     break;
                 case ToolActionKind.Undo:
-                    Push(_redo, inverse);
+                    Push(_redo, _redoMeta, inverse, meta);
+                    _lastDoId = 0;
                     break;
                 default:
-                    Push(_undo, inverse);
+                    Push(_undo, _undoMeta, inverse, meta);
+                    _lastDoId = 0;
                     break;
             }
 
@@ -164,11 +204,13 @@ internal sealed class ToolLedger
                 NetworkVersion = version,
                 UndoDepth = _undo.Count,
                 RedoDepth = _redo.Count,
+                Subject = meta.Kind,
+                Pieces = meta.Pieces,
             });
         }
     }
 
-    private static void Push(List<Command[]> list, Command[]? g)
+    private static void Push(List<Command[]> list, List<ActionMeta> metas, Command[]? g, ActionMeta meta)
     {
         if (g == null)
         {
@@ -176,9 +218,11 @@ internal sealed class ToolLedger
         }
 
         list.Add(g);
+        metas.Add(meta);
         if (list.Count > Depth)
         {
             list.RemoveAt(0);
+            metas.RemoveAt(0);
         }
     }
 

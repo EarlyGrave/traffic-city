@@ -204,6 +204,30 @@ public class ToolAdapterTests
     }
 
     [Fact]
+    public void ChainPieces_MergedIntoOneUndo()
+    {
+        using SimThreadHost host = Start();
+        var svc = new ToolCommandService(host);
+        ToolDemo.NetState start = ToolDemo.Snapshot(host);
+
+        uint id1 = svc.Submit(Road(400, 200, 600, 200), 0);
+        ToolResult r1 = Complete(host, svc, id1);
+        Assert.True(r1.Ok, r1.Message);
+        uint id2 = svc.Submit(Road(600, 200, 600, 400), id1);
+        ToolResult r2 = Complete(host, svc, id2);
+        Assert.True(r2.Ok, r2.Message);
+        Assert.Equal(1, r2.Ack.UndoDepth);
+        Assert.Equal(CommandKind.BuildRoad, svc.NextUndo.Kind);
+        Assert.Equal(2, svc.NextUndo.Pieces);
+
+        ToolResult u = Complete(host, svc, svc.Undo());
+        Assert.True(u.Ok, u.Message);
+        Assert.Equal(0, u.Ack.UndoDepth);
+        Assert.Equal(start.Topo, ToolDemo.Snapshot(host).Topo);
+        Assert.Equal(2, svc.NextRedo.Pieces);
+    }
+
+    [Fact]
     public void Undo_OnEmptyStack_ReportsNothing()
     {
         using SimThreadHost host = Start();

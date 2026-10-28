@@ -30,6 +30,9 @@ public partial class SimHost
     private int _toolToastSeq;
     private int _shownUndo = -1;
     private int _shownRedo = -1;
+    private ActionMeta _shownUndoMeta;
+    private ActionMeta _shownRedoMeta;
+    private bool _demolitionUndoToastShown;
 
     /// <summary>Инструмент «Дороги» (null до старта игры и без UI): для проверок и скриптов.</summary>
     public RoadsTool? Roads => _roadTool;
@@ -99,11 +102,16 @@ public partial class SimHost
 
         _tools.Pump();
         _roadTool.Tick(); // «Снести» из инспектора: клик после прихода превью (подтверждение P13)
-        if (_tools.UndoDepth != _shownUndo || _tools.RedoDepth != _shownRedo)
+        ActionMeta nu = _tools.NextUndo;
+        ActionMeta nr = _tools.NextRedo;
+        if (_tools.UndoDepth != _shownUndo || _tools.RedoDepth != _shownRedo || nu != _shownUndoMeta || nr != _shownRedoMeta)
         {
             _shownUndo = _tools.UndoDepth;
             _shownRedo = _tools.RedoDepth;
-            _ui.SetUndoRedo(_shownUndo, _shownRedo);
+            _shownUndoMeta = nu;
+            _shownRedoMeta = nr;
+            // сумму возврата за undo (city-economy §8.3 UndoCredits) хост пока не отдаёт клиенту - в тултипе её нет
+            _ui.SetUndoRedo(_shownUndo, _shownRedo, _shownUndo > 0 ? RejectMessages.ActionLabel(nu) : string.Empty, _shownRedo > 0 ? RejectMessages.ActionLabel(nr) : string.Empty);
         }
 
         if (!ReferenceEquals(_ui.Router.Tool, _roadTool))
@@ -285,6 +293,11 @@ public partial class SimHost
         if (a.Nothing)
         {
             ToolToast(r.Message, false);
+        }
+        else if (a.Kind == ToolActionKind.Undo && a.Subject == CommandKind.RemoveRoad && a.Applied > 0 && !_demolitionUndoToastShown)
+        {
+            _demolitionUndoToastShown = true; // один раз за сессию, ui-spec §5.5
+            ToolToast("Дорога восстановлена; машины, которые уехали, не вернутся", false);
         }
         else if (a.Kind == ToolActionKind.Do && a.Applied > 0 && !a.Recorded)
         {

@@ -55,6 +55,11 @@ public struct ToolAck
 
     public int RedoDepth { get; set; }
 
+    /// <summary>Тип первой команды действия (для undo/redo - отменяемого/повторяемого пункта) и число команд в группе.</summary>
+    public CommandKind Subject { get; set; }
+
+    public int Pieces { get; set; }
+
     public readonly bool Ok => Rejected == 0 && !Nothing;
 }
 

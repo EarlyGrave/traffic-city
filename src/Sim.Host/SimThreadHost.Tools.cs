@@ -22,6 +22,8 @@ public sealed partial class SimThreadHost
         public ToolActionKind Kind;
         public uint FirstTag;
         public Command[] Cmds = Array.Empty<Command>();
+        public uint MergeInto;
+        public ActionMeta Meta;
     }
 
     private readonly Queue<ToolItem> _toolQueue = new();
@@ -33,6 +35,8 @@ public sealed partial class SimThreadHost
     private long _toolTag;
     private int _undoDepth;
     private int _redoDepth;
+    private long _nextUndoPacked;
+    private long _nextRedoPacked;
     private long _toolAcksDropped;
 
     // превью: почтовый ящик «последний выигрывает» (запрос) и последний ответ; обе стороны держат замок на копию в микросекунды
@@ -52,6 +56,15 @@ public sealed partial class SimThreadHost
 
     public int RedoDepth => Volatile.Read(ref _redoDepth);
 
+    /// <summary>Что отменит следующий undo (после последнего <see cref="ToolAck"/>); при пустом стеке <see cref="CommandKind.None"/>.</summary>
+    public ActionMeta NextUndo => Unpack(Volatile.Read(ref _nextUndoPacked));
+
+    public ActionMeta NextRedo => Unpack(Volatile.Read(ref _nextRedoPacked));
+
+    private static long Pack(ActionMeta m) => ((long)(int)m.Kind << 32) | (uint)m.Pieces;
+
+    private static ActionMeta Unpack(long v) => new((CommandKind)(int)(v >> 32), (int)(v & 0xFFFFFFFF));
+
     /// <summary>Подтверждения, не влезшие в кольцо (клиент их не читает).</summary>
     public long ToolAcksDropped => Volatile.Read(ref _toolAcksDropped);
 
@@ -63,14 +76,20 @@ public sealed partial class SimThreadHost
     /// (<see cref="ToolTagBase"/>), пишет журнал, по итогам кладёт обратную в стек undo и сбрасывает redo. Возвращает id действия (&gt; 0) для сопоставления
     /// с <see cref="ToolAck"/>, 0 - очередь полна, группа пуста или хост не работает. Выделяет копию группы (раз на действие игрока, не на кадр).
     /// </summary>
-    public uint TrySubmitAction(ReadOnlySpan<Command> forward)
+    public uint TrySubmitAction(ReadOnlySpan<Command> forward) => TrySubmitAction(forward, 0);
+
+    /// <summary>
+    /// То же, но если <paramref name="mergeIntoActionId"/> - id предыдущего действия, которое оказалось верхним пунктом undo, обратная нового
+    /// дописывается в него: протяжка цепочки дорог из нескольких кликов = один пункт undo. Иначе (пункт уже другой) - обычный новый пункт.
+    /// </summary>
+    public uint TrySubmitAction(ReadOnlySpan<Command> forward, uint mergeIntoActionId)
     {
         if (forward.IsEmpty)
         {
             return 0;
         }
 
-        return Submit(ToolActionKind.Do, forward);
+        return Submit(ToolActionKind.Do, forward, mergeIntoActionId);
     }
 
     /// <summary>Отменить последнее действие (обратная группа из стека хоста). 0 - очередь полна. Пустой стек даёт <see cref="ToolAck.Nothing"/>.</summary>
@@ -78,14 +97,14 @@ public sealed partial class SimThreadHost
 
     public uint TryRedo() => Submit(ToolActionKind.Redo, default);
 
-    private uint Submit(ToolActionKind kind, ReadOnlySpan<Command> forward)
+    private uint Submit(ToolActionKind kind, ReadOnlySpan<Command> forward, uint mergeInto = 0)
     {
         if (State != HostState.Running)
         {
             return 0;
         }
 
-        var item = new ToolItem { Kind = kind };
+        var item = new ToolItem { Kind = kind, MergeInto = mergeInto };
         if (!forward.IsEmpty)
         {
             item.Cmds = forward.ToArray();
@@ -187,7 +206,8 @@ public sealed partial class SimThreadHost
             Command[] cmds = item.Cmds;
             if (item.Kind != ToolActionKind.Do)
             {
-                Command[]? g = _ledger.Take(item.Kind);
+                Command[]? g = _ledger.Take(item.Kind, out ActionMeta takenMeta);
+                item.Meta = takenMeta;
                 if (g == null)
                 {
                     EmitAck(new ToolAck { ActionId = item.ActionId, Kind = item.Kind, Tick = tick, Nothing = true, UndoDepth = _ledger.UndoCount, RedoDepth = _ledger.RedoCount });
@@ -198,7 +218,7 @@ public sealed partial class SimThreadHost
                 item.FirstTag = ReserveTags(cmds.Length);
             }
 
-            var fl = new ToolInFlight { ActionId = item.ActionId, Kind = item.Kind, FirstTag = item.FirstTag, Tick = tick, Forward = cmds };
+            var fl = new ToolInFlight { ActionId = item.ActionId, Kind = item.Kind, FirstTag = item.FirstTag, Tick = tick, Forward = cmds, Meta = item.Meta, MergeInto = item.MergeInto };
             for (int i = 0; i < cmds.Length; i++)
             {
                 Command c = cmds[i];
@@ -235,6 +255,8 @@ public sealed partial class SimThreadHost
         _inFlight.Clear();
         Volatile.Write(ref _undoDepth, _ledger.UndoCount);
         Volatile.Write(ref _redoDepth, _ledger.RedoCount);
+        Volatile.Write(ref _nextUndoPacked, Pack(_ledger.NextUndo));
+        Volatile.Write(ref _nextRedoPacked, Pack(_ledger.NextRedo));
     }
 
     private void EmitAck(ToolAck ack)

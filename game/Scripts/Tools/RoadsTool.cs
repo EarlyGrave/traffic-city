@@ -47,6 +47,7 @@ public sealed class RoadsTool : ToolBase
     private bool _haveLast;
 
     private Command _cmd;
+    private uint _chainLastId; // id последнего куска текущей цепочки: следующий кусок сливается с ним в один пункт undo
     private bool _hasCmd;
 
     // закреплённый сегмент (инспектор, UI3): цель режимов «Заменить» и «Снос» без курсора, пока курсор не вернётся в мир
@@ -226,6 +227,7 @@ public sealed class RoadsTool : ToolBase
     public override void OnCancel()
     {
         base.OnCancel();
+        _chainLastId = 0;
         if (HasAnchor)
         {
             HasAnchor = false;
@@ -504,6 +506,7 @@ public sealed class RoadsTool : ToolBase
         {
             Anchor = Cursor;
             HasAnchor = true;
+            _chainLastId = 0;
             Dragging = true;
             Log(string.Create(CultureInfo.InvariantCulture, $"[tool] anchor ({Anchor.X:0.##}, {Anchor.Z:0.##}) snap={CursorSnap} profile={Choice.Name}"));
             Changed(options: false);
@@ -640,7 +643,12 @@ public sealed class RoadsTool : ToolBase
 
     private bool Submit(string what, in Command cmd)
     {
-        uint id = Service.Submit(in cmd);
+        uint id = what == "build" ? Service.Submit(in cmd, _chainLastId) : Service.Submit(in cmd);
+        if (what == "build" && id != 0)
+        {
+            _chainLastId = id;
+        }
+
         if (id == 0)
         {
             Message?.Invoke("Очередь команд полна, повторите", true);

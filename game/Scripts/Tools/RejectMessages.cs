@@ -94,5 +94,22 @@ public static class RejectMessages
     }
 
     /// <summary>Тост для пустого стека.</summary>
+    /// <summary>Что будет отменено/повторено: «постройка дороги (3 куска)», «снос улицы (2 сегмента)». Для тултипа ↶ ↷; строит строку - звать при смене пункта, не каждый кадр.</summary>
+    public static string ActionLabel(Sim.Host.ActionMeta m)
+    {
+        string name = m.Kind switch
+        {
+            CommandKind.BuildRoad => "постройка дороги",
+            CommandKind.RemoveRoad => "снос улицы",
+            CommandKind.UpgradeRoad => "смена профиля дороги",
+            CommandKind.SplitRoad => "разделение дороги",
+            CommandKind.MergeAtNode => "слияние дорог",
+            CommandKind.SetNodeControl or CommandKind.SetArmControl or CommandKind.SetTurnBan or CommandKind.SetSignalPlan or CommandKind.SetLaneFlags => "настройка перекрёстка",
+            CommandKind.InsertBusStop or CommandKind.RemoveBusStop or CommandKind.CreateBusRoute or CommandKind.RemoveBusRoute or CommandKind.AppendBusStop or CommandKind.SetBusRouteParams => "правка автобусного маршрута",
+            _ => "действие",
+        };
+        return m.Pieces > 1 ? string.Create(CultureInfo.InvariantCulture, $"{name} ({m.Pieces})") : name;
+    }
+
     public static string UndoNothing(ToolActionKind kind) => kind == ToolActionKind.Redo ? "Нечего повторять" : "Нечего отменять";
 }
