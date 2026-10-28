@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # нужна история для базы A/B бенча (ADR-0031)
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -39,29 +41,40 @@ jobs:
       - name: Validate content/base
         run: dotnet run --project src/Sim.Headless -c Release --no-build -- validate-package content/base --game
 
-      # Параметры bench и повтор при шуме p95 - в scripts/bench-gate.sh (общие с Stop-хуком, ADR-0007).
-      - name: Bench s1k + compare with CI baseline
-        if: hashFiles('perf/baseline-ci.json') != ''
-        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --baseline perf/baseline-ci.json
+      # ADR-0031: A/B с базовым коммитом на том же раннере (scripts/bench-ab.sh); параметры bench - scripts/bench-args.sh.
+      # Базы нет (schedule, workflow_dispatch, первый коммит) - гейт по бюджету через scripts/bench-gate.sh.
+      - name: Bench s1k A/B vs base commit
+        run: |
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            base=$(git merge-base "origin/${{ github.base_ref }}" HEAD || true)
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            base=$(git rev-parse --verify -q HEAD^1 || true)
+          fi
+          if [ -n "$base" ] && [ "$base" != "$(git rev-parse HEAD)" ]; then
+            bash scripts/bench-ab.sh --base "$base" --out-dir perf/results/ab
+          else
+            echo "Базы для A/B нет - гейт по бюджету."
+            bash scripts/bench-gate.sh --out perf/results/s1k.json --budget-p95-ms 1.0
+          fi
 
-      - name: Bench s1k + check budget (no CI baseline yet)
-        if: hashFiles('perf/baseline-ci.json') == ''
-        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --budget-p95-ms 1.0
-
-      # CI-baseline снимается из этого вывода (ADR-0007).
       - name: Print bench JSON
         if: always()
         run: |
-          echo "=== BENCH-JSON-BEGIN ==="
-          cat perf/results/s1k.json
-          echo "=== BENCH-JSON-END ==="
+          for f in perf/results/s1k.json perf/results/ab/*.json; do
+            [ -f "$f" ] || continue
+            echo "=== BENCH-JSON-BEGIN $f ==="
+            cat "$f"
+            echo "=== BENCH-JSON-END ==="
+          done
 
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf-results
-          path: perf/results/*.json
+          path: perf/results/**/*.json
           if-no-files-found: ignore
 
   # Рендер клиента (V9, ADR-0014 п. 9, docs/design/render.md §8.3): Godot 4.7.2 mono (SourceForge-зеркало, sha512) + Xvfb + Mesa llvmpipe,

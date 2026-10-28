@@ -10,6 +10,7 @@
 ## Решение
 - `perf/baseline.json` — эталон **облачного контейнера**: по нему сверяются Stop-хук и агенты.
 - `perf/baseline-ci.json` — эталон **раннера CI**: по нему сверяется шаг compare в `ci.yml`.
+- В CI шаг compare с `perf/baseline-ci.json` заменён A/B с базовым коммитом на том же раннере (`scripts/bench-ab.sh`, ADR-0031).
 - Оба файла меняются только командой `Sim.Headless update-baseline --from <result> --baseline <файл>`
   (ручная правка блокируется хуком), отдельным коммитом с объяснением.
 - CI печатает JSON результата bench в лог (и кладёт артефактом); CI-baseline снимается из этого вывода.

@@ -6,7 +6,8 @@
 # Аллокации и несовместимая рампа (ramp_complete) - ошибка сразу, без повторов.
 set -u
 
-BENCH_ARGS=(--scenario s1k --ticks 2000 --warmup-ticks 2400 --repeat 3 --warmup-until-full)
+# shellcheck source=scripts/bench-args.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bench-args.sh"
 
 out=perf/results/s1k.json; baseline=""; budget=""; attempts=3
 while [ $# -gt 0 ]; do
