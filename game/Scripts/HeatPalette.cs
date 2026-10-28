@@ -20,9 +20,31 @@ public static class HeatPalette
         mat.SetShaderParameter("heat_force", 0f);
         mat.SetShaderParameter("heat_auto", AutoFar);
         mat.SetShaderParameter("heat_layer", peds ? InfoMode.LayerPeds : InfoMode.LayerTraffic);
-        mat.SetShaderParameter("c_low", peds ? Palette.HeatPedLow : Palette.HeatRoadLow);
-        mat.SetShaderParameter("c_mid", peds ? Palette.HeatPedMid : Palette.HeatRoadMid);
-        mat.SetShaderParameter("c_high", peds ? Palette.HeatPedHigh : Palette.HeatRoadHigh);
+        Colorize(mat, peds, Mode);
+        Tracked.Add((mat, peds));
         return mat;
+    }
+
+    /// <summary>Режим палитры для дальтоников (UI12): применяется ко всем созданным материалам и к новым.</summary>
+    public static TrafficCity.Ui.ColorblindMode Mode { get; private set; }
+
+    private static readonly System.Collections.Generic.List<(ShaderMaterial Mat, bool Peds)> Tracked = new();
+
+    public static void SetMode(TrafficCity.Ui.ColorblindMode mode)
+    {
+        Mode = mode;
+        Tracked.RemoveAll(t => !GodotObject.IsInstanceValid(t.Mat));
+        foreach ((ShaderMaterial mat, bool peds) in Tracked)
+        {
+            Colorize(mat, peds, mode);
+        }
+    }
+
+    private static void Colorize(ShaderMaterial mat, bool peds, TrafficCity.Ui.ColorblindMode mode)
+    {
+        (Color low, Color mid, Color high) = peds ? Palette.HeatPed(mode) : Palette.HeatRoad(mode);
+        mat.SetShaderParameter("c_low", low);
+        mat.SetShaderParameter("c_mid", mid);
+        mat.SetShaderParameter("c_high", high);
     }
 }

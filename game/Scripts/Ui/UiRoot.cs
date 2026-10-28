@@ -136,6 +136,10 @@ public sealed partial class UiRoot : CanvasLayer
         Layer = 10;
         Name = "Ui";
         UiActions.Register();
+        UiSettings saved = UiSettings.Current;
+        UiPalette.SetColorblind(saved.Colorblind);
+        HeatPalette.SetMode(saved.Colorblind);
+        _scale.SetUserPercentNoApply(saved.ScalePercent);
         ParseArgs(OS.GetCmdlineUserArgs());
         Build();
         _window = GetWindow();
@@ -158,12 +162,17 @@ public sealed partial class UiRoot : CanvasLayer
                 break; // info: состояние мира выставляет SimHost (Snap) и зеркалит в роутер
         }
 
+        _topBarView.SettingsButton.Pressed += OpenSettings;
         if (_startMenu.Length > 0 && !_mainMode)
         {
             _router.OpenMenu(); // скриншот меню игры: страница строится в Refresh
             if (_startMenu == "load")
             {
                 _menus.ShowLoad();
+            }
+            else if (_startMenu == "settings")
+            {
+                _menus.ShowSettings();
             }
         }
 
@@ -174,6 +183,43 @@ public sealed partial class UiRoot : CanvasLayer
 
         Refresh();
         LogScale();
+    }
+
+    /// <summary>
+    /// Применить <see cref="UiSettings.Current"/>: палитра (UI и heatmap), тема с непрозрачностью панелей, масштаб, пресет рендера.
+    /// Вызывается из страницы настроек и F10; разово, не в кадре. Тема пересобирается целиком (UI1), своих копий стилей нет.
+    /// </summary>
+    public void ApplySettings()
+    {
+        UiSettings s = UiSettings.Current;
+        UiPalette.SetColorblind(s.Colorblind);
+        HeatPalette.SetMode(s.Colorblind);
+        _root.Theme = UiTheme.Build(s.PanelAlpha);
+        _scale.SetUserPercent(s.ScalePercent, _window!);
+        (_host ??= GetNodeOrNull<SimHost>("../SimHost"))?.SetRenderPreset(s.RenderPreset);
+        Refresh();
+        _menus.Rebuild();
+    }
+
+    private void OpenSettings()
+    {
+        if (_menus.SettingsOpen)
+        {
+            _menus.HandleCancel();
+            if (!_mainMode)
+            {
+                _router.CloseMenu();
+            }
+
+            return;
+        }
+
+        if (!_mainMode)
+        {
+            _router.OpenMenu();
+        }
+
+        _menus.ShowSettings();
     }
 
     private void LogScale()
@@ -252,6 +298,11 @@ public sealed partial class UiRoot : CanvasLayer
                 _confirm.Accept();
                 GetViewport().SetInputAsHandled();
             }
+        }
+        else if (@event.IsActionPressed(UiActions.Settings))
+        {
+            OpenSettings();
+            GetViewport().SetInputAsHandled();
         }
         else if (_mainMode || _router.MenuOpen)
         {
@@ -595,6 +646,7 @@ public sealed partial class UiRoot : CanvasLayer
         _root.AddChild(_modal);
         _menus = new UiMenus(_root, _modal);
         _menus.ResumeRequested += _router.CloseMenu;
+        _menus.SettingsChanged += ApplySettings;
     }
 
     /// <summary>
@@ -608,6 +660,10 @@ public sealed partial class UiRoot : CanvasLayer
         if (_startMenu == "load")
         {
             _menus.ShowLoad();
+        }
+        else if (_startMenu == "settings")
+        {
+            _menus.ShowSettings();
         }
 
         Refresh();

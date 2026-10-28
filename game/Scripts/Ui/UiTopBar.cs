@@ -50,6 +50,8 @@ public sealed class UiTopBar
     /// <summary>Кнопка «События» (UI6): открывает список уведомлений.</summary>
     public Button NotesButton { get; private set; } = null!;
 
+    public Button SettingsButton { get; private set; } = null!;
+
     /// <summary>Собрать содержимое в <paramref name="bar"/> (пустую панель верхней полосы UI1).</summary>
     public UiTopBar(PanelContainer bar)
     {
@@ -109,8 +111,8 @@ public sealed class UiTopBar
         right.AddChild(notes);
         NotesButton = notes;
         Button settings = TimeButton("⚙", 30f);
-        settings.Disabled = true;
-        settings.TooltipText = "Настройки (F10) — позже (UI12)";
+        settings.TooltipText = "Настройки (F10)";
+        SettingsButton = settings;
         right.AddChild(settings);
 
         _money.Visible = false;

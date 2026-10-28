@@ -48,6 +48,31 @@ public static class Palette
     public static readonly Color HeatPedMid = Srgb("#FFE61A");
     public static readonly Color HeatPedHigh = Srgb("#F21A1A");
 
+    // Heatmap для дальтоников (UI12, ui-spec.md §11): без пары красный-зелёный (дейтеранопия/протанопия) и без пары синий-жёлтый (тританопия).
+    private static readonly Color HeatCbRoadLow = Srgb("#1B6FD6");
+    private static readonly Color HeatCbHigh = Srgb("#7A1F7A");
+    private static readonly Color HeatCbPedLow = Srgb("#33B3FF");
+    private static readonly Color HeatTriRoadLow = Srgb("#1AD933");
+    private static readonly Color HeatTriMid = Srgb("#FFD0D8");
+    private static readonly Color HeatTriHigh = Srgb("#B3001B");
+    private static readonly Color HeatTriPedLow = Srgb("#33D9B3");
+
+    /// <summary>Тройка heatmap дорог для режима палитры (0 - обычная, 1 - дейтеранопия/протанопия, 2 - тританопия).</summary>
+    public static (Color Low, Color Mid, Color High) HeatRoad(TrafficCity.Ui.ColorblindMode mode) => mode switch
+    {
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (HeatCbRoadLow, HeatRoadMid, HeatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (HeatTriRoadLow, HeatTriMid, HeatTriHigh),
+        _ => (HeatRoadLow, HeatRoadMid, HeatRoadHigh),
+    };
+
+    /// <summary>Тройка heatmap пешеходов для режима палитры.</summary>
+    public static (Color Low, Color Mid, Color High) HeatPed(TrafficCity.Ui.ColorblindMode mode) => mode switch
+    {
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (HeatCbPedLow, HeatRoadMid, HeatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (HeatTriPedLow, HeatTriMid, HeatTriHigh),
+        _ => (HeatPedLow, HeatPedMid, HeatPedHigh),
+    };
+
     /// <summary>Тонирование инфо-режима: беж «тёмный» и «светлый» (по яркости исходного цвета), visual-style.md §7.</summary>
     public static readonly Color InfoBgDark = Srgb("#D8CCB4");
     public static readonly Color InfoBgLight = Srgb("#F6F1E6");
