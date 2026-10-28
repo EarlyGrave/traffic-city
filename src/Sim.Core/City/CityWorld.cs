@@ -45,6 +45,11 @@ internal sealed class CityWorld
     public TripExecution Exec;                 // текущий исполнитель ног
     public int ExecPending = -1;               // запрошенное переключение (-1 нет), применяется на границе суток (Z5)
 
+    // ---- клапан перегрузки (ADR-0035): потолок машин по полосо-км - производное сети (кэш по версии); счётчики - диагностика, вне хэша и сейва (сброс при Load) ----
+    public int ValveCapCache;
+    public int ValveNetVersion = -1;
+    public readonly ValveStats Valve = new();
+
     // ---- курсоры дневных проходов (LEDG) ----
     public int CursorResidents;
     public int CursorBuildings;

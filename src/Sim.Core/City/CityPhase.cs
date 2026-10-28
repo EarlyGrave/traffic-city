@@ -20,6 +20,8 @@ internal static class CityPhase
             w.Peds.DropAgentsForAggregate(w);   // остатки micro-пешеходов: ноги переходят к агрегату (§9.2)
         }
 
+        OverloadValve.OnTick(w, c);   // клапан перегрузки (ADR-0035): машины из тупиков gridlock - к цели
+
         int n = c.Wheel.Collect(w.Tick, c.DueScratch);
         for (int k = 0; k < n; k++)
         {
@@ -253,6 +255,14 @@ internal static class CityPhase
         res.LegReq[r] = w.Tick;   // база дня для следующих событий плана, даже если нога не начнётся
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         int dest = res.PlanDest[tour];
+        if (OverloadValve.TourHopeless(w, c, res.PlanSlot[tour]))
+        {
+            c.Valve.LateTours++;   // сеть насыщена, а тур опаздывает больше порога: сорван, не переносится в ночь (ADR-0035)
+            w.Counters.ResToursCancelled++;
+            TripLegs.FinishTour(w, c, r);
+            return;
+        }
+
         bool ok = c.Buildings.IsAlive(dest) && c.Buildings.State[dest] == (byte)BuildingState.Active && TripLegs.StartLeg(w, c, r, true, (TravelMode)res.PlanMode[tour]);
         if (!ok)
         {
