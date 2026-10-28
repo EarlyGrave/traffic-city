@@ -187,7 +187,8 @@ public static class ChunkGrid
 
     /// <summary>
     /// Добавить меши чанков как дочерние узлы с <c>visibility_range</c> (без fade: он уводит объект в прозрачный проход).
-    /// <paramref name="end"/> = 0 - без верхней границы. Hysteresis движка - через <c>_margin</c> (10% порога).
+    /// <paramref name="end"/> = 0 - без верхней границы. <c>visibility_range_*_margin</c> = 0: при fade Disabled ненулевой margin (hysteresis) выключает узел
+    /// по обе стороны порога (мёртвая зона ~2*margin), и стыкующиеся LOD (Road0/Road1) оставляли дыры в асфальте (lessons.md, агент L34).
     /// </summary>
     public static void Emit(Node3D parent, Dictionary<long, MeshBuilder> map, string prefix, Material material, float begin, float end)
     {
@@ -208,9 +209,9 @@ public static class ChunkGrid
                 MaterialOverride = material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 VisibilityRangeBegin = begin,
-                VisibilityRangeBeginMargin = begin * 0.1f,
+                VisibilityRangeBeginMargin = 0f,
                 VisibilityRangeEnd = end,
-                VisibilityRangeEndMargin = end * 0.1f,
+                VisibilityRangeEndMargin = 0f,
                 VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Disabled,
             };
             parent.AddChild(node);

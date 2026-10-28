@@ -62,7 +62,7 @@ public sealed class PedChunks
             float half = (cross ? czWidth : swWidth) * 0.5f;
             float flag = cross ? 1f : 0f;
             ChunkGrid.Get(near, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 2).Ribbon(poly, half, 0f, WalkY, _sidewalkColor, e, flag);
-            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.FarCell), 2);
+            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.RoadFarCell), 2);
             ChunkGrid.Simplify(poly, FarTolerance, _keep);
             int m = Math.Min(_keep.Count, _scratch.Length);
             for (int k = 0; k < m; k++)
@@ -91,7 +91,7 @@ public sealed class PedChunks
             }
         }
 
-        ChunkGrid.Emit(Root, near, "Walk", _material, 0f, RoadChunks.FarBegin(lod) + RoadChunks.FarOverlap);
+        ChunkGrid.Emit(Root, near, "Walk", _material, 0f, RoadChunks.Lod1End(lod));
         ChunkGrid.Emit(Root, far, "WalkFar", _material, RoadChunks.FarBegin(lod), 0f);
         var zebraMat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/flat.gdshader") };
         ChunkGrid.Emit(Root, zebra, "Zebra", zebraMat, 0f, lod.PedPointRange + RoadChunks.NearHalfDiag);
