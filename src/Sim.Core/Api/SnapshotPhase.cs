@@ -53,6 +53,49 @@ internal static class SnapshotPhase
         w.SnapshotTick = snapTick;
     }
 
+    /// <summary>То же, что <see cref="RenderFlags"/>, но вид полосы (<paramref name="onConnector"/>) уже известен вызывающему: без повторной выборки полосы.</summary>
+    internal static VehicleRenderFlags RenderFlagsFast(VehicleStore v, int i, bool onConnector)
+    {
+        var f = VehicleRenderFlags.Active;
+        if (v.Accel[i] < -1f)
+        {
+            f |= VehicleRenderFlags.Braking;
+        }
+
+        if (v.LaneChangeDir[i] != 0 || v.GhostLane[i] >= 0)
+        {
+            f |= VehicleRenderFlags.ChangingLane;
+        }
+
+        var vf = (VehicleFlags)v.Flags[i];
+        if ((vf & VehicleFlags.Stuck) != 0)
+        {
+            f |= VehicleRenderFlags.Stuck;
+        }
+
+        if ((vf & VehicleFlags.AtStop) != 0)
+        {
+            f |= VehicleRenderFlags.AtStop;
+        }
+
+        if ((vf & VehicleFlags.Selected) != 0)
+        {
+            f |= VehicleRenderFlags.Selected;
+        }
+
+        if (onConnector)
+        {
+            f |= VehicleRenderFlags.OnConnector;
+        }
+
+        if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+        {
+            f |= VehicleRenderFlags.Meso;
+        }
+
+        return f;
+    }
+
     /// <summary>Флаги <see cref="VehicleRenderFlags"/> для живой машины со слота <paramref name="i"/>.</summary>
     public static VehicleRenderFlags RenderFlags(World w, int i)
     {
@@ -269,6 +312,7 @@ internal sealed class SnapshotJob : IRangeJob
             return;
         }
 
+        ref readonly LaneData laneData = ref net.Lanes[lane];   // одна выборка данных полосы на машину: ширина и вид (для флагов)
         float lateral = v.Lateral[i];
         float speed = v.Speed[i];
         Lod.QueueMeso? q = w.Queue;
@@ -303,7 +347,8 @@ internal sealed class SnapshotJob : IRangeJob
 
         // Задняя ось: своё состояние на машину (не в хэше и не в сейве), тянется за передней: R = F - norm(F - R_prev) * база.
         float wheelBase = length * (WheelBase + FrontOverhang);   // нос -> задняя ось
-        int gen = v.Pool.GenerationOf(i) + 1;
+        int genRaw = v.Pool.GenerationOf(i);
+        int gen = genRaw + 1;
         Vec2 rear;
         long tick = w.Tick;
         ref Axle st = ref _axle[i];
@@ -316,7 +361,7 @@ internal sealed class SnapshotJob : IRangeJob
         }
 
         bool have = st.OldGen == gen;
-        float laneW = net.Lanes[lane].Width;   // ширина полосы остановки (ADR-0030; в legacy = Options.LaneWidth); у connector'а Width = 0 - запас, чтобы скольжение не застряло
+        float laneW = laneData.Width;   // ширина полосы остановки (ADR-0030; в legacy = Options.LaneWidth); у connector'а Width = 0 - запас, чтобы скольжение не застряло
         if (!(laneW > 0f))
         {
             laneW = w.Builder.Options.LaneWidth;
@@ -379,9 +424,9 @@ internal sealed class SnapshotJob : IRangeJob
         r.Heading = heading;
         r.Speed = speed;
         r.Index = i;
-        r.Generation = (ushort)v.Pool.GenerationOf(i);
+        r.Generation = (ushort)genRaw;
         r.Type = v.Type[i];
-        r.Flags = (byte)SnapshotPhase.RenderFlags(_w, i);
+        r.Flags = (byte)SnapshotPhase.RenderFlagsFast(v, i, !inBay && laneData.Kind == LaneKind.Connector);
         r.LateralOffset = lateral;
     }
 }
