@@ -44,6 +44,17 @@ public sealed class LodConfig
     /// <summary>Лимиты инстансов пешеходов: LOD0, LOD1, (LOD2 не используется), точки.</summary>
     public int[] PedCaps { get; } = [500, 5000, 0, 40000];
 
+    /// <summary>Здания (render.md §3.1): верхние границы LOD0, LOD1, LOD2, м (уже умножены на <c>lod_scale</c>); дальше - бокс-импостор до <see cref="BuildingFar"/>.</summary>
+    public float[] BuildingBounds { get; } = [150f, 500f, 1500f];
+
+    public float BuildingFar { get; private set; } = 6000f;
+
+    /// <summary>Лимиты инстансов зданий ближнего кольца: LOD0, LOD1 (LOD2 и импосторы - в мешах чанков).</summary>
+    public int[] BuildingCaps { get; } = [120, 800];
+
+    /// <summary>Множитель дистанций пресета (<c>lod_scale</c>); рёбра зданий гаснут на 1 000-1 500 м x этот множитель.</summary>
+    public float LodScale { get; private set; } = 1f;
+
     public string Preset { get; private set; } = "high";
 
     /// <summary>Пресет из <c>render-budgets.json</c> (тени, scaling_3d); null, если файл не загрузился.</summary>
@@ -67,6 +78,9 @@ public sealed class LodConfig
         double roadFar = 6000;
         double pedFar = 900;
         double[] pedDist = [40, 150];
+        double[] bldDist = [150, 500, 1500];
+        double bldFar = 6000;
+        int[] bldCaps = low ? [50, 300] : [120, 800];
         int[] pedCaps = low ? [200, 2000, 0, 20000] : [500, 5000, 0, 40000];
         int[] caps = low ? _defaultCapsLow : _defaultCapsHigh;
         try
@@ -107,6 +121,17 @@ public sealed class LodConfig
                     roadFar = rf;
                 }
 
+                KindBudget bld = rb.For(AssetKind.Building);
+                if (bld.LodDistancesM is { Count: >= 3 })
+                {
+                    bldDist = [bld.LodDistancesM[0], bld.LodDistancesM[1], bld.LodDistancesM[2]];
+                }
+
+                if (bld.FarDistanceM is { } bf)
+                {
+                    bldFar = bf;
+                }
+
                 if (rb.Pedestrian?.FarDistanceM is { } pf)
                 {
                     pedFar = pf;
@@ -125,6 +150,11 @@ public sealed class LodConfig
                     if (pb.Caps.TryGetValue("pedestrian", out IReadOnlyList<int>? pc) && pc.Count >= Levels)
                     {
                         pedCaps = [pc[0], pc[1], pc[2], pc[3]];
+                    }
+
+                    if (pb.Caps.TryGetValue("building", out IReadOnlyList<int>? bc) && bc.Count >= 2)
+                    {
+                        bldCaps = [bc[0], bc[1]];
                     }
 
                     if (pb.Caps.TryGetValue("vehicle", out IReadOnlyList<int>? c) && c.Count >= Levels)
@@ -157,6 +187,15 @@ public sealed class LodConfig
         cfg.PedPointRange = (float)(pedFar * scale);
         cfg.PedBounds[0] = (float)(pedDist[0] * scale);
         cfg.PedBounds[1] = (float)(pedDist[1] * scale);
+        for (int k = 0; k < 3; k++)
+        {
+            cfg.BuildingBounds[k] = (float)(bldDist[k] * scale);
+        }
+
+        cfg.BuildingFar = (float)bldFar;
+        cfg.BuildingCaps[0] = bldCaps[0];
+        cfg.BuildingCaps[1] = bldCaps[1];
+        cfg.LodScale = (float)scale;
         Array.Copy(pedCaps, cfg.PedCaps, Levels);
         Array.Copy(caps, cfg.Caps, Levels);
         return cfg;

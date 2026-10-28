@@ -17,14 +17,17 @@ public sealed class MeshBuilder
     private readonly List<float> _custom = new();
     private readonly List<int> _i = new();
     private readonly List<Vector2> _uv = new();
+    private readonly List<Vector3> _n = new();
     private readonly int _stride;
     private readonly bool _useUv;
+    private readonly bool _useNormal;
 
     /// <summary><paramref name="customStride"/>: 1, 2 или 4 float в <c>CUSTOM0</c>; <paramref name="useUv"/> - писать <c>UV</c> (дороги: поперечная координата полос).</summary>
-    public MeshBuilder(int customStride, bool useUv = false)
+    public MeshBuilder(int customStride, bool useUv = false, bool useNormal = false)
     {
         _stride = customStride;
         _useUv = useUv;
+        _useNormal = useNormal;
     }
 
     public int VertexCount => _v.Count;
@@ -53,6 +56,14 @@ public sealed class MeshBuilder
         }
 
         return _v.Count - 1;
+    }
+
+    /// <summary>Вершина с нормалью (только для построителя с <c>useNormal</c>: здания, VS5).</summary>
+    public int AddLit(Vector3 p, Vector3 n, Color c, Vector2 uv)
+    {
+        int i = Add(p, c, 0f, 0f, 0f, 0f, uv);
+        _n.Add(n);
+        return i;
     }
 
     /// <summary>Единичная нормаль <c>(-dz, dx)</c> к полилинии в точке <paramref name="k"/> (по соседям k-1, k+1) - общая для лент и площадок перекрёстков.</summary>
@@ -131,6 +142,11 @@ public sealed class MeshBuilder
             arrays[(int)Mesh.ArrayType.TexUV] = _uv.ToArray();
         }
 
+        if (_useNormal)
+        {
+            arrays[(int)Mesh.ArrayType.Normal] = _n.ToArray();
+        }
+
         Mesh.ArrayCustomFormat fmt = _stride > 2 ? Mesh.ArrayCustomFormat.RgbaFloat : _stride > 1 ? Mesh.ArrayCustomFormat.RgFloat : Mesh.ArrayCustomFormat.RFloat;
         var flags = (Mesh.ArrayFormat)((ulong)Mesh.ArrayFormat.FormatCustom0 | ((ulong)fmt << (int)Mesh.ArrayFormat.FormatCustom0Shift));
         var mesh = new ArrayMesh();
@@ -158,11 +174,11 @@ public static class ChunkGrid
         return ((long)cx << 32) ^ (uint)cz;
     }
 
-    public static MeshBuilder Get(Dictionary<long, MeshBuilder> map, long key, int stride, bool uv = false)
+    public static MeshBuilder Get(Dictionary<long, MeshBuilder> map, long key, int stride, bool uv = false, bool normal = false)
     {
         if (!map.TryGetValue(key, out MeshBuilder? b))
         {
-            b = new MeshBuilder(stride, uv);
+            b = new MeshBuilder(stride, uv, normal);
             map[key] = b;
         }
 
@@ -171,7 +187,8 @@ public static class ChunkGrid
 
     /// <summary>
     /// Добавить меши чанков как дочерние узлы с <c>visibility_range</c> (без fade: он уводит объект в прозрачный проход).
-    /// <paramref name="end"/> = 0 - без верхней границы. Hysteresis движка - через <c>_margin</c> (10% порога).
+    /// <paramref name="end"/> = 0 - без верхней границы. <c>visibility_range_*_margin</c> = 0: при fade Disabled ненулевой margin (hysteresis) выключает узел
+    /// по обе стороны порога (мёртвая зона ~2*margin), и стыкующиеся LOD (Road0/Road1) оставляли дыры в асфальте (lessons.md, агент L34).
     /// </summary>
     public static void Emit(Node3D parent, Dictionary<long, MeshBuilder> map, string prefix, Material material, float begin, float end)
     {
@@ -192,9 +209,9 @@ public static class ChunkGrid
                 MaterialOverride = material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 VisibilityRangeBegin = begin,
-                VisibilityRangeBeginMargin = begin * 0.1f,
+                VisibilityRangeBeginMargin = 0f,
                 VisibilityRangeEnd = end,
-                VisibilityRangeEndMargin = end * 0.1f,
+                VisibilityRangeEndMargin = 0f,
                 VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Disabled,
             };
             parent.AddChild(node);

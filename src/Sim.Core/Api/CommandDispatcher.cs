@@ -81,6 +81,9 @@ internal static partial class CommandDispatcher
             case CommandKind.SetTripExecution:
                 Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
                 break;
+            case CommandKind.SetBudgetPolicy:
+                Result(w, in cmd, City.BudgetFlows.SetPolicy(w, in cmd));
+                break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
                 break;
@@ -106,6 +109,8 @@ internal static partial class CommandDispatcher
                 RemoveRoad(w, in cmd);
                 break;
             case CommandKind.UpgradeRoad:
+                UpgradeRoad(w, in cmd);
+                break;
             case CommandKind.SplitRoad:
             case CommandKind.InsertBusStop:
             case CommandKind.RemoveBusStop:
@@ -199,7 +204,31 @@ internal static partial class CommandDispatcher
         }
 
         w.Builder.ResetCreated();
-        NetworkStatus st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out int seg);
+        NetworkStatus st;
+        int seg;
+        if (chk.Profile >= 0)
+        {
+            // Дорога по профилю (RP7): концы прилипают или создаются, полосы и тип берутся из профиля; отступы - по рукавам, уже стоящим в узлах.
+            st = w.Builder.AddNode(a, NodeControl.None, out int pa);
+            if (st == NetworkStatus.Ok)
+            {
+                st = w.Builder.AddNode(z, NodeControl.None, out int pb);
+                seg = -1;
+                if (st == NetworkStatus.Ok)
+                {
+                    st = w.Builder.AddProfileSegment(pa, pb, ReadOnlySpan<Vec2>.Empty, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg);
+                }
+            }
+            else
+            {
+                seg = -1;
+            }
+        }
+        else
+        {
+            st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out seg);
+        }
+
         if (st == NetworkStatus.Ok && !noConnectors && !CheckBuiltEnds(w, in cmd, seg))
         {
             return;

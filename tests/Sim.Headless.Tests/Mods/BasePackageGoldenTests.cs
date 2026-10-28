@@ -130,7 +130,8 @@ public sealed class BasePackageGoldenTests : IDisposable
         string path = Path.Combine(Scenarios(), file);
         LoadedScenario v2 = ScenarioLoader.LoadInfo(path);
         string v3Text = FormatUpgrades.ScenarioV2ToV3(JsonNode.Parse(File.ReadAllText(path))!).ToJsonString();
-        LoadedScenario v3 = ScenarioLoader.Parse(v3Text, _ => throw new InvalidOperationException("no files in v3"), "x", GameDirs());
+        // единственный внешний файл v3-копии - каталог профилей (demo-profiles, RP6): читается из scenarios/
+        LoadedScenario v3 = ScenarioLoader.Parse(v3Text, f => f == "road-profiles.json" ? File.ReadAllText(Path.Combine(Scenarios(), f)) : throw new InvalidOperationException("no files in v3"), "x", GameDirs());
         AssertDeepEqual(v2.Desc, v3.Desc, "$");
     }
 

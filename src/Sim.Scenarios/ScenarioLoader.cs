@@ -193,8 +193,9 @@ public static partial class ScenarioLoader
         }
 
         CityDesc town = ParseTown(root, residents, catalog);
+        ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
         ToolsDesc tools = ParseTools(root.OptObject("tools"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents);
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
         {
             Types = refs,
@@ -211,6 +212,7 @@ public static partial class ScenarioLoader
             Lod = lod,
             Peds = peds,
             Town = town,
+            Parking = parking,
             Tools = tools,
             City = city,
             Network = network,
@@ -702,6 +704,7 @@ public static partial class ScenarioLoader
             }
         }
 
+        c.LandUse = ParseLandUse(r.OptObject("landuse"), c.Enabled);
         r.Finish();
         return c;
     }
@@ -1412,7 +1415,7 @@ public static partial class ScenarioLoader
 
     private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds, bool residents)
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds, bool residents, bool parking)
     {
         var c = new SimCapacities
         {
@@ -1463,6 +1466,19 @@ public static partial class ScenarioLoader
             c.MaxBuildings = r.Int("max_buildings", min: 1);
             c.MaxCityResidents = r.Int("max_city_residents", min: 1);
             c.SkimObsCapacity = r.Int("skim_obs_capacity", 65_536, min: 1);
+            if (parking)
+            {
+                // parking.md §14: 0 (или нет ключа) -> max_lots + max_buildings + 64; значение раскрывается здесь, ядро хранит готовое.
+                c.MaxParking = r.Int("max_parking", 0, min: 0);
+                if (c.MaxParking == 0)
+                {
+                    c.MaxParking = checked(c.MaxLots + c.MaxBuildings + 64);
+                }
+            }
+            else if (r.Has("max_parking"))
+            {
+                throw new ScenarioException($"{r.ChildPath("max_parking")}: allowed only with an enabled $.parking section");
+            }
         }
         else
         {

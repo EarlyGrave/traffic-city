@@ -53,7 +53,14 @@
     "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
     "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
     "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт пока "legacy" (S3: "alternate" реализован, но по замеру s10k ухудшает stuck_episodes - ADR-0018); "legacy" — формула этапа 1
-    "progression_speed_factor": number                             // скорость волны = arterial_speed · k. Дефолт 1.0
+    "progression_speed_factor": number,                            // скорость волны = arterial_speed · k. Дефолт 1.0
+    "landuse": {                                                   // VS8 (visual-style.md §8, ADR-0027): парки, пруды, берег. Необязательный объект, версия формата не меняется. Только при city.enabled = true
+      "enabled": bool,                                             // дефолт false: без секции или с false сценарий побитово прежний
+      "park_share": number,                                        // 0..1, доля внутренних клеток решётки под парк (x2 у клетки рядом с удалённой улицей). Дефолт 0.08
+      "pond_share": number,                                        // 0..1, доля парков с прудом (флаг; пруд рисует клиент). Дефолт 0.25
+      "coast": "none" | "south" | "east" | "north" | "west",       // полоса воды за краем карты: south = +Z, north = -Z, east = +X, west = -X. Дефолт "none"
+      "coast_width_m": number                                      // ширина полосы, м; округляется до module_m, не меньше module_m. Дефолт 400
+    }
   },
 
   "network": {                          // явная сеть (тесты, ручные карты); взаимоисключима с city.enabled
@@ -382,11 +389,16 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 `max_lots`, `max_buildings`, `max_city_residents` (ключ `max_residents` занят заготовками `peds`), `skim_obs_capacity` (дефолт 65 536). Секции `calendar`, `zoning`, `residents`, `economy`, `choice` необязательны (дефолты спеки,
 `CityDesc.Default()`), неизвестные ключи - ошибка; вне режима жителей их наличие - ошибка. Единицы: метры -> мм, секунды -> тики (20 Гц) или децисекунды, доли -> Q16 (`round(float(v) · 65536)`), множители -> Q8,
 `choice.theta_*_per_s` -> `θ64 = θ/10 · 64 · 2^16`. `calendar.day_s * 20` кратно 288 (слот = 1/288 суток; дефолт 3 600 с = 72 000 тиков). Ключи сверх первой редакции спеки: `zoning.max_paint_m2`, `residents.match_per_tick`,
-`residents.vacate_days`, `residents.switch_ratio`, `residents.r_bias`, `economy.c_target_pct`, `choice.asc_nonworker_s`; `zoning.auto` - объект долей, `true` (доли по умолчанию) или `false`. `peds.source` (`"preform"`, дефолт, или
+`residents.vacate_days`, `residents.switch_ratio`, `residents.r_bias`, `economy.c_target_pct`, `choice.asc_nonworker_s`; ключи казны города `economy.*` (4.2, E1, `city-economy.md` §13: `city_budget`, `tax_r_pct`, `tax_c_profit_pct`, `tax_i_profit_pct`, `land_tax_bp_day`, `bus_fare`, `initial_city_balance_per_resident`, `interest_bp_day`, `credit_days`, `maint_road_per_lane_km_day {street, arterial}`, `maint_bus_day`, `maint_stop_day`, `lv_ref`, `lv_slope_per_min`, `lv_min`, `lv_max`, `lv_shift`, `vot_pct`, `res_buffer_days`, `firm_buffer_days`, `payout_shift`, `evict_debt_days`, `budget_ewma_shift`, `undo_refund_s`, `max_tax_bp`, `max_land_bp_day`, `max_fare`; проценты `tax_*_pct` переводятся в базисные пункты `round(float(v) · 100)`, ставки не выше `max_tax_bp`, `land_tax_bp_day` не выше `max_land_bp_day`, `bus_fare` не выше `max_fare`, `lv_min <= lv_ref <= lv_max`, `vot_pct >= 1`; без `city_budget = true` режим выключен, а остальные ключи лишь хранятся; секция `economy` разрешена только при `residents`); `zoning.auto` - объект долей, `true` (доли по умолчанию) или `false`. `peds.source` (`"preform"`, дефолт, или
 `"city"`) задаёт источник поездок пешеходов; `"city"` требует `residents` и `peds`. Таблица типов зданий - из `buildings.json` пакетов (`format_version: 3`) либо базовая (`format_version: 2`).
-При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
+При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res-econ.json` (E2) - `s1k-res` с `economy.city_budget = true` и содержанием сети и автобусов (`maint_*`, подбор на s1k ≈ 90% дохода казны). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
 `peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
 
+**Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
+`access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
+`curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,
+доли в Q16 одним округлением (f64 -> f32, затем к ближайшему; ADR-0022). `capacities.max_parking` (только с секцией; 0 или нет ключа = `max_lots + max_buildings + 64`, раскрывается загрузчиком). Типы зданий `buildings.json`:
+`parking` (мест, дефолт 0), `parking_access` (`private`/`public`), `parking_fee`; `kind: "parking"` — гараж (ставит игрок, K6). Сценарий `scenarios/s1k-res-park.json` = `s1k-res` + `"parking": {"model": "resource"}`.
 ### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
 
 Загрузчик принимает 2 и 3. Отличия v3 от v2:

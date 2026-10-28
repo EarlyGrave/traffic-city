@@ -20,33 +20,44 @@ public sealed class CrosswalkMesh
     private static readonly Color _clear = Palette.SignalClear;
     private static readonly Color _stopQueue = Palette.StopQueue;
 
-    private readonly PedEdgeData[] _crossings;
-    private readonly Vec2[] _points;
-    private readonly int _armBase;
-    private readonly Vec2[] _stopPos;
+    private PedEdgeData[] _crossings = Array.Empty<PedEdgeData>();
+    private Vec2[] _points = Array.Empty<Vec2>();
+    private int _armBase;
+    private Vec2[] _stopPos = Array.Empty<Vec2>();
+    private bool[] _stopAlive = Array.Empty<bool>();
 
     private readonly BoxBatch _markers;
     private readonly BoxBatch _queues;
 
     public CrosswalkMesh(Simulation sim)
     {
-        NetworkView net = sim.Network;
-        _crossings = net.Crossings.ToArray();
-        _points = net.PedEdgePoints.ToArray();
-        for (int i = 0; i < net.Nodes.Length; i++)
-        {
-            _armBase += net.Nodes[i].ArmCount;
-        }
-
-        ReadOnlySpan<BusStopData> stops = net.BusStops;
-        _stopPos = new Vec2[stops.Length];
-        for (int i = 0; i < stops.Length; i++)
-        {
-            _stopPos[i] = LanePointAt(net, stops[i].Lane, stops[i].S);
-        }
+        Refresh(sim);
 
         _markers = new BoxBatch("CrossSignals", new Vector3(MarkerSize, 1.8f, MarkerSize), true);
         _queues = new BoxBatch("StopQueues", new Vector3(1f, 1f, 1f), false);
+    }
+
+    /// <summary>
+    /// Перечитать статику сети (при смене <c>NetworkView.Version</c>: снос и перестройка, 4.3). База слотов средних переходов - длина <c>PedCorners</c>
+    /// (= хвост арены рукавов), а не сумма <c>ArmCount</c> живых узлов: в арене после сноса остаются дыры. Мёртвые остановки не рисуются.
+    /// </summary>
+    public void Refresh(Simulation sim)
+    {
+        NetworkView net = sim.Network;
+        _crossings = net.Crossings.ToArray();
+        _points = net.PedEdgePoints.ToArray();
+        _armBase = net.PedCorners.Length;
+        ReadOnlySpan<BusStopData> stops = net.BusStops;
+        _stopPos = new Vec2[stops.Length];
+        _stopAlive = new bool[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            _stopAlive[i] = net.IsBusStopAlive(i) && net.IsLaneAlive(stops[i].Lane);
+            if (_stopAlive[i])
+            {
+                _stopPos[i] = LanePointAt(net, stops[i].Lane, stops[i].S);
+            }
+        }
     }
 
     public MultiMeshInstance3D Markers => _markers.Node;
@@ -104,6 +115,11 @@ public sealed class CrosswalkMesh
         int total = 0;
         for (int i = 0; i < n; i++)
         {
+            if (!_stopAlive[i])
+            {
+                continue;
+            }
+
             total += waiting[i];
             if (waiting[i] > 0)
             {
@@ -115,7 +131,7 @@ public sealed class CrosswalkMesh
         _queues.Begin(needed);
         for (int i = 0; i < n; i++)
         {
-            if (waiting[i] == 0)
+            if (waiting[i] == 0 || !_stopAlive[i])
             {
                 continue;
             }
@@ -129,7 +145,7 @@ public sealed class CrosswalkMesh
 
     private static Vec2 LanePointAt(NetworkView net, int lane, float s)
     {
-        if ((uint)lane >= (uint)net.Lanes.Length)
+        if (!net.IsLaneAlive(lane))
         {
             return default;
         }

@@ -52,9 +52,9 @@ public sealed class PedChunks
             bool cross = e >= sidewalks.Length;
             PedEdgeData ed = cross ? crossings[e - sidewalks.Length] : sidewalks[e];
             _edgeLenM[e] = ed.LenMm / 1000f;
-            if (ed.PointCount < 2)
+            if (ed.PointCount < 2 || (ed.Segment >= 0 && !net.IsSegmentAlive(ed.Segment)) || (ed.Node >= 0 && !net.IsNodeAlive(ed.Node)))
             {
-                continue;
+                continue; // ребро снесённого сегмента/узла (после сноса сеть пешеходов пересобрана ядром, это страховка от призраков)
             }
 
             ReadOnlySpan<Vec2> poly = pts.Slice(ed.FirstPoint, ed.PointCount);
@@ -62,7 +62,7 @@ public sealed class PedChunks
             float half = (cross ? czWidth : swWidth) * 0.5f;
             float flag = cross ? 1f : 0f;
             ChunkGrid.Get(near, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 2).Ribbon(poly, half, 0f, WalkY, _sidewalkColor, e, flag);
-            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.FarCell), 2);
+            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.RoadFarCell), 2);
             ChunkGrid.Simplify(poly, FarTolerance, _keep);
             int m = Math.Min(_keep.Count, _scratch.Length);
             for (int k = 0; k < m; k++)
@@ -73,11 +73,25 @@ public sealed class PedChunks
             bf.Ribbon(_scratch.AsSpan(0, m), half, 0f, FarWalkY, _sidewalkColor, e, flag);
             if (cross)
             {
-                AddZebra(ChunkGrid.Get(zebra, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 1), poly[0], poly[^1], czWidth);
+                // VS4: зебра - от кромки до кромки проезжей части (CurbL..CurbR), а не между центрами тротуаров, если у сегмента есть профиль
+                Vec2 za = poly[0];
+                Vec2 zb = poly[^1];
+                if (ed.Segment >= 0 && RoadProfileLayouts.ZebraTrim(net, ed.Segment, za, zb, out float ta, out float tb))
+                {
+                    float zl = MathF.Sqrt(((zb.X - za.X) * (zb.X - za.X)) + ((zb.Z - za.Z) * (zb.Z - za.Z)));
+                    if (zl > ta + tb + 1f)
+                    {
+                        float ux = (zb.X - za.X) / zl;
+                        float uz = (zb.Z - za.Z) / zl;
+                        (za, zb) = (new Vec2(za.X + (ux * ta), za.Z + (uz * ta)), new Vec2(zb.X - (ux * tb), zb.Z - (uz * tb)));
+                    }
+                }
+
+                AddZebra(ChunkGrid.Get(zebra, ChunkGrid.Key(mid.X, mid.Z, RoadChunks.NearCell), 1), za, zb, czWidth);
             }
         }
 
-        ChunkGrid.Emit(Root, near, "Walk", _material, 0f, RoadChunks.FarBegin(lod) + RoadChunks.FarOverlap);
+        ChunkGrid.Emit(Root, near, "Walk", _material, 0f, RoadChunks.Lod1End(lod));
         ChunkGrid.Emit(Root, far, "WalkFar", _material, RoadChunks.FarBegin(lod), 0f);
         var zebraMat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/flat.gdshader") };
         ChunkGrid.Emit(Root, zebra, "Zebra", zebraMat, 0f, lod.PedPointRange + RoadChunks.NearHalfDiag);

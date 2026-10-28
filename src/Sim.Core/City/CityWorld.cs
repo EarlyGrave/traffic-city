@@ -14,7 +14,7 @@ internal sealed class CityWorld
 {
     public const int SlotsPerDay = 288;
 
-    public readonly CityDesc Cfg;              // с нормализованной таблицей типов зданий
+    public CityDesc Cfg;           // с нормализованной таблицей типов зданий
     public readonly BuildingTypes Types;
     public readonly CityGrid Grid;
     public readonly int DayTicks;
@@ -28,6 +28,12 @@ internal sealed class CityWorld
     public readonly CellLoads Loads;
     public readonly LotBuilder LotGen;
     public readonly Market Market;             // производные рынков труда и жилья (Z4); в сейв не входят
+
+    /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
+    public CityBudget? Budget;
+
+    /// <summary>Объекты стоянки (parking.md §2.1, ADR-0026); <c>null</c> без <c>parking.model = "resource"</c> - ни одна ветка парковки не исполняется (PK1).</summary>
+    public Sim.Core.Parking.ParkingStore? Parking;
 
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
@@ -71,9 +77,16 @@ internal sealed class CityWorld
         Buildings = new BuildingStore(caps.MaxBuildings);
         Residents = new CityResidents(caps.MaxCityResidents);
         Ledger = new Ledger(Residents, Buildings);
+        if (cfg.Economy.CityBudget)
+        {
+            Budget = new CityBudget(in cfg.Economy, grid.Cells);
+            Ledger.Carry = Budget.Carry;
+            Budget.RecomputeDerived(this);
+        }
+
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
-        LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm);
+        LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm, cfg.Zoning.LotFrontageMm, w);
         Market = new Market(grid.Cells, caps.MaxBuildings, Math.Max(1, cfg.Zoning.MaxNewBuildingsPerDay));
         Wheel = new TimerWheel(caps.MaxCityResidents);
         Arrivals = new ArrivalRing(caps.MaxCityResidents);
@@ -94,6 +107,8 @@ internal sealed class CityWorld
     {
         LotGen.RestoreDerived(w);
         Market.Invalidate();
+        Budget?.RecomputeDerived(this);
+        BudgetFlows.RecomputeMaintenance(w, this);   // содержание - производное сети и маршрутов (city-economy.md §6.1)
         RebuildWheel(w.Tick - 1);
         TripLegs.RestoreDerived(w);
     }

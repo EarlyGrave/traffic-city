@@ -82,6 +82,7 @@ internal static class CityPhase
         {
             c.Day++;
             w.Counters.CityDays++;
+            BudgetFlows.OnDayBoundary(w, c);   // казна (city-economy.md §6.2): применение ожидающей политики; E2 - цена земли, содержание, проценты, лимит
             c.Ledger.RollDay();
             c.Loads.ClearDay(c.Day);   // «сегодня» новых суток: позавчерашние числа L больше не нужны
             c.DayStage = DayStages.Buildings;
@@ -156,6 +157,11 @@ internal static class CityPhase
             {
                 if (res.Pool.IsAlive(r))
                 {
+                    if (c.Budget != null)
+                    {
+                        BudgetFlows.ResidentDay(c, r);   // земля и утечка (city-economy.md §3, §7.2); до рынка: выезд жителя забирает уже остаток
+                    }
+
                     c.Market.ResidentDay(w, c, r);
                 }
             }

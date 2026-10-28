@@ -12,7 +12,7 @@ namespace Sim.Core.City;
 /// Сетка занятости - scratch, выделенный один раз; её границы задаёт <see cref="CityGrid"/> плюс поля, поэтому после <c>Load</c> она та же.
 /// <see cref="AppendSegment"/> дописывает участки нового сегмента в конец (старые не двигаются). Float здесь - только геометрия (производное).
 /// </summary>
-internal sealed class LotBuilder
+internal sealed partial class LotBuilder
 {
     public const float OccCellM = 8f;
     public const float OccMarginM = 150f;
@@ -26,13 +26,35 @@ internal sealed class LotBuilder
 
     private readonly float _depthHalfM;
 
-    public LotBuilder(in CityGrid grid, int lotDepthMm)
+    public LotBuilder(in CityGrid grid, int lotDepthMm, int lotFrontageMm, World world)
     {
         _depthHalfM = lotDepthMm * 0.0005f;
         _ox = grid.OriginX - OccMarginM;
         _oz = grid.OriginZ - OccMarginM;
         float w = (grid.CellsX * grid.CellM) + (2f * OccMarginM);
         float h = (grid.CellsZ * grid.CellM) + (2f * OccMarginM);
+        if (world.Net.Profiles is { } prof)
+        {
+            // режим профилей (RP5): массив занятости выровнен по мировой сетке; F и D - клеток, из lot_frontage_m и lot_depth_m
+            _grid = true;
+            _modMm = prof.ModuleMm;
+            _gridOx = RoundMm(world.WorldGridOriginX);
+            _gridOz = RoundMm(world.WorldGridOriginZ);
+            _frontMax = Math.Clamp(lotFrontageMm / prof.ModuleMm, 2, MaxFrontCells);
+            _depthMax = Math.Clamp(lotDepthMm / prof.ModuleMm, 2, MaxDepthCells);
+            long x0 = RoundMm(_ox);
+            long z0 = RoundMm(_oz);
+            long x1 = RoundMm(_ox + w);
+            long z1 = RoundMm(_oz + h);
+            _gx0 = (int)FloorDiv(x0 - _gridOx, _modMm);
+            _gz0 = (int)FloorDiv(z0 - _gridOz, _modMm);
+            _nx = (int)Math.Max(1, FloorDiv(x1 - _gridOx, _modMm) - _gx0 + 1);
+            _nz = (int)Math.Max(1, FloorDiv(z1 - _gridOz, _modMm) - _gz0 + 1);
+            _occ = new byte[checked(_nx * _nz)];
+            _pts = new ushort[_occ.Length];
+            return;
+        }
+
         _nx = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(w / OccCellM)));
         _nz = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling(h / OccCellM)));
         _occ = new byte[checked(_nx * _nz)];
@@ -43,6 +65,11 @@ internal sealed class LotBuilder
     {
         CityWorld c = w.City!;
         bool ok = true;
+        if (_grid)
+        {
+            RebuildOccupancy(w, c);   // маска дороги: нужна до нарезки первого сегмента
+        }
+
         for (int seg = 0; seg < w.Net.SegmentCount && ok; seg++)
         {
             if (w.Net.SegmentAlive(seg))   // дыры сети (4.3, T2): мёртвый слот сегмента не нарезается
@@ -58,6 +85,11 @@ internal sealed class LotBuilder
     /// <summary>Дописывает участки сегмента <paramref name="seg"/> (обе стороны); false - ёмкость исчерпана. Дорожные компоненты участков пересчитывает вызывающий (<see cref="RebuildComponents"/>).</summary>
     public bool AppendSegment(World w, CityWorld c, int seg, bool derive = true)
     {
+        if (_grid)
+        {
+            return AppendSegmentGrid(w, c, seg, derive);
+        }
+
         int[]? labels = null;
         ref readonly SegmentData sd = ref w.Net.Segments[seg];
         long lengthMm = DetMath.ToLongSat(MathF.Round(sd.Length * 1000f));
@@ -108,6 +140,8 @@ internal sealed class LotBuilder
         {
             Derive(w, c, lot, comp);
         }
+
+        Parking.ParkingBuild.RefreshAll(w, c);   // производные объектов стоянки и окрестности (parking.md §2.4); без режима - ничего
     }
 
     /// <summary>
@@ -124,10 +158,21 @@ internal sealed class LotBuilder
     private void RebuildOccupancy(World w, CityWorld c)
     {
         Array.Clear(_occ);
+        if (_grid)
+        {
+            BuildRoadMask(w);
+        }
+
         for (int lot = 0; lot < c.Lots.Count; lot++)
         {
             if (!IsDead(w, c, lot))
             {
+                if (c.Lots.Orient[lot] != LotOrient.Legacy)
+                {
+                    MarkLotCells(c.Lots, lot);
+                    continue;
+                }
+
                 Frame(w, c, c.Lots.Seg[lot], c.Lots.Side[lot], c.Lots.S0Mm[lot], c.Lots.S1Mm[lot], out float cx, out float cz, out float tx, out float tz, out float nx, out float nz);
                 Mark(cx, cz, tx, tz, nx, nz, c.Lots.S1Mm[lot] - c.Lots.S0Mm[lot]);
             }
@@ -141,12 +186,23 @@ internal sealed class LotBuilder
     public void OnRoadBuilt(World w, int seg)
     {
         CityWorld c = w.City!;
-        RebuildOccupancy(w, c);
+        OnRoadsChanged(w, c);   // legacy: 0; профили: маска и занятость заново, участки под новой дорогой - Lost
+        if (!_grid)
+        {
+            RebuildOccupancy(w, c);
+        }
+
+        int firstNew = c.Lots.Count;
         AppendSegment(w, c, seg, derive: false);
         int[] comp = RoadLabels(w.Net);
         for (int lot = 0; lot < c.Lots.Count; lot++)
         {
             Derive(w, c, lot, comp);
+        }
+
+        if (c.Parking != null)
+        {
+            Parking.ParkingBuild.OnLotsAdded(w, c, firstNew);   // обочины новых участков; производные всех объектов (индексы полос и рёбра тротуара старых могли сместиться) и окрестности целиком
         }
     }
 
@@ -173,6 +229,7 @@ internal sealed class LotBuilder
 
             l.Flags[lot] |= LotFlags.Lost;
             MakeCanonicalDerived(l, lot);
+            Parking.ParkingBuild.OnLotLost(w, c, lot);   // обочина участка снесена (parking.md §7); стоянка здания закрыта в Growth.Abandon
             lost++;
         }
 
@@ -300,7 +357,7 @@ internal sealed class LotBuilder
         }
     }
 
-    private static float FrontOffsetM(World w, in SegmentData sd)
+    internal static float FrontOffsetM(World w, in SegmentData sd)
     {
         if (w.Net.Profiles != null && sd.Profile >= 0)
         {
@@ -332,12 +389,44 @@ internal sealed class LotBuilder
         cz = pz + (nz * off);
     }
 
+    /// <summary>
+    /// Точка фасада участка на кромке тротуара (parking.md §2.1, производное): ось сегмента в середине отрезка плюс нормаль на <c>FrontOffsetM</c>. Без тригонометрии
+    /// (нормаль из касательной), чтобы положение объектов стоянки считалось одинаково в <c>Create</c>, <c>Load</c> и Rust-порту. Участок обязан быть живым.
+    /// </summary>
+    internal static void FrontPoint(World w, CityWorld c, int lot, out float x, out float z)
+    {
+        LotStore l = c.Lots;
+        ref readonly SegmentData sd = ref w.Net.Segments[l.Seg[lot]];
+        float sc = (l.S0Mm[lot] + l.S1Mm[lot]) * 0.0005f;
+        PointAt(w.Net, in sd, sc, out float px, out float pz, out float tx, out float tz);
+        float nx = l.Side[lot] == 0 ? -tz : tz;
+        float nz = l.Side[lot] == 0 ? tx : -tx;
+        float off = FrontOffsetM(w, in sd);
+        x = px + (nx * off);
+        z = pz + (nz * off);
+    }
+
     private bool Fits(World w, CityWorld c, int seg, int side, int s0, int s1, out float cx, out float cz, out float tx, out float tz, out float nx, out float nz)
     {
         Frame(w, c, seg, side, s0, s1, out cx, out cz, out tx, out tz, out nx, out nz);
         float halfL = (s1 - s0) * 0.0005f;
         float halfD = c.Cfg.Zoning.LotDepthMm * 0.0005f;
-        return Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+        return !InLandUse(w, cx, cz) && Scan(cx, cz, tx, tz, nx, nz, halfL, halfD, mark: false);
+    }
+
+    /// <summary>Центр участка внутри парка или воды (city.landuse, visual-style.md §8): такой участок не нарезается. Без землепользования - всегда false.</summary>
+    internal static bool InLandUse(World w, float x, float z)
+    {
+        LandUsePoly[] polys = w.LandUse;
+        for (int i = 0; i < polys.Length; i++)
+        {
+            if (polys[i].Contains(x, z))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Mark(float cx, float cz, float tx, float tz, float nx, float nz, int lengthMm)
@@ -395,10 +484,21 @@ internal sealed class LotBuilder
 
         ref readonly SegmentData sd = ref w.Net.Segments[seg];
         int side = l.Side[lot];
-        Frame(w, c, seg, side, l.S0Mm[lot], l.S1Mm[lot], out float cx, out float cz, out _, out _, out float nx, out float nz);
+        float cx;
+        float cz;
+        if (l.Orient[lot] == LotOrient.Legacy)
+        {
+            Frame(w, c, seg, side, l.S0Mm[lot], l.S1Mm[lot], out cx, out cz, out _, out _, out float nx, out float nz);
+            l.Heading[lot] = MathF.Atan2(-nz, -nx);
+        }
+        else
+        {
+            c.LotGen.GridCenter(l, lot, out cx, out cz, out int dirX, out int dirZ);
+            l.Heading[lot] = MathF.Atan2(-dirZ, -dirX);   // фасадом к дороге: против оси глубины
+        }
+
         l.X[lot] = cx;
         l.Z[lot] = cz;
-        l.Heading[lot] = MathF.Atan2(-nz, -nx);
         l.Cell[lot] = c.Grid.CellOf(cx, cz);
         float sc = (l.S0Mm[lot] + l.S1Mm[lot]) * 0.0005f;
         if (side == 0 ? sd.LanesAB > 0 : sd.LanesBA > 0)

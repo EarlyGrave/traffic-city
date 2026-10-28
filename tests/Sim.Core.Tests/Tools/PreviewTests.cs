@@ -293,7 +293,7 @@ public sealed class PreviewTests
 
         // Простые инструменты (режим узла и т.п.) всегда обратимы.
         Assert.True(InverseBuilder.HasInverse(CommandKind.SetTurnBan));
-        Assert.False(InverseBuilder.HasInverse(CommandKind.UpgradeRoad));
+        Assert.True(InverseBuilder.HasInverse(CommandKind.UpgradeRoad));
         Assert.False(InverseBuilder.HasInverse(CommandKind.SplitRoad));
     }
 

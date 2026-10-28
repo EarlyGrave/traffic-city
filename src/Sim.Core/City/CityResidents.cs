@@ -96,6 +96,17 @@ internal sealed class CityResidents
     public readonly short[] EvictDays;
     public readonly int[] Seq;             // порядковый номер въезда (ключ FIFO и ничьих)
 
+    // ---- парковка (parking.md §2.2, K1): только в режиме parking.model = resource; без режима -1/0 и ни одна ветка не пишет ----
+    public readonly int[] HomeFac;         // закреплённое домашнее место или -1
+    public readonly int[] HomeFacGen;
+    public readonly int[] CarFac;          // где стоит машина сейчас: объект, 0 = Overflow, -1 = в пути / в заявке / нет машины
+    public readonly int[] CarFacGen;
+    public readonly int[] CarLot;          // участок Overflow-стоянки или -1
+    public readonly int[] CarWalkMm;       // ходьба между местом машины и зданием, где житель (-1: машина не рядом после эвакуации)
+    public readonly byte[] LegStage;       // 0 None, 1 WalkToCar, 2 Drive, 3 WalkFromCar (K2)
+    public readonly long[] LegWaitFrom;    // начало ожидания выезда (K2)
+    public readonly int[] LegParkWait;     // тики ожидания места в этой ноге (K2)
+
     /// <summary>Очередь ищущих работу (FIFO по <see cref="Seq"/>; наполняет и разбирает рынок Z4).</summary>
     public readonly RingBuffer<SeekEntry> SeekQueue;
 
@@ -137,6 +148,15 @@ internal sealed class CityResidents
         SeekDays = new short[capacity];
         EvictDays = new short[capacity];
         Seq = new int[capacity];
+        HomeFac = new int[capacity];
+        HomeFacGen = new int[capacity];
+        CarFac = new int[capacity];
+        CarFacGen = new int[capacity];
+        CarLot = new int[capacity];
+        CarWalkMm = new int[capacity];
+        LegStage = new byte[capacity];
+        LegWaitFrom = new long[capacity];
+        LegParkWait = new int[capacity];
         SeekQueue = new RingBuffer<SeekEntry>(capacity);
         for (int i = 0; i < capacity; i++)
         {
@@ -216,5 +236,14 @@ internal sealed class CityResidents
         SeekDays[i] = 0;
         EvictDays[i] = 0;
         Seq[i] = 0;
+        HomeFac[i] = -1;
+        HomeFacGen[i] = 0;
+        CarFac[i] = -1;
+        CarFacGen[i] = 0;
+        CarLot[i] = -1;
+        CarWalkMm[i] = 0;
+        LegStage[i] = 0;
+        LegWaitFrom[i] = 0;
+        LegParkWait[i] = 0;
     }
 }

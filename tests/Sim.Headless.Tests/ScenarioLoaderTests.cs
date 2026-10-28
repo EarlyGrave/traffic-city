@@ -593,4 +593,37 @@ public class ScenarioLoaderTests
         e = Fails(Minimal("\"tools\": { \"unknown\": 1 }"));
         Assert.Contains("$.tools.unknown", e.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void CityLandUse_ParsesDefaultsAndValues_DisabledByDefault()
+    {
+        Assert.False(Load(Minimal()).City.LandUse.Enabled);
+        Assert.False(Load(Minimal("\"city\": { \"landuse\": { \"enabled\": false, \"park_share\": 0.5 } }")).City.LandUse.Enabled);
+
+        LandUseDesc d = Load(Minimal("\"city\": { \"landuse\": { \"enabled\": true } }")).City.LandUse;
+        Assert.True(d.Enabled);
+        Assert.Equal(0.08f, d.ParkShare);
+        Assert.Equal(0.25f, d.PondShare);
+        Assert.Equal(LandUseCoast.None, d.Coast);
+        Assert.Equal(400f, d.CoastWidthM);
+
+        d = Load(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"park_share\": 0.2, \"pond_share\": 0, \"coast\": \"east\", \"coast_width_m\": 240 } }")).City.LandUse;
+        Assert.Equal(0.2f, d.ParkShare);
+        Assert.Equal(0f, d.PondShare);
+        Assert.Equal(LandUseCoast.East, d.Coast);
+        Assert.Equal(240f, d.CoastWidthM);
+    }
+
+    [Fact]
+    public void CityLandUse_RejectsBadValues_AndExplicitNetwork()
+    {
+        ScenarioException e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"coast\": \"up\" } }"));
+        Assert.Contains("$.city.landuse.coast", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"park_share\": 1.5 } }"));
+        Assert.Contains("$.city.landuse.park_share", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"nope\": 1 } }"));
+        Assert.Contains("$.city.landuse.nope", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"enabled\": false, \"landuse\": { \"enabled\": true } }, \"network\": { \"nodes\": [], \"segments\": [] }"));
+        Assert.Contains("$.city.landuse", e.Message, StringComparison.Ordinal);
+    }
 }

@@ -39,7 +39,8 @@ internal static class Economy
             b.VisitsDay[slot]++;
         }
 
-        res.IncomeEwma[r] += (wage - res.IncomeEwma[r]) >> c.Cfg.Economy.EwmaShift;
+        long tax = BudgetFlows.TaxWage(c, r, wage);   // налог с зарплаты (city-economy.md §3); без бюджета 0
+        res.IncomeEwma[r] += (wage - tax - res.IncomeEwma[r]) >> c.Cfg.Economy.EwmaShift;
     }
 
     /// <summary>
@@ -108,6 +109,12 @@ internal static class Economy
         int ts = Slot(bi, ti);
         long revenue = b.RevenueDay[ys];
         long profit = revenue - b.CostDay[ys];
+        if (c.Budget != null)
+        {
+            BudgetFlows.FirmPayrollEwma(c, bi);
+            profit -= BudgetFlows.FirmTaxAndRent(c, bi, in t, profit, ts);   // налог на положительную прибыль и земля (в расходы сегодняшних суток); ProfitEwma - после налога
+        }
+
         long shifts = b.VisitsDay[ys];
         if (t.Kind == LotZone.Commercial)
         {
@@ -141,6 +148,10 @@ internal static class Economy
         {
             w.Counters.FirmClosures++;
             Growth.Abandon(w, c, bi);
+        }
+        else if (c.Budget != null)
+        {
+            BudgetFlows.FirmDividend(c, bi);   // остаток сверх буфера фонда оплаты уходит за город (§7.2)
         }
     }
 

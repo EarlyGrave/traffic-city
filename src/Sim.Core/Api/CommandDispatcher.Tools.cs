@@ -162,4 +162,58 @@ internal static partial class CommandDispatcher
 
         Applied(w, in cmd);
     }
+
+    /// <summary>
+    /// <c>UpgradeRoad</c> (RP7, player-tools.md §4.5): скорость, тип, полосы и профиль сегмента. Ось не меняется; сегмент и его handle сохраняются. Новый блок полос (другое число полос) - перенос ссылок
+    /// <c>Relocate</c> и перестройка узлов концов, только на пустом сегменте (<c>Busy</c> иначе); те же полосы - правка геометрии на месте. После правки участки вдоль дороги пересчитываются
+    /// (<c>LotBuilder.OnRoadsChanged</c>: клетки под новой проезжей частью - <c>Lost</c>).
+    /// </summary>
+    private static void UpgradeRoad(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        if (chk.Reshape == ReshapeMode.None)
+        {
+            Applied(w, in cmd);
+            return;
+        }
+
+        int seg = chk.Seg;
+        NetworkStore n = w.Net;
+        NetworkStatus st = w.Builder.ReshapeSegment(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
+        if (chk.Reshape == ReshapeMode.Speed)
+        {
+            NetworkEdit.RefreshDerived(w, pedsChanged: false);
+        }
+        else
+        {
+            NetworkEdit.RefreshDerived(w);
+            if (w.City != null)
+            {
+                int lost = w.City.LotGen.OnRoadsChanged(w, w.City);
+                if (lost > 0)
+                {
+                    w.Emit(SimEventKind.ZoneLotsLost, cmd.Tag, seg, lost);
+                }
+
+                w.City.LotGen.RestoreDerived(w);
+            }
+        }
+
+        if (st != NetworkStatus.Ok)
+        {
+            Rejected(w, in cmd, RejectOf(st));   // ёмкость при перестройке узла: пробное планирование валидатора её исключает
+            return;
+        }
+
+        n.ToolsTouched = 1;
+        w.Work.ToolCommandsApplied++;
+        Applied(w, in cmd);
+    }
 }
