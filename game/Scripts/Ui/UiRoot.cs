@@ -32,6 +32,9 @@ public sealed partial class UiRoot : CanvasLayer
     private Button _infoButton = null!;
     private readonly Button[] _layerButtons = new Button[3];
     private readonly System.Collections.Generic.Dictionary<string, Button> _toolButtons = new();
+    private UiTopBar _topBarView = null!;
+    private SimHost? _host;
+    private bool _zonesKnown;
     private Window? _window;
     private string _shotPath = string.Empty;
     private int _shotFrame = 30;
@@ -116,6 +119,8 @@ public sealed partial class UiRoot : CanvasLayer
 
     public override void _Process(double delta)
     {
+        _topBarView.Update(this);
+        UpdateCapabilities();
         if (_shotPath.Length > 0 && ++_frames == _shotFrame)
         {
             RenderingServer.FramePostDraw += OnShotDraw;
@@ -143,7 +148,19 @@ public sealed partial class UiRoot : CanvasLayer
         {
             _router.ToggleInfo();
         }
-        else if (_router.InfoActive)
+        else if (!_router.InfoActive)
+        {
+            // вне инфо-режима 1/2/3 - скорость ×1/×2/×4 (ui-spec.md §14 п. 7, рекомендация); в инфо-режиме те же клавиши - слои
+            float speed = @event.IsActionPressed(UiActions.InfoLayer1) ? 1f
+                : @event.IsActionPressed(UiActions.InfoLayer2) ? 2f
+                : @event.IsActionPressed(UiActions.InfoLayer3) ? 4f : 0f;
+            if (speed > 0f && _host != null)
+            {
+                _host.SetSpeed(speed);
+                GetViewport().SetInputAsHandled();
+            }
+        }
+        else
         {
             // слои 1-3 переключаются только в инфо-режиме (вне него эти клавиши зарезервированы под скорость, ui-spec.md §14 п. 7)
             if (@event.IsActionPressed(UiActions.InfoLayer1))
@@ -158,6 +175,23 @@ public sealed partial class UiRoot : CanvasLayer
             {
                 _router.SetInfoLayer(3);
             }
+        }
+    }
+
+    /// <summary>Категории, которым нужен режим жителей (сейчас «Зоны»), серые с причиной в тултипе, пока сценарий без жителей (ui-spec.md §4, P2).</summary>
+    private void UpdateCapabilities()
+    {
+        _host ??= GetNodeOrNull<SimHost>("../SimHost");
+        if (_zonesKnown || _host == null || !_host.IsReady)
+        {
+            return;
+        }
+
+        _zonesKnown = true;
+        if (!_host.HasCity && _toolButtons.TryGetValue("zones", out Button? zones))
+        {
+            zones.Disabled = true;
+            zones.TooltipText = "Зоны (Z): нужно: сценарий с жителями (residents)";
         }
     }
 
@@ -207,11 +241,7 @@ public sealed partial class UiRoot : CanvasLayer
         AddChild(_root);
 
         _topBar = Bar("TopBar", UiTheme.BarTop, top: true, UiMetrics.TopBarHeight, 0f);
-        var topRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _topBar.AddChild(topRow);
-        topRow.AddChild(Secondary("Деньги · Жители (UI2)", Control.SizeFlags.ExpandFill, HorizontalAlignment.Left));
-        topRow.AddChild(Secondary("Время (UI2)", Control.SizeFlags.ExpandFill, HorizontalAlignment.Center));
-        topRow.AddChild(Secondary("Уведомления · Настройки (UI2)", Control.SizeFlags.ExpandFill, HorizontalAlignment.Right));
+        _topBarView = new UiTopBar(_topBar);
 
         _toolbar = Bar("Toolbar", UiTheme.BarBottom, top: false, UiMetrics.ToolbarHeight, 0f);
         BuildToolbar();
@@ -299,9 +329,10 @@ public sealed partial class UiRoot : CanvasLayer
 
         // настоящие инструменты - UI4 и T13; пока кнопка включает заглушку (строка опций) - так роутер и Esc проверяются руками.
         // Клавиши R/Z/J/X в UI1 не заняты (T - время суток, §9 ui-spec: перенос на UI2/UI4)
-        foreach ((string id, string title) in new[] { ("roads", "Дороги"), ("zones", "Зоны"), ("transit", "Транспорт"), ("nodes", "Узлы"), ("bulldoze", "Снос") })
+        foreach ((string id, string title, string key) in new[] { ("roads", "Дороги", "R"), ("zones", "Зоны", "Z"), ("transit", "Транспорт", "T"), ("nodes", "Узлы", "J"), ("bulldoze", "Снос", "X") })
         {
             Button b = MakeButton(title, toggle: true, disabled: false, 96f);
+            b.TooltipText = title + " (" + key + ")";
             b.Toggled += on => _router.SetTool(on ? new UiPlaceholderTool(id, title) : null);
             row.AddChild(b);
             _toolButtons[id] = b;
@@ -309,6 +340,7 @@ public sealed partial class UiRoot : CanvasLayer
 
         row.AddChild(new VSeparator());
         _infoButton = MakeButton("Инфо  F1", toggle: true, disabled: false, 96f);
+        _infoButton.TooltipText = "Инфо-режим: слои трафика, пешеходов и зон (F1)";
         _infoButton.Toggled += on =>
         {
             if (on != _router.InfoActive)
@@ -317,8 +349,12 @@ public sealed partial class UiRoot : CanvasLayer
             }
         };
         row.AddChild(_infoButton);
-        row.AddChild(MakeButton("↶", toggle: false, disabled: true, 40f));
-        row.AddChild(MakeButton("↷", toggle: false, disabled: true, 40f));
+        Button undo = MakeButton("↶", toggle: false, disabled: true, 40f);
+        undo.TooltipText = "Отменить (Ctrl+Z): появится вместе с инструментами";
+        row.AddChild(undo);
+        Button redo = MakeButton("↷", toggle: false, disabled: true, 40f);
+        redo.TooltipText = "Повторить (Ctrl+Y): появится вместе с инструментами";
+        row.AddChild(redo);
     }
 
     private void BuildLegend()
@@ -408,7 +444,7 @@ public sealed partial class UiRoot : CanvasLayer
         _toolOptions.Visible = tool != null;
         if (tool != null)
         {
-            _toolOptionsLabel.Text = "Инструмент «" + tool.DisplayName + "»: строка опций (UI4)";
+            _toolOptionsLabel.Text = "Инструмент «" + tool.DisplayName + "»";
         }
 
         foreach ((string id, Button b) in _toolButtons)

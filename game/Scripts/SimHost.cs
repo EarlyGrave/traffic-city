@@ -121,6 +121,7 @@ public partial class SimHost : Node3D
     private bool _frameTiming;       // --frame-timing: время кадра главного потока (мс) в журнал при выходе
     private int _maxFpsArg;          // --max-fps N: потолок FPS окна (замеры без vsync)
     private float _timeScaleArg = 1f; // --time-scale X: стартовая скорость игры
+    private bool _pausedArg;         // --paused: старт на паузе (после прогрева)
     private readonly System.Collections.Generic.List<float> _ftProcess = new(4096);
     private readonly System.Collections.Generic.List<float> _ftEngine = new(4096);
     private readonly System.Collections.Generic.List<float> _ftWall = new(4096);
@@ -137,6 +138,10 @@ public partial class SimHost : Node3D
     private double _statsTimer;
     private bool _paused;
     private float _timeScale = 1f;
+    private bool _hasCity;           // сценарий в режиме жителей: у города есть население (и, возможно, казна)
+    private double _cityHudTimer;
+    private long _cityHudTick = -1;
+    private CityHudData _cityHud;
     private bool _signalsOn;
     private bool _routeDirty;
     private long _routeTick = -1;
@@ -285,6 +290,10 @@ public partial class SimHost : Node3D
             else if (a == "--time-scale" && i + 1 < args.Length)
             {
                 float.TryParse(args[++i], NumberStyles.Float, inv, out _timeScaleArg);
+            }
+            else if (a == "--paused")
+            {
+                _pausedArg = true;
             }
             else if (a == "--no-snap")
             {
@@ -554,6 +563,7 @@ public partial class SimHost : Node3D
             OnNewFrame(f);
         }
 
+        RefreshCityHud(f, delta);
         if (_timeAuto && _dayTicks > 0)
         {
             // тик 0 = 00:00; обновляем раз в ~секунду игрового времени (20 тиков), не каждый кадр
@@ -821,6 +831,87 @@ public partial class SimHost : Node3D
         _host?.SetSelectedPed(h);
     }
 
+    // ---- время и данные для верхней полосы (UI2) ----
+
+    /// <summary>Игра на паузе: аккумулятор не копится, целевой тик стоит, поток симуляции не шагает.</summary>
+    public bool TimePaused => _paused;
+
+    /// <summary>Множитель скорости игры (1 = реальное время; кнопки ×1/×2/×4, клавиши +/- - 0.125-16).</summary>
+    public float TimeScale => _timeScale;
+
+    /// <summary>Симуляция запущена (хост создан, первый кадр получен): свойства сценария ниже достоверны.</summary>
+    public bool IsReady => _host != null && _frame != null;
+
+    /// <summary>Тик последнего кадра симуляции (0 до старта).</summary>
+    public long SimTick => _frame?.SnapshotTick ?? 0;
+
+    /// <summary>Тиков в игровых сутках (calendar.day_s * 20); 0 - у сценария нет календаря.</summary>
+    public int DayTicks => _dayTicks;
+
+    /// <summary>Сценарий в режиме жителей: есть население, зонирование, возможно казна.</summary>
+    public bool HasCity => _hasCity;
+
+    /// <summary>Население и казна, обновляются раз в секунду (под эксклюзивным доступом), пока идёт время.</summary>
+    public CityHudData CityHud => _cityHud;
+
+    /// <summary>Изменились пауза или скорость.</summary>
+    public event Action? TimeChanged;
+
+    public void TogglePause() => SetPaused(!_paused);
+
+    public void SetPaused(bool paused)
+    {
+        if (_paused != paused)
+        {
+            _paused = paused;
+            TimeChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Задать скорость (снимает паузу): кнопки ×1/×2/×4 и клавиши 1/2/3 вне инфо-режима.</summary>
+    public void SetSpeed(float scale)
+    {
+        _timeScale = Math.Clamp(scale, 0.125f, 16f);
+        _paused = false;
+        TimeChanged?.Invoke();
+    }
+
+    /// <summary>Клавиши +/-: ×2 или ÷2 в отладочном диапазоне 0.125-16 (ui-spec.md §9); паузу не снимает.</summary>
+    private void StepSpeed(float factor)
+    {
+        _timeScale = Math.Clamp(_timeScale * factor, 0.125f, 16f);
+        TimeChanged?.Invoke();
+    }
+
+    private void RefreshCityHud(SimFrame f, double delta)
+    {
+        _cityHudTimer -= delta;
+        if (!_hasCity || _host == null || _cityHudTimer > 0 || f.SnapshotTick == _cityHudTick)
+        {
+            return; // на паузе тик не меняется - данные те же, поток симуляции не трогаем
+        }
+
+        _cityHudTimer = 1.0;
+        _cityHudTick = f.SnapshotTick;
+        using ExclusiveAccess ex = _host.AcquireExclusive();
+        Simulation? sim = ex.Simulation;
+        if (sim == null)
+        {
+            return;
+        }
+
+        var d = new CityHudData { HasPopulation = true, Population = sim.CityPopulation };
+        if (sim.GetCityBudget(out CityBudgetInfo b))
+        {
+            d.HasBudget = true;
+            d.Balance = b.Balance;
+            d.FlowPerDay = b.IncomeEwma - b.ExpenseEwma;
+            d.Insolvent = b.Insolvent != 0;
+        }
+
+        _cityHud = d;
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_host == null)
@@ -882,15 +973,15 @@ public partial class SimHost : Node3D
             }
             else if (@event.IsActionPressed(UiActions.TimePause))
             {
-                _paused = !_paused;
+                TogglePause();
             }
             else if (@event.IsActionPressed(UiActions.TimeFaster))
             {
-                _timeScale = Math.Min(_timeScale * 2f, 16f);
+                StepSpeed(2f);
             }
             else if (@event.IsActionPressed(UiActions.TimeSlower))
             {
-                _timeScale = Math.Max(_timeScale / 2f, 0.125f);
+                StepSpeed(0.5f);
             }
         }
         else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
@@ -994,6 +1085,7 @@ public partial class SimHost : Node3D
 
         _bootSim = sim;
         _timeScale = _timeScaleArg;
+        _paused = _pausedArg;
         if (_maxFpsArg > 0)
         {
             Engine.MaxFps = _maxFpsArg;
@@ -1017,6 +1109,7 @@ public partial class SimHost : Node3D
         RoadProfileLayouts.Set(sim.Network); // сечения дорог для RoadChunks/PedChunks (RP6, RP10b: из вью ядра, не из desc); без каталога - legacy
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
+        _hasCity = desc.Demand.Model == DemandModel.Residents;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
