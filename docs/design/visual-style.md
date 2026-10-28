@@ -140,7 +140,7 @@ ctrlB << 9 | kind << 12`, точно в float до 2²⁴), `z` = ширина �
   (`MODEL_MATRIX`, в `vertex()` → `varying flat`), чтобы здание выцветало целиком. `discard`, если `bayer4x4(FRAGCOORD.xy) < fade · xray_max`.
 - Непрозрачный проход, глубина пишется, сортировки нет. **Тени не ломать:** в теневом проходе x-ray выключен — проверка
   `PROJECTION_MATRIX[3][3] == 1.0` (направленная тень ортографична, камера игрока — перспектива); если в 4.7 есть встроенный признак
-  теневого прохода — использовать его (проверить в VS6, записать в `lessons.md`). Здание с x-ray отбрасывает полную тень.
+  теневого прохода — использовать его (проверить в VS6, записать в `lessons/client-godot.md`). Здание с x-ray отбрасывает полную тень.
 - Сеточка без TAA на `low` принята; показать владельцу скриншотом `close`.
 
 ## 7. Информационный режим (вместо F1)
@@ -196,7 +196,7 @@ byte Flags; }`, 36 Б), `ReadOnlySpan<LandUsePoly> Simulation.LandUse` + `LandUs
 
 | # | Суть | Файлы (область) | Зависит от | Параллельно | Размер | Своя приёмка |
 |---|---|---|---|---|---|---|
-| VS1 | Палитра + глобальные uniform + инфо-режим | `Palette.cs` (нов.), `InfoMode.cs` (нов.), `Shaders/world.gdshaderinc` (нов.), `road/sidewalk/points.gdshader`, `heat.gdshaderinc`, `HeatPalette.cs`, `RoadChunks.cs`/`PedChunks.cs` (только цвета/материал), `SimHost.cs` (клавиши, `Ground`), `project.godot` | — | ∥ VS7, VS8 | M | все цвета мира только в `Palette.cs` (grep хексов/`new Color(` вне него в слоях = 0); `--info traffic` даёт беж + heatmap; без F1 heat вдали нет; переход 0.25 с; Compatibility — глобальные uniform работают (запись в `lessons.md`) |
+| VS1 | Палитра + глобальные uniform + инфо-режим | `Palette.cs` (нов.), `InfoMode.cs` (нов.), `Shaders/world.gdshaderinc` (нов.), `road/sidewalk/points.gdshader`, `heat.gdshaderinc`, `HeatPalette.cs`, `RoadChunks.cs`/`PedChunks.cs` (только цвета/материал), `SimHost.cs` (клавиши, `Ground`), `project.godot` | — | ∥ VS7, VS8 | M | все цвета мира только в `Palette.cs` (grep хексов/`new Color(` вне него в слоях = 0); `--info traffic` даёт беж + heatmap; без F1 heat вдали нет; переход 0.25 с; Compatibility — глобальные uniform работают (запись в `lessons/client-godot.md`) |
 | VS2 | ТС: `BoxBuilder`, `vehicle.gdshader` (рёбра, face shading, AO, тон), цвета по типу/слоту | `BoxBuilder.cs` (нов.), `Shaders/vehicle.gdshader` (нов.), `VehicleLayer.cs`, `BoxBatch.cs` (ктор материала), `PointBatch.cs` | VS1 | ∥ VS3 | S | `lod0`/`close`: рёбра 1 px, гаснут к 200 м; треугольники ТС не выросли (`BoxBuilder` = 12 тр. на бокс, как `BoxMesh`) |
 | VS3 | Разметка LOD0, лента на сегмент, площадки перекрёстков, стоп-линии, края дорог | `ChunkMesh.cs`, `RoadChunks.cs`, `Shaders/road.gdshader` | VS1, **`corner_radius` в ядре** | ∥ VS2 | M | `lod0`/`close`: осевые, пунктир, стоп-линии на концах лент при двух значениях `corner_radius`; нет муара в `mid`; draw calls дорог ≤ 150, примитивы дорог ≤ «до» |
 | VS4 | Тротуары, бордюры, зебры в новом стиле | `PedChunks.cs`, `Shaders/sidewalk.gdshader`, `CrosswalkMesh.cs` (если нужен) | VS3 (общий `ChunkMesh`), `corner_radius` | после VS3 | S | зебра от бордюра до бордюра на увеличенных перекрёстках; ночью (VS10) зебра не светится |

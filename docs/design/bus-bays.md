@@ -53,7 +53,7 @@
   (`BusNextStop`) — `Bay` с `BayUsed == 1`. Позиция стоянки — `S[i] = stop.S`. Без ссылок между объектами: связь автобус → остановка
   уже есть (`BusRoute`, `BusNextStop`), обратной ссылки нет — только счётчик.
 - `BusStopData`: `ushort Reserved` → `byte BayUsed, byte BayFlags` (раскладка прежняя), новое поле `long BayExitFrom` (−1 — нет).
-  Размер структуры растёт: хэш сети пишется полями (урок `lessons.md` про `NodeData/SegmentData`), сдвига golden сети нет.
+  Размер структуры растёт: хэш сети пишется полями (урок `lessons/sim-traffic.md` про `NodeData/SegmentData`), сдвига golden сети нет.
 - Производное, не состояние: `float[] LaneYieldS` (по полосам, −1 — нет), пишет фаза 8b, читает фаза 5; после загрузки пересобирается
   из `BayFlags`. `SimCounters`: `BayEntries`, `BayFallbacks`, `BayYields`, `BayExitWaitTicksTotal`.
 - **JSON** (`scenario-format.md`, `transit`): `bay_model: "virtual" | "lane"` (дефолт загрузчика — `virtual`, вопрос 1), `bay_yield_s`
