@@ -68,6 +68,13 @@ internal sealed class QueueMeso
     private readonly int[] _headCount;
 
     // ---- агрегаты для метрик (фаза 9 берёт их в начале фазы 6) ----
+    private QueueWorker[] _workers = { new QueueWorker() };
+    private readonly int[] _headLanes;
+    private HeadSynthJob? _headJob;
+    private RevokeStaleJob? _revokeJob;
+    private readonly int[] _revLanes;
+    private int[] _revKey = new int[64];
+    private int[] _revVeh = new int[64];
     public int Total;                       // машин в очереди (очередь + голова)
     public int Parked;
     public int StuckCount;                  // машин очереди с флагом Stuck
@@ -104,6 +111,8 @@ internal sealed class QueueMeso
         _headCount = new int[lanes];
         int words = (lanes + 63) >> 6;
         KinMask = new ulong[words];
+        _headLanes = new int[lanes];
+        _revLanes = new int[lanes];
         HeadMask = new ulong[4][];
         for (int c = 0; c < 4; c++)
         {
@@ -290,17 +299,7 @@ internal sealed class QueueMeso
         int now = Now;
         int beat = now & 3;
         RevokeStale(beat);
-        ulong[] heads = HeadMask[beat];
-        for (int wi = 0; wi < heads.Length; wi++)
-        {
-            ulong m = heads[wi];
-            while (m != 0UL)
-            {
-                int lane = (wi << 6) + BitOperations.TrailingZeroCount(m);
-                m &= m - 1UL;
-                RefreshLane(lane);
-            }
-        }
+        SynthHeads(beat);
 
         int b = now & WheelMask;
         int lo = int.MaxValue;
@@ -341,8 +340,9 @@ internal sealed class QueueMeso
     /// </summary>
     private void RevokeStale(int beat)
     {
-        VehicleStore v = _v;
         ulong[] kin = KinMask;
+        int[] list = _revLanes;
+        int n = 0;
         for (int wi = 0; wi < kin.Length; wi++)
         {
             ulong m = kin[wi];
@@ -350,31 +350,172 @@ internal sealed class QueueMeso
             {
                 int lane = (wi << 6) + BitOperations.TrailingZeroCount(m);
                 m &= m - 1UL;
-                if (_laneColor[lane] != beat || _net.LaneGateNode[lane] < 0 || _net.Lanes[lane].Kind != LaneKind.Normal)
+                if (_laneColor[lane] == beat)
                 {
-                    continue;
+                    list[n++] = lane;
+                }
+            }
+        }
+
+        if (n == 0)
+        {
+            return;
+        }
+
+        // Задание по полосам (S4c): только читает и записывает решения в буферы воркеров; сброс допуска, счётчики, MarkLinked, KinDec и метки остановки - на главном
+        // потоке в порядке полос. Ghost в префиксе допущенных делает результат зависимым от порядка полос (ghost ведёт основная полоса, которая может быть раньше или
+        // позже): тогда решения отбрасываются и тик идёт последовательным обходом, как до S4c (побитово то же при любом числе потоков).
+        _revokeJob ??= new RevokeStaleJob(this);
+        GatePhase.RunJob(_w, _revokeJob, n);
+        QueueWorker[] ws = _workers;
+        int total = 0;
+        bool ghost = false;
+        for (int k = 0; k < ws.Length; k++)
+        {
+            total += ws[k].RevCount;
+            ghost |= ws[k].Ghost;
+            ws[k].Ghost = false;
+        }
+
+        if (ghost)
+        {
+            for (int k = 0; k < ws.Length; k++)
+            {
+                ws[k].RevCount = 0;
+            }
+
+            RevokeStaleSerial(list, n);
+            return;
+        }
+
+        if (total == 0)
+        {
+            return;
+        }
+
+        if (_revKey.Length < total)
+        {
+            _revKey = new int[total * 2];
+            _revVeh = new int[total * 2];
+        }
+
+        int cnt = 0;
+        for (int k = 0; k < ws.Length; k++)
+        {
+            QueueWorker wk = ws[k];
+            for (int q = 0; q < wk.RevCount; q++)
+            {
+                // Устойчивая вставка по ключу (индекс полосы в списке): порядок как у последовательного обхода при любом разбиении на воркеров.
+                int key = wk.RevKey[q];
+                int pos = cnt++;
+                while (pos > 0 && _revKey[pos - 1] > key)
+                {
+                    _revKey[pos] = _revKey[pos - 1];
+                    _revVeh[pos] = _revVeh[pos - 1];
+                    pos--;
                 }
 
-                float len = _net.LaneLength[lane];
-                bool revoking = false;
-                for (int x = _occ.LaneHead[lane]; x != -1 && GateRules.IsGranted(v, x);)
+                _revKey[pos] = key;
+                _revVeh[pos] = wk.RevVehicle[q];
+            }
+
+            wk.RevCount = 0;
+        }
+
+        for (int q = 0; q < cnt; q++)
+        {
+            int x = _revVeh[q];
+            _v.GateState[x] = 0;
+            _v.GrantConnector[x] = -1;
+            _w.Counters.GrantsRevoked++;
+            _occ.MarkLinked(x);
+            OnRevoked(x);
+        }
+    }
+
+    private void RevokeStaleLane(int k, int lane, QueueWorker wk)
+    {
+        VehicleStore v = _v;
+        if (_net.LaneGateNode[lane] < 0 || _net.Lanes[lane].Kind != LaneKind.Normal)
+        {
+            return;
+        }
+
+        float len = _net.LaneLength[lane];
+        bool revoking = false;
+        for (int x = _occ.LaneHead[lane]; x != -1;)
+        {
+            if (v.Lane[x] != lane)
+            {
+                wk.Ghost = true;   // допуск ghost ведёт чужая полоса, которая в этом же проходе могла его снять: порядок полос значим
+                return;
+            }
+
+            if (!GateRules.IsGranted(v, x))
+            {
+                return;
+            }
+
+            int next = GateRules.BehindOn(v, x, lane);
+            revoking |= v.Speed[x] < GateRules.CreepSpeed && len - v.S[x] > StaleGrantM;
+            if (revoking)
+            {
+                wk.DeferRevoked(k, x);
+            }
+
+            x = next;
+        }
+    }
+
+    /// <summary>Последовательный обход (как до S4c) для тика, где в префиксе допущенных есть ghost; <paramref name="list"/> - полосы такта по возрастанию.</summary>
+    private void RevokeStaleSerial(int[] list, int n)
+    {
+        VehicleStore v = _v;
+        for (int k = 0; k < n; k++)
+        {
+            int lane = list[k];
+            if (_net.LaneGateNode[lane] < 0 || _net.Lanes[lane].Kind != LaneKind.Normal)
+            {
+                continue;
+            }
+
+            float len = _net.LaneLength[lane];
+            bool revoking = false;
+            for (int x = _occ.LaneHead[lane]; x != -1 && GateRules.IsGranted(v, x);)
+            {
+                int next = GateRules.BehindOn(v, x, lane);
+                if (v.Lane[x] == lane)   // ghost: её допуск ведёт основная полоса
                 {
-                    int next = GateRules.BehindOn(v, x, lane);
-                    if (v.Lane[x] == lane)   // ghost: её допуск ведёт основная полоса
+                    revoking |= v.Speed[x] < GateRules.CreepSpeed && len - v.S[x] > StaleGrantM;
+                    if (revoking)
                     {
-                        revoking |= v.Speed[x] < GateRules.CreepSpeed && len - v.S[x] > StaleGrantM;
-                        if (revoking)
-                        {
-                            v.GateState[x] = 0;
-                            v.GrantConnector[x] = -1;
-                            _w.Counters.GrantsRevoked++;
-                            _occ.MarkLinked(x);
-                            OnRevoked(x);
-                        }
+                        v.GateState[x] = 0;
+                        v.GrantConnector[x] = -1;
+                        _w.Counters.GrantsRevoked++;
+                        _occ.MarkLinked(x);
+                        OnRevoked(x);
                     }
-
-                    x = next;
                 }
+
+                x = next;
+            }
+        }
+    }
+
+    private sealed class RevokeStaleJob : IRangeJob
+    {
+        private readonly QueueMeso _q;
+
+        public RevokeStaleJob(QueueMeso q) => _q = q;
+
+        public void RunRange(int worker, int begin, int end)
+        {
+            QueueMeso q = _q;
+            QueueWorker wk = q._workers[worker];
+            int[] list = q._revLanes;
+            for (int k = begin; k < end; k++)
+            {
+                q.RevokeStaleLane(k, list[k], wk);
             }
         }
     }
@@ -449,8 +590,126 @@ internal sealed class QueueMeso
         }
     }
 
+    // ------------------------------------------------------------------ синтез голов такта по полосам (S4c, scale.md §4, ADR-0017)
+
+    /// <summary>Буферы воркеров синтеза голов под <paramref name="threads"/> потоков (запуск пула; без пула - один).</summary>
+    public void EnsureWorkers(int threads)
+    {
+        threads = Math.Max(1, threads);
+        if (_workers.Length >= threads)
+        {
+            return;
+        }
+
+        var ws = new QueueWorker[threads];
+        Array.Copy(_workers, ws, _workers.Length);
+        for (int k = _workers.Length; k < threads; k++)
+        {
+            ws[k] = new QueueWorker();
+        }
+
+        _workers = ws;
+    }
+
+    /// <summary>
+    /// Головы полос цвета такта: список полос по маске (главный поток), затем задание по полосам. Полоса пишет только свои головы (<c>S</c>, <c>Speed</c>, <c>QReady</c>,
+    /// метки ворот) и аккумуляторы воркера; читает только машины своей полосы (<c>AheadPrimary</c> - не призраки). Переход головы в кинематику (счётчики/маски полос,
+    /// колесо, <c>Total</c>) откладывается и применяется здесь по буферам воркеров: эти операции коммутативны, поэтому хэш не зависит от порядка полос и числа потоков.
+    /// </summary>
+    private void SynthHeads(int beat)
+    {
+        ulong[] heads = HeadMask[beat];
+        int[] list = _headLanes;
+        int n = 0;
+        for (int wi = 0; wi < heads.Length; wi++)
+        {
+            ulong m = heads[wi];
+            while (m != 0UL)
+            {
+                list[n++] = (wi << 6) + BitOperations.TrailingZeroCount(m);
+                m &= m - 1UL;
+            }
+        }
+
+        if (n == 0)
+        {
+            return;
+        }
+
+        _headJob ??= new HeadSynthJob(this);
+        GatePhase.RunJob(_w, _headJob, n);
+        QueueWorker[] ws = _workers;
+        for (int k = 0; k < ws.Length; k++)
+        {
+            QueueWorker wk = ws[k];
+            PendingDistMm += wk.PendingDistMm;
+            wk.PendingDistMm = 0L;
+            for (int q = 0; q < wk.KinCount; q++)
+            {
+                ToKinematic(wk.KinVehicle[q], wk.KinLane[q]);
+            }
+
+            wk.KinCount = 0;
+        }
+    }
+
+    /// <summary>Буфер воркера синтеза голов: путь за такт (целые мм, сумма не зависит от порядка) и отложенные переходы в кинематику.</summary>
+    private sealed class QueueWorker
+    {
+        public long PendingDistMm;
+        public int KinCount;
+        public int[] KinVehicle = new int[256];
+        public int[] KinLane = new int[256];
+        public int RevCount;
+        public bool Ghost;
+        public int[] RevKey = new int[64];
+        public int[] RevVehicle = new int[64];
+
+        public void DeferRevoked(int key, int i)
+        {
+            if (RevCount == RevKey.Length)
+            {
+                Array.Resize(ref RevKey, RevCount * 2);
+                Array.Resize(ref RevVehicle, RevCount * 2);
+            }
+
+            RevKey[RevCount] = key;
+            RevVehicle[RevCount++] = i;
+        }
+
+        public void DeferKinematic(int i, int lane)
+        {
+            if (KinCount == KinVehicle.Length)
+            {
+                Array.Resize(ref KinVehicle, KinCount * 2);
+                Array.Resize(ref KinLane, KinCount * 2);
+            }
+
+            KinVehicle[KinCount] = i;
+            KinLane[KinCount++] = lane;
+        }
+    }
+
+    private sealed class HeadSynthJob : IRangeJob
+    {
+        private readonly QueueMeso _q;
+
+        public HeadSynthJob(QueueMeso q) => _q = q;
+
+        public void RunRange(int worker, int begin, int end)
+        {
+            QueueMeso q = _q;
+            QueueWorker wk = q._workers[worker];
+            int[] list = q._headLanes;
+            for (int k = begin; k < end; k++)
+            {
+                q.RefreshLane(list[k], wk);
+            }
+        }
+    }
+
     /// <summary>Головы полосы (такт её цвета) от головы списка к хвосту: кинематические пропускаются, обход до первой машины очереди.</summary>
-    private void RefreshLane(int lane)
+    private void RefreshLane(int lane, QueueWorker wk)
     {
         VehicleStore v = _v;
         for (int x = _occ.LaneHead[lane]; x != -1;)
@@ -469,7 +728,7 @@ internal sealed class QueueMeso
                     return;
                 }
 
-                Refresh(x, lane);
+                Refresh(x, lane, wk);
             }
 
             x = next;
@@ -480,7 +739,7 @@ internal sealed class QueueMeso
     /// Голова в такт своего цвета (ленивая кинематика M2, sim-lod.md §2.2): путь за прошедшие тики со скоростью прошлого решения, затем новое решение.
     /// Недопущенная останавливается у стоп-линии; допущенная едет к концу полосы и за такт до него становится кинематической (въезд на connector - фазы 5-7).
     /// </summary>
-    private void Refresh(int i, int lane)
+    private void Refresh(int i, int lane, QueueWorker wk)
     {
         VehicleStore v = _v;
         int dtTicks = Now - QReady[i];
@@ -545,7 +804,7 @@ internal sealed class QueueMeso
 
         if (ns > s)
         {
-            PendingDistMm += DetMath.ToLongSat(((ns - s) * 1000f) + 0.5f);
+            wk.PendingDistMm += DetMath.ToLongSat(((ns - s) * 1000f) + 0.5f);
         }
 
         v.S[i] = ns;
@@ -555,7 +814,7 @@ internal sealed class QueueMeso
             // Допущенная: за такт до конца полосы (или если лидер уже ушёл с полосы и до конца меньше пути за такт) - кинематика (connector, ворота билетов).
             if (len - ns <= (Math.Max(sp, 1f) * BehaviourJob.MesoPeriodTicks * _dt) + 0.5f)
             {
-                ToKinematic(i, lane);
+                wk.DeferKinematic(i, lane);   // общие счётчики/маски/колесо - на главном потоке после задания (SynthHeads)
             }
 
             return;

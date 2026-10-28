@@ -38,6 +38,7 @@ internal sealed class GateScratch
 
     /// <summary>Машины с <c>WaitTicks != 0</c> или <c>DenyReason != None</c> на конец прошлой фазы 4 (кандидаты прошлого тика + meso вне такта).</summary>
     public int[] PrevList;
+    public readonly byte[] PrevKeep;          // [MaxVehicles] элемент PrevList остаётся в списке (результат GatePrevResetJob)
     public int PrevCount;
     public int[] NextList;
     public int NextCount;
@@ -108,6 +109,7 @@ internal sealed class GateScratch
         ConnMask = new ulong[words];
         SignalMask = new ulong[words];
         PrevList = new int[Math.Max(0, maxVehicles)];
+        PrevKeep = new byte[Math.Max(0, maxVehicles)];
         NextList = new int[Math.Max(0, maxVehicles)];
         CandStamp = new int[Math.Max(0, maxVehicles)];
 #if DEBUG
