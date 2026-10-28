@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
+using Sim.Host;
 using Sim.Scenarios;
 using Sim.Scenarios.Mods;
 using Sim.Scenarios.Tools;
@@ -95,7 +96,7 @@ public static class ReplayCommands
         byte[] container;
         try
         {
-            container = SaveFile.ReadContainer(savePath);
+            container = SaveEnvelope.ReadContainer(savePath);
         }
         catch (Exception e) when (e is IOException or InvalidDataException)
         {
@@ -159,7 +160,7 @@ public static class ReplayCommands
                 byte[] container;
                 try
                 {
-                    container = savePath != null ? SaveFile.ReadContainer(savePath) : log.EmbeddedSave!;
+                    container = savePath != null ? SaveEnvelope.ReadContainer(savePath) : log.EmbeddedSave!;
                 }
                 catch (Exception e) when (e is IOException or InvalidDataException)
                 {
@@ -274,7 +275,7 @@ public static class ReplayCommands
             byte[] container;
             try
             {
-                container = SaveFile.ReadContainer(savePath!);
+                container = SaveEnvelope.ReadContainer(savePath!);
             }
             catch (Exception e) when (e is IOException or InvalidDataException)
             {

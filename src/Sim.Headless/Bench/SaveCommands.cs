@@ -4,13 +4,14 @@ using System.Globalization;
 using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
+using Sim.Host;
 using Sim.Scenarios;
 using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
 /// <summary>
-/// <c>save</c> и <c>load</c> (save-format.md §7, §11): контейнер ядра в файл <c>.tcsave</c> (конверт + deflate, <see cref="SaveFile"/>; <c>--raw</c> - без конверта) и обратно (формат определяется по магии).
+/// <c>save</c> и <c>load</c> (save-format.md §7, §11): контейнер ядра в файл <c>.tcsave</c> (конверт + deflate, <see cref="SaveEnvelope"/>; <c>--raw</c> - без конверта) и обратно (формат определяется по магии).
 /// <c>save --scenario s --ticks N [--warmup-until-full] --out f</c> считает N тиков, пишет сейв, печатает хэш и размер;
 /// <c>load --in f [--ticks N] [--every K]</c> грузит строго (хэш заголовка обязан сойтись) и печатает хэши в формате <c>hash</c>, чтобы сравнить с прогоном без сейва.
 /// </summary>
@@ -96,7 +97,7 @@ public static class SaveCommands
             return ExitFailed;
         }
 
-        byte[] file = a.Has("--raw") ? buf : SaveFile.Pack(buf);
+        byte[] file = a.Has("--raw") ? buf : SaveEnvelope.Pack(buf);
         File.WriteAllBytes(outPath, file);
         output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"saved bytes={written} file_bytes={file.Length} save_ms={ms:F2} file={outPath}"));
         return ExitOk;
@@ -125,7 +126,7 @@ public static class SaveCommands
         byte[] bytes;
         try
         {
-            bytes = SaveFile.ReadContainer(path);
+            bytes = SaveEnvelope.ReadContainer(path);
         }
         catch (Exception e) when (e is IOException or InvalidDataException)
         {
