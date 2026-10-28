@@ -230,3 +230,4 @@
 | L49 | s10-client-thread (локал, worktree) | sonnet | O2 = S10: клиент Godot на SimThreadHost | done, merged (главный поток s10k ×1 mean 1.21 → 0.14 мс; рендер-статистика совпадает, кроме 2 из 8 поз: убран сброс гистерезиса LOD; ручные клики не проверены; вопрос по alloc/tick в HUD — в работе) |
 | 174 | p3-p2 (облако, worktree) | sonnet | 5.2 P2: пакет запросов фазы 3 на воркерах (routing-parallel.md) | wip |
 | 175 | gate-s4c (облако, worktree) | sonnet | 5.2 S4c: пол фазы 4 побитово (lod-controller.md) | wip |
+| 176 | progression-spec (облако, worktree) | opus | 6.5: спека прогрессии и показателей города | wip |
