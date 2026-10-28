@@ -16,7 +16,7 @@ namespace Sim.Host;
 /// </para>
 /// <para>Главный поток - единственный писатель в кольца/вид/цель; вызывать публичные методы с двух потоков одновременно нельзя.</para>
 /// </summary>
-public sealed class SimThreadHost : IDisposable
+public sealed partial class SimThreadHost : IDisposable
 {
     private const int RoundTo = 1024;
 
@@ -318,9 +318,10 @@ public sealed class SimThreadHost : IDisposable
                 {
                     int n = (int)Math.Min(target - tick, _opt.MaxStepBatch);
                     long t0 = Stopwatch.GetTimestamp();
-                    _sim.Step(n);
+                    StepCollecting(n);
                     long micros = (Stopwatch.GetTimestamp() - t0) * 1_000_000L / Stopwatch.Frequency;
                     Volatile.Write(ref _tick, _sim.Tick);
+                    HarvestTools();
                     PublishFrame(micros, n);
                     continue;
                 }
@@ -337,6 +338,66 @@ public sealed class SimThreadHost : IDisposable
         {
             _exited.Set();
             _paused.Set(); // не оставить главный поток в ожидании паузы
+        }
+    }
+
+    /// <summary>Предел накопленных событий: клиент не забирает - старые отбрасываются (уведомления не должны расти без границ).</summary>
+    public const int MaxCollectedEvents = 4096;
+
+    private readonly List<SimEvent> _events = new();
+    private readonly object _eventsLock = new();
+    private int _collectEvents;
+
+    /// <summary>
+    /// Копить <c>Simulation.Events</c> (буфер ядра живёт один тик): пока включено, поток шагает по одному тику и после каждого дописывает события в очередь для
+    /// <see cref="DrainEvents"/>. Выключено (по умолчанию) - пачка <c>Step(n)</c> как раньше, без лишней работы.
+    /// </summary>
+    public bool CollectEvents
+    {
+        get => Volatile.Read(ref _collectEvents) != 0;
+        set => Volatile.Write(ref _collectEvents, value ? 1 : 0);
+    }
+
+    /// <summary>Переносит накопленные события в <paramref name="sink"/> (по порядку тиков) и очищает очередь. Главный поток.</summary>
+    public void DrainEvents(List<SimEvent> sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        lock (_eventsLock)
+        {
+            sink.AddRange(_events);
+            _events.Clear();
+        }
+    }
+
+    private void StepCollecting(int n)
+    {
+        if (!CollectEvents)
+        {
+            _sim.Step(n);
+            return;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            _sim.Step(1);
+            ReadOnlySpan<SimEvent> ev = _sim.Events;
+            if (ev.Length == 0)
+            {
+                continue;
+            }
+
+            lock (_eventsLock)
+            {
+                foreach (SimEvent e in ev)
+                {
+                    _events.Add(e);
+                }
+
+                if (_events.Count > MaxCollectedEvents)
+                {
+                    _events.RemoveRange(0, _events.Count - MaxCollectedEvents);
+                }
+            }
         }
     }
 
@@ -382,6 +443,9 @@ public sealed class SimThreadHost : IDisposable
                 _commandsRejected++;
             }
         }
+
+        DrainTools(tick);
+        ServePreview();
 
         while (_requests.TryRead(out HostRequest req))
         {

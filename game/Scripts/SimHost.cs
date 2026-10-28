@@ -7,6 +7,7 @@ using Sim.Core.Network;
 using Sim.Core.Util;
 using Sim.Host;
 using Sim.Scenarios;
+using TrafficCity.Saves;
 using TrafficCity.Ui;
 
 namespace TrafficCity;
@@ -170,13 +171,29 @@ public partial class SimHost : Node3D
         string name = Scenario;
         string[] args = OS.GetCmdlineUserArgs();
         ParseArgs(args, ref name);
+        InitSave(args.Length);
+        StartKind start = DecideStart(args.Length, ref name);
+        if (start == StartKind.Menu)
+        {
+            ShowMainMenu();
+            return;
+        }
 
         if (!TryStart(name, out string error))
         {
             GD.PushError(error);
+            if (start == StartKind.Load)
+            {
+                GameFlow.Notice = "Не удалось загрузить: " + error;
+                ShowMainMenu();
+                return;
+            }
+
             SetStatus("ERROR: " + error);
             return;
         }
+
+        AfterStart();
 
         if (_pose.Length > 0)
         {
@@ -185,6 +202,10 @@ public partial class SimHost : Node3D
         else if (_hasCamArgs)
         {
             _camera?.SetPose(_camCenter, _camDistance, _camPitch, _camYaw);
+        }
+        else
+        {
+            RestoreLoadedCamera();
         }
 
         if (_renderStats != null)
@@ -371,6 +392,10 @@ public partial class SimHost : Node3D
             else if (a == "--scenario" && i + 1 < args.Length)
             {
                 name = args[++i];
+            }
+            else if (ParseSaveArg(args, ref i))
+            {
+                // --main-menu, --load-file, --saves-dir, --autosave-hours, --save-test, --save-quit (SimHost.Save.cs)
             }
             else if (a == "--warmup-ticks" && i + 1 < args.Length)
             {
@@ -564,6 +589,7 @@ public partial class SimHost : Node3D
         }
 
         RefreshCityHud(f, delta);
+        UpdateSaveFlow(f);
         if (_timeAuto && _dayTicks > 0)
         {
             // тик 0 = 00:00; обновляем раз в ~секунду игрового времени (20 тиков), не каждый кадр
@@ -919,10 +945,23 @@ public partial class SimHost : Node3D
             return;
         }
 
+        if (_ui != null && _ui.Router.MenuOpen)
+        {
+            return; // меню игры открыто: мир и время молчат
+        }
+
         if (@event is InputEventKey { Pressed: true, Echo: false })
         {
             // F1, слои 1-3 и Esc обрабатывает UiRoot (роутер состояния интерфейса); тут - остальные действия мира
-            if (UiActions.Pressed(@event, UiActions.GridShowToggle) && _grid != null)
+            if (@event.IsActionPressed(UiActions.QuickSave))
+            {
+                SaveGame(SaveKind.Quick);
+            }
+            else if (@event.IsActionPressed(UiActions.QuickLoad))
+            {
+                QuickLoad();
+            }
+            else if (UiActions.Pressed(@event, UiActions.GridShowToggle) && _grid != null)
             {
                 _grid.ToggleShown();
                 GD.Print(_grid.StatusText());
@@ -1040,6 +1079,22 @@ public partial class SimHost : Node3D
     private bool TryStart(string nameOrPath, out string error)
     {
         error = string.Empty;
+        // ADR-0024 п. 7: потоки симуляции (включая поток хоста) = min(4, max(1, логических ядер / 2 - 2)); --threads N переопределяет. На хэш не влияет (ADR-0017).
+        int workers = _threadsArg >= 0 ? _threadsArg : Math.Min(4, Math.Max(1, (System.Environment.ProcessorCount / 2) - 2));
+        var rt = new SimRuntimeOptions { WorkerThreads = workers };
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"[threads] sim workers {workers} (logical cores {System.Environment.ProcessorCount})"));
+
+        // загрузка сейва: мир приходит из файла, сценарий (имя из meta сейва) нужен клиенту только для типов ТС и сетки привязки
+        Simulation? sim = null;
+        if (_loadPath.Length > 0)
+        {
+            sim = LoadWorld(in rt, out nameOrPath, out error);
+            if (sim == null)
+            {
+                return false;
+            }
+        }
+
         string path;
         try
         {
@@ -1048,6 +1103,7 @@ public partial class SimHost : Node3D
         }
         catch (ScenarioException e)
         {
+            sim?.Dispose();
             error = e.Message;
             return false;
         }
@@ -1059,19 +1115,20 @@ public partial class SimHost : Node3D
         }
         catch (ScenarioException e)
         {
+            sim?.Dispose();
             error = e.Message;
             return false;
         }
 
-        // ADR-0024 п. 7: потоки симуляции (включая поток хоста) = min(4, max(1, логических ядер / 2 - 2)); --threads N переопределяет. На хэш не влияет (ADR-0017).
-        int workers = _threadsArg >= 0 ? _threadsArg : Math.Min(4, Math.Max(1, (System.Environment.ProcessorCount / 2) - 2));
-        var rt = new SimRuntimeOptions { WorkerThreads = workers };
-        GD.Print(string.Create(CultureInfo.InvariantCulture, $"[threads] sim workers {workers} (logical cores {System.Environment.ProcessorCount})"));
-        CreateStatus st = Simulation.TryCreate(in desc, in rt, out Simulation? sim);
-        if (st != CreateStatus.Ok || sim == null)
+        _gameScenario = System.IO.Path.GetFileNameWithoutExtension(path);
+        if (sim == null)
         {
-            error = "Simulation.Create failed: " + st;
-            return false;
+            CreateStatus st = Simulation.TryCreate(in desc, in rt, out sim);
+            if (st != CreateStatus.Ok || sim == null)
+            {
+                error = "Simulation.Create failed: " + st;
+                return false;
+            }
         }
 
         if (_viaSave)
@@ -1110,6 +1167,12 @@ public partial class SimHost : Node3D
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         _hasCity = desc.Demand.Model == DemandModel.Residents;
+        if (_loadPath.Length > 0)
+        {
+            _dayTicks = sim.CityDayTicks; // мир из сейва сам знает, есть ли в нём город; сценарий мог быть подобран по имени файла
+            _hasCity = _dayTicks > 0;
+        }
+
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
@@ -1119,7 +1182,10 @@ public partial class SimHost : Node3D
         RenderPreset.Apply(GetParent(), _lod);
         GD.Print(RenderPreset.Describe(_lod));
         BuildScene(sim);
-        sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
+        if (_loadPath.Length == 0)
+        {
+            sim.Step(Math.Max(1, _warmupTicks)); // первый снапшот; Previous == пусто до второго тика
+        }
         if (_demolishCount > 0)
         {
             DemolishTest(sim);
