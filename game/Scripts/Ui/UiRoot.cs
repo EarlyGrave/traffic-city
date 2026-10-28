@@ -115,12 +115,12 @@ public sealed partial class UiRoot : CanvasLayer
     public event Action? RedoRequested;
 
     /// <summary>Состояние кнопок ↶ ↷ и подсказки с глубиной стека.</summary>
-    public void SetUndoRedo(int undoDepth, int redoDepth)
+    public void SetUndoRedo(int undoDepth, int redoDepth, string undoWhat = "", string redoWhat = "")
     {
         _undoButton.Disabled = undoDepth <= 0;
         _redoButton.Disabled = redoDepth <= 0;
-        _undoButton.TooltipText = undoDepth > 0 ? "Отменить (Ctrl+Z), действий: " + undoDepth.ToString(CultureInfo.InvariantCulture) : "Отменить (Ctrl+Z): пока нечего";
-        _redoButton.TooltipText = redoDepth > 0 ? "Повторить (Ctrl+Y), действий: " + redoDepth.ToString(CultureInfo.InvariantCulture) : "Повторить (Ctrl+Y): пока нечего";
+        _undoButton.TooltipText = undoDepth > 0 ? "Отменить: " + undoWhat + " (Ctrl+Z), действий в стеке: " + undoDepth.ToString(CultureInfo.InvariantCulture) : "Отменить (Ctrl+Z): пока нечего";
+        _redoButton.TooltipText = redoDepth > 0 ? "Повторить: " + redoWhat + " (Ctrl+Y), действий в стеке: " + redoDepth.ToString(CultureInfo.InvariantCulture) : "Повторить (Ctrl+Y): пока нечего";
     }
 
     /// <summary>Строка опций настоящего инструмента: показывается вместо подписи-заглушки, пока инструмент активен.</summary>

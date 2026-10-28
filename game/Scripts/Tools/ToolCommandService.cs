@@ -77,6 +77,11 @@ public sealed class ToolCommandService
 
     public int RedoDepth => _host.RedoDepth;
 
+    /// <summary>Что отменит следующий undo / повторит redo (тип первой команды и число команд в группе).</summary>
+    public ActionMeta NextUndo => _host.NextUndo;
+
+    public ActionMeta NextRedo => _host.NextRedo;
+
     public bool CanUndo => _host.UndoDepth > 0;
 
     public bool CanRedo => _host.RedoDepth > 0;
@@ -110,6 +115,9 @@ public sealed class ToolCommandService
 
     /// <summary>Поставить одну команду как действие игрока. Возвращает id действия (&gt; 0) или 0 (очередь полна / хост остановлен).</summary>
     public uint Submit(in Command cmd) => _host.TrySubmitAction(new ReadOnlySpan<Command>(in cmd));
+
+    /// <summary>Как <see cref="Submit(in Command)"/>, но обратная дописывается в пункт undo действия <paramref name="mergeIntoActionId"/> (цепочка дорог = один пункт undo).</summary>
+    public uint Submit(in Command cmd, uint mergeIntoActionId) => _host.TrySubmitAction(new ReadOnlySpan<Command>(in cmd), mergeIntoActionId);
 
     /// <summary>Группа команд = одно действие игрока (протяжка цепочки дорог), атомарно в одном тике и один пункт undo.</summary>
     public uint Submit(ReadOnlySpan<Command> group) => _host.TrySubmitAction(group);
