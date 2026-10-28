@@ -79,11 +79,11 @@ public sealed class RustPilotGoldenTests
         Assert.Equal(scenarioPath, r.GetProperty("scenario").GetString());
         if (!r.GetProperty("load_ok").GetBoolean())
         {
-            Assert.ThrowsAny<ScenarioException>(() => ScenarioLoader.Load(Path.Combine(_root, scenarioPath)));
+            Assert.ThrowsAny<ScenarioException>(() => ScenarioLoader.LoadInfo(Path.Combine(_root, scenarioPath), null, new ScenarioOverrides()).Desc);
             return;
         }
 
-        ScenarioDesc desc = ScenarioLoader.Load(Path.Combine(_root, scenarioPath));
+        ScenarioDesc desc = ScenarioLoader.LoadInfo(Path.Combine(_root, scenarioPath), null, new ScenarioOverrides()).Desc;
         CreateStatus st = Simulation.TryCreate(in desc, out Simulation? sim);
         Assert.Equal(r.GetProperty("create_status").GetInt32(), (int)st);
         if (st != CreateStatus.Ok)
@@ -124,7 +124,7 @@ public sealed class RustPilotGoldenTests
     [Fact]
     public void NetworkHash_IsStable_AndIgnoresRuntimeState()
     {
-        ScenarioDesc desc = ScenarioLoader.Load(Path.Combine(_root, RustPilotGolden.DemoGrid));
+        ScenarioDesc desc = ScenarioLoader.LoadInfo(Path.Combine(_root, RustPilotGolden.DemoGrid), null, new ScenarioOverrides()).Desc;
         using Simulation a = Simulation.Create(in desc);
         using Simulation b = Simulation.Create(in desc);
         ulong h0 = a.ComputeNetworkHash();

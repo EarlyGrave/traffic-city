@@ -25,6 +25,9 @@ public sealed class ParkingLegsTests
     private static ScenarioDesc Load(string name = "s1k-res-park") =>
         ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", name + ".json")).Desc;
 
+    /// <summary>s1k-res-park в режиме legacy: допуски поиска места и <c>res_stuck</c> откалиброваны на прежних участках (RP8, road-profiles.md «RP8: замеры»).</summary>
+    private static ScenarioDesc LoadLegacy() => Sim.Core.Tests.Save.ProfileSaveFixtures.LegacyRes("s1k-res-park");
+
     private static Simulation Make(ScenarioDesc d, int threads = 1) => Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
 
     private static CityWorld City(Simulation sim) => sim.World.City!;
@@ -206,7 +209,7 @@ public sealed class ParkingLegsTests
     public void ThreeDays_PK2To5_NoStuck_NoOverflow_NoSearch()
     {
         // Три игровых суток: PK2-PK5 каждые 100 тиков (проверка раз в 1000 для скорости Debug), res_stuck = 0 (цель позади на том же сегменте - перестановка без выезда), поиска и Overflow нет.
-        using Simulation sim = Make(Load());
+        using Simulation sim = Make(LoadLegacy());
         for (int t = 0; t < 2160; t++)
         {
             sim.Step(100);
@@ -230,7 +233,7 @@ public sealed class ParkingLegsTests
     public void T5_TargetStandFull_CarsParkOnNearbyCurb_NobodyCirclesAndNoWaiting()
     {
         // Фикстура T5 (cs2-lessons.md): стоянка цели полна, обочина рядом свободна -> все гости встают на обочину; на дороге у каждой машины гостя есть резерв (кружить нечем), ожидания мест нет.
-        using Simulation sim = Make(Load());
+        using Simulation sim = Make(LoadLegacy());
         CloseBuildingStands(sim);
         ParkingStore p = Park(sim);
         int curbGuests = 0;

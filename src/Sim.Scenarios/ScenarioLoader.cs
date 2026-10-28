@@ -64,6 +64,12 @@ public static partial class ScenarioLoader
         AllowTrailingCommas = false,
     };
 
+    /// <summary>
+    /// Подмена по умолчанию для <see cref="LoadInfo"/>, когда <c>overrides</c> не задан. В игре и утилитах всегда <c>null</c>; тесты ставят замороженный каталог-фикстуру,
+    /// чтобы golden сценариев <c>*-res</c> не зависели от игрового <c>scenarios/road-profiles.json</c> (road-profiles.md, RP8).
+    /// </summary>
+    public static ScenarioOverrides? DefaultOverrides { get; set; }
+
     public static ScenarioDesc Load(string path) => LoadInfo(path).Desc;
 
     /// <param name="path">Файл сценария.</param>
@@ -71,6 +77,7 @@ public static partial class ScenarioLoader
     /// <param name="overrides">Подмена внешних файлов (каталог профилей дорог, golden-тесты); <c>null</c> - как в сценарии.</param>
     public static LoadedScenario LoadInfo(string path, IReadOnlyList<PackageSearchDir>? searchDirs = null, ScenarioOverrides? overrides = null)
     {
+        overrides ??= DefaultOverrides;
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
         return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides);

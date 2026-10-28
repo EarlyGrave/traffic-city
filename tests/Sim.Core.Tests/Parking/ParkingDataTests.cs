@@ -338,7 +338,8 @@ public sealed class ParkingDataTests
     [Fact]
     public void BuildRoad_AddsCurbsForNewLots_AndCatchmentsStayEqualToFull()
     {
-        using Simulation sim = Make(Load());
+        // legacy: улица за границей города (z = 1700 > 1520); в режиме профилей сетка участков ограничена картой и вне её участков нет (RP8)
+        using Simulation sim = Make(Sim.Core.Tests.Save.ProfileSaveFixtures.LegacyRes("s1k-res-park"));
         sim.Step(200);
         ParkingStore p = Park(sim);
         CityWorld c = City(sim);
