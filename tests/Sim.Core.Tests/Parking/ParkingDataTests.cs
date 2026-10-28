@@ -338,15 +338,14 @@ public sealed class ParkingDataTests
     [Fact]
     public void BuildRoad_AddsCurbsForNewLots_AndCatchmentsStayEqualToFull()
     {
-        // legacy: улица за границей города (z = 1700 > 1520); в режиме профилей сетка участков ограничена картой и вне её участков нет (RP8)
-        using Simulation sim = Make(Sim.Core.Tests.Save.ProfileSaveFixtures.LegacyRes("s1k-res-park"));
+        using Simulation sim = Make(Load());
         sim.Step(200);
         ParkingStore p = Park(sim);
         CityWorld c = City(sim);
         int lots = c.Lots.Count;
         int objects = p.Pool.AliveCount;
-        // Отдельная улица к югу от города: участки с обеих сторон, обочины создаются хуком BuildRoad.
-        var cmd = Command.MakeBuildRoad(new BuildRoadCmd { Ax = -600, Az = 1700, Bx = 600, Bz = 1700, SpeedLimit = 13.9f, LanesAB = 1, LanesBA = 1, Kind = RoadKind.Street }, 3);
+        // Отдельная короткая улица в середине квартала у южного края карты (z = 1444, карта до 1520; в режиме профилей участки только внутри карты; свободная полоса между рядами участков): участки с обеих сторон, обочины создаются хуком BuildRoad.
+        var cmd = Command.MakeBuildRoad(new BuildRoadCmd { Ax = -708, Az = 1444, Bx = -636, Bz = 1444, SpeedLimit = 13.9f, LanesAB = 1, LanesBA = 1, Kind = RoadKind.Street }, 3);
         Assert.Equal(RejectReason.None, Sim.Core.Tests.Tools.ToolsFixture.Run(sim, in cmd));
         Assert.True(c.Lots.Count > lots, "BuildRoad не нарезал участки");
         int newCurbs = 0;
@@ -355,7 +354,7 @@ public sealed class ParkingDataTests
             newCurbs += p.CurbOfLot[lot] >= 0 ? 1 : 0;
         }
 
-        Assert.True(newCurbs > 0 && p.Pool.AliveCount == objects + newCurbs, $"newCurbs={newCurbs} alive {objects} -> {p.Pool.AliveCount}");
+        Assert.True(newCurbs > 0 && p.Pool.AliveCount == objects + newCurbs, $"new lots={c.Lots.Count - lots} newCurbs={newCurbs} alive {objects} -> {p.Pool.AliveCount}");
         AssertValid(sim);
         int[] count = (int[])p.Catch.Count.Clone();
         int[] fac = (int[])p.Catch.Fac.Clone();
