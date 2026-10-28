@@ -46,7 +46,11 @@ jobs:
       - name: Bench s1k A/B vs base commit
         run: |
           base=""
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then
+            echo "Релиз dev -> main: гейт по бюджету (A/B через целые этапы мерит принятый рост, а не регрессию)."
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Push в main (squash релиза dev -> main): гейт по бюджету."
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch --no-tags origin "${{ github.base_ref }}"
             base=$(git merge-base "origin/${{ github.base_ref }}" HEAD || true)
           elif [ "${{ github.event_name }}" = "push" ]; then
