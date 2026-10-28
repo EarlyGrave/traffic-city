@@ -105,13 +105,27 @@ public class ProfileSaveTests
     [Fact]
     public void ResidentsLots_GridColumns_RoundTrip_AndValidate()
     {
-        ScenarioDesc d = Sim.Core.Tests.City.CityFixtures.S1kRes();
+        // RP5: столбцы сетки живут только в мире с каталогом профилей (участки на сетке); legacy-мир с такими столбцами отклоняется.
+        ScenarioDesc legacy = Sim.Core.Tests.City.CityFixtures.S1kRes();
+        legacy.Routing.Levels = 0;
+        using (Simulation ls = Make(in legacy))
+        {
+            ls.Step(50);
+            LotStore ll = ls.World.City!.Lots;
+            Assert.All(ll.Orient.AsSpan(0, ll.Count).ToArray(), o => Assert.Equal(LotOrient.Legacy, o));
+            ll.CellsF[1] = 3;
+            ll.CellsD[1] = 2;
+            ll.Orient[1] = 2;
+            AssertRejected(WorldSaveFixtures.SaveBytes(ls));
+        }
+
+        ScenarioDesc d = ProfileSaveFixtures.Res().Desc;
         d.Routing.Levels = 0;
         using Simulation sim = Make(in d);
         sim.Step(50);
         LotStore l = sim.World.City!.Lots;
         Assert.True(l.Count >= 3);
-        Assert.All(l.Orient.AsSpan(0, l.Count).ToArray(), o => Assert.Equal(LotOrient.Legacy, o));
+        Assert.All(l.Orient.AsSpan(0, l.Count).ToArray(), o => Assert.NotEqual(LotOrient.Legacy, o));
         l.CellX[1] = -7;
         l.CellZ[1] = 12;
         l.CellsF[1] = 3;
@@ -130,7 +144,7 @@ public class ProfileSaveTests
 
         // Сочетания вне §4.4 отклоняются: ось 7; клетки у legacy-участка; участок на сетке без размера.
         AssertRejected(Patch<byte>(bytes, "LOTS", 15, (_, a) => a[1] = 7));
-        AssertRejected(Patch<byte>(bytes, "LOTS", 13, (_, a) => a[0] = 1));
+        AssertRejected(Patch<byte>(bytes, "LOTS", 15, (_, a) => a[0] = LotOrient.Legacy));   // Orient = 255 при ненулевых клетках
         AssertRejected(Patch<byte>(bytes, "LOTS", 14, (_, a) => a[1] = 0));
     }
 

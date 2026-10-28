@@ -78,6 +78,23 @@ internal static class ProfileSaveFixtures
         return d;
     }
 
+    /// <summary>Сценарий <c>scenarios/&lt;name&gt;.json</c> режима жителей по профилям фикстуры (улицы <c>street_2</c>, артерии <c>arterial_4</c>): участки на мировой сетке (RP5).</summary>
+    public static LoadedScenario Res(string name = "s1k-res")
+    {
+        string root = GenFixture.RepoRoot();
+        JsonNode n = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "scenarios", name + ".json")))!;
+        n["road_profiles_file"] = "road-profiles.json";
+        n["city"]!["profiles"] = new JsonObject { ["street"] = "street_2", ["arterial"] = "arterial_4" };
+        n["capacities"]!["max_lots"] = 12_000;   // участки на сетке мельче и плотнее прежних: запас по ёмкости
+        n["capacities"]!["max_buildings"] = 9_000;
+        return ScenarioLoader.Parse(
+            n.ToJsonString(),
+            rel => File.ReadAllText(Path.IsPathRooted(rel) ? rel : Path.Combine(root, "scenarios", rel)),
+            name + "-prof",
+            null,
+            new ScenarioOverrides { Profiles = FixturePath });
+    }
+
     /// <summary>s1k с профилями фикстуры: улицы <c>street_2</c>, артерии <c>arterial_4</c>.</summary>
     public static LoadedScenario S1k()
     {

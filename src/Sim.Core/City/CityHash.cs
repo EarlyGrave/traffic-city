@@ -171,6 +171,15 @@ internal static class CityHash
             h.Add(l.Density[i]);
             h.Add(l.Building[i]);
             h.Add(l.Flags[i]);
+            if (l.Orient[i] != LotOrient.Legacy)
+            {
+                // участок на мировой сетке (RP5): клетки - состояние; legacy-участки хэшируются как раньше
+                h.Add(l.CellX[i]);
+                h.Add(l.CellZ[i]);
+                h.Add(l.CellsF[i]);
+                h.Add(l.CellsD[i]);
+                h.Add(l.Orient[i]);
+            }
         }
     }
 
