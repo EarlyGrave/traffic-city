@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Sim.Core.Api;
 using Sim.Core.Metrics;
+using Sim.Core.Rules;
 using Sim.Core.Util;
 using Sim.Scenarios;
 
@@ -18,6 +19,8 @@ namespace Sim.Headless.Golden;
 public static class RustPilotGolden
 {
     public const int GoldenVersion = 1;
+    public const int IdmCount = 10_000;
+    public const int IdmPowCount = 1_000;
     public const string DemoGrid = "scenarios/demo-grid.json";
     public const string FixturesDir = "scenarios";
 
@@ -107,8 +110,8 @@ public static class RustPilotGolden
         return sb.ToString();
     }
 
-    /// <summary>Содержимое <c>util.json</c>: PCG32, FNV-1a 64, XXH64, min/max, float-&gt;int, денормалы (rust-pilot.md §5.1).</summary>
-    public static string UtilJson()
+    /// <summary>Содержимое <c>util.json</c>: PCG32, FNV-1a 64, XXH64, min/max, float-&gt;int, денормалы, векторы IDM (rust-pilot.md §5.1).</summary>
+    public static string UtilJson(string root)
     {
         var sb = new StringBuilder();
         sb.Append("{\n  \"golden_version\": ").Append(N(GoldenVersion)).Append(",\n");
@@ -121,8 +124,73 @@ public static class RustPilotGolden
         AppendMinMax(sb);
         sb.Append(",\n");
         AppendFloatInt(sb);
+        sb.Append(",\n");
+        AppendIdm(sb, root, IdmCount, IdmDeltaMix.Gated);
         sb.Append("\n}\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Содержимое <c>idm-pow.json</c>: наборы IDM с <c>delta</c> вне {2, 4} (<c>MathF.Pow</c> = системный libm). Это не гейт:
+    /// между ОС (glibc/UCRT) биты расходятся, Rust считает счётчик расхождений (rust-pilot.md §6.3, R7).
+    /// </summary>
+    public static string IdmPowJson(string root)
+    {
+        var sb = new StringBuilder();
+        sb.Append("{\n  \"golden_version\": ").Append(N(GoldenVersion)).Append(",\n");
+        AppendIdm(sb, root, IdmPowCount, IdmDeltaMix.Other);
+        sb.Append("\n}\n");
+        return sb.ToString();
+    }
+
+    private enum IdmDeltaMix
+    {
+        Gated,
+        Other,
+    }
+
+    private static void AppendIdm(StringBuilder sb, string root, int count, IdmDeltaMix mix)
+    {
+        ScenarioDesc desc = ScenarioLoader.Load(Path.Combine(root, DemoGrid));
+        VehicleTypeDesc[] types = desc.VehicleTypes;
+        bool gated = mix == IdmDeltaMix.Gated;
+        var r = Pcg32.Create(gated ? 0x1D17UL : 0x1D18UL, (ulong)RngStream.Behaviour);
+        float[] otherDeltas = [3f, 2.5f, 1.5f, 5f, 6f, 1f, 3.3f, 0.5f];
+        sb.Append(gated ? "  \"idm\": {\n" : "  \"idm_other_delta\": {\n");
+        sb.Append("    \"note\": \"rows are f32 bits [amax, b, T, s0, delta, max_speed, speed_factor, lane_limit, v, gap, dv, v0 = Idm.DesiredSpeed, a = Idm.Accel]; ")
+            .Append(gated ? "delta in {4, 2}\",\n" : "delta not in {2, 4} (MathF.Pow, not a gate)\",\n");
+        sb.Append("    \"rows\": [\n");
+        for (int i = 0; i < count; i++)
+        {
+            VehicleTypeDesc t = types[(int)r.NextBelow((uint)types.Length)];
+            if (r.NextBelow(2) == 1)
+            {
+                t.Accel = r.NextRange(0.3f, 3f);
+                t.ComfortDecel = r.NextRange(0.5f, 4f);
+                t.HeadwayTime = r.NextRange(0.3f, 3f);
+                t.MinGap = r.NextRange(0.5f, 5f);
+                t.MaxSpeed = r.NextRange(5f, 45f);
+                t.SpeedFactor = r.NextRange(0.7f, 1.3f);
+            }
+
+            t.Delta = gated ? (r.NextBelow(2) == 0 ? 4f : 2f) : otherDeltas[(int)r.NextBelow((uint)otherDeltas.Length)];
+            float limit = r.NextBelow(32) == 0 ? 0.01f : r.NextRange(2.78f, 36.1f);
+            float v = r.NextBelow(16) == 0 ? 0f : r.NextRange(0f, 40f);
+            uint gapKind = r.NextBelow(10);
+            float gap = gapKind == 0 ? Idm.FreeGap : gapKind == 1 ? r.NextRange(0f, 0.02f) : r.NextRange(0.5f, 150f);
+            float dv = r.NextRange(-15f, 25f);
+            float v0 = Idm.DesiredSpeed(in t, limit);
+            float a = Idm.Accel(in t, v, v0, gap, dv);
+            sb.Append("      [")
+                .Append(N(Bits(t.Accel))).Append(", ").Append(N(Bits(t.ComfortDecel))).Append(", ")
+                .Append(N(Bits(t.HeadwayTime))).Append(", ").Append(N(Bits(t.MinGap))).Append(", ")
+                .Append(N(Bits(t.Delta))).Append(", ").Append(N(Bits(t.MaxSpeed))).Append(", ")
+                .Append(N(Bits(t.SpeedFactor))).Append(", ").Append(N(Bits(limit))).Append(", ")
+                .Append(N(Bits(v))).Append(", ").Append(N(Bits(gap))).Append(", ").Append(N(Bits(dv))).Append(", ")
+                .Append(N(Bits(v0))).Append(", ").Append(N(Bits(a))).Append(i + 1 < count ? "],\n" : "]\n");
+        }
+
+        sb.Append("    ]\n  }");
     }
 
     private static void AppendPcg(StringBuilder sb)

@@ -28,3 +28,9 @@ pub fn min_net(x: f32, y: f32) -> f32 {
 pub fn atan2_system(y: f32, x: f32) -> f32 {
     y.atan2(x)
 }
+
+/// `MathF.Pow` через системный libm: только для `Idm` при `delta ∉ {2, 4}` (R7); на Linux x64 совпадает с C#, между ОС - нет (§6.3).
+#[allow(clippy::disallowed_methods)] // второе исключение из clippy.toml: системный powf как у MathF.Pow
+pub fn powf_system(x: f32, y: f32) -> f32 {
+    x.powf(y)
+}
