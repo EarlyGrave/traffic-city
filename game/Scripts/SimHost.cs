@@ -646,6 +646,7 @@ public partial class SimHost : Node3D
 
         _info.Update(delta, _camera?.Distance ?? 1000f);
         _grid?.Update(delta, _camera?.Camera, GetViewport().GetMousePosition(), Input.IsActionPressed(UiActions.SnapOverride));
+        ProcessTools();
         if (newFrame && f.SegmentLoadsFresh && _roadHeat != null && _info.Visible)
         {
             // heatmap дорог в шейдере: раз в 10 тиков (2 Гц) приходит копия нагрузок, обновляется только текстура данных, мешей не трогаем (render.md §3.5)
@@ -945,9 +946,15 @@ public partial class SimHost : Node3D
             return;
         }
 
-        if (_ui != null && _ui.Router.MenuOpen)
+        if (_ui != null && _ui.WorldInputBlocked)
         {
-            return; // меню игры открыто: мир и время молчат
+            return; // меню игры или подтверждение открыто: мир и время молчат
+        }
+
+        if (HandleToolInput(@event))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
         }
 
         if (@event is InputEventKey { Pressed: true, Echo: false })

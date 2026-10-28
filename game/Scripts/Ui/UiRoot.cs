@@ -47,6 +47,15 @@ public sealed partial class UiRoot : CanvasLayer
     private bool _demoToasts;
     private bool _demoList;
     private bool _timeSet;
+    private UiConfirm _confirm = null!;
+    private Control _cursorLayer = null!;
+    private Button _undoButton = null!;
+    private Button _redoButton = null!;
+    private readonly System.Collections.Generic.Dictionary<IUiTool, Control> _toolStrips = new();
+    private static readonly (string Id, string Title, string Key)[] _toolDefs =
+    {
+        ("roads", "Дороги", "R"), ("zones", "Зоны", "Z"), ("transit", "Транспорт", "T"), ("nodes", "Узлы", "J"), ("bulldoze", "Снос", "X"),
+    };
 
     /// <summary>Уведомления: тосты, список «События», источник событий (<see cref="UiNotifyView.Source"/>).</summary>
     public UiNotifyView Notify => _notify;
@@ -86,6 +95,40 @@ public sealed partial class UiRoot : CanvasLayer
     /// <summary>Показано главное меню (игры нет).</summary>
     public bool InMainMenu => _mainMode;
 
+    /// <summary>Подтверждение опасного действия (P13): снос с потерей участков и т.п.</summary>
+    public UiConfirm Confirm => _confirm;
+
+    /// <summary>Слой для меток у курсора (полноэкранный, события мыши пропускает): метка инструмента, подсказки.</summary>
+    public Control CursorLayer => _cursorLayer;
+
+    /// <summary>Открыто что-то, что забирает ввод у мира: меню игры или подтверждение.</summary>
+    public bool WorldInputBlocked => _router.MenuOpen || _confirm.Visible;
+
+    /// <summary>Создаёт настоящий инструмент по id кнопки или клавиши (<c>roads</c>, <c>bulldoze</c>); null - остаётся заглушка. Задаёт SimHost.</summary>
+    public Func<string, IUiTool?>? ToolFactory { get; set; }
+
+    /// <summary>Просьба кнопок ↶ ↷ (Ctrl+Z / Ctrl+Y обрабатывает хост мира).</summary>
+    public event Action? UndoRequested;
+
+    public event Action? RedoRequested;
+
+    /// <summary>Состояние кнопок ↶ ↷ и подсказки с глубиной стека.</summary>
+    public void SetUndoRedo(int undoDepth, int redoDepth)
+    {
+        _undoButton.Disabled = undoDepth <= 0;
+        _redoButton.Disabled = redoDepth <= 0;
+        _undoButton.TooltipText = undoDepth > 0 ? "Отменить (Ctrl+Z), действий: " + undoDepth.ToString(CultureInfo.InvariantCulture) : "Отменить (Ctrl+Z): пока нечего";
+        _redoButton.TooltipText = redoDepth > 0 ? "Повторить (Ctrl+Y), действий: " + redoDepth.ToString(CultureInfo.InvariantCulture) : "Повторить (Ctrl+Y): пока нечего";
+    }
+
+    /// <summary>Строка опций настоящего инструмента: показывается вместо подписи-заглушки, пока инструмент активен.</summary>
+    public void RegisterToolOptions(IUiTool tool, Control strip)
+    {
+        _toolStrips[tool] = strip;
+        _toolOptions.AddChild(strip);
+        strip.Visible = false;
+    }
+
     public override void _EnterTree()
     {
         Layer = 10;
@@ -104,7 +147,7 @@ public sealed partial class UiRoot : CanvasLayer
         switch (StartMode)
         {
             case UiMode.Build:
-                _router.SetTool(new UiPlaceholderTool("roads", "Дороги"));
+                _router.SetTool(MakeTool("roads"));
                 break;
             case UiMode.Inspect:
                 _router.SetInspector(InspectKind.Demo);
@@ -181,7 +224,11 @@ public sealed partial class UiRoot : CanvasLayer
         // Esc живёт здесь, а не в SimHost: порядок «протяжка -> инструмент -> инспектор -> инфо -> меню» знает только роутер
         if (@event.IsActionPressed(UiActions.Cancel))
         {
-            if (_menus.HandleCancel())
+            if (_confirm.Visible)
+            {
+                _confirm.Cancel(); // подтверждение закрывается первым: оно поверх всего
+            }
+            else if (_menus.HandleCancel())
             {
                 // страница меню израсходовала Esc (назад со списка / главное меню)
             }
@@ -196,9 +243,25 @@ public sealed partial class UiRoot : CanvasLayer
 
             GetViewport().SetInputAsHandled();
         }
+        else if (_confirm.Visible)
+        {
+            if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Enter or Key.KpEnter })
+            {
+                _confirm.Accept();
+                GetViewport().SetInputAsHandled();
+            }
+        }
         else if (_mainMode || _router.MenuOpen)
         {
             // под меню (главным или Esc) горячие клавиши времени и инфо-режима молчат
+        }
+        else if (UiActions.Pressed(@event, UiActions.ToolRoads))
+        {
+            ToggleTool("roads");
+        }
+        else if (UiActions.Pressed(@event, UiActions.ToolBulldoze))
+        {
+            ToggleTool("bulldoze");
         }
         else if (@event.IsActionPressed(UiActions.InfoToggle))
         {
@@ -356,7 +419,42 @@ public sealed partial class UiRoot : CanvasLayer
             _notify.Center.MaxPending = 20;
         }
 
+        _cursorLayer = new Control { Name = "CursorLayer", MouseFilter = Control.MouseFilterEnum.Ignore }.WithFullRect();
+        _root.AddChild(_cursorLayer);
         BuildModal();
+        _confirm = new UiConfirm(_root);
+    }
+
+    private IUiTool MakeTool(string id)
+    {
+        IUiTool? real = ToolFactory?.Invoke(id);
+        if (real != null)
+        {
+            return real;
+        }
+
+        foreach ((string tid, string title, _) in _toolDefs)
+        {
+            if (tid == id)
+            {
+                return new UiPlaceholderTool(id, title);
+            }
+        }
+
+        return new UiPlaceholderTool(id, id);
+    }
+
+    /// <summary>Горячая клавиша инструмента: включает его, повторное нажатие (того же режима) выключает.</summary>
+    private void ToggleTool(string id)
+    {
+        if (_router.Tool != null && _router.Tool.Id == id)
+        {
+            _router.SetTool(null);
+        }
+        else
+        {
+            _router.SetTool(MakeTool(id));
+        }
     }
 
     /// <summary>Полоса на всю ширину у верхнего или нижнего края; <paramref name="lift"/> - подъём над нижним краем.</summary>
@@ -409,11 +507,11 @@ public sealed partial class UiRoot : CanvasLayer
 
         // настоящие инструменты - UI4 и T13; пока кнопка включает заглушку (строка опций) - так роутер и Esc проверяются руками.
         // Клавиши R/Z/J/X в UI1 не заняты (T - время суток, §9 ui-spec: перенос на UI2/UI4)
-        foreach ((string id, string title, string key) in new[] { ("roads", "Дороги", "R"), ("zones", "Зоны", "Z"), ("transit", "Транспорт", "T"), ("nodes", "Узлы", "J"), ("bulldoze", "Снос", "X") })
+        foreach ((string id, string title, string key) in _toolDefs)
         {
             Button b = MakeButton(title, toggle: true, disabled: false, 96f);
             b.TooltipText = title + " (" + key + ")";
-            b.Toggled += on => _router.SetTool(on ? new UiPlaceholderTool(id, title) : null);
+            b.Toggled += on => _router.SetTool(on ? MakeTool(id) : null);
             row.AddChild(b);
             _toolButtons[id] = b;
         }
@@ -429,12 +527,14 @@ public sealed partial class UiRoot : CanvasLayer
             }
         };
         row.AddChild(_infoButton);
-        Button undo = MakeButton("↶", toggle: false, disabled: true, 40f);
-        undo.TooltipText = "Отменить (Ctrl+Z): появится вместе с инструментами";
-        row.AddChild(undo);
-        Button redo = MakeButton("↷", toggle: false, disabled: true, 40f);
-        redo.TooltipText = "Повторить (Ctrl+Y): появится вместе с инструментами";
-        row.AddChild(redo);
+        _undoButton = MakeButton("↶", toggle: false, disabled: true, 40f);
+        _undoButton.TooltipText = "Отменить (Ctrl+Z): пока нечего";
+        _undoButton.Pressed += () => UndoRequested?.Invoke();
+        row.AddChild(_undoButton);
+        _redoButton = MakeButton("↷", toggle: false, disabled: true, 40f);
+        _redoButton.TooltipText = "Повторить (Ctrl+Y): пока нечего";
+        _redoButton.Pressed += () => RedoRequested?.Invoke();
+        row.AddChild(_redoButton);
     }
 
     private void BuildLegend()
@@ -527,10 +627,19 @@ public sealed partial class UiRoot : CanvasLayer
     {
         IUiTool? tool = _router.Tool;
         _toolOptions.Visible = tool != null;
+        Control? strip = null;
         if (tool != null)
         {
             _toolOptionsLabel.Text = "Инструмент «" + tool.DisplayName + "»";
+            _toolStrips.TryGetValue(tool, out strip);
         }
+
+        foreach (Control s in _toolStrips.Values)
+        {
+            s.Visible = ReferenceEquals(s, strip);
+        }
+
+        _toolOptionsLabel.Visible = strip == null;
 
         foreach ((string id, Button b) in _toolButtons)
         {

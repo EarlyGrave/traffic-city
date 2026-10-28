@@ -302,7 +302,9 @@ public class ToolAdapterTests
         Assert.Equal("Слишком короткий участок. Тяните дальше: от 20 м", RejectMessages.Full(RejectReason.TooShort));
         Assert.Equal("За границей карты", RejectMessages.Full(RejectReason.OutOfBounds));
         Assert.Equal("Участков под застройку потеряется: 7", RejectMessages.Issue(IssueCode.ZoneLotsLost, 7));
-        Assert.Equal("Не хватает ₽ 2 400", RejectMessages.Shortfall(2400));
+        Assert.Equal("Не хватает $ 2 400", RejectMessages.Shortfall(2400));
+        Assert.Equal("$ 4 000", RejectMessages.Money(4000));
+        Assert.Equal("+$ 3 100", RejectMessages.Money(-3100));
         Assert.True(RejectMessages.IsSilent(RejectReason.InvalidHandle));
         Assert.False(RejectMessages.IsSilent(RejectReason.Busy));
         Assert.Equal(RejectMessages.Label(RejectReason.Overlap), RejectMessages.Issue((IssueCode)(int)RejectReason.Overlap, 0)); // коды 1..99 - те же ошибки

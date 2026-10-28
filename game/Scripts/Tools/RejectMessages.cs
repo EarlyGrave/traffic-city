@@ -59,8 +59,11 @@ public static class RejectMessages
         return hint.Length == 0 ? Label(reason) : Label(reason) + ". " + hint;
     }
 
-    /// <summary>Метка денег: «не хватает ₽ N» - для отказа по деньгам с известной нехваткой (экономика, ui-spec §6.2).</summary>
-    public static string Shortfall(long missing) => "Не хватает ₽ " + missing.ToString("N0", _thousands);
+    /// <summary>Метка денег: «не хватает $ N» - для отказа по деньгам с известной нехваткой (экономика, ui-spec §6.2).</summary>
+    public static string Shortfall(long missing) => "Не хватает $ " + missing.ToString("N0", _thousands);
+
+    /// <summary>Цена действия для метки у курсора: трата - «$ 4 000», возврат - «+$ 3 100» (ui-spec §6.2).</summary>
+    public static string Money(long cost) => cost < 0 ? "+$ " + (-cost).ToString("N0", _thousands) : "$ " + cost.ToString("N0", _thousands);
 
     /// <summary>Текст предупреждения превью; <paramref name="value"/> - <c>PreviewIssue.Value</c> (число зданий, зон, машин). Ошибки (код &lt; 100) - как <see cref="Label"/>.</summary>
     public static string Issue(IssueCode code, int value)

@@ -40,6 +40,16 @@ public static class UiActions
     public static readonly StringName GridShowToggle = "grid_show_toggle";
     public static readonly StringName SnapOverride = "snap_override";
 
+    // инструменты (UI4): R/X включают «Дороги» и «Снос», остальное работает внутри инструмента «Дороги»
+    public static readonly StringName ToolRoads = "tool_roads";
+    public static readonly StringName ToolBulldoze = "tool_bulldoze";
+    public static readonly StringName RoadsPrevProfile = "roads_profile_prev";
+    public static readonly StringName RoadsNextProfile = "roads_profile_next";
+    public static readonly StringName RoadsReplace = "roads_replace";
+    public static readonly StringName RoadsMirror = "roads_mirror";
+    public static readonly StringName Undo = "tool_undo";
+    public static readonly StringName Redo = "tool_redo";
+
     // сохранение (меню, T6.1)
     public static readonly StringName QuickSave = "quick_save";
     public static readonly StringName QuickLoad = "quick_load";
@@ -53,7 +63,8 @@ public static class UiActions
         CamForward, CamBack, CamLeft, CamRight, CamRotateLeft, CamRotateRight, CamFast,
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
         TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
-        GridSnapToggle, GridShowToggle, SnapOverride, QuickSave, QuickLoad, Cancel,
+        GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
+        QuickSave, QuickLoad, Cancel,
     };
 
     /// <summary>Добавить действия, которых ещё нет в <see cref="InputMap"/> (повторный вызов ничего не меняет; ремап из файла настроек не затирается).</summary>
@@ -86,6 +97,15 @@ public static class UiActions
         Add(GridShowToggle, Phys(Key.G, shift: true));
         Add(SnapOverride, Code(Key.Shift));
 
+        Add(ToolRoads, Phys(Key.R));
+        Add(ToolBulldoze, Phys(Key.X));
+        Add(RoadsPrevProfile, Phys(Key.Bracketleft));
+        Add(RoadsNextProfile, Phys(Key.Bracketright));
+        Add(RoadsReplace, Phys(Key.U));
+        Add(RoadsMirror, Phys(Key.M));
+        Add(Undo, Phys(Key.Z, ctrl: true));
+        Add(Redo, Phys(Key.Y, ctrl: true), Phys(Key.Z, shift: true, ctrl: true));
+
         Add(QuickSave, Code(Key.F5));
         Add(QuickLoad, Code(Key.F9));
 
@@ -98,7 +118,7 @@ public static class UiActions
     /// </summary>
     public static bool Pressed(InputEvent e, StringName action) => e.IsActionPressed(action, false, true);
 
-    private static InputEventKey Phys(Key code, bool shift = false) => new() { PhysicalKeycode = code, ShiftPressed = shift };
+    private static InputEventKey Phys(Key code, bool shift = false, bool ctrl = false) => new() { PhysicalKeycode = code, ShiftPressed = shift, CtrlPressed = ctrl };
 
     private static InputEventKey Code(Key code) => new() { Keycode = code };
 

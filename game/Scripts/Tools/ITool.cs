@@ -76,7 +76,7 @@ public abstract class ToolBase : ITool
         Dragging = false;
     }
 
-    public bool CancelGesture()
+    public virtual bool CancelGesture()
     {
         bool was = Dragging;
         OnCancel();

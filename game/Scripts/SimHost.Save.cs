@@ -166,6 +166,7 @@ public partial class SimHost
     private void AfterStart()
     {
         AttachEventSource();
+        InitTools();
         _nextAutosaveTick = -1;
         _menuPaused = false;
         SyncMenuPause();

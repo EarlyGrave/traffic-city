@@ -97,6 +97,9 @@ public sealed class UiRouter
     /// <summary>Главный из активных режимов (для подписей и скриншотов): стройка > инспектор > инфо > обзор.</summary>
     public UiMode Mode => Tool != null ? UiMode.Build : Inspected != InspectKind.None ? UiMode.Inspect : InfoActive ? UiMode.Info : UiMode.Overview;
 
+    /// <summary>Инструмент сам сменил то, что видно в тулбаре и строке опций (режим «Снос» подсвечивает свою кнопку): перерисовать.</summary>
+    public void NotifyChanged() => StateChanged?.Invoke();
+
     public void SetTool(IUiTool? tool)
     {
         if (ReferenceEquals(Tool, tool))
