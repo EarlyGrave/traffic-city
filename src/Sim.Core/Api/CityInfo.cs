@@ -73,6 +73,7 @@ public static class LotRenderFlags
     public const byte Lost = 1;          // дорога снесена
     public const byte Painted = 2;       // зону задал игрок
     public const byte HasBuilding = 4;
+    public const byte Abandoned = 8;     // здание участка заброшено (<c>BuildingState.Abandoned</c>); производное, в сейве не хранится
 }
 
 /// <summary>

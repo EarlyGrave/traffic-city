@@ -204,6 +204,29 @@ public sealed partial class Simulation : IDisposable
 
     public NetworkView Network => _disposed ? default : _w.Net.GetView(_w.WorldGridOriginX, _w.WorldGridOriginZ);
 
+    /// <summary>
+    /// Текущий план светофора узла в виде команды (<c>Mode</c> Fixed/Adaptive/..., <c>Green0..7</c>, <c>PhaseCount</c>, <c>CycleTicks</c>, <c>OffsetTicks</c>, жёлтый/all-red, <c>Flags</c>).
+    /// Живое состояние ядра: верно после Load без desc. false - узел вне диапазона, мёртв или без светофора (<c>plan</c> = default). Без аллокаций.
+    /// </summary>
+    public bool TryGetSignalPlan(int node, out SetSignalPlanCmd plan)
+    {
+        plan = default;
+        if (_disposed || (uint)node >= (uint)_w.Net.NodeCount)
+        {
+            return false;
+        }
+
+        ref readonly NodeData nd = ref _w.Net.Nodes[node];
+        int slot = nd.Signal;
+        if (!NetworkAlive.IsAlive(nd.Generation) || slot < 0 || slot >= _w.Signals.Count)
+        {
+            return false;
+        }
+
+        plan = _w.Signals.ReadPlan(slot);
+        return true;
+    }
+
     /// <summary>События последнего Step (буфер очищается в его начале).</summary>
     public ReadOnlySpan<SimEvent> Events => _disposed ? default : new ReadOnlySpan<SimEvent>(_w.Events, 0, _w.EventCount);
 

@@ -351,6 +351,10 @@ public sealed partial class Simulation
             if (l.Building[i] >= 0)
             {
                 flags |= LotRenderFlags.HasBuilding;
+                if (c.Buildings.State[l.Building[i]] == (byte)BuildingState.Abandoned)
+                {
+                    flags |= LotRenderFlags.Abandoned;
+                }
             }
 
             dst[i] = new LotRenderData
