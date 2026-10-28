@@ -550,3 +550,7 @@
 - **Python на Windows:** `open(p, 'w')` без `newline=''` пишет CRLF - `dotnet format --verify-no-changes` падает на ENDOFLINE; править файлы с `newline=''` или через `sed`.
 
 - **2026-10-28: squash-мерж PR dev → main удалил ветку `dev` на GitHub** (в репозитории включено авто-удаление head-веток). Восстановлено пушем локальной `dev`. После релизного мержа: проверить `git ls-remote origin refs/heads/dev`, при отсутствии — `git push origin dev`; затем влить `origin/main` в `dev` (squash даёт расходящуюся историю), иначе следующий PR покажет лишние коммиты.
+## L46: перекалибровка s10k-res (2026-10-28)
+- **Одноразовые пробы вне репозитория:** консольный проект внутри дерева репо наследует `Directory.Build.props` (`-warnaserror`, IDE0011) и PostToolUse-хук собирает его при каждой правке; пробу держать в scratchpad с абсолютными `ProjectReference`. Числа `PendingTrips` и `WaitDepart` без правки ядра: `World` через рефлексию (`internal`), `WaitDepart` — перебором `GetResidentGeneration` + `TryGetResidentInfo`.
+- **Бенч не печатает `res_tours_cancelled` и `res_stuck`** (только `city-run` пишет `res_stuck`): для приёмки `*-res` нужна проба или тест по `Simulation.Counters`.
+- **Граница здорового `s10k-res` — `initial_fill` ≈ 0.08** (≈ 12.8 тыс. жителей): на seed 12 уже 0.55 % ожиданий ≥ 60 с и поездок в окне меньше, чем при 0.07. Перегруженный `s10k-res-overload` (0.65) за двое суток доходит до gridlock и не разгружается (res-congestion.md §9).
