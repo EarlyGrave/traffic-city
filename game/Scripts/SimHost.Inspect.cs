@@ -241,6 +241,14 @@ public partial class SimHost
         _pickHit = origin + (dir * t);
         _pickDist = origin.DistanceTo(_pickHit);
         _pickVehicleRadius = MathF.Max(RoutePickMinRadius, _pickDist * 0.012f);
+        if (_info.Active && _info.Layer is InfoMode.LayerTraffic or InfoMode.LayerPeds)
+        {
+            // клик в слое «Трафик»/«Пешеходы» (UI7, ui-spec.md §8): инспектор сегмента; мимо дороги - узел, затем сброс выбора
+            _pickStage = PickStage.None;
+            PickSegmentFirst();
+            return;
+        }
+
         _pickPeds = _peds != null && PedsAsAgents(_camera.Distance);
         _pickStage = PickStage.Vehicle;
         _pickId = _host.TryRequestPickVehicle(_pickHit.X, _pickHit.Z, _pickVehicleRadius);
@@ -296,6 +304,19 @@ public partial class SimHost
                 PickStatic();
             }
         }
+    }
+
+    /// <summary>Клик в инфо-слое дорог/тротуаров: сегмент приоритетнее узла (ему и принадлежит heatmap под курсором).</summary>
+    private void PickSegmentFirst()
+    {
+        if (_frame != null && _roadsWorld != null
+            && _roadsWorld.TrySegment(_pickHit.X, _pickHit.Z, MathF.Max(SegmentPickMinRadius, _pickDist * 0.012f), out SegmentHit hit))
+        {
+            SelectSegment(_frame.Network.View, hit.Ref.Index);
+            return;
+        }
+
+        PickStatic();
     }
 
     /// <summary>Машины и пешехода под курсором нет: узел, затем сегмент; ничего - снять выбор.</summary>

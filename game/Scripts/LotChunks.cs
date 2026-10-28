@@ -18,11 +18,15 @@ public static class LotChunks
 
     public const float PadY = -0.13f;
 
+    /// <summary>Нарисованных участков по видам зоны (индекс = <c>LotZone</c>) - для сводки легенды слоя «Зоны» (UI7).</summary>
+    public static readonly int[] ZoneCounts = new int[8];
+
     private static LotRenderData[] _buf = Array.Empty<LotRenderData>();
 
     /// <summary>Дописать подложки участков в <paramref name="map"/>; возвращает число нарисованных.</summary>
     public static int Append(Dictionary<long, MeshBuilder> map, Simulation sim)
     {
+        Array.Clear(ZoneCounts);
         int count = sim.LotCount;
         if (count <= 0)
         {
@@ -45,6 +49,11 @@ public static class LotChunks
             if ((l.Flags & LotRenderFlags.Lost) != 0 || !Tones(l.Zone, out Color tone, out Color zone))
             {
                 continue;
+            }
+
+            if (l.Zone < ZoneCounts.Length)
+            {
+                ZoneCounts[l.Zone]++;
             }
 
             MeshBuilder b = ChunkGrid.Get(map, ChunkGrid.Key(l.X, l.Z, RoadChunks.FarCell), 4, true);

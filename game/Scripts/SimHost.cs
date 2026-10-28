@@ -668,6 +668,7 @@ public partial class SimHost : Node3D
         }
 
         _info.Update(delta, _camera?.Distance ?? 1000f);
+        UpdateLegend(f);
         _grid?.Update(delta, _camera?.Camera, GetViewport().GetMousePosition(), Input.IsActionPressed(UiActions.SnapOverride));
         ProcessTools();
         if (newFrame && f.SegmentLoadsFresh && _roadHeat != null && _info.Visible)
@@ -1849,6 +1850,28 @@ public partial class SimHost : Node3D
         if (_status != null)
         {
             _status.Visible = on || _statusError;
+        }
+    }
+
+    /// <summary>Числа легенды инфо-слоя (UI7): строки легенда пересобирает только при смене значений, так что в кадре 0 аллокаций.</summary>
+    private void UpdateLegend(SimFrame f)
+    {
+        if (_ui == null || !_info.Active)
+        {
+            return;
+        }
+
+        switch (_info.Layer)
+        {
+            case InfoMode.LayerTraffic when _roadHeat != null:
+                _ui.Legend.SetTraffic(_roadHeat.RoadAvgLoad, _roadHeat.RoadP95, f.Stats.StuckVehicles);
+                break;
+            case InfoMode.LayerPeds when _pedStatic != null:
+                _ui.Legend.SetPeds(_pedStatic.Heat.PedTop, _pedStatic.Heat.PedTotal, _pedStatic.Heat.PedEdges);
+                break;
+            case InfoMode.LayerZones:
+                _ui.Legend.SetZones(LotChunks.ZoneCounts[1], LotChunks.ZoneCounts[2], LotChunks.ZoneCounts[3]);
+                break;
         }
     }
 
