@@ -115,7 +115,7 @@ internal sealed class RouteBatch : IRangeJob
         _usedCount = 0;
         if (limit > 0)
         {
-            CollectRerouting(maxQueries, limit);
+            CollectRerouting(maxQueries, maxWork, limit);
             CollectTrips(limit);
         }
 
@@ -281,13 +281,22 @@ internal sealed class RouteBatch : IRangeJob
     }
 
     // (A) Rerouting: фильтры RoutePhase.RerouteVehicles до вызова Build; Timed - не больше timedCap.
-    private void CollectRerouting(int maxQueries, int limit)
+    private void CollectRerouting(int maxQueries, int maxWork, int limit)
     {
         World w = _w;
         RingBuffer<RerouteEntry> q = w.Rerouting;
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
         int timedCap = maxQueries == int.MaxValue ? int.MaxValue : Math.Max(1, maxQueries / RoutePhase.TimedBudgetDivisor);
+        // Доля работы плановых (timedWorkCap) при сборе неизвестна: оцениваем число плановых запросов по средней работе, иначе очередь плановых
+        // (они стоят перед поездками) забила бы пакет, а повтор отложил бы их в хвост по работе - счёт впустую и поездки считаются без пакета.
+        int timedEst = int.MaxValue;
+        if (maxWork != int.MaxValue && _avgWork > 0f)
+        {
+            int timedWorkCap = Math.Max(1, maxWork / RoutePhase.TimedBudgetDivisor);
+            timedEst = (int)MathF.Ceiling(WorkSlack * timedWorkCap / _avgWork) + 1;
+        }
+
         int timed = 0;
         int n = q.Count;
         for (int k = 0; k < n; k++)
@@ -305,6 +314,12 @@ internal sealed class RouteBatch : IRangeJob
 
                 if (timed >= timedCap)
                 {
+                    continue;
+                }
+
+                if (timed >= timedEst)
+                {
+                    _truncated = true;   // оценка по работе: пакет неполный, запрос вне пакета - не расхождение фильтров
                     continue;
                 }
 
