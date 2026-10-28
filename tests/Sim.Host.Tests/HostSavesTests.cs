@@ -83,6 +83,35 @@ public class HostSavesTests
     }
 
     [Fact]
+    public void CollectEvents_GathersAllTicks_AndDoesNotChangeHash()
+    {
+        ulong plain;
+        using (SimThreadHost a = Start("s1k"))
+        {
+            RunTo(a, 600);
+            using ExclusiveAccess ex = a.AcquireExclusive();
+            plain = ex.Simulation!.ComputeStateHash();
+        }
+
+        using SimThreadHost b = Start("s1k");
+        b.CollectEvents = true;
+        RunTo(b, 600);
+        var got = new System.Collections.Generic.List<SimEvent>();
+        b.DrainEvents(got);
+        Assert.NotEmpty(got);
+        Assert.True(got.Select(e => e.Tick).Distinct().Count() > 1, "события только одного тика: пачка теряет события");
+        for (int i = 1; i < got.Count; i++)
+        {
+            Assert.True(got[i].Tick >= got[i - 1].Tick);
+        }
+
+        b.DrainEvents(got = new System.Collections.Generic.List<SimEvent>());
+        Assert.Empty(got);
+        using ExclusiveAccess exb = b.AcquireExclusive();
+        Assert.Equal(plain, exb.Simulation!.ComputeStateHash());
+    }
+
+    [Fact]
     public void Save_AfterHostDisposed_Throws()
     {
         SimThreadHost host = Start("s1k");

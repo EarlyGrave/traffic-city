@@ -165,6 +165,7 @@ public partial class SimHost
     /// <summary>После успешного старта сцены: камера из сейва уже применена, остаются автосохранение, пауза меню и самопроверка.</summary>
     private void AfterStart()
     {
+        AttachEventSource();
         _nextAutosaveTick = -1;
         _menuPaused = false;
         SyncMenuPause();
