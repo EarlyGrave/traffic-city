@@ -1,144 +1,202 @@
 {
   "scenario": "s1k",
+  "content_fingerprint": "ef46db3751d8e999",
   "ticks": 2000,
   "warmup_ticks": 2400,
   "threads": 1,
-  "commit": "d32717e",
+  "view": "all",
+  "seed": 20261024,
+  "signal_mode": "adaptive",
+  "signal_coordination": "legacy",
+  "commit": "24f7c99",
   "environment": {
     "runtime": ".NET 10.0.13",
     "os": "Ubuntu 24.04.5 LTS",
-    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
-    "cpu_count": 4
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 4,
+    "load_avg_1m_start": 1.03,
+    "load_avg_1m_end": 1.03,
+    "host_foreign_cores": 0.015049736700943485,
+    "host_stolen_cores": 0.045149210102830455
   },
   "perf": {
     "tick_ms": {
-      "p50": 0.16274,
-      "p95": 0.291443,
-      "p99": 0.494192,
-      "max": 3.703227
+      "p50": 0.275434,
+      "p95": 0.431612,
+      "p99": 0.930287,
+      "max": 27.315406,
+      "p999": 5.765918,
+      "spike_ticks_over_2p5x_p50": 38,
+      "max_tick_index": 9
     },
     "work_per_tick": {
-      "behaviour_vehicles": 998.579,
-      "leader_lookahead_hops": 1211.33,
-      "obstacle_gap_calls": 999.914,
-      "conflict_gap_calls_behaviour": 425.4565,
+      "behaviour_vehicles": 998.614,
+      "leader_lookahead_hops": 1211.7945,
+      "obstacle_gap_calls": 999.094,
+      "conflict_gap_calls_behaviour": 464.7555,
       "conflict_gap_calls_integrate": 0,
-      "conflict_gap_mask_rejects": 313.5555,
-      "conflict_entries_scanned": 340.8,
-      "conflict_occupants_scanned": 82.5435,
-      "gate_candidates": 110.192,
-      "gate_trygrant_calls": 110.192,
-      "gate_trygrant_entries": 109.73,
-      "route_refill_checks": 7.0545,
-      "next_conn_recomputes": 6.4165,
-      "snapshot_slots": 1000.9965
+      "conflict_gap_mask_rejects": 339.036,
+      "conflict_entries_scanned": 380.391,
+      "conflict_occupants_scanned": 90.894,
+      "gate_candidates": 115.991,
+      "gate_trygrant_calls": 115.991,
+      "gate_trygrant_entries": 88.81,
+      "route_refill_checks": 7.1545,
+      "next_conn_recomputes": 6.5015,
+      "snapshot_slots": 1000.9975
     },
     "tick_ms_runs": [
       {
-        "p50": 0.16274,
-        "p95": 0.291443
+        "p50": 0.275434,
+        "p95": 0.431612
       },
       {
-        "p50": 0.215925,
-        "p95": 0.400454
+        "p50": 0.275434,
+        "p95": 0.48129
       },
       {
-        "p50": 0.138112,
-        "p95": 0.191062
+        "p50": 0.250906,
+        "p95": 0.341999
       }
     ],
-    "ticks_per_sec": 5517.041746105976,
-    "vehicle_updates_per_sec": 5516034.885987312,
+    "ticks_per_sec": 3012.1849069526215,
+    "vehicle_updates_per_sec": 3011373.1231201976,
     "alloc_bytes_per_tick": 0,
     "gc_gen0": 0,
     "gc_gen1": 0,
     "gc_gen2": 0,
-    "peak_memory_mb": 43.83203125,
-    "bytes_per_vehicle": 6796.512,
+    "peak_memory_mb": 47.00390625,
+    "bytes_per_vehicle": 8134.048,
     "bytes_per_vehicle_note": "(GC.GetTotalMemory(true) after run - GC.GetTotalMemory(true) before Simulation.Create) / active vehicles at end",
     "active_vehicles": 1000,
     "active_vehicles_start": 998,
     "target_vehicles": 1000,
     "ramp_complete": true,
     "warmup_ticks_actual": 2400,
-    "pathfind_queries": 1578,
+    "pathfind_queries": 1512,
     "pathfind_ms_p95": null,
     "pathfind_ms_p95_note": "core public API does not expose per-query search time"
   },
   "traffic": {
-    "avg_speed_kmh": 33.354183197021484,
-    "avg_trip_time_s": 136.44509887695312,
-    "trips_completed_per_min": 58.3636360168457,
+    "avg_speed_kmh": 34.236942291259766,
+    "avg_trip_time_s": 139.6698760986328,
+    "trips_completed_per_min": 65.18181610107422,
     "stuck_vehicles": 0,
+    "stuck_window_mean": 0,
+    "stuck_window_max": 0,
     "gridlock_flag": false,
     "bus_headway_deviation_s": null,
+    "bay_entries": 5,
+    "bay_fallbacks": 0,
+    "bay_yields": 1,
+    "bay_exit_wait_s_mean": 1.02,
+    "max_still_s": 48.25,
+    "still_episodes_60s": 0,
+    "still_episodes_120s": 0,
+    "still_concurrent_60s_max": 0,
+    "still_share_60s": 0,
+    "lane_share_max_mean": 0.7483310198573356,
+    "lane_share_max_p95": 1,
+    "lane_share_samples": 5187,
+    "lane_miss_share": 0.2328767123287671,
     "top10_intersections": [
       {
-        "node": 138,
-        "total": 89,
-        "vehicles_per_min": 24.272726911035456
+        "node": 130,
+        "total": 82,
+        "vehicles_per_min": 22.363636030392218
       },
       {
-        "node": 130,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
+        "node": 138,
+        "total": 82,
+        "vehicles_per_min": 22.363636030392218
       },
       {
         "node": 134,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
+        "total": 81,
+        "vehicles_per_min": 22.090908761728898
       },
       {
         "node": 301,
-        "total": 77,
-        "vehicles_per_min": 20.99999968707562
-      },
-      {
-        "node": 213,
-        "total": 71,
-        "vehicles_per_min": 19.3636360750957
-      },
-      {
-        "node": 305,
-        "total": 70,
-        "vehicles_per_min": 19.09090880643238
-      },
-      {
-        "node": 385,
-        "total": 69,
-        "vehicles_per_min": 18.81818153776906
-      },
-      {
-        "node": 217,
-        "total": 67,
-        "vehicles_per_min": 18.272727000442423
+        "total": 81,
+        "vehicles_per_min": 22.090908761728898
       },
       {
         "node": 51,
-        "total": 66,
-        "vehicles_per_min": 17.999999731779102
+        "total": 76,
+        "vehicles_per_min": 20.727272418412298
       },
       {
-        "node": 117,
-        "total": 66,
-        "vehicles_per_min": 17.999999731779102
+        "node": 55,
+        "total": 75,
+        "vehicles_per_min": 20.45454514974898
+      },
+      {
+        "node": 385,
+        "total": 75,
+        "vehicles_per_min": 20.45454514974898
+      },
+      {
+        "node": 217,
+        "total": 74,
+        "vehicles_per_min": 20.18181788108566
+      },
+      {
+        "node": 221,
+        "total": 74,
+        "vehicles_per_min": 20.18181788108566
+      },
+      {
+        "node": 47,
+        "total": 73,
+        "vehicles_per_min": 19.90909061242234
       }
     ],
-    "note": "traffic counters are cumulative since simulation start (include warmup)"
+    "note": "traffic counters above are cumulative since simulation start (include warmup); the signal_* / *_window fields below are deltas over the measured window",
+    "signal_wait_s": {
+      "straight": 6.217800729040097,
+      "right": 6.08586387434555,
+      "left": 11.772680412371134,
+      "uturn": null
+    },
+    "signal_wait_p95_s": {
+      "straight": 29,
+      "right": 32,
+      "left": 36,
+      "uturn": null
+    },
+    "signal_grants": {
+      "straight": 823,
+      "right": 191,
+      "left": 194,
+      "uturn": 0
+    },
+    "left_wait_max_s": 50.7,
+    "arterial_signal_grants": 1208,
+    "arterial_stop_share": 0.5289735099337748,
+    "stuck_episodes": 0,
+    "starve_denials": 2352,
+    "grants_revoked": 19,
+    "arrow_phases": 15,
+    "spill_outs": 0,
+    "exit_claims": 0,
+    "exit_claim_denials": 0,
+    "gate_denied_exit": 28953,
+    "trips_completed_window": 219,
+    "avg_speed_kmh_window": 34.0858655847751
   },
   "routing": {
-    "pathfind_queries": 1578,
-    "pathfind_work": 1411655,
-    "pathfind_expanded_nodes": 286503,
+    "pathfind_queries": 1512,
+    "pathfind_work": 1320886,
+    "pathfind_expanded_nodes": 267361,
     "route_failed": 0,
     "route_deferred": 0,
-    "reroutes": 107,
-    "timed_checks": 959,
-    "timed_triggered": 245,
-    "timed_reroutes": 70,
-    "plan_unpacks": 981,
-    "unpack_work": 46561,
-    "window_refills": 1492,
+    "reroutes": 55,
+    "timed_checks": 929,
+    "timed_triggered": 168,
+    "timed_reroutes": 42,
+    "plan_unpacks": 931,
+    "unpack_work": 39986,
+    "window_refills": 1523,
     "refill_late": 0,
     "plan_compactions": 0,
     "cost_recalcs": 7,
@@ -146,6 +204,14 @@
     "customize_work": 419832,
     "customize_lag_ticks": 0,
     "overlay_rebuilds": 0,
-    "overlay_disabled": 0
+    "overlay_disabled": 0,
+    "route_deferred_window": 0,
+    "pathfind_queries_window": 419,
+    "pathfind_work_window": 374070,
+    "reroutes_window": 51,
+    "timed_reroutes_window": 35,
+    "customize_work_window": 239904,
+    "refill_late_window": 0,
+    "customize_lag_ticks_window": 0
   }
 }
