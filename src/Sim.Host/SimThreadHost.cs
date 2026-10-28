@@ -51,6 +51,7 @@ public sealed partial class SimThreadHost : IDisposable
     private long _target;
     private int _stop;
     private int _exclusiveRequested;
+    private int _exclusiveGen;           // номер завершённого эксклюзивного доступа: поток симуляции выходит из ожидания по смене, а не по сбросу события (гонка при подряд идущих доступах)
     private int _republish;
     private int _state = (int)HostState.Running;
     private Exception? _fault;
@@ -250,6 +251,7 @@ public sealed partial class SimThreadHost : IDisposable
     {
         Volatile.Write(ref _republish, 1);
         Volatile.Write(ref _exclusiveRequested, 0);
+        Interlocked.Increment(ref _exclusiveGen); // после сброса запроса: поток симуляции, выйдя из ожидания по смене номера, не должен снова увидеть старый запрос
         _resume.Set();
         _wake.Set();
     }
@@ -298,9 +300,13 @@ public sealed partial class SimThreadHost : IDisposable
                 _wake.Reset();
                 if (Volatile.Read(ref _exclusiveRequested) == 1)
                 {
+                    int gen = Volatile.Read(ref _exclusiveGen);
                     _paused.Set();
-                    _resume.Wait();
-                    _resume.Reset();
+                    while (Volatile.Read(ref _exclusiveGen) == gen && Volatile.Read(ref _stop) == 0)
+                    {
+                        _resume.Wait(5);
+                    }
+
                     continue;
                 }
 

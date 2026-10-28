@@ -64,6 +64,9 @@ public sealed class ToolCommandService
 
     public bool HasPreview { get; private set; }
 
+    /// <summary>Показанное превью относится именно к этой команде (ответ уже пришёл на неё, а не на предыдущий кадр курсора).</summary>
+    public bool PreviewMatches(in Command cmd) => HasPreview && SameCommand(in _shown, in cmd);
+
     /// <summary>Превью задано, но ответа на текущую команду ещё нет (метка показывает «…», ui-spec §6.1).</summary>
     public bool PreviewPending => _active && (_dirty || _inFlight);
 
