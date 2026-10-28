@@ -81,6 +81,7 @@ bash scripts/rust-check.sh                               # Rust-пилот: fmt,
 - PostToolUse Edit|Write `*.rs`/`Cargo.toml`/`clippy.toml` под `rust/`: `cargo clippy -D warnings` (`post-rust.sh`), ошибка → exit 2.
 - Stop: если изменены `.cs` — test + `scripts/bench-gate.sh` (bench-smoke s1k + compare с повторами).
 - SessionStart (облако): доустановка .NET SDK из `global.json`.
+- `.githooks/pre-commit`: для коммитов только из документации (`*.md`, `docs/**`, `CLAUDE.md`) проверки format/build/test пропускаются.
 
 ## Оркестрация
 - Основная сессия — оркестратор: планирует, раздаёт задачи субагентам, проверяет по фактам, мержит.
