@@ -53,7 +53,8 @@ public partial class SimHost : Node3D
     private bool _noSnapArg;         // --no-snap: снап выключен
     private bool _hasSnapDemo;       // --snap-demo x z: превью снапа в фиксированной точке
     private Vector2 _snapDemo;
-    private bool _profRes;           // --prof-res: сценарий *-res в режиме профилей (подмена JSON в памяти, как ProfileSaveFixtures.Res)
+    private bool _profRes;
+    private bool _viaSave;           // --prof-res: сценарий *-res в режиме профилей (подмена JSON в памяти, как ProfileSaveFixtures.Res)
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -215,6 +216,10 @@ public partial class SimHost : Node3D
             else if (a == "--prof-res")
             {
                 _profRes = true;
+            }
+            else if (a == "--via-save")
+            {
+                _viaSave = true;
             }
             else if (a == "--snap-demo" && i + 2 < args.Length
                 && float.TryParse(args[i + 1], NumberStyles.Float, inv, out float sdx)
@@ -605,6 +610,33 @@ public partial class SimHost : Node3D
             ScenarioLoader.DefaultSearchDirs(dir)).Desc;
     }
 
+    /// <summary>
+    /// Проверка RP10b без UI загрузки: мир сохраняется в память и грузится заново без дескриптора, дальше клиент читает каталог профилей и сетку только из вью/снапшотов.
+    /// </summary>
+    private static Simulation? ReloadViaSave(Simulation src, out string error)
+    {
+        error = string.Empty;
+        var bytes = new byte[src.MeasureSave()];
+        SaveStatus ss = src.Save(bytes, out long written);
+        src.Dispose();
+        if (ss != SaveStatus.Ok)
+        {
+            error = "Save failed: " + ss;
+            return null;
+        }
+
+        var o = new LoadOptions { StrictHash = 1 };
+        LoadStatus ls = Simulation.Load(bytes.AsSpan(0, (int)written), in o, default, out Simulation? loaded, out _);
+        if (ls != LoadStatus.Ok || loaded == null)
+        {
+            error = "Load failed: " + ls;
+            return null;
+        }
+
+        GD.Print("[via-save] мир сохранён и загружен без дескриптора");
+        return loaded;
+    }
+
     private bool TryStart(string nameOrPath, out string error)
     {
         error = string.Empty;
@@ -638,9 +670,18 @@ public partial class SimHost : Node3D
             return false;
         }
 
+        if (_viaSave)
+        {
+            sim = ReloadViaSave(sim, out error);
+            if (sim == null)
+            {
+                return false;
+            }
+        }
+
         _sim = sim;
         _grid = new WorldGrid(this);
-        _grid.Configure(in desc);
+        _grid.Configure(sim.Network, in desc);
         _grid.SetSnap(!_noSnapArg);
         if (_gridArg)
         {
@@ -654,7 +695,7 @@ public partial class SimHost : Node3D
         }
 
         GD.Print(_grid.StatusText());
-        RoadProfileLayouts.Set(in desc.RoadProfiles); // сечения дорог для RoadChunks/PedChunks (RP6); без каталога - legacy
+        RoadProfileLayouts.Set(sim.Network); // сечения дорог для RoadChunks/PedChunks (RP6, RP10b: из вью ядра, не из desc); без каталога - legacy
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));

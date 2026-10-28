@@ -202,7 +202,7 @@ public sealed partial class Simulation : IDisposable
     /// <summary>Длительные операции инструментов (дренаж сноса) с прогрессом: для индикатора на дороге (player-tools.md §7.2).</summary>
     public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views();
 
-    public NetworkView Network => _disposed ? default : _w.Net.GetView();
+    public NetworkView Network => _disposed ? default : _w.Net.GetView(_w.WorldGridOriginX, _w.WorldGridOriginZ);
 
     /// <summary>События последнего Step (буфер очищается в его начале).</summary>
     public ReadOnlySpan<SimEvent> Events => _disposed ? default : new ReadOnlySpan<SimEvent>(_w.Events, 0, _w.EventCount);

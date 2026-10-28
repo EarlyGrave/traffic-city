@@ -42,7 +42,16 @@ public static class ChunkBuilder
     };
 
     /// <summary>Заполнить <paramref name="box"/> по записи ядра; false - мёртвый слот или неизвестная зона.</summary>
-    public static bool TryBox(in BuildingRenderData b, out BuildingBox box)
+    public static bool TryBox(in BuildingRenderData b, out BuildingBox box) => TryBox(in b, 0f, 0f, out box);
+
+    /// <summary>Отступ здания от границ участка по фасаду и от дороги, м (RP10b).</summary>
+    public const float LotSetbackM = 3f;
+
+    /// <summary>
+    /// Как <see cref="TryBox(in BuildingRenderData, out BuildingBox)"/>, но в режиме профилей габарит вписан в участок: <paramref name="lotFacadeM"/> (по фасаду, поперёк курса) и
+    /// <paramref name="lotDepthM"/> (вглубь, вдоль курса: курс здания - фасадом к дороге) минус отступ <see cref="LotSetbackM"/>; 0 - участок неизвестен (legacy), габарит по зоне.
+    /// </summary>
+    public static bool TryBox(in BuildingRenderData b, float lotFacadeM, float lotDepthM, out BuildingBox box)
     {
         box = default;
         if (b.Kind < 1 || b.Kind > 3)
@@ -70,14 +79,22 @@ public static class ChunkBuilder
             (byte)BuildingState.Abandoned => Palette.BuildingAbandoned,
             _ => b.Kind == (byte)LotZone.Residential ? Palette.BuildingResidential : b.Kind == (byte)LotZone.Commercial ? Palette.BuildingCommercial : Palette.BuildingIndustrial,
         };
+        float w = d.X * (0.9f + (0.2f * j0));
+        float dd = d.Y * (0.9f + (0.2f * j1));
+        if (lotDepthM > 0f && lotFacadeM > 0f)
+        {
+            w = MathF.Min(w, MathF.Max(4f, lotDepthM - LotSetbackM));
+            dd = MathF.Min(dd, MathF.Max(4f, lotFacadeM - LotSetbackM));
+        }
+
         float k = 1f + (((j3 * 2f) - 1f) * Palette.BuildingToneJitter);
         box = new BuildingBox
         {
             X = b.X,
             Z = b.Z,
             Heading = b.Heading,
-            W = d.X * (0.9f + (0.2f * j0)),
-            D = d.Y * (0.9f + (0.2f * j1)),
+            W = w,
+            D = dd,
             H = MathF.Max(h, 1.5f),
             Color = new Color(tone.R * k, tone.G * k, tone.B * k, 1f),
         };

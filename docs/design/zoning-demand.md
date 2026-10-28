@@ -557,7 +557,7 @@ Z2 ∥ Z3 — только если Z1 заморозил поверхность
   Фаза 2a (`Spawner.Generate`) выключена при `World.City != null`; фаз города в `PhaseList` нет (событий нет - население и деньги в Z1 не меняются).
 - **API.** `Simulation`: `HasCity`, `CityPopulation`, `CityDay`, `GetCityStats`, `CopyFlowTotals`, `GetBuildings`/`BuildingsVersion`/`BuildingSlotCount`, `GetLots`/`LotsVersion`/`LotCount`, `TryGetResidentInfo`/`TryGetBuildingInfo`
   (по паре `(index, generation)`: типа `EntityRef` ещё нет, его вводит волна инструментов T1), `GetResidentGeneration`/`GetBuildingGeneration`, `GetAccessibility` (Z1 - нули; поле считает Z3), `CityCellCount`. События хода
-  (`BuildingSpawned` и др.) не испускаются. `BuildingRenderData` = 24 Б, `LotRenderData` = 16 Б (тест на размеры).
+  (`BuildingSpawned` и др.) не испускаются. `BuildingRenderData` = 24 Б, `LotRenderData` = 28 Б (RP10b: + `Orient`, `CellsF/D`, `CellX/Z`; тест на размеры).
 - **Команды.** `CommandKind.PaintZone = 23` (`PaintZoneCmd` - как в `player-tools.md` §2), `SetTripExecution = 24` (`SetTripExecutionCmd { byte Mode }`) проведены диспетчером в заглушки. В `player-tools.md` §1 указано `12 = RemoveRoad`, а в коде
   `12 = SetPedTarget` (P2): конфликт номера решает оркестратор волны 4.3, номера 23 и 24 свободны и закреплены.
 - **Моды.** `content/base/buildings.json` (6 типов, значения = `CityDesc.BaseBuildingTypes()`, тест сверяет), `BuildingContent` (+ `ContentCatalog.Buildings`, `ModLimits.MaxBuildingTypes = 512`, `MaxBuildingCapacity = 2000`, `package.json`

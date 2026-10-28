@@ -538,3 +538,7 @@
 - **`module_m` и начало сетки клиенту ядро не отдаёт** (нет в `NetworkView`/`Simulation`): берутся из `ScenarioDesc` (`RoadProfiles.ModuleMm`, `WorldGridOriginX/Z`, `City.BlockSize`). `LotRenderData` без `Orient`/`CellsF`/`CellsD` - подложка участка в режиме профилей остаётся квадратом 36 м (road-profiles.md §15).
 - **Сценарий в режиме профилей для клиента без файла:** `--prof-res` патчит JSON в памяти (`ProfileSaveFixtures.Res`); отдельный `scenarios/*-prof.json` потянул бы `BasePackageGoldenTests` и `ScenarioLoaderTests` (каждый файл `scenarios/*.json` - golden и загрузка).
 - **Общий scratchpad сессии содержит чужие файлы** (`shot.ps1` другого агента): свои скрипты и снимки класть в подпапку (`scratchpad/rp10/`).
+## RP10b: вью профилей и клетки участков (агент L39, 2026-10-28)
+- **Клиент больше не читает `ScenarioDesc` для каталога и сетки:** `NetworkView.RoadProfiles/ProfileElems/ModuleMm/GridOriginX/Z` (плоские blittable-записи, строятся один раз в `RoadProfileStore`), `LotRenderData` 28 Б с клетками. Блок города (`City.BlockSize`) во вью нет - остаётся из сценария. Хэш, сейв и golden не менялись.
+- **Проверка загрузки без дескриптора:** `--via-save` в клиенте (Save в память -> `Simulation.Load` -> дальше только вью/снапшоты); кадр побайтно совпал с прямым запуском.
+- **Godot на Windows из PowerShell:** `Godot_..._console.exe` из WinGet падает (CreateProcess 193) - запускать основной `Godot_v4.7.2-stable_mono_win64.exe`, лог - `--log-file`; `Start-Process -ArgumentList` не кавычит элементы с пробелами (путь `Early Grave`) - кавычить вручную.

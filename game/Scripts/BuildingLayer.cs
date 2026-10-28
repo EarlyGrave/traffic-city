@@ -36,6 +36,7 @@ public sealed class BuildingLayer
     private readonly Node3D _lod2 = new() { Name = "BuildingsLod2" };
     private readonly Node3D _far = new() { Name = "BuildingsImpostor" };
     private BuildingRenderData[] _buf = Array.Empty<BuildingRenderData>();
+    private LotRenderData[] _lots = Array.Empty<LotRenderData>();
     private BuildingBox[] _boxes = Array.Empty<BuildingBox>();
     private int _count;
     private float[] _dist = Array.Empty<float>();
@@ -139,10 +140,31 @@ public sealed class BuildingLayer
             _idx = new int[n];
         }
 
+        // RP10b: в режиме профилей габарит вписывается в участок F x D клеток (участок здания - через TryGetBuildingInfo, размеры - из GetLots)
+        float module = sim.Network.ModuleMm * 0.001f;
+        int lotCount = module > 0f ? sim.LotCount : 0;
+        if (_lots.Length < lotCount)
+        {
+            _lots = new LotRenderData[lotCount];
+        }
+
+        if (lotCount > 0)
+        {
+            lotCount = sim.GetLots(_lots.AsSpan(0, lotCount));
+        }
+
         int c = 0;
         for (int i = 0; i < n; i++)
         {
-            if (ChunkBuilder.TryBox(in _buf[i], out _boxes[c]))
+            float lotF = 0f;
+            float lotD = 0f;
+            if (lotCount > 0 && _buf[i].Kind != 0 && sim.TryGetBuildingInfo(i, _buf[i].Gen, out BuildingInfo bi) && (uint)bi.Lot < (uint)lotCount && _lots[bi.Lot].OnGrid)
+            {
+                lotF = _lots[bi.Lot].CellsF * module;
+                lotD = _lots[bi.Lot].CellsD * module;
+            }
+
+            if (ChunkBuilder.TryBox(in _buf[i], lotF, lotD, out _boxes[c]))
             {
                 c++;
             }

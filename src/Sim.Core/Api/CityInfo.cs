@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 
 namespace Sim.Core.Api;
@@ -74,16 +75,64 @@ public static class LotRenderFlags
     public const byte HasBuilding = 4;
 }
 
-/// <summary>Участок для клиента: 16 байт (zoning-demand.md §13). Индекс = номер участка.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 16)]
+/// <summary>
+/// Участок для клиента: 28 байт (zoning-demand.md §13, RP10b). Индекс = номер участка. Клетки мировой сетки (<c>module_m</c>, <see cref="NetworkView.ModuleMm"/>):
+/// <c>CellX/CellZ</c> - передний левый угол, <c>CellsF x CellsD</c> - фасад x глубина, <c>Orient</c> - ось глубины (0..3: +x, -x, +z, -z). Legacy: <c>Orient = 255</c>, клетки 0.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 28)]
 public struct LotRenderData
 {
+    public const byte OrientLegacy = 255;
+
     public float X, Z;           // 0..7
     public float Heading;        // 8..11
     public byte Zone;            // 12     LotZone
     public byte Density;         // 13
     public byte Flags;           // 14     LotRenderFlags
-    public byte R0;              // 15
+    public byte Orient;          // 15     0..3 ось глубины +x, -x, +z, -z; 255 - legacy (без привязки к сетке)
+    public byte CellsF;          // 16     ширина по фасаду, клеток
+    public byte CellsD;          // 17     глубина, клеток
+    public ushort R0;            // 18..19
+    public int CellX, CellZ;     // 20..27 передний левый угол, клетки сетки
+
+    /// <summary>Участок на мировой сетке (не legacy).</summary>
+    public readonly bool OnGrid => Orient <= 3;
+
+    /// <summary>Единичная ось глубины (от дороги наружу) по <see cref="Orient"/>; для legacy (0, 0).</summary>
+    public readonly void DepthDir(out int dirX, out int dirZ)
+    {
+        switch (Orient)
+        {
+            case 0: dirX = 1; dirZ = 0; break;
+            case 1: dirX = -1; dirZ = 0; break;
+            case 2: dirX = 0; dirZ = 1; break;
+            case 3: dirX = 0; dirZ = -1; break;
+            default: dirX = 0; dirZ = 0; break;
+        }
+    }
+
+    /// <summary>Границы клеток участка (включительно). Та же формула, что в ядре (<c>LotBuilder.CellBounds</c>); legacy - false.</summary>
+    public readonly bool TryGetCellBounds(out int x0, out int z0, out int x1, out int z1)
+    {
+        x0 = z0 = x1 = z1 = 0;
+        if (Orient > 3 || CellsF == 0 || CellsD == 0)
+        {
+            return false;
+        }
+
+        DepthDir(out int dx, out int dz);
+        int lx = dz;      // «влево» от оси глубины: (dz, -dx)
+        int lz = -dx;
+        int f = CellsF - 1;
+        int d = CellsD - 1;
+        int bx = CellX + (dx * d) - (lx * f);
+        int bz = CellZ + (dz * d) - (lz * f);
+        x0 = Math.Min(CellX, bx);
+        x1 = Math.Max(CellX, bx);
+        z0 = Math.Min(CellZ, bz);
+        z1 = Math.Max(CellZ, bz);
+        return true;
+    }
 }
 
 /// <summary>Публичная копия полей жителя (инспектор).</summary>

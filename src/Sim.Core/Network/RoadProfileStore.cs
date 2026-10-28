@@ -42,6 +42,10 @@ internal sealed class RoadProfileStore
     /// <summary>Ось → край профиля, мм (<c>WidthMm / 2</c>).</summary>
     public readonly int[] EdgeMm;
 
+    /// <summary>Те же данные плоскими blittable-записями для <c>NetworkView</c> (клиент, FFI); заполняются в конструкторе, дальше только читаются.</summary>
+    public readonly RoadProfileData[] ViewProfiles;
+    public readonly RoadElemData[] ViewElems;
+
     // ---- по элементу ----
     public readonly RoadElemKind[] ElemKind;
     public readonly byte[] ElemDir;
@@ -89,6 +93,8 @@ internal sealed class RoadProfileStore
         ElemDir = new byte[elems];
         ElemOffsetMm = new int[elems];
         ElemWidthMm = new int[elems];
+        ViewProfiles = new RoadProfileData[Count];
+        ViewElems = new RoadElemData[elems];
         LaneOffsetMm = new int[lanes];
         LaneWidthMm = new int[lanes];
 
@@ -136,6 +142,7 @@ internal sealed class RoadProfileStore
                 ElemDir[ei + e] = (byte)el[e].Dir;
                 ElemOffsetMm[ei + e] = x;
                 ElemWidthMm[ei + e] = el[e].WidthMm;
+                ViewElems[ei + e] = new RoadElemData { Kind = (byte)el[e].Kind, Dir = (byte)el[e].Dir, OffsetMm = x, WidthMm = el[e].WidthMm };
                 if (el[e].Kind == RoadElemKind.Lane)
                 {
                     // Слева направо: сначала backward (LaneNo растёт слева направо), затем forward (LaneNo растёт справа налево).
@@ -156,6 +163,7 @@ internal sealed class RoadProfileStore
                 x += el[e].WidthMm;
             }
 
+            ViewProfiles[i] = new RoadProfileData { FirstElem = ei, WidthMm = WidthMm[i], ElemCount = (byte)el.Length, Kind = (byte)Kind[i], LanesFwd = LanesFwd[i], LanesBwd = LanesBwd[i] };
             CurbLMm[i] = -leftEdge;
             CurbRMm[i] = rightEdge;
             WalkLMm[i] = el[0].Kind == RoadElemKind.Sidewalk ? el[0].WidthMm : 0;

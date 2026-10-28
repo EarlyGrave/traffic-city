@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Sim.Core.Network;
 
 namespace Sim.Core.Api;
@@ -250,4 +251,27 @@ public static class RoadProfileValidator
 
     private static bool IsLaneAndGround(RoadElemKind a, RoadElemKind b) =>
         (a == RoadElemKind.Lane && IsGround(b)) || (b == RoadElemKind.Lane && IsGround(a));
+}
+
+/// <summary>Профиль каталога для клиента (<see cref="NetworkView.RoadProfiles"/>, road-profiles.md §3.1): 12 байт, элементы - срез <see cref="NetworkView.ProfileElems"/>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 12)]
+public struct RoadProfileData
+{
+    public int FirstElem;        // 0..3
+    public int WidthMm;          // 4..7   Σ элементов = k * ModuleMm
+    public byte ElemCount;       // 8
+    public byte Kind;            // 9      RoadKind
+    public byte LanesFwd;        // 10
+    public byte LanesBwd;        // 11
+}
+
+/// <summary>Элемент сечения для клиента: слева направо по оси A→B (направление рисования профиля). 12 байт.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 12)]
+public struct RoadElemData
+{
+    public byte Kind;            // 0      RoadElemKind
+    public byte Dir;             // 1      RoadLaneDir (только у Lane)
+    public ushort R0;            // 2..3
+    public int OffsetMm;         // 4..7   левый край от оси, мм (+ вправо по A→B)
+    public int WidthMm;          // 8..11
 }

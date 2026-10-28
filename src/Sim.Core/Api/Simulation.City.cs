@@ -353,7 +353,20 @@ public sealed partial class Simulation
                 flags |= LotRenderFlags.HasBuilding;
             }
 
-            dst[i] = new LotRenderData { X = l.X[i], Z = l.Z[i], Heading = l.Heading[i], Zone = l.Zone[i], Density = l.Density[i], Flags = flags };
+            dst[i] = new LotRenderData
+            {
+                X = l.X[i],
+                Z = l.Z[i],
+                Heading = l.Heading[i],
+                Zone = l.Zone[i],
+                Density = l.Density[i],
+                Flags = flags,
+                Orient = l.Orient[i],
+                CellsF = l.CellsF[i],
+                CellsD = l.CellsD[i],
+                CellX = l.CellX[i],
+                CellZ = l.CellZ[i],
+            };
         }
 
         return n;
