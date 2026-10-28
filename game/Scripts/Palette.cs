@@ -49,27 +49,27 @@ public static class Palette
     public static readonly Color HeatPedHigh = Srgb("#F21A1A");
 
     // Heatmap для дальтоников (UI12, ui-spec.md §11): без пары красный-зелёный (дейтеранопия/протанопия) и без пары синий-жёлтый (тританопия).
-    private static readonly Color HeatCbRoadLow = Srgb("#1B6FD6");
-    private static readonly Color HeatCbHigh = Srgb("#7A1F7A");
-    private static readonly Color HeatCbPedLow = Srgb("#33B3FF");
-    private static readonly Color HeatTriRoadLow = Srgb("#1AD933");
-    private static readonly Color HeatTriMid = Srgb("#FFD0D8");
-    private static readonly Color HeatTriHigh = Srgb("#B3001B");
-    private static readonly Color HeatTriPedLow = Srgb("#33D9B3");
+    private static readonly Color _heatCbRoadLow = Srgb("#1B6FD6");
+    private static readonly Color _heatCbHigh = Srgb("#7A1F7A");
+    private static readonly Color _heatCbPedLow = Srgb("#33B3FF");
+    private static readonly Color _heatTriRoadLow = Srgb("#1AD933");
+    private static readonly Color _heatTriMid = Srgb("#FFD0D8");
+    private static readonly Color _heatTriHigh = Srgb("#B3001B");
+    private static readonly Color _heatTriPedLow = Srgb("#33D9B3");
 
     /// <summary>Тройка heatmap дорог для режима палитры (0 - обычная, 1 - дейтеранопия/протанопия, 2 - тританопия).</summary>
     public static (Color Low, Color Mid, Color High) HeatRoad(TrafficCity.Ui.ColorblindMode mode) => mode switch
     {
-        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (HeatCbRoadLow, HeatRoadMid, HeatCbHigh),
-        TrafficCity.Ui.ColorblindMode.Tritanopia => (HeatTriRoadLow, HeatTriMid, HeatTriHigh),
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (_heatCbRoadLow, HeatRoadMid, _heatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (_heatTriRoadLow, _heatTriMid, _heatTriHigh),
         _ => (HeatRoadLow, HeatRoadMid, HeatRoadHigh),
     };
 
     /// <summary>Тройка heatmap пешеходов для режима палитры.</summary>
     public static (Color Low, Color Mid, Color High) HeatPed(TrafficCity.Ui.ColorblindMode mode) => mode switch
     {
-        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (HeatCbPedLow, HeatRoadMid, HeatCbHigh),
-        TrafficCity.Ui.ColorblindMode.Tritanopia => (HeatTriPedLow, HeatTriMid, HeatTriHigh),
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (_heatCbPedLow, HeatRoadMid, _heatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (_heatTriPedLow, _heatTriMid, _heatTriHigh),
         _ => (HeatPedLow, HeatPedMid, HeatPedHigh),
     };
 
@@ -110,17 +110,12 @@ public static class Palette
     public static readonly Color ZoneResidential = Lin("#F2C04A");
     public static readonly Color ZoneCommercial = Lin("#4A8CF2");
     public static readonly Color ZoneIndustrial = Lin("#9A63D6");
-    /// <summary>Те же цвета зон в sRGB для интерфейса (образцы в строке опций инструмента «Зоны»).</summary>
+    /// <summary>Те же цвета зон в sRGB для интерфейса (легенда, образцы инструмента «Зоны»). Должны совпадать с линейными <c>Zone*</c> выше.</summary>
     public static readonly Color ZoneResidentialSrgb = Srgb("#F2C04A");
     public static readonly Color ZoneCommercialSrgb = Srgb("#4A8CF2");
     public static readonly Color ZoneIndustrialSrgb = Srgb("#9A63D6");
     public static readonly Color ZonePark = Lin("#52BD5A");
     public static readonly Color ZoneWater = Lin("#3F9BE6");
-
-    /// <summary>Те же цвета слоя «Зоны» в sRGB - для плашек легенды UI (UI7); держать в паре с <c>Zone*</c> выше.</summary>
-    public static readonly Color ZoneResidentialUi = Srgb("#F2C04A");
-    public static readonly Color ZoneCommercialUi = Srgb("#4A8CF2");
-    public static readonly Color ZoneIndustrialUi = Srgb("#9A63D6");
 
     // элементы профиля дороги (RP6, road-profiles.md §7); асфальт и тротуар - выше. Вершинные цвета, линейные.
     public static readonly Color Lawn = Lin("#C9D4B2");
