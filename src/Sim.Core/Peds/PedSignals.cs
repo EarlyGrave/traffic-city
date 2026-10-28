@@ -10,7 +10,7 @@ namespace Sim.Core.Peds;
 /// Пешеходная фаза светофора по вызову (ADR-0020, pedestrians.md §6, intersections.md §6.5): статика переходов слота (<c>SigX</c>), <c>Walk/Clear</c>, удержание оси, вызов оси пешеходом,
 /// публикация сигнала перехода (<c>CrossingSignals</c>, биты 2-3). Вызывается из <c>SignalPhase</c> (фаза 4a) по слотам по возрастанию, однопоточно. Без аллокаций.
 /// <para>
-/// <c>Adaptive</c>: <c>Walk</c> стартует в первый тик <c>Main</c> своей оси при вызове либо позже (поздний вызов, если успевает <c>Walk + Clear</c>), пока идут <c>Walk</c>/<c>Clear</c>, ось
+/// <c>Adaptive</c>: <c>Walk</c> стартует в первый тик <c>Main</c> своей оси при вызове (при длинном зелёном без координации - после головного старта машин, <see cref="HeadStartTicks"/>) либо позже (поздний вызов, если успевает <c>Walk + Clear</c>), пока идут <c>Walk</c>/<c>Clear</c>, ось
 /// не завершает <c>Main</c>. <c>Fixed</c>: <c>Walk</c> в первый тик зелёного оси при вызове, длительность <c>min(Walk, Green - Clear)</c> не меньше 3 с, иначе на весь зелёный.
 /// </para>
 /// </summary>
@@ -127,25 +127,58 @@ internal static class PedSignals
     // ------------------------------------------------------------------ удержание и вызов
 
     /// <summary>true: у перехода текущей зелёной оси идёт <c>Walk</c> или <c>Clear</c> - ось не завершает <c>Main</c> (состояние конца прошлого тика).</summary>
-    public static bool Hold(SignalStore s, int slot)
+    public static bool Hold(World w, SignalStore s, int slot)
     {
         if (s.Interval[slot] != SignalInterval.Green || s.Sub[slot] != 0)
         {
             return false;
         }
 
+        CrossingState xs = w.Peds!.X;
         int k = s.Phase[slot];
         int n = s.SigXCount[slot];
         int b = slot * SignalStore.XSlots;
         for (int j = 0; j < n; j++)
         {
-            if (s.SigXAxis[b + j] == k && (s.XWalkLeft[b + j] != 0 || s.XClearLeft[b + j] != 0))
+            // Clear держит зелёный, пока на переходе есть пешеходы: когда все сошли, остаток таймера зелёную ось не задерживает.
+            if (s.SigXAxis[b + j] == k && (s.XWalkLeft[b + j] != 0 || (s.XClearLeft[b + j] != 0 && xs.OnCross[s.SigXIdx[b + j]] > 0)))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>Окно машин после <c>Walk + Clear</c>, тики: поворачивающие через переход своей зелёной оси успевают проехать (сверх MaxGreen).</summary>
+    private const int OvertimeCarTicks = 160;
+
+    /// <summary>
+    /// Головной старт машин, тики (Adaptive без координации): <c>Walk</c> начинается не в первый тик зелёного, а через 3 с. Очередь поворачивающих на стоп-линии успевает войти в узел до заявки перехода;
+    /// иначе <c>Walk + Clear</c> (до 19 с из 24 с MaxGreen) закрывал бы переход для поворотов на весь зелёный, и голова полосы пропускала целый цикл (доля ожиданий машин >= 60 с).
+    /// </summary>
+    private const int HeadStartTicks = 60;
+
+    /// <summary>Предел продления последнего тика <c>Walk</c> ради обязавшихся машин, в длительностях <c>Walk</c> от заявки (медленный левый поворот по длинному connector'у занимает зону 10+ с).</summary>
+    private const int ExtendWalkFactor = 4;
+
+    /// <summary>
+    /// Предел продления зелёного оси <paramref name="k"/> ради машин, ждавших пешеходов: <c>Walk + Clear_max + CarWindowTicks</c> по переходам этой оси, обслуженным в текущем зелёном (0 - не было).
+    /// </summary>
+    public static int OvertimeTicks(World w, SignalStore s, int slot, int k)
+    {
+        int n = s.SigXCount[slot];
+        int b = slot * SignalStore.XSlots;
+        int clear = 0;
+        for (int j = 0; j < n; j++)
+        {
+            if (s.SigXAxis[b + j] == k && ((s.XServed[slot] >> j) & 1) != 0)
+            {
+                clear = Math.Max(clear, s.SigXClear[b + j]);
+            }
+        }
+
+        return clear == 0 ? 0 : w.Peds!.Cfg.WalkTicks + clear + OvertimeCarTicks;
     }
 
     /// <summary>Биты осей, которых ждут пешеходы (очередь у перехода без <c>Walk</c>/<c>Clear</c>; для текущей зелёной оси <c>Walk</c> стартует сам).</summary>
@@ -283,7 +316,7 @@ internal static class PedSignals
     private static bool ExtendWalk(World w, SignalStore s, int slot, int idx, int x, in PedDesc cfg)
     {
         CrossingState xs = w.Peds!.X;
-        if (xs.XState[x] != XStateCode.Claimed || xs.QCount[x] == 0 || w.Tick - xs.ClosedSince[x] >= 2L * cfg.WalkTicks)
+        if (xs.XState[x] != XStateCode.Claimed || xs.QCount[x] == 0 || w.Tick - xs.ClosedSince[x] >= ExtendWalkFactor * cfg.WalkTicks)
         {
             return false;
         }
@@ -315,9 +348,16 @@ internal static class PedSignals
             return d >= MinFixedWalkTicks ? d : green;   // короче 3 с нельзя: на весь зелёный (нерегулируемый внутри зелёного)
         }
 
-        if (greenStart)
+        // Головной старт машин: только без координации (окна считают Walk с первого тика) и если зелёный вмещает задержку + Walk + Clear (короткий зелёный второстепенной оси - Walk сразу, иначе пешеход не дождётся).
+        bool headStart = s.CycleTicks[slot] == 0 && green >= HeadStartTicks + cfg.WalkTicks + clear;
+        if (greenStart && !headStart)
         {
             return cfg.WalkTicks;
+        }
+
+        if (headStart && s.GreenElapsed[slot] < HeadStartTicks)
+        {
+            return 0;
         }
 
         // Поздний вызов: Walk + Clear помещаются до max-out оси и (в координации) до силового конца своего окна.
