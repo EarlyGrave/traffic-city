@@ -700,9 +700,9 @@ public static class BenchCommand
             if (r.Batch != null)
             {
                 // Пакет параллельных запросов фазы 3 (ADR-0032), приращения за окно замера; вне хэша, compare не гейтит.
-                for (int bi = 0; bi < BatchNames.Length; bi++)
+                for (int bi = 0; bi < _batchNames.Length; bi++)
                 {
-                    w.WriteNumber("batch_" + BatchNames[bi], r.Batch[bi]);
+                    w.WriteNumber("batch_" + _batchNames[bi], r.Batch[bi]);
                 }
             }
 
@@ -713,7 +713,7 @@ public static class BenchCommand
         return Encoding.UTF8.GetString(ms.ToArray()) + "\n";
     }
 
-    private static readonly string[] BatchNames = ["batches", "candidates", "committed", "discarded", "inline", "mismatch", "computed_work", "discarded_work", "inline_work"];
+    private static readonly string[] _batchNames = ["batches", "candidates", "committed", "discarded", "inline", "mismatch", "computed_work", "discarded_work", "inline_work"];
 
     private static long[] BatchStats(Simulation sim)
     {
@@ -907,7 +907,7 @@ internal sealed class BenchResult
     public long BayEntries, BayFallbacks, BayYields;
     public double? BayExitWaitS;
     public SimCounters Counters;
-    public long[]? Batch;   // RouteBatch за окно замера, порядок BenchCommand.BatchNames
+    public long[]? Batch;   // RouteBatch за окно замера, порядок BenchCommand._batchNames
     public long RouteDeferredWindow, PathfindQueriesWindow, PathfindWorkWindow, RefillLateWindow, CustomizeLagWindow, ReroutesWindow, TimedReroutesWindow, CustomizeWorkWindow;   // приращения за окно замера (routing.* - накопительные с начала)
     public SimWork Work;
     public LodWindow? Lod;
