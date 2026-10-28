@@ -1,0 +1,5 @@
+{ "format_version": 1, "module_m": 8,
+  "profiles": [ { "id": "street_2", "kind": "street", "width_m": 16, "elements": [
+      {"type": "sidewalk", "w": 3}, {"type": "verge", "w": 1.5},
+      {"type": "lane", "w": 3.5, "dir": "backward"}, {"type": "lane", "w": 3.5, "dir": "forward"},
+      {"type": "curb", "w": 0.25}, {"type": "verge", "w": 1.25}, {"type": "sidewalk", "w": 3} ] } ] }

@@ -14,6 +14,7 @@ internal static class SaturationProbe
     public static (double GrantsPerGreenMin, int Exits) Run(in LodDesc lod, int ticks = 14000, int warmup = 4000, int lanes = 1)
     {
         ScenarioDesc d = GateFixture.Node(NodeControl.RightHandRule, Arm.E(lanes), Arm.S(lanes), Arm.W(lanes), Arm.N(lanes));
+        d.Network.CornerRadius = -1f;   // калибровка насыщенного потока meso - на коробке 14 м (до ADR-0028), см. Corridor.Desc
         d.Lod = lod;
         using Simulation sim = Simulation.Create(in d);
         Assert.True(sim.Enqueue(Command.MakeSetNodeControl(0, NodeControl.Signal, 1)));

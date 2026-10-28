@@ -4,14 +4,21 @@ using System.IO;
 using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Scenarios.Mods;
+using ModAssetKind = Sim.Scenarios.Mods.AssetKind;
 
 namespace Sim.Scenarios;
 
 /// <summary>Результат загрузки: desc плюс информативные поля, которых нет в <see cref="ScenarioDesc"/>.</summary>
 public sealed class LoadedScenario
 {
-    public LoadedScenario(string name, string[] typeNames, ScenarioDesc desc)
+    public LoadedScenario(
+        string name, string[] typeNames, ScenarioDesc desc, ContentCatalog? catalog = null, PackageSet? packages = null,
+        IReadOnlyList<TimelineEntry>? timeline = null)
     {
+        Timeline = timeline ?? [];
+        Catalog = catalog;
+        Packages = packages;
         Name = name;
         TypeNames = typeNames;
         Desc = desc;
@@ -23,15 +30,25 @@ public sealed class LoadedScenario
     public string[] TypeNames { get; }
 
     public ScenarioDesc Desc { get; }
+
+    /// <summary>Таймлайн команд (<c>timeline</c>, modding.md §3.5); пустой, если ключа нет. В <see cref="Desc"/> не входит.</summary>
+    public IReadOnlyList<TimelineEntry> Timeline { get; }
+
+    /// <summary>Каталог контента набора пакетов (только <c>format_version: 3</c>, иначе <c>null</c>); индекс типа ТС = индекс в <see cref="ContentCatalog.Vehicles"/>.</summary>
+    public ContentCatalog? Catalog { get; }
+
+    /// <summary>Набор пакетов в порядке загрузки (только <c>format_version: 3</c>, иначе <c>null</c>).</summary>
+    public PackageSet? Packages { get; }
 }
 
 /// <summary>
 /// Загрузчик сценариев JSON → <see cref="ScenarioDesc"/> по docs/design/scenario-format.md:
 /// дефолты, единицы (км/ч → м/с, с → тики при 20 Гц), строгий контроль ключей, format_version = 2 (сценарий) / 1 (типы ТС).
 /// </summary>
-public static class ScenarioLoader
+public static partial class ScenarioLoader
 {
     public const int SupportedFormatVersion = 2;
+    public const int PackagesFormatVersion = 3;
     public const int VehicleTypesFormatVersion = 1;
     private const int MaxRoutingLevels = 4;       // = Overlay.MaxLevels ядра
     private const int MaxRoutingFanout = 16;
@@ -47,54 +64,93 @@ public static class ScenarioLoader
         AllowTrailingCommas = false,
     };
 
+    /// <summary>
+    /// Подмена по умолчанию для <see cref="LoadInfo"/>, когда <c>overrides</c> не задан. В игре и утилитах всегда <c>null</c>; тесты ставят замороженный каталог-фикстуру,
+    /// чтобы golden сценариев <c>*-res</c> не зависели от игрового <c>scenarios/road-profiles.json</c> (road-profiles.md, RP8).
+    /// </summary>
+    public static ScenarioOverrides? DefaultOverrides { get; set; }
+
     public static ScenarioDesc Load(string path) => LoadInfo(path).Desc;
 
-    public static LoadedScenario LoadInfo(string path)
+    /// <param name="path">Файл сценария.</param>
+    /// <param name="searchDirs">Каталоги пакетов для <c>format_version: 3</c> (modding.md §1.1); <c>null</c> - <c>content/</c> игры, найденный от каталога сценария/текущего.</param>
+    /// <param name="overrides">Подмена внешних файлов (каталог профилей дорог, golden-тесты); <c>null</c> - как в сценарии.</param>
+    public static LoadedScenario LoadInfo(string path, IReadOnlyList<PackageSearchDir>? searchDirs = null, ScenarioOverrides? overrides = null)
     {
+        overrides ??= DefaultOverrides;
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
-        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path));
+        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides);
+    }
+
+    /// <summary>Поиск <c>content/</c> игры: вверх от <paramref name="startDir"/> и от текущего каталога (как <see cref="ScenarioLocator"/> ищет <c>scenarios/</c>).</summary>
+    public static IReadOnlyList<PackageSearchDir> DefaultSearchDirs(string startDir)
+    {
+        string? content = ScenarioLocator.FindContentDir(startDir) ?? ScenarioLocator.FindContentDir(Directory.GetCurrentDirectory());
+        return content == null ? [] : [new PackageSearchDir(content, true)];
     }
 
     /// <summary>Разбор из строк (тесты): <paramref name="vehicleTypesJson"/> подставляется вместо файла типов.</summary>
     public static LoadedScenario Parse(string scenarioJson, string vehicleTypesJson) =>
         Parse(scenarioJson, _ => vehicleTypesJson, "scenario");
 
-    public static LoadedScenario Parse(string scenarioJson, Func<string, string> readRelativeFile, string defaultName)
+    public static LoadedScenario Parse(string scenarioJson, Func<string, string> readRelativeFile, string defaultName) =>
+        Parse(scenarioJson, readRelativeFile, defaultName, null);
+
+    /// <summary>Разбор с каталогами пакетов для <c>format_version: 3</c> (<c>null</c> - v3 отвергается).</summary>
+    public static LoadedScenario Parse(
+        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null)
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
-        CheckVersion(root, SupportedFormatVersion);
+        bool v3 = CheckScenarioVersion(root);
 
         string name = root.Str("name", defaultName);
         ulong seed = root.ULong("seed");
         double durationS = root.Num("duration_s", min: 0);
-        string typesFile = root.Str("vehicle_types_file", DefaultVehicleTypesFile);
-
-        string typesText;
-        try
-        {
-            typesText = readRelativeFile(typesFile);
-        }
-        catch (ScenarioException e)
-        {
-            throw new ScenarioException($"$.vehicle_types_file: {e.Message}", e);
-        }
-
         VehicleTypeDesc[] types;
         string[] typeNames;
-        try
+        TypeRefs refs;
+        ContentCatalog? catalog = null;
+        PackageSet? packages = null;
+        if (v3)
         {
-            (types, typeNames) = ParseVehicleTypes(typesText);
+            (types, typeNames, refs, catalog, packages) = LoadPackageTypes(root, searchDirs);
         }
-        catch (ScenarioException e)
+        else
         {
-            throw new ScenarioException($"{typesFile}: {e.Message}", e);
+            string typesFile = root.Str("vehicle_types_file", DefaultVehicleTypesFile);
+            string typesText;
+            try
+            {
+                typesText = readRelativeFile(typesFile);
+            }
+            catch (ScenarioException e)
+            {
+                throw new ScenarioException($"$.vehicle_types_file: {e.Message}", e);
+            }
+
+            try
+            {
+                (types, typeNames) = ParseVehicleTypes(typesText);
+            }
+            catch (ScenarioException e)
+            {
+                throw new ScenarioException($"{typesFile}: {e.Message}", e);
+            }
+
+            refs = TypeRefs.ForNames(typeNames);
         }
 
         JsonObjectReader? cityR = root.OptObject("city");
         JsonObjectReader? netR = root.OptObject("network");
-        CityGenDesc city = ParseCity(cityR);
+        if (v3 && cityR != null)
+        {
+            CheckRoadAssets(cityR, catalog!, packages!);
+        }
+
+        RoadProfilesDesc roadProfiles = LoadRoadProfiles(root, readRelativeFile, overrides);
+        CityGenDesc city = ParseCity(cityR, roadProfiles);
         NetworkDesc network = default;
         if (netR != null)
         {
@@ -103,7 +159,7 @@ public static class ScenarioLoader
                 throw new ScenarioException("$.network: explicit network requires $.city.enabled = false");
             }
 
-            network = ParseNetwork(netR);
+            network = ParseNetwork(netR, roadProfiles);
         }
         else if (!city.Enabled)
         {
@@ -113,7 +169,7 @@ public static class ScenarioLoader
         JsonObjectReader vehR = root.ReqObject("vehicles");
         int count = vehR.Int("count", min: 0);
         int rampTicks = Ticks(vehR.Num("spawn_ramp_s", 120, min: 0));
-        float[] typeMix = ParseTypeMix(vehR, typeNames);
+        float[] typeMix = ParseTypeMix(vehR, refs);
         vehR.Finish();
 
         DemandDesc demand = ParseDemand(root.OptObject("demand"));
@@ -121,11 +177,37 @@ public static class ScenarioLoader
         demand.SpawnRampTicks = rampTicks;
         demand.TypeMix = typeMix;
 
-        TransitDesc transit = ParseTransit(root.OptObject("transit"), typeNames);
+        PedDesc peds = ParsePeds(root.OptObject("peds"));
+        TransitDesc transit = ParseTransit(root.OptObject("transit"), refs, peds.Enabled);
+        if (peds.Enabled && peds.StuckStopTicks <= 0)
+        {
+            peds.StuckStopTicks = Math.Max(3 * transit.HeadwayTicks, Ticks(900));   // stuck_stop_s: max(3 · headway_s, 900)
+        }
+
         RulesDesc rules = ParseRules(root.OptObject("rules"));
         RoutingDesc routing = ParseRouting(root.OptObject("routing"));
-        LodDesc lod = ParseLod(root.OptObject("lod"));
-        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing);
+        bool residents = demand.Model == DemandModel.Residents;
+        JsonObjectReader? lodR = root.OptObject("lod");
+        if (residents && (lodR == null || !lodR.Has("cell_m")))
+        {
+            throw new ScenarioException("$.lod.cell_m: required with demand.model = \"residents\" (the city grid of skims uses the LOD cell size)");
+        }
+
+        LodDesc lod = ParseLod(lodR);
+        if (peds.Source == PedSource.City && !residents)
+        {
+            throw new ScenarioException("$.peds.source: \"city\" requires demand.model = \"residents\"");
+        }
+
+        CityDesc town = ParseTown(root, residents, catalog);
+        ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
+        ToolsDesc tools = ParseTools(root.OptObject("tools"));
+        SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
+        TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
+        {
+            Types = refs,
+            Road = catalog != null ? (reference, path) => ResolveRoad(catalog, packages!, reference, path) : null,
+        });
         root.Finish();
 
         var desc = new ScenarioDesc
@@ -135,14 +217,19 @@ public static class ScenarioLoader
             Capacities = caps,
             Routing = routing,
             Lod = lod,
+            Peds = peds,
+            Town = town,
+            Parking = parking,
+            Tools = tools,
             City = city,
             Network = network,
             Demand = demand,
             Transit = transit,
             Rules = rules,
             VehicleTypes = types,
+            RoadProfiles = roadProfiles,
         };
-        return new LoadedScenario(name, typeNames, desc);
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline);
     }
 
     // ---------------------------------------------------------------- units
@@ -193,15 +280,249 @@ public static class ScenarioLoader
         }
     }
 
-    private static int FindType(string[] names, string name, string path)
+    private static bool CheckScenarioVersion(JsonObjectReader root)
     {
-        int i = Array.IndexOf(names, name);
-        if (i < 0)
+        if (!root.Has("format_version"))
         {
-            throw new ScenarioException($"{path}: unknown vehicle type '{name}'");
+            throw new ScenarioException("$.format_version: required key is missing");
         }
 
-        return i;
+        int v = root.Int("format_version");
+        if (v is not (SupportedFormatVersion or PackagesFormatVersion))
+        {
+            throw new ScenarioException(
+                $"$.format_version: unsupported version {v}, loader supports {SupportedFormatVersion} and {PackagesFormatVersion}");
+        }
+
+        return v == PackagesFormatVersion;
+    }
+
+    // ---------------------------------------------------------------- packages (format_version 3, modding.md §3.4, §5)
+
+    private static (VehicleTypeDesc[] Types, string[] Names, TypeRefs Refs, ContentCatalog Catalog, PackageSet Packages) LoadPackageTypes(
+        JsonObjectReader root, IReadOnlyList<PackageSearchDir>? searchDirs)
+    {
+        if (root.Has("vehicle_types_file"))
+        {
+            throw new ScenarioException("$.vehicle_types_file: unknown key in format_version 3 (use $.packages)", ModError.UnknownKey);
+        }
+
+        JsonElement[] list = root.ReqArray("packages");
+        var ids = new List<string>(list.Length);
+        string path = root.ChildPath("packages");
+        for (int i = 0; i < list.Length; i++)
+        {
+            if (list[i].ValueKind != JsonValueKind.String)
+            {
+                throw new ScenarioException($"{JsonObjectReader.Index(path, i)}: expected string", ModError.BadType);
+            }
+
+            string id = list[i].GetString()!;
+            if (ids.Contains(id))
+            {
+                throw new ScenarioException($"{JsonObjectReader.Index(path, i)}: duplicate package '{id}'", ModError.BadValue);
+            }
+
+            ids.Add(id);
+        }
+
+        if (ids.Count == 0)
+        {
+            throw new ScenarioException($"{path}: at least one package is required", ModError.BadValue);
+        }
+
+        if (searchDirs == null || searchDirs.Count == 0)
+        {
+            throw new ScenarioException($"{path}: no package directories (content/ not found)", ModError.MissingDependency);
+        }
+
+        PackageSet set = PackageLoader.Load(searchDirs, ids);
+        set.ThrowIfFailed();
+        var issues = new List<ModIssue>();
+        ContentCatalog cat = ContentCatalog.Build(set, issues);
+        if (issues.Count > 0)
+        {
+            throw new ScenarioException(issues[0].ToString(), issues[0].Code);
+        }
+
+        if (cat.Vehicles.Count == 0)
+        {
+            throw new ScenarioException($"{path}: package set has no vehicle types", ModError.BadValue);
+        }
+
+        var types = new VehicleTypeDesc[cat.Vehicles.Count];
+        var names = new string[types.Length];
+        for (int i = 0; i < types.Length; i++)
+        {
+            types[i] = cat.Vehicles[i].Desc;
+            names[i] = cat.Vehicles[i].Id.Name;
+        }
+
+        return (types, names, TypeRefs.ForCatalog(cat, set), cat, set);
+    }
+
+    /// <summary>
+    /// Ссылка из сценария (modding.md §2): полный id - пакет обязан быть в наборе (<c>packages</c> + транзитивные),
+    /// иначе <c>UndeclaredDependency</c>; сокращение <c>vehicle/car</c> - из <c>base</c>.
+    /// </summary>
+    private static bool ExpandRef(PackageSet set, string reference, List<AssetId> candidates, out ModError error)
+    {
+        error = default;
+        candidates.Clear();
+        if (AssetId.TryParse(reference, out AssetId full))
+        {
+            if (set.Find(full.Package) == null)
+            {
+                error = ModError.UndeclaredDependency;
+                return false;
+            }
+
+            candidates.Add(full);
+            return true;
+        }
+
+        if (AssetId.TryParseShort(reference, out ModAssetKind kind, out string name))
+        {
+            candidates.Add(new AssetId("base", kind, name));
+            return true;
+        }
+
+        error = ModError.BadValue;
+        return false;
+    }
+
+    private static RoadEntry ResolveRoad(ContentCatalog cat, PackageSet set, string reference, string path)
+    {
+        var cands = new List<AssetId>();
+        if (!ExpandRef(set, reference, cands, out ModError err))
+        {
+            throw new ScenarioException($"{path}: {err} ('{reference}')", err);
+        }
+
+        foreach (AssetId c in cands)
+        {
+            int idx = c.Kind == ModAssetKind.Road ? cat.FindRoad(c) : -1;
+            if (idx >= 0)
+            {
+                return cat.Roads[idx];
+            }
+        }
+
+        throw new ScenarioException($"{path}: {ModError.UnknownAssetRef} ('{reference}')", ModError.UnknownAssetRef);
+    }
+
+    // city.road_assets: визуальная метка сегментов генератора; до M4 только проверяется (modding.md §3.4).
+    private static void CheckRoadAssets(JsonObjectReader cityR, ContentCatalog cat, PackageSet set)
+    {
+        JsonObjectReader? ra = cityR.OptObject("road_assets");
+        if (ra == null)
+        {
+            return;
+        }
+
+        foreach (string key in ra.Keys)
+        {
+            string p = ra.ChildPath(key);
+            RoadKind expected = key switch
+            {
+                "street" => RoadKind.Street,
+                "arterial" => RoadKind.Arterial,
+                _ => throw new ScenarioException($"{p}: unknown key", ModError.UnknownKey),
+            };
+            JsonElement el = ra.Raw(key);
+            if (el.ValueKind != JsonValueKind.String)
+            {
+                throw new ScenarioException($"{p}: expected string", ModError.BadType);
+            }
+
+            string reference = el.GetString()!;
+            var cands = new List<AssetId>();
+            if (!ExpandRef(set, reference, cands, out ModError err))
+            {
+                throw new ScenarioException($"{p}: {err} ('{reference}')", err);
+            }
+
+            int idx = -1;
+            foreach (AssetId c in cands)
+            {
+                if (c.Kind == ModAssetKind.Road && (idx = cat.FindRoad(c)) >= 0)
+                {
+                    break;
+                }
+            }
+
+            if (idx < 0)
+            {
+                throw new ScenarioException($"{p}: {ModError.UnknownAssetRef} ('{reference}')", ModError.UnknownAssetRef);
+            }
+
+            if (cat.Roads[idx].Kind != expected)
+            {
+                throw new ScenarioException($"{p}: road '{reference}' is not of kind {key}", ModError.BadValue);
+            }
+        }
+    }
+
+    /// <summary>Разрешение ссылок на типы ТС: v2 - локальные имена файла типов; v3 - id ассетов каталога (modding.md §2).</summary>
+    internal sealed class TypeRefs
+    {
+        private Func<string, string, int> _lookup = null!;
+
+        public int Count { get; private init; }
+
+        /// <summary>Имя автобуса по умолчанию (v2: <c>bus</c>, v3: <c>base:vehicle/bus</c>).</summary>
+        public string DefaultBus { get; private init; } = "bus";
+
+        /// <summary>v3: тип по умолчанию - тип 0 набора (категории car, гарантировано каталогом); v2: тип <c>car</c> по имени.</summary>
+        public bool CarIsIndexZero { get; private init; }
+
+        public static TypeRefs ForNames(string[] names) => new()
+        {
+            Count = names.Length,
+            _lookup = (n, _) => Array.IndexOf(names, n),
+        };
+
+        public static TypeRefs ForCatalog(ContentCatalog cat, PackageSet set) => new()
+        {
+            Count = cat.Vehicles.Count,
+            DefaultBus = FormatUpgrades.BaseVehicleRef("bus"),
+            CarIsIndexZero = true,
+            _lookup = (reference, path) =>
+            {
+                var cands = new List<AssetId>();
+                if (!ExpandRef(set, reference, cands, out ModError err))
+                {
+                    throw new ScenarioException($"{path}: {err} ('{reference}')", err);
+                }
+
+                foreach (AssetId c in cands)
+                {
+                    int i = c.Kind == ModAssetKind.Vehicle ? cat.FindVehicle(c) : -1;
+                    if (i >= 0)
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            },
+        };
+
+        /// <summary>Индекс типа или -1 (ошибка формы ссылки в v3 бросает).</summary>
+        public int TryFind(string name, string path) => _lookup(name, path);
+
+        public int Find(string name, string path)
+        {
+            int i = _lookup(name, path);
+            if (i < 0)
+            {
+                throw CarIsIndexZero
+                    ? new ScenarioException($"{path}: {ModError.UnknownAssetRef} ('{name}')", ModError.UnknownAssetRef)
+                    : new ScenarioException($"{path}: unknown vehicle type '{name}'");
+            }
+
+            return i;
+        }
     }
 
     // ---------------------------------------------------------------- vehicle types
@@ -231,38 +552,7 @@ public static class ScenarioLoader
             }
 
             names[i] = name;
-            string cat = r.Str("category");
-            VehicleCategory category = cat switch
-            {
-                "car" => VehicleCategory.Car,
-                "bus" => VehicleCategory.Bus,
-                _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
-            };
-            var t = new VehicleTypeDesc
-            {
-                Category = category,
-                Length = (float)r.Num("length_m", min: 0.1),
-                Width = (float)r.Num("width_m", min: 0.1),
-                MaxSpeed = Mps(r.Num("max_speed_kmh", min: 0.1)),
-                SpeedFactor = (float)r.Num("speed_factor", min: 0.01),
-            };
-
-            JsonObjectReader idm = r.ReqObject("idm");
-            t.Accel = (float)idm.Num("a", min: 0.01);
-            t.ComfortDecel = (float)idm.Num("b", min: 0.01);
-            t.HeadwayTime = (float)idm.Num("T", min: 0);
-            t.MinGap = (float)idm.Num("s0", min: 0);
-            t.Delta = (float)idm.Num("delta", min: 0.01);
-            idm.Finish();
-
-            JsonObjectReader mobil = r.ReqObject("mobil");
-            t.Politeness = (float)mobil.Num("politeness", min: 0, max: 1);
-            t.LaneChangeThreshold = (float)mobil.Num("threshold", min: 0);
-            t.SafeDecel = (float)mobil.Num("b_safe", min: 0);
-            t.RightBias = (float)mobil.Num("right_bias");
-            t.LaneChangeDurationTicks = Ticks(mobil.Num("duration_s", min: 0));
-            mobil.Finish();
-
+            VehicleTypeDesc t = ParseVehicleFields(r, p);
             r.Finish();
             types[i] = t;
         }
@@ -270,9 +560,50 @@ public static class ScenarioLoader
         return (types, names);
     }
 
+    /// <summary>
+    /// Поля типа ТС (категория, габариты, IDM, MOBIL) без <c>name</c> и без <c>Finish</c>: общий разбор для
+    /// <c>vehicle-types.json</c> v1 и <c>vehicles.json</c> пакета (modding.md §3.1).
+    /// </summary>
+    internal static VehicleTypeDesc ParseVehicleFields(JsonObjectReader r, string p)
+    {
+        string cat = r.Str("category");
+        VehicleCategory category = cat switch
+        {
+            "car" => VehicleCategory.Car,
+            "bus" => VehicleCategory.Bus,
+            _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
+        };
+        var t = new VehicleTypeDesc
+        {
+            Category = category,
+            Length = (float)r.Num("length_m", min: 0.1),
+            Width = (float)r.Num("width_m", min: 0.1),
+            MaxSpeed = Mps(r.Num("max_speed_kmh", min: 0.1)),
+            SpeedFactor = (float)r.Num("speed_factor", min: 0.01),
+        };
+
+        JsonObjectReader idm = r.ReqObject("idm");
+        t.Accel = (float)idm.Num("a", min: 0.01);
+        t.ComfortDecel = (float)idm.Num("b", min: 0.01);
+        t.HeadwayTime = (float)idm.Num("T", min: 0);
+        t.MinGap = (float)idm.Num("s0", min: 0);
+        t.Delta = (float)idm.Num("delta", min: 0.01);
+        idm.Finish();
+
+        JsonObjectReader mobil = r.ReqObject("mobil");
+        t.Politeness = (float)mobil.Num("politeness", min: 0, max: 1);
+        t.LaneChangeThreshold = (float)mobil.Num("threshold", min: 0);
+        t.SafeDecel = (float)mobil.Num("b_safe", min: 0);
+        t.RightBias = (float)mobil.Num("right_bias");
+        t.LaneChangeDurationTicks = Ticks(mobil.Num("duration_s", min: 0));
+        mobil.Finish();
+
+        return t;
+    }
+
     // ---------------------------------------------------------------- city / network
 
-    private static CityGenDesc ParseCity(JsonObjectReader? r)
+    private static CityGenDesc ParseCity(JsonObjectReader? r, RoadProfilesDesc profiles)
     {
         var c = new CityGenDesc
         {
@@ -299,6 +630,11 @@ public static class ScenarioLoader
         if (r == null)
         {
             c.IrregularNodes = ScaledIrregularDefault(c.Scale);
+            if (profiles.Enabled)
+            {
+                throw new ScenarioException("$.city.profiles: required key is missing when $.road_profiles_file is set");
+            }
+
             return c;
         }
 
@@ -332,6 +668,10 @@ public static class ScenarioLoader
         c.RemovedStreetShare = (float)r.Num("removed_street_share", 0.15, min: 0, max: 0.5);
         c.ConnectorSamples = r.Int("connector_samples", 8, min: 2);
 
+        // ADR-0028: 0 в JSON - скругление выключено (фиксированный отступ 7 м); в desc это -1, а 0 там значит «дефолт».
+        double corner = r.Num("corner_radius_m", 6, min: 0, max: 50);
+        c.CornerRadius = corner == 0 ? -1f : (float)corner;
+
         string signals = r.Str("signals", "arterial_x_arterial");
         c.Signals = signals switch
         {
@@ -355,7 +695,23 @@ public static class ScenarioLoader
         c.SignalMode = ParseSignalMode(r.Str("signal_mode", "adaptive"), r.ChildPath("signal_mode"));
         c.SignalCoordination = ParseSignalCoordination(r.Str("signal_coordination", "legacy"), r.ChildPath("signal_coordination"));
         c.ProgressionSpeedFactor = (float)r.Num("progression_speed_factor", 1.0, min: 0.5, max: 1.5);
+        if (c.Enabled)
+        {
+            ParseCityProfiles(r, profiles, ref c);   // city.profiles: с каталогом обязательна для генератора
+        }
 
+        // city.snap_nodes (road-profiles.md §5): узлы на сетку module_m, шаг = block_m; дефолт true в режиме профилей, false - прежнее поведение.
+        c.SnapNodes = r.Bool("snap_nodes", profiles.Enabled);
+        if (c.Enabled && c.SnapNodes)
+        {
+            int moduleMm = profiles.Enabled ? profiles.ModuleMm : DefaultModuleMm;
+            if (Mm(c.BlockSize, r.ChildPath("block_m")) % moduleMm != 0)
+            {
+                throw new ScenarioException($"{r.ChildPath("block_m")}: must be a multiple of module_m ({moduleMm / 1000.0:0.###} m) when snap_nodes is on");
+            }
+        }
+
+        c.LandUse = ParseLandUse(r.OptObject("landuse"), c.Enabled);
         r.Finish();
         return c;
     }
@@ -385,10 +741,11 @@ public static class ScenarioLoader
     private static int ScaledIrregularDefault(float scale) =>
         (int)Math.Round(12.0 * scale * scale, MidpointRounding.AwayFromZero);
 
-    private static NetworkDesc ParseNetwork(JsonObjectReader r)
+    private static NetworkDesc ParseNetwork(JsonObjectReader r, RoadProfilesDesc profiles)
     {
         JsonElement[] nodesJ = r.ReqArray("nodes");
         JsonElement[] segsJ = r.ReqArray("segments");
+        double corner = r.Num("corner_radius_m", 6, min: 0, max: 50);   // ADR-0028: 0 - выключено (в desc -1)
         r.Finish();
 
         var nodes = new NodeDesc[nodesJ.Length];
@@ -428,6 +785,13 @@ public static class ScenarioLoader
             var s = new JsonObjectReader(segsJ[i], p);
             segs[i].A = NodeRef(s, "a", ids);
             segs[i].B = NodeRef(s, "b", ids);
+            if (ParseSegmentProfile(s, profiles, ref segs[i]))
+            {
+                segs[i].SpeedLimit = Mps(s.Num("speed_kmh", min: 1));
+                s.Finish();
+                continue;
+            }
+
             segs[i].LanesAB = s.Int("lanes_ab", min: 0, max: 16);
             segs[i].LanesBA = s.Int("lanes_ba", min: 0, max: 16);
             if (segs[i].LanesAB + segs[i].LanesBA == 0)
@@ -446,7 +810,7 @@ public static class ScenarioLoader
             s.Finish();
         }
 
-        return new NetworkDesc { Nodes = nodes, Segments = segs };
+        return new NetworkDesc { Nodes = nodes, Segments = segs, CornerRadius = corner == 0 ? -1f : (float)corner };
     }
 
     private static int NodeRef(JsonObjectReader s, string key, Dictionary<string, int> ids)
@@ -462,22 +826,30 @@ public static class ScenarioLoader
 
     // ---------------------------------------------------------------- vehicles / demand
 
-    private static float[] ParseTypeMix(JsonObjectReader vehR, string[] typeNames)
+    private static float[] ParseTypeMix(JsonObjectReader vehR, TypeRefs refs)
     {
-        var mix = new float[typeNames.Length];
+        var mix = new float[refs.Count];
         if (!vehR.Has("type_mix"))
         {
-            mix[FindType(typeNames, "car", vehR.ChildPath("type_mix"))] = 1f;
+            mix[refs.CarIsIndexZero ? 0 : refs.Find("car", vehR.ChildPath("type_mix"))] = 1f;
             return mix;
         }
 
         JsonObjectReader m = vehR.ReqObject("type_mix");
         double sum = 0;
+        var seen = new bool[mix.Length];
         foreach (string k in m.Keys)
         {
             string p = m.ChildPath(k);
             double w = JsonObjectReader.NumValue(m.Raw(k), p, min: 0);
-            mix[FindType(typeNames, k, p)] = (float)w;
+            int idx = refs.Find(k, p);
+            if (seen[idx])
+            {
+                throw new ScenarioException($"{p}: vehicle type given twice");
+            }
+
+            seen[idx] = true;
+            mix[idx] = (float)w;
             sum += w;
         }
 
@@ -511,7 +883,8 @@ public static class ScenarioLoader
         {
             "gravity" => DemandModel.Gravity,
             "uniform" => DemandModel.Uniform,
-            _ => throw new ScenarioException($"{r.ChildPath("model")}: expected \"uniform\" or \"gravity\""),
+            "residents" => DemandModel.Residents,
+            _ => throw new ScenarioException($"{r.ChildPath("model")}: expected \"uniform\", \"gravity\" or \"residents\""),
         };
         d.GravityExponent = (float)r.Num("gravity_exponent", 1.0, min: 0);
         d.WeightJitter = (float)r.Num("weight_jitter", 0.5, min: 0, max: 1);
@@ -539,7 +912,7 @@ public static class ScenarioLoader
 
     // ---------------------------------------------------------------- transit
 
-    private static TransitDesc ParseTransit(JsonObjectReader? r, string[] typeNames)
+    private static TransitDesc ParseTransit(JsonObjectReader? r, TypeRefs refs, bool pedsEnabled)
     {
         var t = new TransitDesc
         {
@@ -556,8 +929,11 @@ public static class ScenarioLoader
             HoldAlpha = 0.9f,
             HoldMaxTicks = Ticks(60),
             HoldEveryN = 1,
+            BayModel = BayModel.Virtual,
+            BayYieldTicks = Ticks(3),
+            PassengerModel = pedsEnabled ? PassengerModel.Agents : PassengerModel.Counter,
         };
-        string busName = "bus";
+        string busName = refs.DefaultBus;
         if (r != null)
         {
             t.Routes = r.Int("routes", 0, min: 0);
@@ -588,13 +964,35 @@ public static class ScenarioLoader
                 "bay" => StopKindMode.Bay,
                 _ => throw new ScenarioException($"{r.ChildPath("stop_kind")}: expected \"curb\", \"bay\" or \"mixed\""),
             };
-            busName = r.Str("bus_type", "bus");
+            busName = r.Str("bus_type", refs.DefaultBus);
             t.DwellBaseTicks = Ticks(r.Num("dwell_base_s", 8, min: 0));
             t.DwellPerPassengerTicks = (float)(r.Num("dwell_per_passenger_s", 1.5, min: 0) * TicksPerSecond);
             t.PassengerRatePerMin = (float)r.Num("passenger_rate_per_min", 2, min: 0);
             t.HoldAlpha = (float)r.Num("hold_alpha", 0.9, min: 0, max: 1);
             t.HoldMaxTicks = Ticks(r.Num("hold_max_s", 60, min: 0));
             t.HoldEveryN = r.Int("hold_every_n", 1, min: 1);
+            t.Bidirectional = r.Bool("bidirectional", false);
+            string bm = r.Str("bay_model", "virtual");
+            t.BayModel = bm switch
+            {
+                "virtual" => BayModel.Virtual,
+                "curb" => BayModel.Curb,
+                "lane" => BayModel.Lane,
+                _ => throw new ScenarioException($"{r.ChildPath("bay_model")}: expected \"virtual\", \"curb\" or \"lane\""),
+            };
+            t.BayYieldTicks = Ticks(r.Num("bay_yield_s", 3, min: 0, max: 60));
+            string pm = r.Str("passenger_model", pedsEnabled ? "agents" : "counter");
+            t.PassengerModel = pm switch
+            {
+                "counter" => PassengerModel.Counter,
+                "agents" => PassengerModel.Agents,
+                _ => throw new ScenarioException($"{r.ChildPath("passenger_model")}: expected \"counter\" or \"agents\""),
+            };
+            if (t.PassengerModel == PassengerModel.Agents && !pedsEnabled)
+            {
+                throw new ScenarioException($"{r.ChildPath("passenger_model")}: \"agents\" requires an enabled $.peds section");
+            }
+
 
             JsonElement[]? ex = r.OptArray("routes_explicit");
             if (ex != null)
@@ -608,15 +1006,106 @@ public static class ScenarioLoader
         bool needBus = t.Routes > 0 || t.RoutesExplicit is { Length: > 0 };
         if (needBus)
         {
-            t.BusType = FindType(typeNames, busName, "$.transit.bus_type");
+            t.BusType = refs.Find(busName, "$.transit.bus_type");
         }
         else
         {
-            int i = Array.IndexOf(typeNames, busName);
+            int i = refs.TryFind(busName, "$.transit.bus_type");
             t.BusType = i >= 0 ? i : 0;
         }
 
         return t;
+    }
+
+    // ---------------------------------------------------------------- peds (scenario-format.md §2.4)
+
+    private const int MaxPedCount = 10_000_000;
+    private const double MaxPedDistanceM = 100_000;
+
+    /// <summary>Секция <c>peds</c> -> <see cref="PedDesc"/> в целых единицах ядра: мм, мм/тик (км/ч / 3.6 · 50), тики. Нет секции - <c>Enabled = false</c>.</summary>
+    private static PedDesc ParsePeds(JsonObjectReader? r)
+    {
+        if (r == null)
+        {
+            return default;
+        }
+
+        var p = new PedDesc { Enabled = r.Bool("enabled", true) };
+        p.Count = r.Int("count", min: 0, max: MaxPedCount);
+        p.Residents = r.Int("residents", 2 * p.Count, min: p.Count, max: 2 * MaxPedCount);
+        p.SpawnRampTicks = Ticks(r.Num("spawn_ramp_s", 120, min: 0));
+        (p.SpeedMinMmPerTick, p.SpeedMaxMmPerTick) = ParseKmhRange(r, "speed_kmh", 4.0, 5.4);
+        (p.ActivityMinTicks, p.ActivityMaxTicks) = ParseSecondsRange(r, "activity_s", 600, 1800);
+        p.WalkOnlyMm = Mm(r.Num("walk_only_m", 800, min: 0, max: MaxPedDistanceM));
+        p.MaxWalkToStopMm = Mm(r.Num("max_walk_to_stop_m", 500, min: 0, max: MaxPedDistanceM));
+        p.MaxWalkMm = Mm(r.Num("max_walk_m", 1500, min: 0, max: MaxPedDistanceM));
+        p.SidewalkWidthMm = Mm(r.Num("sidewalk_width_m", 3, min: 0.5, max: 20));
+        p.CrosswalkWidthMm = Mm(r.Num("crosswalk_width_m", 3, min: 0.5, max: 20));
+        string arterial = r.Str("arterial_crossings", "signal_only");
+        p.ArterialCrossings = arterial switch
+        {
+            "signal_only" => ArterialCrossings.SignalOnly,
+            "all" => ArterialCrossings.All,
+            _ => throw new ScenarioException($"{r.ChildPath("arterial_crossings")}: expected \"signal_only\" or \"all\""),
+        };
+        p.MidblockAtStops = r.Bool("midblock_at_stops", true);
+        p.WalkTicks = Math.Max(1, Ticks(r.Num("walk_s", 5, min: 0.05)));
+        p.ClearSpeedMmPerTick = KmhToMmPerTick(r.Num("clear_speed_kmh", 4.3, min: 0.1, max: 20));
+        p.MaxCloseTicks = Ticks(r.Num("max_close_s", 10, min: 0));
+        p.CarWindowTicks = Ticks(r.Num("car_window_s", 5, min: 0));
+        p.PathfindBudgetPerTick = r.Int("pathfind_budget_per_tick", 8, min: 0);
+        p.WorkBudgetPerTick = r.Int("work_budget_per_tick", 8000, min: 0);
+        p.StuckCrossTicks = Math.Max(1, Ticks(r.Num("stuck_cross_s", 120, min: 0.05)));
+        p.StuckStopTicks = r.Has("stuck_stop_s") ? Math.Max(1, Ticks(r.Num("stuck_stop_s", min: 0.05))) : 0;   // 0 -> max(3 · headway_s, 900) после разбора transit
+        string source = r.Str("source", "preform");
+        p.Source = source switch
+        {
+            "preform" => PedSource.Preform,
+            "city" => PedSource.City,
+            _ => throw new ScenarioException($"{r.ChildPath("source")}: expected \"preform\" or \"city\""),
+        };
+        r.Finish();
+        return p;
+    }
+
+    private static int Mm(double meters) => (int)Math.Round(meters * 1000.0);
+
+    private static int KmhToMmPerTick(double kmh) => Math.Max(1, (int)Math.Round(kmh / 3.6 * 50.0));
+
+    private static (int Min, int Max) ParseKmhRange(JsonObjectReader r, string key, double defMin, double defMax)
+    {
+        (double lo, double hi) = ParseRange(r, key, defMin, defMax, 0.1, 30);
+        return (KmhToMmPerTick(lo), KmhToMmPerTick(hi));
+    }
+
+    private static (int Min, int Max) ParseSecondsRange(JsonObjectReader r, string key, double defMin, double defMax)
+    {
+        (double lo, double hi) = ParseRange(r, key, defMin, defMax, 0.05, 1e7);
+        return (Math.Max(1, Ticks(lo)), Math.Max(1, Ticks(hi)));
+    }
+
+    private static (double Min, double Max) ParseRange(JsonObjectReader r, string key, double defMin, double defMax, double lowest, double highest)
+    {
+        JsonElement[]? arr = r.OptArray(key);
+        if (arr == null)
+        {
+            return (defMin, defMax);
+        }
+
+        string path = r.ChildPath(key);
+        if (arr.Length != 2)
+        {
+            throw new ScenarioException($"{path}: expected array of 2 numbers [min, max]");
+        }
+
+        double lo = JsonObjectReader.NumValue(arr[0], JsonObjectReader.Index(path, 0), lowest, highest);
+        double hi = JsonObjectReader.NumValue(arr[1], JsonObjectReader.Index(path, 1), lowest, highest);
+        if (lo > hi)
+        {
+            throw new ScenarioException($"{path}: min must be <= max");
+        }
+
+        return (lo, hi);
     }
 
     private static BusRouteDesc[] ParseExplicitRoutes(JsonElement[] arr, string path)
@@ -741,6 +1230,75 @@ public static class ScenarioLoader
         return d;
     }
 
+    // player-tools.md §11, scenario-format.md 2.1 "tools": стоимости (заглушки до баланса 4.2) и границы мира; секция необязательна.
+    private static ToolsDesc ParseTools(JsonObjectReader? r)
+    {
+        var d = new ToolsDesc
+        {
+            Costs = new ToolCostsDesc
+            {
+                RoadPerMLaneStreet = 10,
+                RoadPerMLaneArterial = 20,
+                CurveFactorPct = 120,
+                NodeSignal = 500,
+                ArmSign = 50,
+                TurnBan = 100,
+                BusStop = 200,
+                BusRoute = 1000,
+                DemolishRefundPct = 50,
+                UpgradeRefundPct = 50,
+            },
+        };
+        if (r == null)
+        {
+            return d;
+        }
+
+        JsonObjectReader? c = r.OptObject("costs");
+        if (c != null)
+        {
+            JsonObjectReader? perM = c.OptObject("road_per_m_lane");
+            if (perM != null)
+            {
+                d.Costs.RoadPerMLaneStreet = (long)perM.Num("street", d.Costs.RoadPerMLaneStreet, min: 0, max: MaxCostValue);
+                d.Costs.RoadPerMLaneArterial = (long)perM.Num("arterial", d.Costs.RoadPerMLaneArterial, min: 0, max: MaxCostValue);
+                perM.Finish();
+            }
+
+            d.Costs.CurveFactorPct = c.Int("curve_factor_pct", d.Costs.CurveFactorPct, min: 1, max: 1000);
+            d.Costs.NodeSignal = (long)c.Num("node_signal", d.Costs.NodeSignal, min: 0, max: MaxCostValue);
+            d.Costs.ArmSign = (long)c.Num("arm_sign", d.Costs.ArmSign, min: 0, max: MaxCostValue);
+            d.Costs.TurnBan = (long)c.Num("turn_ban", d.Costs.TurnBan, min: 0, max: MaxCostValue);
+            d.Costs.BusStop = (long)c.Num("bus_stop", d.Costs.BusStop, min: 0, max: MaxCostValue);
+            d.Costs.BusRoute = (long)c.Num("bus_route", d.Costs.BusRoute, min: 0, max: MaxCostValue);
+            d.Costs.DemolishRefundPct = c.Int("demolish_refund_pct", d.Costs.DemolishRefundPct, min: 0, max: 100);
+            d.Costs.UpgradeRefundPct = c.Int("upgrade_refund_pct", d.Costs.UpgradeRefundPct, min: 0, max: 100);
+            c.Finish();
+        }
+
+        d.InverseCapacity = r.Int("inverse_capacity", 0, min: 0, max: 1 << 20);
+        JsonObjectReader? b = r.OptObject("world_bounds");
+        if (b != null)
+        {
+            d.HasWorldBounds = true;
+            d.BoundsMinX = (float)b.Num("min_x", min: -1e7, max: 1e7);
+            d.BoundsMinZ = (float)b.Num("min_z", min: -1e7, max: 1e7);
+            d.BoundsMaxX = (float)b.Num("max_x", min: -1e7, max: 1e7);
+            d.BoundsMaxZ = (float)b.Num("max_z", min: -1e7, max: 1e7);
+            if (d.BoundsMaxX <= d.BoundsMinX || d.BoundsMaxZ <= d.BoundsMinZ)
+            {
+                throw new ScenarioException($"{b.Path}: expected min_x < max_x and min_z < max_z");
+            }
+
+            b.Finish();
+        }
+
+        r.Finish();
+        return d;
+    }
+
+    private const double MaxCostValue = 1e12;
+
     // sim-lod.md, scenario-format.md 2.1 "lod": секция необязательна, без неё (и при mode = off) LOD нет.
     private static LodDesc ParseLod(JsonObjectReader? r)
     {
@@ -860,9 +1418,11 @@ public static class ScenarioLoader
         return res;
     }
 
+    private static readonly string[] _pedCapacityKeys = { "max_peds", "max_residents", "max_ped_path_steps" };
+
     private static int WorkBudgetDefault(int pathfindBudget) => (int)Math.Min(int.MaxValue, 1500L * pathfindBudget);
 
-    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing)
+    private static SimCapacities ParseCapacities(JsonObjectReader r, in RoutingDesc routing, in PedDesc peds, bool residents, bool parking)
     {
         var c = new SimCapacities
         {
@@ -887,6 +1447,57 @@ public static class ScenarioLoader
         c.MaxPlanSteps = r.Int("max_plan_steps", (int)planDefault, min: 1, max: MaxArenaSteps);
         c.MaxConnectors = r.Int("max_connectors", checked(c.MaxNodes * 16), min: 1);
         c.MaxConflicts = r.Int("max_conflicts", checked(c.MaxConnectors * 6), min: 1);
+        if (peds.Enabled)
+        {
+            // pedestrians.md §12: max_peds >= count · 1.3, max_residents >= residents.
+            long minPeds = (((long)peds.Count * 13L) + 9L) / 10L;
+            c.MaxPeds = r.Int("max_peds", min: (int)Math.Max(1L, minPeds));
+            c.MaxResidents = r.Int("max_residents", min: Math.Max(1, peds.Residents));
+            c.MaxPedPathSteps = r.Int("max_ped_path_steps", 64, min: 1, max: 4096);
+        }
+        else
+        {
+            foreach (string key in _pedCapacityKeys)
+            {
+                if (r.Has(key))
+                {
+                    throw new ScenarioException($"{r.ChildPath(key)}: allowed only with an enabled $.peds section");
+                }
+            }
+        }
+
+        if (residents)
+        {
+            // zoning-demand.md §16: ключ max_residents занят заготовками peds, жители города - max_city_residents.
+            c.MaxLots = r.Int("max_lots", min: 1);
+            c.MaxBuildings = r.Int("max_buildings", min: 1);
+            c.MaxCityResidents = r.Int("max_city_residents", min: 1);
+            c.SkimObsCapacity = r.Int("skim_obs_capacity", 65_536, min: 1);
+            if (parking)
+            {
+                // parking.md §14: 0 (или нет ключа) -> max_lots + max_buildings + 64; значение раскрывается здесь, ядро хранит готовое.
+                c.MaxParking = r.Int("max_parking", 0, min: 0);
+                if (c.MaxParking == 0)
+                {
+                    c.MaxParking = checked(c.MaxLots + c.MaxBuildings + 64);
+                }
+            }
+            else if (r.Has("max_parking"))
+            {
+                throw new ScenarioException($"{r.ChildPath("max_parking")}: allowed only with an enabled $.parking section");
+            }
+        }
+        else
+        {
+            foreach (string key in _cityCapacityKeys)
+            {
+                if (r.Has(key))
+                {
+                    throw new ScenarioException($"{r.ChildPath(key)}: allowed only with demand.model = \"residents\"");
+                }
+            }
+        }
+
         r.Finish();
         return c;
     }

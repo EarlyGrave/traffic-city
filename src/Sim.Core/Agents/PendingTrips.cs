@@ -16,6 +16,9 @@ internal struct PendingTrip
     public float DestS;
     public int Route;        // слот RouteStore; действителен только при RouteGen != 0
     public int RouteGen;     // поколение маршрута; 0 = маршрут ещё не построен (поколение живого слота всегда нечётное и > 0)
+    public int ResidentRef;  // 0 - поездка OD-генератора/команды/автобуса; иначе индекс жителя города + 1 (zoning-demand.md §4.1; нулевое значение структуры = «нет»)
+    public int ParkRef;      // parking.md §2.3 (K1): 0 - нет резерва; иначе индекс объекта стоянки + 1 (нулевая структура безопасна, как ResidentRef)
+    public int ParkGen;      // поколение объекта стоянки при резерве
 
     /// <summary>true = маршрут построен (фаза 2 ставит на дорогу только такие поездки).</summary>
     public readonly bool HasRoute => RouteGen != 0;

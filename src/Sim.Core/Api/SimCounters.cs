@@ -12,6 +12,8 @@ public enum CreateStatus : int
     InvalidTransit = 5,
     InvalidDemand = 6,
     NotSupported = 7,           // запрошено то, чего ядро ещё не умеет (например, генератор города)
+    InvalidPeds = 8,            // секция peds: ёмкости max_peds/max_residents меньше требуемых, ширины или скорости вне пределов
+    InvalidCity = 9,            // режим жителей (demand.model = residents): секции CityDesc или ёмкости вне пределов, нет lod.cell_m, нечего нарезать
 }
 
 /// <summary>Монотонные счётчики ядра (core-api §11), кроме полей, помеченных «текущее».</summary>
@@ -51,6 +53,8 @@ public struct SimCounters
     public long BusHeadwayDeviationTicksTotal;   // Σ |фактический интервал между автобусами на остановке - плановый|, тики
     public long BusHeadwaySamples;               // число таких измерений (прибытия, у которых на остановке был предыдущий автобус)
     public long BusPassengersBoarded;
+    public long BayEntries, BayFallbacks;        // кармана ADR-0029: заезды в виртуальный карман / остановки Bay, обслуженные у обочины (занят, горизонт ворот)
+    public long BayYields, BayExitWaitTicksTotal; // уступки автобусу (BB2) / Σ тиков ожидания зазора для выезда из кармана
     // --- перекрёстки (intersections.md §10) ---
     public long Grants;                   // выданных допусков
     public long GateDeniedExit;           // отказов «выезд занят» (don't-block-the-box)
@@ -78,6 +82,74 @@ public struct SimCounters
     public long LaneShareSamples;         // выборок (направление многополосного сегмента, >= 4 машин)
     public long LaneShareMaxPermilleSum;  // Σ доли самой загруженной полосы направления, ‰
     public long LaneShareH0, LaneShareH1, LaneShareH2, LaneShareH3, LaneShareH4, LaneShareH5, LaneShareH6, LaneShareH7, LaneShareH8, LaneShareH9; // гистограмма той же доли, корзины по 10%
+    // --- пешеходы и пассажиры (ADR-0020, pedestrians.md §9); заморожены в P2. Состояние: в хэше и сейве (CNTR); при выключенных peds все нули и в хэш не входят ---
+    public int PedActive;                 // текущее: живых пешеходов
+    public long PedActiveTicksTotal;      // Σ активных пешеходов по тикам (ped_active_mean)
+    public long PedSpawned;               // запущенных поездок
+    public long PedTripsCompleted;        // завершённых поездок
+    public long PedTripTicksTotal;        // Σ длительностей завершённых поездок
+    public long PedCrossWaitTicksTotal;   // Σ ожидания у переходов на момент выпуска (P3); гистограмма 1 с - блок XING
+    public long PedCrossReleases;         // выпущенных с ожидания у переходов (P3)
+    public long PedStopWaitTicksTotal;    // Σ ожидания на остановках на момент посадки (P4)
+    public long PedStopBoardings;         // севших на автобус (P4)
+    public long PedStuckEvents;           // ожидание >= stuck_cross_s / stuck_stop_s (цель 0)
+    public long CarCrossDelayTicks;       // Σ тиков отказа DenyPed у кандидатов + тиков стоянки с ClampFlags.Cross (P3)
+    public long CrossingClosedTicks;      // Σ по переходам с выпусками: тики «не Free» (P3)
+    public long CrossingObservedTicks;    // Σ по таким переходам: тики наблюдения (P3)
+    public long BusPassengersAlighted;    // вышло из автобусов (P4)
+    public long BusPaxOnBoardTicks;       // Σ пассажиров на борту по тикам (P4)
+    public long PedPathQueries;           // запросов путей
+    public long PedPathWork;              // релаксаций A* пешеходов
+    public long PedNoPath;                // запросов без пути (норма 0)
+    public long PedModeFallback;          // автобусная нога заменена пешей (P4)
+    public long GrantsRevokedPed;         // снятий допуска из-за закрытия перехода (P3)
+    public long PedAllocFailed;           // пул пешеходов исчерпан при запуске поездки
+    public long PedNetResets;             // сбросов пешеходов при BuildRoad
+    // --- город: жители, здания, экономика, скимы (ADR-0011, zoning-demand.md §13, §15); заморожены в Z1. Состояние: в хэше и сейве (CNTR) только при residents; иначе нули ---
+    public long CityEvents;               // обработанных событий жителей (Z2)
+    public long ResToursPlanned;          // туров в планах дня
+    public long ResToursDropped;          // туров, не поместившихся в сутки (res_tours_dropped)
+    public long ResToursUnreachable;      // туров без доступных вариантов (res_tours_unreachable)
+    public long ResToursCancelled;        // туров, отменённых по дедлайну WaitDepart
+    public long ResLegsCar, ResLegsBus, ResLegsWalk;          // начатых ног по способам
+    public long ResLegsDone;              // завершённых ног
+    public long ResLegCostDsTotal;        // Σ обобщённой стоимости завершённых ног, дс
+    public long ResVisits;                // визитов в C
+    public long ResVisitsUnserved;        // визитов впустую (res_visits_unserved)
+    public long ResLegOverdue;            // нога дольше 3 * ским (res_leg_overdue, только отчёт)
+    public long ResStuck;                 // нарушений дедлайнов (res_stuck; норма 0)
+    public long ResWaitDepartTicks;       // Σ тиков в WaitDepart
+    public long SkimObserved;             // принятых наблюдений скимов
+    public long SkimObsDropped;           // отброшенных (накопитель полон; skim_obs_dropped)
+    public long SkimUpdates;              // обновлённых записей скима
+    public long Immigrants, Emigrants;    // въехало / уехало жителей
+    public long ResRelocations;           // переездов
+    public long ResHired, ResFired;       // найм / увольнение
+    public long ResJobSwitches;           // добровольных смен работы
+    public long BuildingsBuilt;           // построено (Constructing -> Active)
+    public long BuildingsAbandoned;       // ушло в Abandoned
+    public long BuildingsRemoved;         // снесено
+    public long FirmClosures;             // закрытий фирм по убыткам
+    public long PaintCommands;            // применённых PaintZone
+    public long ExecSwitches;             // переключений micro/aggregate
+    public long CityDays;                 // пройденных границ суток
+    public long AggregateLegs;            // ног, исполненных агрегатом
+    // --- казна города (4.2, city-economy.md §12): в хэше (раздел бюджета) и сейве (CNTR) всегда; считает E2, без city_budget - нули ---
+    public long FareEvaded;               // ног на автобусе без оплаты (не хватило на проезд)
+    public long DebtEvictions;            // выселений за долг
+    public long InsufficientFunds;        // отказов инструментов из-за нехватки казны
+    // --- парковка (4.4, parking.md §11): в хэше (раздел парковки) только в режиме, в сейве (CNTR) всегда; считают K2-K5, без режима - нули ---
+    public long ParkSearchTimeSum;        // parking_search_time: Σ тиков ожидания места и поиска по закрытым машинным ногам
+    public long ParkSearchTimeCount;      // число закрытых ног, вошедших в сумму
+    public long ParkSearchHist0, ParkSearchHist1, ParkSearchHist2, ParkSearchHist3, ParkSearchHist4, ParkSearchHist5;   // корзины: 0, <= 20 с, <= 60 с, <= 300 с, <= 600 с, > 600 с
+    public long ParkNoSpotWaits;          // parking_no_spot_waits: ног, которым не хватило мест (раз на ногу)
+    public long ParkModeSwitch;           // parking_mode_switch: смен способа по причине мест
+    public long ParkToursDropped;         // parking_tours_dropped: туров, снятых по дедлайну без мест
+    public long ParkOverflow;             // parking_overflow: постановок на Overflow
+    public long ParkTowed;                // parking_towed: эвакуаций стоящих гостей
+    public long ParkCarShed;              // parking_car_shed: жителей без машины из-за нехватки домашних мест
+    public long ParkSearching;            // parking_searching: машин в поиске сейчас (gauge)
+    public long ParkWalkTicks;            // parking_walk_ticks: Σ ходьбы от мест
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

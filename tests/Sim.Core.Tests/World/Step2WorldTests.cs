@@ -95,7 +95,7 @@ internal static class Step2
     {
         Levels = 1,
         Fanout = 4,
-        CellSize = 1000f,
+        CellSize = 1016f,
         WindowSteps = 16,
         PathfindBudgetPerTick = 32,
         WorkBudgetPerTick = 48000,

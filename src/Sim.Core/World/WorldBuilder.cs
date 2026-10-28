@@ -33,6 +33,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateRoadProfiles(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         st = ValidateRouting(in desc);
         if (st != CreateStatus.Ok)
         {
@@ -58,6 +64,18 @@ internal static class WorldBuilder
         }
 
         st = ValidateTransit(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidatePeds(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = City.CityBuild.Validate(in desc);
         if (st != CreateStatus.Ok)
         {
             return st;
@@ -96,10 +114,97 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = BuildPeds(w);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = City.CityBuild.Build(w, create: true, default);   // жители: нарезка, зоны, начальное население (zoning-demand.md §2.5); без residents - ничего
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         w.TargetVehicles = desc.Demand.TargetVehicles;
         SyncStructuralCounters(w);
         world = w;
         return CreateStatus.Ok;
+    }
+
+    /// <summary>
+    /// Каталог профилей дорог (ADR-0030): без каталога ссылок на профили быть не должно (режим legacy); с каталогом он валиден, а каждый сегмент явной сети
+    /// и оба класса дорог генератора несут профиль, согласованный с полосами, видом дороги и <c>Mirrored</c>.
+    /// </summary>
+    private static CreateStatus ValidateRoadProfiles(in ScenarioDesc desc)
+    {
+        if (!desc.RoadProfiles.Enabled)
+        {
+            bool refs = desc.City.Enabled ? desc.City.StreetProfile != 0 || desc.City.ArterialProfile != 0 : AnySegmentProfile(desc.Network.Segments);
+            return refs ? CreateStatus.InvalidNetwork : CreateStatus.Ok;
+        }
+
+        if (RoadProfileValidator.Validate(in desc.RoadProfiles, out _) != RoadProfileError.None)
+        {
+            return CreateStatus.InvalidNetwork;
+        }
+
+        RoadProfileDesc[] ps = desc.RoadProfiles.Profiles;
+        if (desc.City.Enabled)
+        {
+            int sp = desc.City.StreetProfile - 1;
+            int ap = desc.City.ArterialProfile - 1;
+            bool ok = (uint)sp < (uint)ps.Length && (uint)ap < (uint)ps.Length && ps[sp].Kind == RoadKind.Street && ps[ap].Kind == RoadKind.Arterial;
+            return ok ? CreateStatus.Ok : CreateStatus.InvalidNetwork;
+        }
+
+        SegmentDesc[]? segs = desc.Network.Segments;
+        for (int i = 0; segs != null && i < segs.Length; i++)
+        {
+            ref readonly SegmentDesc s = ref segs[i];
+            int p = s.Profile - 1;
+            if ((uint)p >= (uint)ps.Length || ps[p].Kind != s.Kind)
+            {
+                return CreateStatus.InvalidNetwork;
+            }
+
+            int fwd = 0;
+            int bwd = 0;
+            foreach (RoadElemDesc e in ps[p].Elements)
+            {
+                if (e.Kind == RoadElemKind.Lane)
+                {
+                    if (e.Dir == RoadLaneDir.Forward)
+                    {
+                        fwd++;
+                    }
+                    else
+                    {
+                        bwd++;
+                    }
+                }
+            }
+
+            if (s.LanesAB != (s.Mirrored ? bwd : fwd) || s.LanesBA != (s.Mirrored ? fwd : bwd))
+            {
+                return CreateStatus.InvalidNetwork;
+            }
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    private static bool AnySegmentProfile(SegmentDesc[]? segs)
+    {
+        for (int i = 0; segs != null && i < segs.Length; i++)
+        {
+            if (segs[i].Profile != 0 || segs[i].Mirrored)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -133,10 +238,29 @@ internal static class WorldBuilder
             }
         }
 
+        // Отступы концов по всем рукавам узла (ADR-0028): явная сеть известна целиком до эмиссии сегментов.
+        int[] segA = new int[segmentCount];
+        int[] segB = new int[segmentCount];
+        int[] segLanes = new int[segmentCount];
+        int[] segProfile = new int[segmentCount];
+        float[] setA = new float[segmentCount];
+        float[] setB = new float[segmentCount];
+        for (int i = 0; i < segmentCount; i++)
+        {
+            segA[i] = segments![i].A;
+            segB[i] = segments[i].B;
+            segLanes[i] = segments[i].LanesAB + segments[i].LanesBA;
+            segProfile[i] = segments[i].Profile - 1;   // desc: индекс + 1, 0 - нет
+        }
+
+        w.Builder.PlanSetbacks(segA, segB, segLanes, segProfile, setA, setB);
+
         for (int i = 0; i < segmentCount; i++)
         {
             SegmentDesc s = segments![i];
-            NetworkStatus st = w.Builder.AddSegment(s.A, s.B, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, out _);
+            NetworkStatus st = s.Profile > 0
+                ? w.Builder.AddProfileSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.Profile - 1, s.Mirrored, s.SpeedLimit, setA[i], setB[i], out _)
+                : w.Builder.AddSegment(s.A, s.B, ReadOnlySpan<Vec2>.Empty, s.LanesAB, s.LanesBA, s.SpeedLimit, s.Kind, setA[i], setB[i], out _);
             if (st != NetworkStatus.Ok)
             {
                 return st.ToCreateStatus();
@@ -153,13 +277,15 @@ internal static class WorldBuilder
     /// </summary>
     private static CreateStatus BuildCity(World w, in ScenarioDesc desc)
     {
-        CreateStatus st = CityGenerator.Generate(in desc.City, in w.Rules, in w.Caps, w.Builder, ref w.RngCityGen, out CityGenResult city);
+        CreateStatus st = CityGenerator.Generate(in desc.City, in w.Rules, in w.Caps, w.Builder, ref w.RngCityGen, out CityGenResult city, w.Seed);
         if (st != CreateStatus.Ok)
         {
             return st;
         }
 
         w.CityInfo = city;
+        w.LandUse = city.LandUse ?? System.Array.Empty<LandUsePoly>();
+        w.LandUseVersion = w.LandUse.Length > 0 ? 1 : 0;
         w.SignalPlanSeeds = city.SignalPlans ?? System.Array.Empty<SignalPlanSeed>();
         w.SignalCount = w.SignalPlanSeeds.Length;
         if (w.SignalCount > w.SignalStates.Length)
@@ -190,8 +316,8 @@ internal static class WorldBuilder
         Array.Copy(transit.Routes, net.BusRoutes, transit.RouteCount);
         Array.Copy(transit.Stops, net.BusStops, transit.StopCount);
         Array.Copy(transit.RouteStops, net.BusRouteStops, transit.StopCount);
-        net.BusRouteCount = transit.RouteCount;
-        net.BusStopCount = transit.StopCount;
+        net.AdoptBusRoutes(transit.RouteCount);
+        net.AdoptBusStops(transit.StopCount);
         net.BusRouteStopCount = transit.StopCount;
         w.Transit = transit;
         return CreateStatus.Ok;
@@ -245,6 +371,65 @@ internal static class WorldBuilder
 
         w.Router = new Routing.Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         return st;
+    }
+
+    /// <summary>
+    /// Сеть пешеходов (ADR-0020, pedestrians.md §2): при выключенной секции <c>peds</c> ничего не выделяется и не меняется.
+    /// Строится после сети, connector'ов, зон и автобусных остановок; не трогает ГСЧ и состояние.
+    /// </summary>
+    private static CreateStatus BuildPeds(World w) => BuildPeds(w, create: true);
+
+    /// <summary>
+    /// <paramref name="create"/> = false: загрузчик сейва выделяет структуры, а жителей и состояние берёт из блоков файла (<c>PEDS</c> и др.).
+    /// </summary>
+    internal static CreateStatus BuildPeds(World w, bool create)
+    {
+        if (!w.PedCfg.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        var net = new Peds.PedNetwork(in w.Caps, w.Net, w.Connectors, in w.PedCfg);
+        w.Net.PedNet = net;
+        if (!net.Rebuild(w))
+        {
+            return CreateStatus.NetworkTooLarge;
+        }
+
+        var pw = new Peds.PedWorld(w);
+        w.Peds = pw;
+        if (create)
+        {
+            pw.Init(w);
+        }
+        else
+        {
+            w.TargetPeds = 0;
+        }
+
+        return CreateStatus.Ok;
+    }
+
+    /// <summary>Секция <c>peds</c> (pedestrians.md §12): пределы ёмкостей и параметров; <c>passenger_model = agents</c> без <c>peds</c> - отказ.</summary>
+    internal static CreateStatus ValidatePeds(in ScenarioDesc desc)
+    {
+        if (desc.Transit.PassengerModel < PassengerModel.Counter || desc.Transit.PassengerModel > PassengerModel.Agents)
+        {
+            return CreateStatus.InvalidTransit;
+        }
+
+        if (!desc.Peds.Enabled)
+        {
+            return desc.Transit.PassengerModel == PassengerModel.Agents ? CreateStatus.InvalidPeds : CreateStatus.Ok;
+        }
+
+        if (desc.Lod.Mode != LodMode.Off && desc.Lod.MesoModel == MesoModel.Queue)
+        {
+            return CreateStatus.NotSupported;   // Q-meso + peds: машины очереди не материализованы, обязавшихся нет (ADR-0020, pedestrians.md §5.6)
+        }
+
+        PedDesc p = Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks);
+        return Peds.PedNetwork.IsValid(in p, in desc.Capacities) ? CreateStatus.Ok : CreateStatus.InvalidPeds;
     }
 
     /// <summary>LOD-ячейки (ADR-0013): при <c>Mode = Off</c> ничего не выделяется и не меняется (побитово прежнее ядро).</summary>
@@ -535,6 +720,9 @@ internal static class WorldBuilder
         return CreateStatus.Ok;
     }
 
+    /// <summary>Верхняя граница <c>transit.bay_yield_s</c> (60 с, bus-bays.md §3), тики.</summary>
+    internal const int MaxBayYieldTicks = 1200;
+
     internal static CreateStatus ValidateTransit(in ScenarioDesc desc)
     {
         TransitDesc t = desc.Transit;
@@ -545,6 +733,11 @@ internal static class WorldBuilder
         }
 
         if ((t.Routes > 0 || explicitRoutes > 0) && (uint)t.BusType >= (uint)desc.VehicleTypes.Length)
+        {
+            return CreateStatus.InvalidTransit;
+        }
+
+        if ((uint)t.BayModel > (uint)BayModel.Lane || t.BayYieldTicks < 0 || t.BayYieldTicks > MaxBayYieldTicks)
         {
             return CreateStatus.InvalidTransit;
         }

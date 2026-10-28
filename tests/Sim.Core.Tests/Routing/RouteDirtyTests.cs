@@ -28,6 +28,7 @@ public class RouteDirtyTests
     {
         ScenarioDesc d = Step2.S1k(buses: true);
         using Simulation sim = Simulation.Create(in d);
+        sim.SetToolsConfig(Tools.ToolsFixture.Unbounded);
         sim.Step(1200);
         var r = new BuildRoadCmd { Ax = 9000, Az = 9000, Bx = 9200, Bz = 9000, SpeedLimit = 13.9f, LanesAB = 1, LanesBA = 1, Kind = RoadKind.Street, Flags = 1 };
         Assert.True(sim.Enqueue(Command.MakeBuildRoad(in r)));

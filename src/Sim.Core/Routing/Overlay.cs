@@ -198,8 +198,8 @@ internal sealed partial class Overlay
             return CreateStatus.InvalidCapacity;
         }
 
-        int nx1 = (int)nx;
-        int nz1 = (int)nz;
+        int nx1 = DetMath.ToIntSat(nx);
+        int nz1 = DetMath.ToIntSat(nz);
         long cells = 0;
         long div = 1;
         for (int l = 1; l <= cfg.Levels; l++)
@@ -621,6 +621,27 @@ internal sealed partial class Overlay
         }
 
         MarkChanged(true);
+    }
+
+    /// <summary>
+    /// После правки сети инструментами (4.3, T3; решение оркестратора по player-tools.md §12.1): узлы и DirSeg могли занять слоты заново, дуги узлов - поменяться, поэтому
+    /// привязка узлов, срезы и раскладка считаются заново и ячейки кастомизируются целиком (синхронно; волна и инкремент - T6). Граф должен быть уже
+    /// пересобран и взвешен (<see cref="RouteGraph.Rebuild"/>, <see cref="RouteGraph.RecalcCosts"/>). Не влезло в массивы - оверлей выключается (как после нехватки запаса).
+    /// </summary>
+    public void RebuildAfterEdit()
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        int nodes = _net.NodeCount;
+        int dirs = _g.DirSegCount;
+        AssignNodes(0, nodes);
+        ComputeCuts(0, dirs);
+        _builtNodes = nodes;
+        _builtDirSegs = dirs;
+        RebuildAll();
     }
 
     // Новая раскладка с запасом от текущих счётчиков + полная кастомизация. Не влезло в массивы - оверлей выключен.

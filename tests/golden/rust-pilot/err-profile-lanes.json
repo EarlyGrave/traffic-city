@@ -1,0 +1,5 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/err-profile-lanes.json",
+  "load_ok": false
+}

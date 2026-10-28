@@ -108,7 +108,7 @@ column_count × 24 Б, по возрастанию column_id:
 xxh64 каждого блока и подвала, каталог столбцов (тип, `elem_size`, `offset + count·elem_size ≤ length`, id по возрастанию).
 Аллокация по `count` — только после сверки с длиной блока (защита от «count = 2^60»).
 
-## 3. Блоки `world_version = 1`
+## 3. Блоки `world_version = 1` (и 2: добавлены блоки пешеходов, и 3: блоки города, и 4: сеть с дырами, см. ниже)
 
 `C` — critical. Столбцы — поля в порядке перечисления, `column_id` = порядковый номер с 1. Точные списки фиксирует S2 в
 приложении A этого файла (таблица `блок / id / имя / тип / длина / дефолт`) одновременно с кодом `Save/SaveSchema.cs` —
@@ -138,12 +138,26 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `SDYN` | C | `SegmentCount` | `SegmentLoads` по полям |
 | `BDYN` | C | остановки / маршруты | `Waiting`, `LastArrivalTick`, `LastDepartTick`; `ActiveBuses`, `LastDispatchTick`; `BusRouteStats` по полям |
 | `VEHC` | C | `HighWater` | `HighWater`, `FreeList` (снизу вверх), `Generation`, поля §1 |
-| `TRIP` | C | очередь | `PendingTrip` по полям в порядке FIFO, `Unrouted` |
+| `TRIP` | C | очередь | `PendingTrip` по полям в порядке FIFO (Z2: `ResidentRef` - индекс жителя города + 1 или 0), `Unrouted` |
 | `QUES` | C | очереди | `Rerouting (Index, Generation, ReadyTick, Kind)`, `Refill (Index, Generation)`, `Commands` (`raw`, 64 Б) |
 | `ROUT` | C | слоты / шаги | `HighWater`, `FreeList`, `Generation`, `WinCount`, `PlanFirst/Count/Cap`, `PlanCost`, `PlanTick`, `WindowSteps` (проверка), `WinLane/WinNode` (окна живых слотов подряд), `PlanArena[PlanUsed]`, `Compactions` |
 | `RGRP` | C | `DirSegCount` | `SegCost`, `WeightsVersion` |
 | `OVLY` | C | — | есть ⇔ `Overlay != null`; §1 |
 | `LODS` | C | — | (ADR-0013) есть ⇔ `Lod.Mode != Off`; §1 |
+| `PEDS` | C | `HighWater` пешеходов | (v2, ADR-0020) есть ⇔ `peds.enabled`: пул (`HighWater`, `FreeList`, `Generation`), поля `PedStore` (`State`, `Leg`, `Resident`, `Edge`, `T0`, `S0Mm`, `VMmT`, `EvTick`, `PathCursor/Count`, `GoalEdge/SMm`, `Next`, `Bus`, `AlightStop`, `TripTick`); мёртвые слоты - канон (ссылки −1, остальное 0) |
+| `PPTH` | C | `HighWater · max_ped_path_steps` | (v2) арена путей; мёртвые слоты - нули; `Steps` - проверка ёмкости |
+| `RESI` | C | `Residents` | (v2) жители: дом, работа, способ, маршруты и остановки (P4), `Where`, `ReadyTick`, `Ped`, `ReadyNext`; голова/хвост очереди готовых |
+| `XING` | C | переходы / остановки | (v2) `XState`, `QHead/QTail/QCount`, `OnCross`, `BusyUntil`, `BusyUntilIn`, `BusyUntilOut` (половины перехода, pedestrians.md §5.9), `ClosedSince`, `CarWindowUntil`, `CarsWaiting`, `WaitSum`, `Releases`, `MeasuredWait` по индексу перехода (`NodeArmCount` + по одному на остановку при `midblock_at_stops`); `StopQHead/Tail/Count` по остановкам; `PaxHead` по машинам; гистограммы ожидания (256 корзин по 1 с) |
+| `PQUE` | C | очередь | (v2) `PedPathQueue` (индекс, поколение) в логическом порядке |
+| `BTYP` | C | типы зданий | (v3, ADR-0011, PreWorld как `VTYP`) есть ⇔ `demand.model = residents`: таблица типов зданий по полям (`Kind`, `Density`, `Capacity`, `ShopCapacity`, `ShiftStartSlot`, `ShiftSlots`, `ConstructDays`, `AttractQ8`, `VisualRow`); строки только дописываются |
+| `LOTS` | C | `Count` участков | (v3) участки: `Seg`, `SegGen`, `Side`, `S0Mm`, `S1Mm`, `Zone`, `Density`, `Building`, `Flags`; геометрия, ячейка, точки доступа машины и пешехода, компоненты - производные |
+| `BLDG` | C | `HighWater` зданий | (v3) пул зданий (`HighWater`, `FreeList`, `Generation`) и поля (`Lot`, `Type`, `State`, `StateTick`, `Occupants`, `Jobs`, `HeadRes`, `HeadWork`, `Account`, `RevenueEwma`, `ProfitEwma`, пары «сегодня/вчера» `VisitsDay`/`RevenueDay`/`CostDay`, `LossDays`, `VacantDays`); мёртвые слоты - канон |
+| `RESD` | C | `HighWater` жителей | (v3) пул жителей, поля (`Home`, `Work`, `NextHome/NextWork`, `Flags`, `State`, `StateTick`, `EvTick`, `EvKind`), план дня (`PlanCount/Cursor` и по 3 тура `PlanKind/Mode/Dest/Slot`), нога (`LegMode/O/D/Req/Walk/Wait/Ride`, Z2: `LegDest`, `LegStopA/B`), `Agent/AgentGen`, `Account`, `IncomeEwma`, `SeekDays`, `EvictDays`, `Seq`, `NextSeq`, очередь ищущих работу (индекс, поколение) |
+| `SKIM` | C | `NC` ячеек | (v3) `Skim` (`NC * NC * 3 * P`), `K` (`NC * NC * P`), `LsRef`/`LsRefSet`, `LsC` (`NC * 3`), `LsJobs` (`NC`; поле доступности Z3), `CurPeriod`, `UpdateCursor`, накопитель периода (отсортированные `ObsKey/ObsSum/ObsCount`), слепок прошлого периода (`FrozenKey/Sum/Count`) |
+| `LEDG` | C | 1 | (v3) `External`, `City`, потоки по 13 видам (`FlowDay/Yesterday/Total`; с v9 - по 17, виды 13-16 - казна, city-economy.md §2.1), курсоры и стадия дневных проходов (`DayStage`), сглаженный спрос R/C/I, суточные накопители туров, ног, визитов и визитов впустую, `CellLoads` |
+| `CBGT` | C | 1 | (v9, ADR-0025, city-economy.md §12) есть ⇔ `demand.model = residents` и `economy.city_budget` (`PARM.CityBudget = 1`): действующая и ожидающая политики по полям (`TaxRBp`, `TaxCBp`, `TaxIBp`, `LandTaxBpDay`, `Fare`, `Flags`, `R0`, `R1`; u16), `HasPending`, `LandValue` (`NC`), `IncomeEwma`, `ExpenseEwma`, `Carry` (17 видов потоков), `DebtDays`, `OverLimitDays`, `Insolvent`, кольцо `UndoCredits` (64 записи по полям), суточные пары `FareEvadedDay`, `DebtEvictionsDay`. Производные `MaintRoadDay`, `MaintBusDay`, `VotDsQ8` не сохраняются (`CityWorld.RestoreDerived`) |
+| `PARK` | C | `HighWater` объектов | (v10, ADR-0026, parking.md §2.1, §13) есть ⇔ `demand.model = residents` и `parking.model = resource` (`PARM.ParkingEnabled = 1`): пул объектов стоянки (`HighWater`, `FreeList`, `Generation`; слот 0 - `Overflow`, всегда жив) и поля (`Kind`, `Flags`, `Lot`, `Building`, `BuildingGen`, `Capacity`, `Assigned`, `Occupied`, `Reserved`, `Fee`); мёртвые слоты - канон (`Lot`, `Building` = -1, остальное 0). Точка въезда (`AccessLane/AccessS`), точка пешехода, положение, компоненты, `WalkMm`, `HomeAway`, окрестности участков и обратные ссылки участок -> обочина, здание -> стоянка не сохраняются (`ParkingBuild.RefreshAll` в `LotBuilder.RestoreDerived`). `ParkSearchQueue` добавит K3 |
+| `LUSE` | C | `Count` полигонов | (v10, ADR-0027) есть ⇔ `PARM.LandUseCount > 0`: полигоны парков и воды генератора - четыре вершины (`P0X`..`P3Z`, f32), `Kind`, `Flags` (`LandUseMarks`); `Load` кладёт их в `World.LandUse` (`Simulation.LandUse`, `LandUseVersion = 1`), поэтому участки, нарезаемые после `Load` (`BuildRoad`), обходят парки и воду так же, как в `Create`. Сейвы до v10 полигонов не несут (в файле нет seed-параметров `city.landuse`): после миграции `LandUse` пусто, как было до этой версии |
 
 Блоки хоста (флаг `host`, id со строчной первой буквой, ядро не разбирает): `meta` (имя города, время создания/изменения
 по часам хоста, сыгранные тики, имя сценария, версия игры), `thmb` (превью PNG), `camr` (камера), `mod?` (состояние модов,
@@ -151,6 +165,18 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 
 Статика сети (`N*`, `CONN`, раскладка `OVLY`) отделена от динамики (`*DYN`, `VEHC`, `ROUT`…) намеренно: будущий
 «компактный сейв» опускает статику и пересобирает её (§11 п.3) без смены остальных блоков.
+
+Блоки пешеходов (v2) и столбцы в `PARM` (86-112: секция `peds`, `PassengerModel`, ёмкости `MaxPeds/MaxResidents/MaxPedPathSteps`), `WRLD` (11-13: поток `Peds`, `TargetPeds`), `CNTR` (96-117: счётчики пешеходов), `SIGS` (39-41: `XWalkLeft/XClearLeft/XServed` пешеходной фазы) объявлены задачей P2 целиком, поэтому P3 и P4 схему не меняют. Индекс перехода `x` = слот рукава в `NodeArms`, переход на перегоне `m` = `NodeArmCount + m`. Сеть пешеходов, списки пешеходов по рёбрам, колесо таймеров, `NodeXIn/NodeXOut`, `XActive`, `RenderHint` - производные, не сохраняются; после `Load` их строит `PedWorld.RestoreDerived` (после `PedNetwork.Rebuild` в `WorldLoader.Finish`). Проверки состояния - `SaveValidator.ValidatePeds` (пул, жители, очередь готовых, события, очереди переходов и остановок, списки пассажиров, очередь путей).
+
+Блоки и столбцы города (v3, ADR-0011, zoning-demand.md §15) объявлены задачей Z1 целиком, поэтому Z2-Z6 схему не меняют: блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`), столбцы `PARM` 113-184 (`PedSource`, секции `calendar/zoning/residents/economy/choice` по полям, ёмкости `MaxLots/MaxBuildings/MaxCityResidents/SkimObsCapacity`, сетка ячеек города: начало и число ячеек), `WRLD` 14-18 (поток `Demand`, `CityDay`, `CityExec`, `CityExecPending`), `CNTR` 118-149 (счётчики города), `VEHC` 41 (`Resident`, -1 у машин без жителя). С v9 добавлены казна города (блок `CBGT`, `PARM` 191-218, `BLDG` 21, `CNTR` 154-156, потоки 13-16 в `LEDG`; `SaveValidator.ValidateBudget`: политики в пределах `max_*`, `LV` в `[lv_min, lv_max]`, переносы в `[0, 10 000)`, записи `UndoCredits` нули либо живые с `ExpireTick >= Tick`, `Insolvent` только при `DebtDays >= 1`). Производные не сохраняются и строятся `CityWorld.RestoreDerived` (после `PedNetwork.Rebuild` в `WorldLoader.Finish`): центр, курс и ячейка участка, `CarLane/CarS`, `PedEdge/PedSMm`, `RoadComp/PedComp`, сетка занятости нарезки; колесо жителей по `EvTick/EvKind` добавляет Z2 в тот же метод. Проверки состояния - `SaveValidator.ValidateCity` (пулы, ссылки участок-здание-житель, списки дома и работы, `Occupants` = длина списка, `Σ счетов = 0`, агенты жителей в пути живы и ссылаются назад (нога агрегата, Z5: агента нет, `EvKind = Arrive` и `EvTick >= Tick`), накопители скимов). Пока `world_version = 3` не закрыт (Z9), Z2-Z6 вправе дописывать столбцы в этих блоках, добавляя дефолт и в `MigrationV3`, и перегенерируя `w3-*` корпуса.
+
+**Сеть с дырами (v4, ADR-0023, player-tools.md §3, §10; задача T2).** Столбцы `Count`-счётчиков сети (`NodeCount`, `SegmentCount`, `BusStopCount`, `BusRouteCount`) теперь `HighWater` пула, а `LaneCount`, `LanePointCount`, `SegmentPointCount`, `NodeArmCount`, `LaneNextCount`, `ZoneLaneCount`, `BusRouteStopCount`, `CONN.Count`, `CONN.ConflictsUsed` - хвосты арен; в хвосте лежат живые блоки и дыры. Поколение слота (`Generation` в `NNOD/NSEG/NBUS`; нечётное = занят) - единственный признак живости; мёртвый слот пишется каноническими значениями (ссылки -1, остальное 0; полоса - `Generation = 0`, `Segment = Node = FromLane = ToLane = Left = Right = ConflictGroup = -1`, запас блока выглядит так же; элементы остальных массивов в дырах - нули), валидатор требует именно их. Free-list пула - массив слотов в LIFO-порядке снизу вверх. Дыры арены - упакованные `класс << 32 | первый элемент`, класс по возрастанию, внутри класса сверху вниз (порядок выдачи); битовая карта (по `Tail`) помечает начало блоков, выделенных по лестнице ёмкостей (`BlockArena.CapFor`) - их физическая ёмкость `CapFor(n)`, у блока без запаса (генератор, `Create`, сеть без правок) она равна `n`. Для сети без правок (`ToolsTouched = 0`) всё это нулевое, а валидатор отклоняет дыры, потери и биты лестницы. `ToolsTouched` ставит первая структурная правка; он управляет разделом хэша (core-api §9 п. 13) и способом выделения блоков (без запаса / по лестнице). Арены строк и конфликтов connector'ов (`CONN` 18-25) до T3 пусты (валидатор требует). Проверки: пулы (§6.1), дыры арен внутри хвоста и без пересечений, канонические мёртвые слоты, живые полосы - только у живых владельцев, `RefKind` (`SaveValidator.ValidateRefs`: каждая ссылка тегированного столбца в диапазоне своего вида, `InvalidReference`).
+
+**Операции дренажа (v5, ADR-0023 T4).** `NETW` столбцы 50-60: `ToolOpCount`, `ToolOpNextId` (по умолчанию 1), массивы по числу операций - `Id`, `Kind`, `TargetIndex`, `TargetGen`, `Flags`, `StartTick`, `LastProgressTick`, `LastStallTick`, `BestRemaining`.
+`Remaining` - производное (пересчитывается при загрузке). Миграция `MigrationV5` ставит «операций нет». Валидатор: без правок операций нет; id строго растут и меньше `NextId`; цель - живой закрывающийся сегмент того же поколения, по одной операции на сегмент; каждый закрывающийся сегмент имеет операцию.
+`DenyReason` ворот допускает значение 8 (`Closed`). Корпус `w5-*`: `small-drain-t600` - сохранение посреди дренажа; бюджет корпуса поднят до 8 МБ (файлы старых версий не удаляются).
+
+**Строки и конфликты connector'ов (T3, версия прежняя - 4).** Строки `CONN` (`Lane, Node, InLane, OutLane, ...`) и записи конфликтов - блоки арен `RowArena/ConflictArena` (блок узла: строки подряд, `LocalBit` = номер в блоке; блок записей конфликтов узла - одним куском). Мёртвая строка (дыра арены или запас блока по лестнице) пишется каноном: `Lane = Node = InLane = OutLane = -1`, остальное 0; поэтому `CONN.Lane/Node/InLane/OutLane` в реестре ссылок допускают -1. Валидатор проверяет арены строк и конфликтов так же, как арены сети (дыры внутри хвоста, лестница, канон содержимого дыр); у сети без правок они подряд, как раньше.
 
 Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
@@ -207,7 +233,7 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 индекс типа ТС в `VTYP`, нулевые резервные поля) и возвращает false без изменений при противоречии. Каталог «что есть сейчас» хост передаёт в `LoadOptions.AvailableAssets/AvailableIds` (тот же формат,
 `Sim.Scenarios/AssetManifestBuilder`: `vehicle:<имя>`, `ContentHash` = xxh64 параметров типа); ядро сверяет вид + id побайтно и отдаёт `LoadReport.AssetsInManifest/AssetsMissing/AssetsChanged` и
 `Simulation.AssetStates` (`AssetState` на запись, в сейв не пишется) вместе с `Simulation.VehicleTypes` (габариты заглушки). Каталога нет - ничего не сверяется. Параметры отсутствующего и обновлённого ассета
-всегда из сейва (продолжение побитовое). Опция `AssetParams = UseCurrentForNewSpawns` (новые параметры только новым спавнам - решение владельца) **не реализована**: нужны версионные параметры типа в состоянии; поле `LoadOptions.AssetParams` зарезервировано.
+всегда из сейва (продолжение побитовое). Опция `AssetParams = UseCurrentForNewSpawns` (новые параметры только новым спавнам - решение владельца) **не реализована**: нужны версионные параметры типа в состоянии; поле `LoadOptions.AssetParams` зарезервировано. План: дописываемые строки типов, `modding.md` §6.3 (M5).
 
 ## 6. API ядра
 
@@ -284,7 +310,8 @@ public sealed partial class Simulation
 - Каждая ссылка в диапазоне или равна своему «нет» (−1): узлы, сегменты, полосы, connector'ы, конфликты (`FirstConflict +
   ConflictCount ≤ ConflictsUsed`), диапазоны точек/рукавов/`LaneNext`, зоны, остановки, маршруты, слоты машин/маршрутов
   (+ поколение живого слота), `PlanFirst + PlanCap ≤ PlanUsed`, `WinCount ≤ WindowSteps`, `Selected`.
-- Пулы: free-list без повторов, только мёртвые слоты `< HighWater`, поколение живого нечётно, мёртвого — чётно.
+- Пулы (в том числе узлов, сегментов, остановок, маршрутов; v4): free-list без повторов, только мёртвые слоты `< HighWater`, поколение живого нечётно, мёртвого — чётно.
+- Теги `RefKind` (v4): значение каждого столбца-ссылки (`SaveSchema.Refs`) в `[0, граница вида)` либо -1 там, где «нет» допустимо; нарушение - `InvalidReference`, `FailedColumn` - id столбца.
 - Списки полос: обход от `LaneHead` по `Behind` заканчивается за `LaneCount` шагов на `LaneTail`, `Ahead/Behind`
   взаимны, `Lane` машины совпадает; ghost-списки — то же через `Ghost*`. Машина в ровно одном основном списке.
 - Числа: все `float` состояния конечны; `0 ≤ S ≤ длина полосы + допуск`, `Speed ≥ 0`, длины полос > 0, точки полилиний
@@ -310,18 +337,20 @@ public sealed partial class Simulation
 
 **Реализация S3:** конверт - `Sim.Headless/SaveFile.cs` (`Pack/TryUnpack/ReadContainer`; `Sim.Headless save` пишет конверт, `--raw` - голый контейнер, `load` определяет формат по магии).
 Корпус проверяет `Sim.Core.Tests/Save/SaveCorpusTests` (входит в обычный `dotnet test`; файлы копируются в вывод тестов как `SaveCorpus/*`). Файлы: `w1-small-t600`, `w1-s1k-t2400`
-(`.tcsave` + `.json` с `world_version`, `tick`, `state_hash`, `hash_after_load`, `continue_ticks` = 200, `hash_after_continue`, хэши - hex). Перегенерация (до этапа 3 корпус **перегенерируется**, старые файлы удаляются):
+(`.tcsave` + `.json` с `world_version`, `tick`, `state_hash`, `hash_after_load`, `continue_ticks` = 200, `hash_after_continue`, хэши - hex). Перегенерация (с этапа 3.1 перегенерируются **только файлы текущей версии**, `w1-*` остаются навсегда):
 `TC_REGEN_CORPUS=1 dotnet test tests/Sim.Core.Tests --filter FullyQualifiedName~SaveCorpusTests`, результат коммитится отдельным коммитом. Изменение схемы или поведения без перегенерации -
-тест падает сообщением «перегенерируй корпус: …». Миграции с этапа 3: файлы прошлых версий остаются, шаг добавляется в `Save/Migrations.cs`.
+тест падает сообщением «перегенерируй корпус: …». Миграции с этапа 3.1: файлы прошлых версий остаются, шаг добавляется в `Save/Migrations.cs`. `w2` «открыта» до конца волны 3.1: P3 и P4 меняют
+поведение пешеходов (golden-хэши `w2-s1k-peds-t2400` меняются), поэтому корпус w2 перегенерирует последняя слитая задача волны; столбцы w2 заморожены P2.
 
-**Golden-корпус** `tests/SaveCorpus/` (бинарные, `.gitattributes: binary`, бюджет ≤ 5 МБ):
+**Golden-корпус** `tests/SaveCorpus/` (бинарные, `.gitattributes: binary`, бюджет ≤ 10 МБ (5 МБ до v4, 8 МБ до v6, растёт ~1,4 МБ на версию)):
 - `w{world_version}-{имя}-t{tick}.tcsave` + `.json`: `world_version`, `tick`, `state_hash` (заголовок), `hash_after_load`,
   `continue_ticks` (200), `hash_after_continue`.
-- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый).
+- Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый); с v2 ещё `s1k-peds-t2400` (≤ 1 МБ сжатый); с v3 `s1k-res-t24000`; с v5 `small-drain-t600` (сохранение посреди дренажа: операция сноса, закрытые полосы); с v4 `small-edited-t600` (малый мир без оверлея, дороги построены и освобождены: дыры в пулах и аренах, `ToolsTouched = 1`).
+  Файлы w2 без пешеходов (`w2-small-t600`, `w2-s1k-t2400`) несут те же `state_hash` и `hash_after_continue`, что `w1-*` (миграция 1 → 2 поведение не меняет).
   s10k в корпус не кладём (≈ 2.5 МБ на версию) — его round-trip строится в тесте.
 - Файлы прошлых версий **не меняются и не удаляются**. Для текущей версии `hash_after_*` проверяются строго и
   обновляются вместе с golden-хэшами при смене поведения (как `HotPathGoldenHashTests`). Для прошлых — загрузка + миграция +
-  проверки §6.1 + `continue_ticks` без исключений + повторный сейв → загрузка → побайтно равен.
+  проверки §6.1 + `continue_ticks` и **тот же `hash_after_continue`** (для миграции 1 → 2: пешеходов в старом мире нет, поведение прежнее) + повторный сейв → загрузка → побайтно равен.
 - Пополнение: `Sim.Headless save --scenario … --ticks … --out tests/SaveCorpus/…` + `load --in … --ticks 200` печатает хэши
   для `.json`. Новая `world_version` без файлов корпуса → тест `Corpus_HasCurrentVersion` красный.
 
@@ -407,6 +436,16 @@ s10k с цифрами размера и времени. Клиентские к
 |---|---|---|
 | 1 | первый формат (этот документ); реализован S2 (`Save/SaveSchema*.cs`). Дополнен в рамках 2.5 S2 (адаптивные светофоры, ADR-0018) без `world_version++`: `PARM` 76-82 (дефолты `RulesDesc.Signal*`), `SIGS` 18-37, `SMET` 6 (`ConnDelay`), `VEHC` 40 (`DenyReason`) | — |
 
+| 2 | 3.1, ADR-0020, задача P2: пешеходы. Блоки `PEDS`, `PPTH`, `RESI`, `XING`, `PQUE` (только при `peds.enabled`); столбцы `PARM` 86-112, `WRLD` 11-13, `CNTR` 96-117, `SIGS` 39-41; `hash_version` 2 (секции пешеходов в хэше только при `peds`) | `MigrationV2` (`Save/MigrationV2.cs`): добавляет столбцы с дефолтами «пешеходов нет, пассажиры - счётчик», блоков не создаёт; w1 продолжается тем же хэшем |
+| 3 | 3.2, ADR-0011/0021, задача Z1: жители, зоны, экономика, скимы. Блоки `BTYP`, `LOTS`, `BLDG`, `RESD`, `SKIM`, `LEDG` (только при `demand.model = residents`); столбцы `PARM` 113-184, `WRLD` 14-18, `CNTR` 118-149, `VEHC` 41; `hash_version` 3 (секции города в хэше только при `residents`). Номера занял Z1 (решение оркестратора 2026-10-26): запланированные T2 и M4 сдвигаются на следующие свободные (`w4`, `w5`). Дополнено задачей Z4: `LEDG` 16-18 (`DayStage`, `VisitsDayTotal`, `UnservedDayTotal`); флаги жителя `RESD.Flags` используют бит 4 (`InSeekQueue`), предел значения - 31. Дополнено задачей Z2 (до закрытия w3): `RESD` 38-40 (`LegDest`, `LegStopA`, `LegStopB`), `TRIP` 11 (`ResidentRef`, 0 = поездка не жителя; в хэш только при `residents`) | `MigrationV3` (`Save/MigrationV3.cs`): добавляет столбцы с дефолтами «города нет», `VEHC.Resident = -1`, `TRIP.ResidentRef = 0`, блоков не создаёт; w1 и w2 продолжаются тем же хэшем |
+| 4 | 4.3, ADR-0023, задача T2: сеть с дырами (пулы узлов, сегментов, остановок, маршрутов; арены блоков). Столбцы `NETW` 13-49 (`ToolsTouched`, длины и списки free-list'ов четырёх пулов, у каждой из семи арен `Lane/LanePoint/SegmentPoint/Arm/LaneNext/ZoneLane/BusRouteStop` четыре столбца: число дыр, потерянные элементы, дыры `класс<<32 \| первый`, битовая карта лестницы), `CONN` 18-25 (арены строк и конфликтов connector'ов), `NNOD` 13-14 (`Flags`, `TurnBan`), `NSEG` 13-15 (`Flags`, `Cx`, `Cz`), `NBUS` 11 (поколение остановки); `hash_version` 3 (раздел хэша «состояние инструментов» только при `ToolsTouched = 1`). Теги `RefKind` на столбцах-ссылках (`SaveSchema.Refs`) - не столбцы, а признак схемы | `MigrationV4` (`Save/MigrationV4.cs`): все столбцы с дефолтами «правок не было, всё живо» (`ToolsTouched = 0`, free-list'ы пусты, поколение остановок 1), блоков не создаёт; w1-w3 продолжаются тем же хэшем |
+| 5 | 4.3, ADR-0023, задача T4: операции дренажа инструментов. Столбцы `NETW` 50-60 (`ToolOpCount`, `ToolOpNextId`, девять массивов полей операций); раздел хэша «операции» - только если операции заводились (`NextId != 1`); `DenyReason` допускает 8 | `MigrationV5` (`Save/MigrationV5.cs`): «операций нет» (`Count = 0`, `NextId = 1`), блоков не создаёт; w1-w4 продолжаются тем же хэшем |
+| 6 | ADR-0028, отступ рукава узла по ширине поперечной дороги + `corner_radius`. Столбец `PARM` 185 `NetCornerRadius` (f32, опция построителя: 0 - фиксированный отступ 7 м); геометрия сети по-прежнему сохраняется целиком (`NNOD.Radius`, точки полос), поэтому загрузка от радиуса не зависит - он нужен только `BuildRoad` после загрузки | `MigrationV6` (`Save/MigrationV6.cs`): `NetCornerRadius = 0` - дороги, построенные в старом сейве после загрузки, получают геометрию до ADR-0028; блоков не создаёт; w1-w5 продолжаются тем же хэшем |
+| 7 | ADR-0029, карман автобусных остановок (`docs/design/bus-bays.md`). Столбцы `PARM` 186-187 (`TransitBayModel`: 0 curb, 1 virtual, 2 lane - резерв под настоящую полосу-карман; `TransitBayYieldTicks`), `BDYN` 10-12 (`BayUsed`, `BayFlags`, `BayExitFrom` по остановкам), `CNTR` 150-153 (`BayEntries`, `BayFallbacks`, `BayYields`, `BayExitWaitTicksTotal`); флаг машины `InBay = 64` (`VEHC.Flags` до 127); раздел хэша «карманы» - только при `bay_model = virtual` и наличии остановок `Bay` | `MigrationV7` (`Save/MigrationV7.cs`): `TransitBayModel = 0` (curb), `TransitBayYieldTicks = 60`, поля кармана нулевые (`BayExitFrom = -1`), счётчики 0 - старые сейвы ведут себя как раньше; блоков не создаёт; w1-w6 продолжаются тем же хэшем |
+| 8 | ADR-0030, профили дорог и участки на мировой сетке (`docs/design/road-profiles.md` §3.4, §4.4). Блок `RPRF` (PreWorld, только при `PARM.RoadProfileMode = 1`): каталог целиком - модуль, по профилю вид/ширина/число элементов/длина id, по элементу тип/направление/ширина, байты id (UTF-8); столбцы `PARM` 188-190 (`RoadProfileMode`: 0 legacy, 1 профили; `WorldGridOriginX/Z`), `NSEG` 16 `Profile` (-1 - без профиля; бит `Mirrored` - в `NSEG.Flags`), `NLAN` 19 `Width`, `LOTS` 11-15 (`CellX`, `CellZ`, `CellsF`, `CellsD`, `Orient`: 255 - legacy; объявлены сразу, заполняет RP5); раздел хэша «профили» - только в режиме профилей (RP1); хэш участков столбцы сетки пока не читает | `MigrationV8` (`Save/MigrationV8.cs`): режим legacy, `Profile = -1`, `Width = NetLaneWidth` у живых обычных полос (connector'ы и мёртвые слоты 0), начало сетки 0, у участков клеток нет и `Orient = 255`; блоков не создаёт; w1-w7 продолжаются тем же хэшем |
+| 9 | ADR-0025, казна города (`docs/design/city-economy.md` §12, задача E1). Блок `CBGT` (только при `PARM.CityBudget = 1`); столбцы `PARM` 191-218 (секция `economy`: `CityBudget`, ставки, плата за проезд, вклад в казну, процент, кредит, содержание, цена земли, ценность времени, буферы, пределы политики), `BLDG` 21 `PayrollEwma`, `CNTR` 154-156 (`FareEvaded`, `DebtEvictions`, `InsufficientFunds`), `LEDG` 3-5 длиной 17 (виды потоков 13-16: `Interest`, `Dividend`, `Leakage`, `Refund`); `hash_version` 4: раздел хэша казны (политики, цена земли, переносы, долг, кредиты undo, потоки 13-16, фонд оплаты, счётчики) - только при бюджете, виды 13-16 вне бюджета в хэш не входят. Окно версии открыто до E8: E2-E5 вправе дописывать столбцы с дефолтом в `MigrationV9` и перегенерировать корпус w9 | `MigrationV9` (`Save/MigrationV9.cs`): бюджет выключен - `PARM` 191-218 = дефолты `economy` (нули у мира без жителей), `CityBudget = 0`; потоки 13-16 = 0 (столбцы `LEDG` 3-5 дополняются нулями), `PayrollEwma = 0`, счётчики 0; блоков не создаёт; w1-w8 продолжаются тем же хэшем |
+| 10 | ADR-0026, парковка как ресурс (`docs/design/parking.md` §13, задача K1) и землепользование в сейве (ADR-0027, долг VS8). Блоки `PARK` (только при `PARM.ParkingEnabled = 1`) и `LUSE` (только при `PARM.LandUseCount > 0`); столбцы `PARM` 219 (`LandUseCount`), 220-238 (секция `parking`: режим, ходьба, кандидаты, повторы, обочина, гараж) и 239 (`MaxParking`), `BTYP` 10-12 (`ParkingCapacity`, `ParkingAccess`, `ParkingFee`), `RESD` 41-49 (`HomeFac`, `HomeFacGen`, `CarFac`, `CarFacGen`, `CarLot`, `CarWalkMm`, `LegStage`, `LegWaitFrom`, `LegParkWait`), `VEHC` 42-44 (`ParkFac`, `ParkFacGen`, `ParkSearchTick`), `TRIP` 12-13 (`ParkRef`, `ParkGen`), `CNTR` 157-172 (счётчики parking.md §11); `hash_version` 4 без изменений: раздел хэша парковки (`ParkingHash`) и поля заявок пишутся только в режиме. `AccessLane/AccessS` и точки пешехода объектов - производные от участка (отличие от parking.md §2.1: сохранять индексы полос значило бы заводить `RefKind` и перенос при правках сети). Окно версии открыто до K8: K2-K7 вправе дописывать столбцы с дефолтом в `MigrationV10` и перегенерировать корпус w10 | `MigrationV10` (`Save/MigrationV10.cs`): `PARM` 219-239 = нули (режима нет), `BTYP` 10-12 = нули, `RESD` 41-49 (`HomeFac`, `CarFac`, `CarLot` = -1, остальное 0), `VEHC` 42-44 (`ParkFac`, `ParkSearchTick` = -1), `TRIP` 12-13 = 0, `CNTR` 157-172 = 0; блоков `PARK` и `LUSE` не создаёт; w1-w9 продолжаются тем же хэшем |
+
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
 ## 13. Открытые вопросы
@@ -421,9 +460,11 @@ s10k с цифрами размера и времени. Клиентские к
    узлам и сегментам (тест `CanonicalLayoutTests`). Индексы полос остаются историческими (сегменты `BuildRoad` лежат после уже построенных connector'ов): у «компактного сейва» они
    придут из `FirstLane*/FirstConnector` узлов и сегментов. Golden-хэши s1k/s10k (без `BuildRoad`) не изменились; тестов с хэшем после `BuildRoad` не было.
 6. Снос дорог (этап 2+): пул узлов/сегментов с free-list → `IncHead/Cells` перестают быть производными «в порядке индекса» —
-   при появлении сноса перенести их в сохраняемые или доказать независимость.
+   при появлении сноса перенести их в сохраняемые или доказать независимость. **Закрыто в T2 (v4):** цепочки `IncHead/IncNext` и `CellNext/Cells` идут по убыванию индекса живых слотов и
+   поддерживаются вставкой/удалением в этом порядке (равны полной перестройке по возрастанию индекса живых; `World.VerifyDerived()` сверяет), поэтому остаются производными и не сохраняются.
+   П. 5 («раскладка = построенной заново») после первой правки не действует: раскладка (дыры, free-list'ы, `Alive`) - состояние, v4 её сохраняет; для сетей без правок п. 5 остаётся (`CanonicalLayoutTests`).
 
-## Приложение A. Реестр столбцов `world_version = 1`
+## Приложение A. Реестр столбцов `world_version = 4`
 
 Стрится из `Save/SaveSchema*.cs` (`SaveSchema.AppendixMarkdown()`); тест `SaveSchemaTests.EveryDoc_Appendix_MatchesRegistry` сверяет таблицу с реестром
 (обновить: `TC_DUMP_SCHEMA=<файл> dotnet test --filter SaveSchemaTests`). Дефолт - значение для сейвов без столбца (новые столбцы будущих версий) и канон мёртвого слота.
@@ -517,6 +558,160 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 83 | TransitHoldAlpha | f32 | 1 | 0 |
 | `PARM` | 84 | TransitHoldMaxTicks | i32 | 1 | 0 |
 | `PARM` | 85 | TransitHoldEveryN | i32 | 1 | 0 |
+| `PARM` | 86 | PedsEnabled | u8 | 1 | 0 |
+| `PARM` | 87 | TransitPassengerModel | i32 | 1 | 0 |
+| `PARM` | 88 | MaxPeds | i32 | 1 | 0 |
+| `PARM` | 89 | MaxResidents | i32 | 1 | 0 |
+| `PARM` | 90 | MaxPedPathSteps | i32 | 1 | 0 |
+| `PARM` | 91 | PedCount | i32 | 1 | 0 |
+| `PARM` | 92 | PedResidents | i32 | 1 | 0 |
+| `PARM` | 93 | PedSpawnRampTicks | i32 | 1 | 0 |
+| `PARM` | 94 | PedSpeedMinMmPerTick | i32 | 1 | 0 |
+| `PARM` | 95 | PedSpeedMaxMmPerTick | i32 | 1 | 0 |
+| `PARM` | 96 | PedActivityMinTicks | i32 | 1 | 0 |
+| `PARM` | 97 | PedActivityMaxTicks | i32 | 1 | 0 |
+| `PARM` | 98 | PedWalkOnlyMm | i32 | 1 | 0 |
+| `PARM` | 99 | PedMaxWalkToStopMm | i32 | 1 | 0 |
+| `PARM` | 100 | PedMaxWalkMm | i32 | 1 | 0 |
+| `PARM` | 101 | PedSidewalkWidthMm | i32 | 1 | 0 |
+| `PARM` | 102 | PedCrosswalkWidthMm | i32 | 1 | 0 |
+| `PARM` | 103 | PedArterialCrossings | i32 | 1 | 0 |
+| `PARM` | 104 | PedMidblockAtStops | u8 | 1 | 0 |
+| `PARM` | 105 | PedWalkTicks | i32 | 1 | 0 |
+| `PARM` | 106 | PedClearSpeedMmPerTick | i32 | 1 | 0 |
+| `PARM` | 107 | PedMaxCloseTicks | i32 | 1 | 0 |
+| `PARM` | 108 | PedCarWindowTicks | i32 | 1 | 0 |
+| `PARM` | 109 | PedPathfindBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 110 | PedWorkBudgetPerTick | i32 | 1 | 0 |
+| `PARM` | 111 | PedStuckCrossTicks | i32 | 1 | 0 |
+| `PARM` | 112 | PedStuckStopTicks | i32 | 1 | 0 |
+| `PARM` | 113 | PedSource | i32 | 1 | 0 |
+| `PARM` | 114 | CityDayTicks | i32 | 1 | 0 |
+| `PARM` | 115 | CityLotFrontageMm | i32 | 1 | 0 |
+| `PARM` | 116 | CityLotDepthMm | i32 | 1 | 0 |
+| `PARM` | 117 | CityNodeClearMm | i32 | 1 | 0 |
+| `PARM` | 118 | CityGrowth | u8 | 1 | 0 |
+| `PARM` | 119 | CityMaxNewBuildingsPerDay | i32 | 1 | 0 |
+| `PARM` | 120 | CityZoningAuto | u8 | 1 | 0 |
+| `PARM` | 121 | CityCCenterShareQ16 | i32 | 1 | 0 |
+| `PARM` | 122 | CityIEdgeShareQ16 | i32 | 1 | 0 |
+| `PARM` | 123 | CityUnzonedShareQ16 | i32 | 1 | 0 |
+| `PARM` | 124 | CityMaxPaintM2 | i32 | 1 | 0 |
+| `PARM` | 125 | CityInitialFillQ16 | i32 | 1 | 0 |
+| `PARM` | 126 | CityCarOwnershipQ16 | i32 | 1 | 0 |
+| `PARM` | 127 | CityLabourShareQ16 | i32 | 1 | 0 |
+| `PARM` | 128 | CityTripExecution | i32 | 1 | 0 |
+| `PARM` | 129 | CitySeekMaxDays | i32 | 1 | 0 |
+| `PARM` | 130 | CityEvictMaxDays | i32 | 1 | 0 |
+| `PARM` | 131 | CityWaitMaxTicks | i32 | 1 | 0 |
+| `PARM` | 132 | CityMaxRelocatePerDayQ16 | i32 | 1 | 0 |
+| `PARM` | 133 | CityMaxJobSwitchPerDayQ16 | i32 | 1 | 0 |
+| `PARM` | 134 | CityMaxImmigrantsPerDayQ16 | i32 | 1 | 0 |
+| `PARM` | 135 | CityPlanSlot | i32 | 1 | 0 |
+| `PARM` | 136 | CityShopSlots | i32 | 1 | 0 |
+| `PARM` | 137 | CityHomeMinSlots | i32 | 1 | 0 |
+| `PARM` | 138 | CityMatchPerTick | i32 | 1 | 0 |
+| `PARM` | 139 | CityVacateDays | i32 | 1 | 0 |
+| `PARM` | 140 | CitySwitchRatioQ8 | i32 | 1 | 0 |
+| `PARM` | 141 | CityRBias | i32 | 1 | 0 |
+| `PARM` | 142 | CityWagePerShift | i32 | 1 | 0 |
+| `PARM` | 143 | CityBasketPrice | i32 | 1 | 0 |
+| `PARM` | 144 | CityGoodsPct | i32 | 1 | 0 |
+| `PARM` | 145 | CityImportPct | i32 | 1 | 0 |
+| `PARM` | 146 | CityExportPerShift | i32 | 1 | 0 |
+| `PARM` | 147 | CityInitialResidentBalance | i32 | 1 | 0 |
+| `PARM` | 148 | CityInitialFirmBalance | i32 | 1 | 0 |
+| `PARM` | 149 | CityConstructCost | i32 | 1 | 0 |
+| `PARM` | 150 | CityHireMarginPct | i32 | 1 | 0 |
+| `PARM` | 151 | CityLossDaysFire | i32 | 1 | 0 |
+| `PARM` | 152 | CityLossDaysClose | i32 | 1 | 0 |
+| `PARM` | 153 | CityEwmaShift | i32 | 1 | 0 |
+| `PARM` | 154 | CityCTargetPct | i32 | 1 | 0 |
+| `PARM` | 155 | CityThetaMode64 | i32 | 1 | 0 |
+| `PARM` | 156 | CityThetaDest64 | i32 | 1 | 0 |
+| `PARM` | 157 | CityThetaTime64 | i32 | 1 | 0 |
+| `PARM` | 158 | CityThetaFreq64 | i32 | 1 | 0 |
+| `PARM` | 159 | CityBetaFreqQ8 | i32 | 1 | 0 |
+| `PARM` | 160 | CityAscFreqDs | i32 | 1 | 0 |
+| `PARM` | 161 | CityGammaFreqDs | i32 | 1 | 0 |
+| `PARM` | 162 | CityAscNonWorkerDs | i32 | 1 | 0 |
+| `PARM` | 163 | CityFreqMax | i32 | 1 | 0 |
+| `PARM` | 164 | CityWWaitQ8 | i32 | 1 | 0 |
+| `PARM` | 165 | CityWWalkQ8 | i32 | 1 | 0 |
+| `PARM` | 166 | CityAscCarDs | i32 | 1 | 0 |
+| `PARM` | 167 | CityAscBusDs | i32 | 1 | 0 |
+| `PARM` | 168 | CityAscWalkDs | i32 | 1 | 0 |
+| `PARM` | 169 | CitySdeQ8 | i32 | 1 | 0 |
+| `PARM` | 170 | CitySdlQ8 | i32 | 1 | 0 |
+| `PARM` | 171 | CityTimeStepSlots | i32 | 1 | 0 |
+| `PARM` | 172 | CityDestCandidates | i32 | 1 | 0 |
+| `PARM` | 173 | CityMaxWalkMm | i32 | 1 | 0 |
+| `PARM` | 174 | CitySkimPeriods | i32 | 1 | 0 |
+| `PARM` | 175 | CitySkimShift | i32 | 1 | 0 |
+| `PARM` | 176 | CitySkimUpdatePerTick | i32 | 1 | 0 |
+| `PARM` | 177 | MaxLots | i32 | 1 | 0 |
+| `PARM` | 178 | MaxBuildings | i32 | 1 | 0 |
+| `PARM` | 179 | MaxCityResidents | i32 | 1 | 0 |
+| `PARM` | 180 | SkimObsCapacity | i32 | 1 | 0 |
+| `PARM` | 181 | CityGridOriginX | f32 | 1 | 0 |
+| `PARM` | 182 | CityGridOriginZ | f32 | 1 | 0 |
+| `PARM` | 183 | CityGridCellsX | i32 | 1 | 0 |
+| `PARM` | 184 | CityGridCellsZ | i32 | 1 | 0 |
+| `PARM` | 185 | NetCornerRadius | f32 | 1 | 0 |
+| `PARM` | 186 | TransitBayModel | i32 | 1 | 0 |
+| `PARM` | 187 | TransitBayYieldTicks | i32 | 1 | 60 |
+| `PARM` | 188 | RoadProfileMode | i32 | 1 | 0 |
+| `PARM` | 189 | WorldGridOriginX | f32 | 1 | 0 |
+| `PARM` | 190 | WorldGridOriginZ | f32 | 1 | 0 |
+| `PARM` | 191 | CityBudget | u8 | 1 | 0 |
+| `PARM` | 192 | CityTaxRBp | i32 | 1 | 600 |
+| `PARM` | 193 | CityTaxCProfitBp | i32 | 1 | 2000 |
+| `PARM` | 194 | CityTaxIProfitBp | i32 | 1 | 2000 |
+| `PARM` | 195 | CityLandTaxBpDay | i32 | 1 | 15 |
+| `PARM` | 196 | CityBusFare | i32 | 1 | 2 |
+| `PARM` | 197 | CityInitialCityBalancePerResident | i32 | 1 | 60 |
+| `PARM` | 198 | CityInterestBpDay | i32 | 1 | 3 |
+| `PARM` | 199 | CityCreditDays | i32 | 1 | 60 |
+| `PARM` | 200 | CityMaintRoadStreetPerLaneKmDay | i32 | 1 | 0 |
+| `PARM` | 201 | CityMaintRoadArterialPerLaneKmDay | i32 | 1 | 0 |
+| `PARM` | 202 | CityMaintBusDay | i32 | 1 | 0 |
+| `PARM` | 203 | CityMaintStopDay | i32 | 1 | 0 |
+| `PARM` | 204 | CityLvRef | i32 | 1 | 200 |
+| `PARM` | 205 | CityLvSlopePerMin | i32 | 1 | 20 |
+| `PARM` | 206 | CityLvMin | i32 | 1 | 50 |
+| `PARM` | 207 | CityLvMax | i32 | 1 | 1000 |
+| `PARM` | 208 | CityLvShift | i32 | 1 | 3 |
+| `PARM` | 209 | CityVotPct | i32 | 1 | 50 |
+| `PARM` | 210 | CityResBufferDays | i32 | 1 | 5 |
+| `PARM` | 211 | CityFirmBufferDays | i32 | 1 | 10 |
+| `PARM` | 212 | CityPayoutShift | i32 | 1 | 3 |
+| `PARM` | 213 | CityEvictDebtDays | i32 | 1 | 3 |
+| `PARM` | 214 | CityBudgetEwmaShift | i32 | 1 | 3 |
+| `PARM` | 215 | CityUndoRefundS | i32 | 1 | 10 |
+| `PARM` | 216 | CityMaxTaxBp | i32 | 1 | 5000 |
+| `PARM` | 217 | CityMaxLandBp | i32 | 1 | 100 |
+| `PARM` | 218 | CityMaxFare | i32 | 1 | 1000 |
+| `PARM` | 219 | LandUseCount | i32 | 1 | 0 |
+| `PARM` | 220 | ParkingEnabled | u8 | 1 | 0 |
+| `PARM` | 221 | ParkingAccessWalkAgents | u8 | 1 | 0 |
+| `PARM` | 222 | ParkingWalkMaxMm | i32 | 1 | 0 |
+| `PARM` | 223 | ParkingHomeWalkMaxMm | i32 | 1 | 0 |
+| `PARM` | 224 | ParkingMaxCandidates | i32 | 1 | 0 |
+| `PARM` | 225 | ParkingWalkSpeedMmS | i32 | 1 | 0 |
+| `PARM` | 226 | ParkingFeeDsPerMoney | i32 | 1 | 0 |
+| `PARM` | 227 | ParkingRetryTicks | i32 | 1 | 0 |
+| `PARM` | 228 | ParkingSearchRetryTicks | i32 | 1 | 0 |
+| `PARM` | 229 | ParkingSearchMaxTicks | i32 | 1 | 0 |
+| `PARM` | 230 | ParkingHomeRetryPerDayQ16 | i32 | 1 | 0 |
+| `PARM` | 231 | ParkingCurbSlotMm | i32 | 1 | 0 |
+| `PARM` | 232 | ParkingCurbStopClearMm | i32 | 1 | 0 |
+| `PARM` | 233 | ParkingCurbStreet | u8 | 1 | 0 |
+| `PARM` | 234 | ParkingCurbArterial | u8 | 1 | 0 |
+| `PARM` | 235 | ParkingCurbFee | i32 | 1 | 0 |
+| `PARM` | 236 | ParkingCurbPermits | u8 | 1 | 0 |
+| `PARM` | 237 | ParkingGarageFee | i32 | 1 | 0 |
+| `PARM` | 238 | ParkingGaragePermits | u8 | 1 | 0 |
+| `PARM` | 239 | MaxParking | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -541,6 +736,27 @@ s10k с цифрами размера и времени. Клиентские к
 | `VTYP` | 13 | SafeDecel | f32 | Types.Length | 0 |
 | `VTYP` | 14 | RightBias | f32 | Types.Length | 0 |
 | `VTYP` | 15 | LaneChangeDurationTicks | i32 | Types.Length | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 1 | ModuleMm | i32 | 1 | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 2 | Kind | u8 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 3 | WidthMm | i32 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 4 | ElemCount | u8 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 5 | IdLength | u16 | ProfileCount | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 6 | ElemKind | u8 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 7 | ElemDir | u8 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 8 | ElemWidthMm | i32 | sum(ElemCount) | 0 |
+| `RPRF` (PARM.RoadProfileMode = 1) | 9 | IdBlob | u8 | sum(IdLength) | 0 |
+| `BTYP` (demand.model = residents) | 1 | Kind | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 2 | Density | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 3 | Capacity | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 4 | ShopCapacity | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 5 | ShiftStartSlot | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 6 | ShiftSlots | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 7 | ConstructDays | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 8 | AttractQ8 | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 9 | VisualRow | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 10 | ParkingCapacity | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 11 | ParkingAccess | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 12 | ParkingFee | i32 | Rows.Length | 0 |
 | `WRLD` | 1 | Tick | i64 | 1 | 0 |
 | `WRLD` | 2 | NetVersion | i32 | 1 | 0 |
 | `WRLD` | 3 | TargetVehicles | i32 | 1 | 0 |
@@ -551,6 +767,14 @@ s10k с цифрами размера и времени. Клиентские к
 | `WRLD` | 8 | SegmentLoadsTick | i64 | 1 | -1 |
 | `WRLD` | 9 | RngState | u64 | 6 | 0 |
 | `WRLD` | 10 | RngInc | u64 | 6 | 0 |
+| `WRLD` | 11 | PedRngState | u64 | 1 | 0 |
+| `WRLD` | 12 | PedRngInc | u64 | 1 | 0 |
+| `WRLD` | 13 | TargetPeds | i32 | 1 | 0 |
+| `WRLD` | 14 | DemandRngState | u64 | 1 | 0 |
+| `WRLD` | 15 | DemandRngInc | u64 | 1 | 0 |
+| `WRLD` | 16 | CityDay | i32 | 1 | 0 |
+| `WRLD` | 17 | CityExec | i32 | 1 | 0 |
+| `WRLD` | 18 | CityExecPending | i32 | 1 | 0 |
 | `CNTR` | 1 | Ticks | i64 | 1 | 0 |
 | `CNTR` | 2 | VehiclesSpawned | i64 | 1 | 0 |
 | `CNTR` | 3 | TripsCompleted | i64 | 1 | 0 |
@@ -646,6 +870,83 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 93 | LaneShareH7 | i64 | 1 | 0 |
 | `CNTR` | 94 | LaneShareH8 | i64 | 1 | 0 |
 | `CNTR` | 95 | LaneShareH9 | i64 | 1 | 0 |
+| `CNTR` | 96 | PedActive | i32 | 1 | 0 |
+| `CNTR` | 97 | PedActiveTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 98 | PedSpawned | i64 | 1 | 0 |
+| `CNTR` | 99 | PedTripsCompleted | i64 | 1 | 0 |
+| `CNTR` | 100 | PedTripTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 101 | PedCrossWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 102 | PedCrossReleases | i64 | 1 | 0 |
+| `CNTR` | 103 | PedStopWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 104 | PedStopBoardings | i64 | 1 | 0 |
+| `CNTR` | 105 | PedStuckEvents | i64 | 1 | 0 |
+| `CNTR` | 106 | CarCrossDelayTicks | i64 | 1 | 0 |
+| `CNTR` | 107 | CrossingClosedTicks | i64 | 1 | 0 |
+| `CNTR` | 108 | CrossingObservedTicks | i64 | 1 | 0 |
+| `CNTR` | 109 | BusPassengersAlighted | i64 | 1 | 0 |
+| `CNTR` | 110 | BusPaxOnBoardTicks | i64 | 1 | 0 |
+| `CNTR` | 111 | PedPathQueries | i64 | 1 | 0 |
+| `CNTR` | 112 | PedPathWork | i64 | 1 | 0 |
+| `CNTR` | 113 | PedNoPath | i64 | 1 | 0 |
+| `CNTR` | 114 | PedModeFallback | i64 | 1 | 0 |
+| `CNTR` | 115 | GrantsRevokedPed | i64 | 1 | 0 |
+| `CNTR` | 116 | PedAllocFailed | i64 | 1 | 0 |
+| `CNTR` | 117 | PedNetResets | i64 | 1 | 0 |
+| `CNTR` | 118 | CityEvents | i64 | 1 | 0 |
+| `CNTR` | 119 | ResToursPlanned | i64 | 1 | 0 |
+| `CNTR` | 120 | ResToursDropped | i64 | 1 | 0 |
+| `CNTR` | 121 | ResToursUnreachable | i64 | 1 | 0 |
+| `CNTR` | 122 | ResToursCancelled | i64 | 1 | 0 |
+| `CNTR` | 123 | ResLegsCar | i64 | 1 | 0 |
+| `CNTR` | 124 | ResLegsBus | i64 | 1 | 0 |
+| `CNTR` | 125 | ResLegsWalk | i64 | 1 | 0 |
+| `CNTR` | 126 | ResLegsDone | i64 | 1 | 0 |
+| `CNTR` | 127 | ResLegCostDsTotal | i64 | 1 | 0 |
+| `CNTR` | 128 | ResVisits | i64 | 1 | 0 |
+| `CNTR` | 129 | ResVisitsUnserved | i64 | 1 | 0 |
+| `CNTR` | 130 | ResLegOverdue | i64 | 1 | 0 |
+| `CNTR` | 131 | ResStuck | i64 | 1 | 0 |
+| `CNTR` | 132 | ResWaitDepartTicks | i64 | 1 | 0 |
+| `CNTR` | 133 | SkimObserved | i64 | 1 | 0 |
+| `CNTR` | 134 | SkimObsDropped | i64 | 1 | 0 |
+| `CNTR` | 135 | SkimUpdates | i64 | 1 | 0 |
+| `CNTR` | 136 | Immigrants | i64 | 1 | 0 |
+| `CNTR` | 137 | Emigrants | i64 | 1 | 0 |
+| `CNTR` | 138 | ResRelocations | i64 | 1 | 0 |
+| `CNTR` | 139 | ResHired | i64 | 1 | 0 |
+| `CNTR` | 140 | ResFired | i64 | 1 | 0 |
+| `CNTR` | 141 | ResJobSwitches | i64 | 1 | 0 |
+| `CNTR` | 142 | BuildingsBuilt | i64 | 1 | 0 |
+| `CNTR` | 143 | BuildingsAbandoned | i64 | 1 | 0 |
+| `CNTR` | 144 | BuildingsRemoved | i64 | 1 | 0 |
+| `CNTR` | 145 | FirmClosures | i64 | 1 | 0 |
+| `CNTR` | 146 | PaintCommands | i64 | 1 | 0 |
+| `CNTR` | 147 | ExecSwitches | i64 | 1 | 0 |
+| `CNTR` | 148 | CityDays | i64 | 1 | 0 |
+| `CNTR` | 149 | AggregateLegs | i64 | 1 | 0 |
+| `CNTR` | 150 | BayEntries | i64 | 1 | 0 |
+| `CNTR` | 151 | BayFallbacks | i64 | 1 | 0 |
+| `CNTR` | 152 | BayYields | i64 | 1 | 0 |
+| `CNTR` | 153 | BayExitWaitTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 154 | FareEvaded | i64 | 1 | 0 |
+| `CNTR` | 155 | DebtEvictions | i64 | 1 | 0 |
+| `CNTR` | 156 | InsufficientFunds | i64 | 1 | 0 |
+| `CNTR` | 157 | ParkSearchTimeSum | i64 | 1 | 0 |
+| `CNTR` | 158 | ParkSearchTimeCount | i64 | 1 | 0 |
+| `CNTR` | 159 | ParkSearchHist0 | i64 | 1 | 0 |
+| `CNTR` | 160 | ParkSearchHist1 | i64 | 1 | 0 |
+| `CNTR` | 161 | ParkSearchHist2 | i64 | 1 | 0 |
+| `CNTR` | 162 | ParkSearchHist3 | i64 | 1 | 0 |
+| `CNTR` | 163 | ParkSearchHist4 | i64 | 1 | 0 |
+| `CNTR` | 164 | ParkSearchHist5 | i64 | 1 | 0 |
+| `CNTR` | 165 | ParkNoSpotWaits | i64 | 1 | 0 |
+| `CNTR` | 166 | ParkModeSwitch | i64 | 1 | 0 |
+| `CNTR` | 167 | ParkToursDropped | i64 | 1 | 0 |
+| `CNTR` | 168 | ParkOverflow | i64 | 1 | 0 |
+| `CNTR` | 169 | ParkTowed | i64 | 1 | 0 |
+| `CNTR` | 170 | ParkCarShed | i64 | 1 | 0 |
+| `CNTR` | 171 | ParkSearching | i64 | 1 | 0 |
+| `CNTR` | 172 | ParkWalkTicks | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -658,6 +959,54 @@ s10k с цифрами размера и времени. Клиентские к
 | `NETW` | 10 | BusStopCount | i32 | 1 | 0 |
 | `NETW` | 11 | BusRouteCount | i32 | 1 | 0 |
 | `NETW` | 12 | BusRouteStopCount | i32 | 1 | 0 |
+| `NETW` | 13 | ToolsTouched | u8 | 1 | 0 |
+| `NETW` | 14 | NodeFreeCount | i32 | 1 | 0 |
+| `NETW` | 15 | SegmentFreeCount | i32 | 1 | 0 |
+| `NETW` | 16 | BusStopFreeCount | i32 | 1 | 0 |
+| `NETW` | 17 | BusRouteFreeCount | i32 | 1 | 0 |
+| `NETW` | 18 | NodeFree | i32 | NodeFreeCount | 0 |
+| `NETW` | 19 | SegmentFree | i32 | SegmentFreeCount | 0 |
+| `NETW` | 20 | BusStopFree | i32 | BusStopFreeCount | 0 |
+| `NETW` | 21 | BusRouteFree | i32 | BusRouteFreeCount | 0 |
+| `NETW` | 22 | LaneFreeCount | i32 | 1 | 0 |
+| `NETW` | 23 | LaneLeaked | i64 | 1 | 0 |
+| `NETW` | 24 | LaneFree | u64 | LaneFreeCount | 0 |
+| `NETW` | 25 | LaneLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 26 | LanePointFreeCount | i32 | 1 | 0 |
+| `NETW` | 27 | LanePointLeaked | i64 | 1 | 0 |
+| `NETW` | 28 | LanePointFree | u64 | LanePointFreeCount | 0 |
+| `NETW` | 29 | LanePointLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 30 | SegmentPointFreeCount | i32 | 1 | 0 |
+| `NETW` | 31 | SegmentPointLeaked | i64 | 1 | 0 |
+| `NETW` | 32 | SegmentPointFree | u64 | SegmentPointFreeCount | 0 |
+| `NETW` | 33 | SegmentPointLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 34 | ArmFreeCount | i32 | 1 | 0 |
+| `NETW` | 35 | ArmLeaked | i64 | 1 | 0 |
+| `NETW` | 36 | ArmFree | u64 | ArmFreeCount | 0 |
+| `NETW` | 37 | ArmLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 38 | LaneNextFreeCount | i32 | 1 | 0 |
+| `NETW` | 39 | LaneNextLeaked | i64 | 1 | 0 |
+| `NETW` | 40 | LaneNextFree | u64 | LaneNextFreeCount | 0 |
+| `NETW` | 41 | LaneNextLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 42 | ZoneLaneFreeCount | i32 | 1 | 0 |
+| `NETW` | 43 | ZoneLaneLeaked | i64 | 1 | 0 |
+| `NETW` | 44 | ZoneLaneFree | u64 | ZoneLaneFreeCount | 0 |
+| `NETW` | 45 | ZoneLaneLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 46 | BusRouteStopFreeCount | i32 | 1 | 0 |
+| `NETW` | 47 | BusRouteStopLeaked | i64 | 1 | 0 |
+| `NETW` | 48 | BusRouteStopFree | u64 | BusRouteStopFreeCount | 0 |
+| `NETW` | 49 | BusRouteStopLadder | u64 | ceil(Tail / 64) | 0 |
+| `NETW` | 50 | ToolOpCount | i32 | 1 | 0 |
+| `NETW` | 51 | ToolOpNextId | i32 | 1 | 1 |
+| `NETW` | 52 | ToolOpId | i32 | ToolOpCount | 0 |
+| `NETW` | 53 | ToolOpKind | u8 | ToolOpCount | 0 |
+| `NETW` | 54 | ToolOpTargetIndex | i32 | ToolOpCount | 0 |
+| `NETW` | 55 | ToolOpTargetGen | i32 | ToolOpCount | 0 |
+| `NETW` | 56 | ToolOpFlags | u8 | ToolOpCount | 0 |
+| `NETW` | 57 | ToolOpStartTick | i64 | ToolOpCount | 0 |
+| `NETW` | 58 | ToolOpLastProgressTick | i64 | ToolOpCount | 0 |
+| `NETW` | 59 | ToolOpLastStallTick | i64 | ToolOpCount | 0 |
+| `NETW` | 60 | ToolOpBestRemaining | i32 | ToolOpCount | 0 |
 | `NNOD` | 1 | PositionX | f32 | NodeCount | 0 |
 | `NNOD` | 2 | PositionZ | f32 | NodeCount | 0 |
 | `NNOD` | 3 | Elevation | f32 | NodeCount | 0 |
@@ -670,6 +1019,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `NNOD` | 10 | Signal | i32 | NodeCount | -1 |
 | `NNOD` | 11 | Zone | i32 | NodeCount | -1 |
 | `NNOD` | 12 | Generation | i32 | NodeCount | 0 |
+| `NNOD` | 13 | Flags | u32 | NodeCount | 0 |
+| `NNOD` | 14 | TurnBan | u64 | NodeCount | 0 |
 | `NSEG` | 1 | NodeA | i32 | SegmentCount | 0 |
 | `NSEG` | 2 | NodeB | i32 | SegmentCount | 0 |
 | `NSEG` | 3 | Length | f32 | SegmentCount | 0 |
@@ -682,6 +1033,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `NSEG` | 10 | FirstPoint | i32 | SegmentCount | 0 |
 | `NSEG` | 11 | PointCount | i32 | SegmentCount | 0 |
 | `NSEG` | 12 | Generation | i32 | SegmentCount | 0 |
+| `NSEG` | 13 | Flags | u8 | SegmentCount | 0 |
+| `NSEG` | 14 | Cx | f32 | SegmentCount | 0 |
+| `NSEG` | 15 | Cz | f32 | SegmentCount | 0 |
+| `NSEG` | 16 | Profile | i32 | SegmentCount | -1 |
 | `NLAN` | 1 | Kind | u8 | LaneCount | 0 |
 | `NLAN` | 2 | LaneNo | u8 | LaneCount | 0 |
 | `NLAN` | 3 | Direction | u8 | LaneCount | 0 |
@@ -700,6 +1055,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NLAN` | 16 | NextCount | i32 | LaneCount | 0 |
 | `NLAN` | 17 | ConflictGroup | i32 | LaneCount | -1 |
 | `NLAN` | 18 | Generation | i32 | LaneCount | 0 |
+| `NLAN` | 19 | Width | f32 | LaneCount | 0 |
 | `NARM` | 1 | NodeArms | i32 | NodeArmCount | 0 |
 | `NARM` | 2 | ArmFlags | u8 | NodeArmCount | 0 |
 | `NARM` | 3 | ArmDirX | f32 | NodeArmCount | 0 |
@@ -728,6 +1084,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NBUS` | 8 | RouteVehicleType | i32 | BusRouteCount | 0 |
 | `NBUS` | 9 | RouteGeneration | i32 | BusRouteCount | 0 |
 | `NBUS` | 10 | BusRouteStops | i32 | BusRouteStopCount | 0 |
+| `NBUS` | 11 | StopGeneration | i32 | BusStopCount | 0 |
 | `CONN` | 1 | Count | i32 | 1 | 0 |
 | `CONN` | 2 | ConflictsUsed | i32 | 1 | 0 |
 | `CONN` | 3 | Lane | i32 | Count | 0 |
@@ -745,6 +1102,14 @@ s10k с цифрами размера и времени. Клиентские к
 | `CONN` | 15 | ConflictFlags | u8 | ConflictsUsed | 0 |
 | `CONN` | 16 | SMineCm | u16 | ConflictsUsed | 0 |
 | `CONN` | 17 | SOtherCm | u16 | ConflictsUsed | 0 |
+| `CONN` | 18 | RowFreeCount | i32 | 1 | 0 |
+| `CONN` | 19 | RowLeaked | i64 | 1 | 0 |
+| `CONN` | 20 | RowFree | u64 | RowFreeCount | 0 |
+| `CONN` | 21 | RowLadder | u64 | ceil(Tail / 64) | 0 |
+| `CONN` | 22 | ConflictFreeCount | i32 | 1 | 0 |
+| `CONN` | 23 | ConflictLeaked | i64 | 1 | 0 |
+| `CONN` | 24 | ConflictFree | u64 | ConflictFreeCount | 0 |
+| `CONN` | 25 | ConflictLadder | u64 | ceil(Tail / 64) | 0 |
 | `SIGS` | 1 | Count | i32 | 1 | 0 |
 | `SIGS` | 2 | SignalCount | i32 | 1 | 0 |
 | `SIGS` | 3 | Node | i32 | Count | -1 |
@@ -783,6 +1148,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `SIGS` | 36 | ArmLeftYield | u16 | Count * 16 | 0 |
 | `SIGS` | 37 | ArmLeftHead | i32 | Count * 16 | -1 |
 | `SIGS` | 38 | SpillTicks | u16 | Count | 0 |
+| `SIGS` | 39 | XWalkLeft | u16 | Count * 8 | 0 |
+| `SIGS` | 40 | XClearLeft | u16 | Count * 8 | 0 |
+| `SIGS` | 41 | XServed | u8 | Count | 0 |
 | `NDYN` | 1 | NodeTicket | u32 | NodeCount | 0 |
 | `NDYN` | 2 | NodeThroughput | u32 | NodeCount | 0 |
 | `LDYN` | 1 | LaneHead | i32 | LaneCount | -1 |
@@ -802,6 +1170,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `BDYN` | 7 | StatsHeadwayDeviationTicksTotal | i64 | BusRouteCount | 0 |
 | `BDYN` | 8 | StatsLastDispatchTick | i64 | BusRouteCount | -1 |
 | `BDYN` | 9 | LastDepartTick | i64 | BusStopCount | -1 |
+| `BDYN` | 10 | BayUsed | u8 | BusStopCount | 0 |
+| `BDYN` | 11 | BayFlags | u8 | BusStopCount | 0 |
+| `BDYN` | 12 | BayExitFrom | i64 | BusStopCount | -1 |
 | `VEHC` | 1 | HighWater | i32 | 1 | 0 |
 | `VEHC` | 2 | FreeCount | i32 | 1 | 0 |
 | `VEHC` | 3 | FreeList | i32 | FreeCount | 0 |
@@ -842,6 +1213,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `VEHC` | 38 | DwellTicks | u16 | HighWater | 0 |
 | `VEHC` | 39 | Passengers | u16 | HighWater | 0 |
 | `VEHC` | 40 | DenyReason | u8 | HighWater | 0 |
+| `VEHC` | 41 | Resident | i32 | HighWater | -1 |
+| `VEHC` | 42 | ParkFac | i32 | HighWater | -1 |
+| `VEHC` | 43 | ParkFacGen | i32 | HighWater | 0 |
+| `VEHC` | 44 | ParkSearchTick | i64 | HighWater | -1 |
 | `TRIP` | 1 | Count | i32 | 1 | 0 |
 | `TRIP` | 2 | FromZone | i32 | Count | 0 |
 | `TRIP` | 3 | ToZone | i32 | Count | 0 |
@@ -852,6 +1227,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `TRIP` | 8 | DestS | f32 | Count | 0 |
 | `TRIP` | 9 | Route | i32 | Count | 0 |
 | `TRIP` | 10 | RouteGen | i32 | Count | 0 |
+| `TRIP` | 11 | ResidentRef | i32 | Count | 0 |
+| `TRIP` | 12 | ParkRef | i32 | Count | 0 |
+| `TRIP` | 13 | ParkGen | i32 | Count | 0 |
 | `QUES` | 1 | ReroutingCount | i32 | 1 | 0 |
 | `QUES` | 2 | RefillCount | i32 | 1 | 0 |
 | `QUES` | 3 | CommandCount | i32 | 1 | 0 |
@@ -943,6 +1321,244 @@ s10k с цифрами размера и времени. Клиентские к
 | `SMET` | 4 | ConnWaitSum | i64 | Count | 0 |
 | `SMET` | 5 | ConnGrantCount | i32 | Count | 0 |
 | `SMET` | 6 | ConnDelay | f32 | Count | 0 |
+| `PEDS` (peds.enabled) | 1 | HighWater | i32 | 1 | 0 |
+| `PEDS` (peds.enabled) | 2 | FreeCount | i32 | 1 | 0 |
+| `PEDS` (peds.enabled) | 3 | FreeList | i32 | FreeCount | 0 |
+| `PEDS` (peds.enabled) | 4 | Generation | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 5 | State | u8 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 6 | Leg | u8 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 7 | Resident | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 8 | Edge | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 9 | T0 | i64 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 10 | S0Mm | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 11 | VMmT | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 12 | EvTick | i64 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 13 | PathCursor | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 14 | PathCount | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 15 | GoalEdge | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 16 | GoalSMm | i32 | HighWater | 0 |
+| `PEDS` (peds.enabled) | 17 | Next | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 18 | Bus | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 19 | AlightStop | i32 | HighWater | -1 |
+| `PEDS` (peds.enabled) | 20 | TripTick | i64 | HighWater | 0 |
+| `PPTH` (peds.enabled) | 1 | Steps | i32 | 1 | 0 |
+| `PPTH` (peds.enabled) | 2 | Path | i32 | HighWater * Steps | 0 |
+| `RESI` (peds.enabled) | 1 | Count | i32 | 1 | 0 |
+| `RESI` (peds.enabled) | 2 | ReadyHead | i32 | 1 | -1 |
+| `RESI` (peds.enabled) | 3 | ReadyTail | i32 | 1 | -1 |
+| `RESI` (peds.enabled) | 4 | HomeEdge | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 5 | HomeSMm | i32 | Count | 0 |
+| `RESI` (peds.enabled) | 6 | WorkEdge | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 7 | WorkSMm | i32 | Count | 0 |
+| `RESI` (peds.enabled) | 8 | HomeZone | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 9 | WorkZone | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 10 | ModeOut | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 11 | ModeBack | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 12 | RouteOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 13 | StopAOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 14 | StopBOut | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 15 | RouteBack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 16 | StopABack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 17 | StopBBack | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 18 | Where | u8 | Count | 0 |
+| `RESI` (peds.enabled) | 19 | ReadyTick | i64 | Count | 0 |
+| `RESI` (peds.enabled) | 20 | Ped | i32 | Count | -1 |
+| `RESI` (peds.enabled) | 21 | ReadyNext | i32 | Count | -2 |
+| `XING` (peds.enabled) | 1 | XState | u8 | XCount | 0 |
+| `XING` (peds.enabled) | 2 | QHead | i32 | XCount | -1 |
+| `XING` (peds.enabled) | 3 | QTail | i32 | XCount | -1 |
+| `XING` (peds.enabled) | 4 | QCount | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 5 | OnCross | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 6 | BusyUntil | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 7 | ClosedSince | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 8 | CarWindowUntil | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 9 | CarsWaiting | u8 | XCount | 0 |
+| `XING` (peds.enabled) | 10 | WaitSum | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 11 | Releases | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 12 | MeasuredWait | i32 | XCount | 0 |
+| `XING` (peds.enabled) | 13 | StopQHead | i32 | BusStopCount | -1 |
+| `XING` (peds.enabled) | 14 | StopQTail | i32 | BusStopCount | -1 |
+| `XING` (peds.enabled) | 15 | StopQCount | i32 | BusStopCount | 0 |
+| `XING` (peds.enabled) | 16 | PaxHead | i32 | Vehicles.HighWater | -1 |
+| `XING` (peds.enabled) | 17 | CrossWaitHist | i64 | 256 | 0 |
+| `XING` (peds.enabled) | 18 | StopWaitHist | i64 | 256 | 0 |
+| `XING` (peds.enabled) | 19 | BusyUntilIn | i64 | XCount | 0 |
+| `XING` (peds.enabled) | 20 | BusyUntilOut | i64 | XCount | 0 |
+| `PQUE` (peds.enabled) | 1 | Count | i32 | 1 | 0 |
+| `PQUE` (peds.enabled) | 2 | Index | i32 | Count | 0 |
+| `PQUE` (peds.enabled) | 3 | Generation | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 1 | Count | i32 | 1 | 0 |
+| `LOTS` (demand.model = residents) | 2 | Seg | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 3 | SegGen | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 4 | Side | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 5 | S0Mm | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 6 | S1Mm | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 7 | Zone | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 8 | Density | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 9 | Building | i32 | Count | -1 |
+| `LOTS` (demand.model = residents) | 10 | Flags | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 11 | CellX | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 12 | CellZ | i32 | Count | 0 |
+| `LOTS` (demand.model = residents) | 13 | CellsF | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 14 | CellsD | u8 | Count | 0 |
+| `LOTS` (demand.model = residents) | 15 | Orient | u8 | Count | 255 |
+| `BLDG` (demand.model = residents) | 1 | HighWater | i32 | 1 | 0 |
+| `BLDG` (demand.model = residents) | 2 | FreeCount | i32 | 1 | 0 |
+| `BLDG` (demand.model = residents) | 3 | FreeList | i32 | FreeCount | 0 |
+| `BLDG` (demand.model = residents) | 4 | Generation | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 5 | Lot | i32 | HighWater | -1 |
+| `BLDG` (demand.model = residents) | 6 | Type | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 7 | State | u8 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 8 | StateTick | i64 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 9 | Occupants | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 10 | Jobs | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 11 | HeadRes | i32 | HighWater | -1 |
+| `BLDG` (demand.model = residents) | 12 | HeadWork | i32 | HighWater | -1 |
+| `BLDG` (demand.model = residents) | 13 | Account | i64 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 14 | RevenueEwma | i64 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 15 | ProfitEwma | i64 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 16 | VisitsDay | i32 | 2 * HighWater | 0 |
+| `BLDG` (demand.model = residents) | 17 | RevenueDay | i64 | 2 * HighWater | 0 |
+| `BLDG` (demand.model = residents) | 18 | CostDay | i64 | 2 * HighWater | 0 |
+| `BLDG` (demand.model = residents) | 19 | LossDays | i16 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 20 | VacantDays | i16 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 21 | PayrollEwma | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 1 | HighWater | i32 | 1 | 0 |
+| `RESD` (demand.model = residents) | 2 | FreeCount | i32 | 1 | 0 |
+| `RESD` (demand.model = residents) | 3 | FreeList | i32 | FreeCount | 0 |
+| `RESD` (demand.model = residents) | 4 | Generation | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 5 | Home | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 6 | Work | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 7 | NextHome | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 8 | NextWork | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 9 | Flags | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 10 | State | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 11 | StateTick | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 12 | EvTick | i64 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 13 | EvKind | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 14 | PlanCount | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 15 | PlanCursor | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 16 | PlanKind | u8 | HighWater * 3 | 0 |
+| `RESD` (demand.model = residents) | 17 | PlanMode | u8 | HighWater * 3 | 0 |
+| `RESD` (demand.model = residents) | 18 | PlanDest | i32 | HighWater * 3 | -1 |
+| `RESD` (demand.model = residents) | 19 | PlanSlot | u16 | HighWater * 3 | 0 |
+| `RESD` (demand.model = residents) | 20 | LegMode | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 21 | LegO | u16 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 22 | LegD | u16 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 23 | LegReq | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 24 | LegWalk | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 25 | LegWait | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 26 | LegRide | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 27 | Agent | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 28 | AgentGen | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 29 | Account | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 30 | IncomeEwma | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 31 | SeekDays | i16 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 32 | EvictDays | i16 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 33 | Seq | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 34 | NextSeq | i32 | 1 | 0 |
+| `RESD` (demand.model = residents) | 35 | SeekCount | i32 | 1 | 0 |
+| `RESD` (demand.model = residents) | 36 | SeekIndex | i32 | SeekCount | 0 |
+| `RESD` (demand.model = residents) | 37 | SeekGeneration | i32 | SeekCount | 0 |
+| `RESD` (demand.model = residents) | 38 | LegDest | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 39 | LegStopA | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 40 | LegStopB | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 41 | HomeFac | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 42 | HomeFacGen | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 43 | CarFac | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 44 | CarFacGen | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 45 | CarLot | i32 | HighWater | -1 |
+| `RESD` (demand.model = residents) | 46 | CarWalkMm | i32 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 47 | LegStage | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 48 | LegWaitFrom | i64 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 49 | LegParkWait | i32 | HighWater | 0 |
+| `SKIM` (demand.model = residents) | 1 | Skim | i32 | NC * NC * 3 * P | 0 |
+| `SKIM` (demand.model = residents) | 2 | K | i32 | NC * NC * P | 0 |
+| `SKIM` (demand.model = residents) | 3 | LsRef | i32 | 1 | 0 |
+| `SKIM` (demand.model = residents) | 4 | LsRefSet | u8 | 1 | 0 |
+| `SKIM` (demand.model = residents) | 5 | CurPeriod | i64 | 1 | 0 |
+| `SKIM` (demand.model = residents) | 6 | UpdateCursor | i32 | 1 | 0 |
+| `SKIM` (demand.model = residents) | 7 | ObsKey | i32 | ObsCount | 0 |
+| `SKIM` (demand.model = residents) | 8 | ObsSum | i64 | ObsCount | 0 |
+| `SKIM` (demand.model = residents) | 9 | ObsCount | i32 | ObsCount | 0 |
+| `SKIM` (demand.model = residents) | 10 | FrozenKey | i32 | FrozenN | 0 |
+| `SKIM` (demand.model = residents) | 11 | FrozenSum | i64 | FrozenN | 0 |
+| `SKIM` (demand.model = residents) | 12 | FrozenCount | i32 | FrozenN | 0 |
+| `SKIM` (demand.model = residents) | 13 | LsC | i32 | NC * 3 | 0 |
+| `SKIM` (demand.model = residents) | 14 | LsJobs | i32 | NC | 0 |
+| `LEDG` (demand.model = residents) | 1 | External | i64 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 2 | City | i64 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 17 | 0 |
+| `LEDG` (demand.model = residents) | 4 | FlowYesterday | i64 | 17 | 0 |
+| `LEDG` (demand.model = residents) | 5 | FlowTotal | i64 | 17 | 0 |
+| `LEDG` (demand.model = residents) | 6 | CursorResidents | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 7 | CursorBuildings | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 8 | CursorAccess | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 9 | DemandR | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 10 | DemandC | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 11 | DemandI | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 12 | ToursDay | i32 | 2 | 0 |
+| `LEDG` (demand.model = residents) | 13 | LegsDay | i32 | 6 | 0 |
+| `LEDG` (demand.model = residents) | 14 | LegCostDay | i64 | 6 | 0 |
+| `LEDG` (demand.model = residents) | 15 | CellLoads | i32 | NC * P * 2 | 0 |
+| `LEDG` (demand.model = residents) | 16 | DayStage | i32 | 1 | 0 |
+| `LEDG` (demand.model = residents) | 17 | VisitsDayTotal | i32 | 2 | 0 |
+| `LEDG` (demand.model = residents) | 18 | UnservedDayTotal | i32 | 2 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 1 | PolicyTaxRBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 2 | PolicyTaxCBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 3 | PolicyTaxIBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 4 | PolicyLandTaxBpDay | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 5 | PolicyFare | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 6 | PolicyFlags | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 7 | PolicyR0 | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 8 | PolicyR1 | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 9 | PendingTaxRBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 10 | PendingTaxCBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 11 | PendingTaxIBp | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 12 | PendingLandTaxBpDay | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 13 | PendingFare | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 14 | PendingFlags | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 15 | PendingR0 | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 16 | PendingR1 | u16 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 17 | HasPending | u8 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 18 | LandValue | i32 | NC | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 19 | IncomeEwma | i64 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 20 | ExpenseEwma | i64 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 21 | Carry | i64 | 17 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 22 | DebtDays | i32 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 23 | OverLimitDays | i32 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 24 | Insolvent | u8 | 1 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 25 | UndoTargetIndex | i32 | 64 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 26 | UndoTargetGeneration | i32 | 64 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 27 | UndoAmount | i64 | 64 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 28 | UndoExpireTick | i64 | 64 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 29 | FareEvadedDay | i32 | 2 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 30 | DebtEvictionsDay | i32 | 2 | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 1 | HighWater | i32 | 1 | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 2 | FreeCount | i32 | 1 | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 3 | FreeList | i32 | FreeCount | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 4 | Generation | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 5 | Kind | u8 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 6 | Flags | u8 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 7 | Lot | i32 | HighWater | -1 |
+| `PARK` (PARM.ParkingEnabled = 1) | 8 | Building | i32 | HighWater | -1 |
+| `PARK` (PARM.ParkingEnabled = 1) | 9 | BuildingGen | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 10 | Capacity | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 11 | Assigned | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 12 | Occupied | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 13 | Reserved | i32 | HighWater | 0 |
+| `PARK` (PARM.ParkingEnabled = 1) | 14 | Fee | i32 | HighWater | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 4 | P1X | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 5 | P1Z | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 6 | P2X | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 7 | P2Z | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 8 | P3X | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 9 | P3Z | f32 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 10 | Kind | u8 | Count | 0 |
+| `LUSE` (PARM.LandUseCount > 0) | 11 | Flags | u8 | Count | 0 |
 | `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
 | `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
 | `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |

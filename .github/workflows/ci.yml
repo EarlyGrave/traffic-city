@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # нужна история для базы A/B бенча (ADR-0031)
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -32,27 +37,170 @@ jobs:
       - name: Test
         run: dotnet test traffic-city.sln -c Release --no-build
 
-      # Параметры bench и повтор при шуме p95 - в scripts/bench-gate.sh (общие с Stop-хуком, ADR-0007).
-      - name: Bench s1k + compare with CI baseline
-        if: hashFiles('perf/baseline-ci.json') != ''
-        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --baseline perf/baseline-ci.json
+      # Пакеты контента проходят тот же валидатор, что и моды (modding.md §4, M6). Новые content/* - добавлять сюда.
+      - name: Validate content/base
+        run: dotnet run --project src/Sim.Headless -c Release --no-build -- validate-package content/base --game
 
-      - name: Bench s1k + check budget (no CI baseline yet)
-        if: hashFiles('perf/baseline-ci.json') == ''
-        run: bash scripts/bench-gate.sh --out perf/results/s1k.json --budget-p95-ms 1.0
+      # ADR-0031: A/B с базовым коммитом на том же раннере (scripts/bench-ab.sh); параметры bench - scripts/bench-args.sh.
+      # Базы нет (schedule, workflow_dispatch, первый коммит) - гейт по бюджету через scripts/bench-gate.sh.
+      - name: Bench s1k A/B vs base commit
+        run: |
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then
+            echo "Релиз dev -> main: гейт по бюджету (A/B через целые этапы мерит принятый рост, а не регрессию)."
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Push в main (squash релиза dev -> main): гейт по бюджету."
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            base=$(git merge-base "origin/${{ github.base_ref }}" HEAD || true)
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            base=$(git rev-parse --verify -q HEAD^1 || true)
+          fi
+          if [ -n "$base" ] && [ "$base" != "$(git rev-parse HEAD)" ]; then
+            bash scripts/bench-ab.sh --base "$base" --out-dir perf/results/ab
+          else
+            echo "Базы для A/B нет - гейт по бюджету."
+            bash scripts/bench-gate.sh --out perf/results/s1k.json --budget-p95-ms 1.0
+          fi
 
-      # CI-baseline снимается из этого вывода (ADR-0007).
       - name: Print bench JSON
         if: always()
         run: |
-          echo "=== BENCH-JSON-BEGIN ==="
-          cat perf/results/s1k.json
-          echo "=== BENCH-JSON-END ==="
+          for f in perf/results/s1k.json perf/results/ab/*.json; do
+            [ -f "$f" ] || continue
+            echo "=== BENCH-JSON-BEGIN $f ==="
+            cat "$f"
+            echo "=== BENCH-JSON-END ==="
+          done
 
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf-results
-          path: perf/results/*.json
+          path: perf/results/**/*.json
           if-no-files-found: ignore
+
+  # Рендер клиента (V9, ADR-0014 п. 9, docs/design/render.md §8.3): Godot 4.7.2 mono (SourceForge-зеркало, sha512) + Xvfb + Mesa llvmpipe,
+  # детерминированные счётчики (draw calls, примитивы, память) трёх поз -> бюджет `low` и baseline клиента perf/render-baseline-ci.json.
+  # FPS/время llvmpipe - только справочно. Решение T5: пока необязательная (continue-on-error); обязательной станет после 5 зелёных прогонов подряд
+  # (убрать continue-on-error и добавить в required checks). Baseline клиента снимается: scripts/godot-shot.sh gate-update с
+  # RENDER_BASELINE=perf/render-baseline-ci.json - вывод job печатает JSON замеров (ADR-0007).
+  render:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 40
+    env:
+      GODOT_DIR: ${{ github.workspace }}/.godot-bin
+      RENDER_BASELINE: perf/render-baseline-ci.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Godot version
+        id: godot
+        run: echo "ver=$(sed -n 's/^VER=//p' scripts/godot-shot.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: .godot-bin
+          key: godot-${{ steps.godot.outputs.ver }}-mono-linux-x86_64
+
+      - name: System packages (Xvfb, Mesa llvmpipe)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1 libgl1-mesa-dri libglx-mesa0 libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libfontconfig1 python3
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/godot-shot.sh install
+
+      - name: Render gate (budget low + client baseline)
+        run: |
+          if [ -f "$RENDER_BASELINE" ]; then echo "baseline: $RENDER_BASELINE"; else echo "no $RENDER_BASELINE yet: budget only"; fi
+          bash scripts/godot-shot.sh gate
+
+      # Baseline клиента для CI снимается из этого вывода (ADR-0007): положить файл и закоммитить через render-update-baseline.
+      - name: Print render stats JSON
+        if: always()
+        run: |
+          for f in perf/results/render/stats-*.json; do
+            echo "=== RENDER-STATS-BEGIN $f ==="
+            cat "$f"
+            echo "=== RENDER-STATS-END ==="
+          done
+
+      - name: Upload render stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-stats
+          path: perf/results/render/stats-*.json
+          if-no-files-found: ignore
+
+  # Rust-пилот ядра (ADR-0022, docs/design/rust-pilot.md §9).
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustup предустановлен; rust-toolchain.toml ставит 1.97.0 + clippy/rustfmt при первом вызове cargo.
+      - name: Show toolchain
+        run: rustc --version && cargo --version
+
+      - uses: actions/cache@v4
+        with:
+          path: rust/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build tc-ffi (release)
+        if: hashFiles('rust/crates/tc-ffi/Cargo.toml') != ''
+        run: cargo build --release -p tc-ffi --locked
+
+      - name: Third-party crates check
+        run: bash ../scripts/rust-check.sh --deps-only
+
+      # ffi-smoke (R6): C#-ядро и Rust cdylib в одном процессе - network_hash, create_status, размеры struct, очередь, коды ошибок.
+      - uses: actions/setup-dotnet@v4
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        with:
+          global-json-file: global.json
+
+      - name: ffi-smoke
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        run: dotnet run --project ffi-smoke -c Release -- --lib target/release/libtc_ffi.so --golden ../tests/golden/rust-pilot
+
+      # Вариант библиотеки с фичей test-panic: catch_unwind -> TC_ERR_PANIC, затем TC_ERR_POISONED, destroy.
+      - name: Build tc-ffi (test-panic)
+        if: hashFiles('rust/crates/tc-ffi/Cargo.toml') != ''
+        run: cargo build --release -p tc-ffi --features test-panic --locked --target-dir target/panic
+
+      - name: ffi-smoke (panic)
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        run: dotnet run --project ffi-smoke -c Release --no-build -- --lib target/panic/release/libtc_ffi.so --golden ../tests/golden/rust-pilot --expect-panic-test
+
+      - name: Format ffi-smoke
+        if: hashFiles('rust/ffi-smoke/FfiSmoke.csproj') != ''
+        working-directory: .
+        run: dotnet format rust/ffi-smoke/FfiSmoke.csproj --verify-no-changes

@@ -26,6 +26,7 @@ internal struct CityGenResult
     public int RemovedStreets, RepairedEdges, ShiftedNodes, MergedNodes, IrregularSkipped;
     public int SignalizedNodes;
     public SignalPlanSeed[] SignalPlans;      // длина SignalizedNodes; выделяется в Generate
+    public LandUsePoly[]? LandUse;            // city.landuse: полигоны парков/воды (null - выключено)
 }
 
 /// <summary>
@@ -35,6 +36,7 @@ internal struct CityGenResult
 /// </summary>
 internal static class CityGenerator
 {
+    internal const float DefaultModuleM = 8f;   // module_m без каталога профилей (road-profiles.md §4.1)
     internal const float MinSegmentLength = 30f;
     internal const float MinArmAngle = 0.43633232f; // 25°
     internal const int MaxArms = 6;
@@ -55,21 +57,26 @@ internal static class CityGenerator
         in SimCapacities caps,
         NetworkBuilder b,
         ref Pcg32 rng,
-        out CityGenResult result)
+        out CityGenResult result,
+        ulong seed = 0)
     {
         result = default;
-        if (!ValidateDesc(in city))
+        // Модуль мировой сетки: из каталога профилей, иначе 8 м (road-profiles.md §4.1).
+        float module = b.Store.Profiles != null ? b.Store.Profiles.ModuleMm / 1000f : DefaultModuleM;
+        if (!ValidateDesc(in city, module))
         {
             return CreateStatus.InvalidNetwork;
         }
+
+        bool snap = city.SnapNodes;
 
         // ---- производные величины (§1) ----
         float w = city.SizeX * city.Scale;
         float h = city.SizeZ * city.Scale;
         int nx = Math.Max(2, RoundI(w / city.BlockSize));
         int nz = Math.Max(2, RoundI(h / city.BlockSize));
-        float bx = w / nx;
-        float bz = h / nz;
+        float bx = snap ? city.BlockSize : w / nx;   // snap: шаг = block_m точно (кратен модулю); без snap - прежнее w / nx
+        float bz = snap ? city.BlockSize : h / nz;
         float g = city.NodeJitter;
         float halfW = w * 0.5f;
         float halfH = h * 0.5f;
@@ -109,6 +116,13 @@ internal static class CityGenerator
                 if (!bj)
                 {
                     z += dz;
+                }
+
+                if (snap)
+                {
+                    // draw сделан всегда, снап - после него: число и порядок обращений к PRNG прежние
+                    x = SnapToModule(x, module);
+                    z = SnapToModule(z, module);
                 }
 
                 pl.X[p] = x;
@@ -252,7 +266,7 @@ internal static class CityGenerator
 
             if ((k & 1) == 1)
             {
-                int mr = TryMerge(pl, p);
+                int mr = TryMerge(pl, p, snap ? module : 0f);
                 if (mr == 1)
                 {
                     merged++;
@@ -266,7 +280,7 @@ internal static class CityGenerator
                 }
             }
 
-            if (TryShift(pl, p, rr * MathF.Cos(theta), rr * MathF.Sin(theta)))
+            if (TryShift(pl, p, rr * MathF.Cos(theta), rr * MathF.Sin(theta), snap ? module : 0f))
             {
                 shifted++;
             }
@@ -279,6 +293,12 @@ internal static class CityGenerator
         result.ShiftedNodes = shifted;
         result.MergedNodes = merged;
         result.IrregularSkipped = skipped;
+
+        // ---- землепользование (visual-style.md §8): по финальному плану, свой PRNG - общий поток не затрагивается ----
+        if (city.LandUse.Enabled)
+        {
+            result.LandUse = LandUseGenerator.Generate(in city.LandUse, pl, halfW, halfH, module, seed);
+        }
 
         // ---- шаг 5: эмиссия (§3.7) ----
         int aliveNodes = 0;
@@ -327,7 +347,33 @@ internal static class CityGenerator
             pl.NodeOut[p] = ni;
         }
 
+        // Отступы концов по всем рукавам узла (ADR-0028): рукава известны до эмиссии сегментов.
+        int[] segA = new int[aliveEdges];
+        int[] segB = new int[aliveEdges];
+        int[] segLanes = new int[aliveEdges];
+        int[] segProfile = new int[aliveEdges];
+        RoadProfileStore? profiles = b.Store.Profiles;   // режим профилей (ADR-0030): число полос и ширины - из профилей city.profiles
+        float[] setA = new float[aliveEdges];
+        float[] setB = new float[aliveEdges];
+        int ek = 0;
+        for (int e = 0; e < pl.EdgeCap; e++)
+        {
+            if (pl.EdgeAlive[e] == 0)
+            {
+                continue;
+            }
+
+            segA[ek] = pl.NodeOut[pl.EdgeA[e]];
+            segB[ek] = pl.NodeOut[pl.EdgeB[e]];
+            segLanes[ek] = pl.EdgeKind[e] == (byte)RoadKind.Arterial ? 4 : 2;
+            segProfile[ek] = profiles != null ? (pl.EdgeKind[e] == (byte)RoadKind.Arterial ? city.ArterialProfile : city.StreetProfile) - 1 : -1;
+            ek++;
+        }
+
+        b.PlanSetbacks(segA, segB, segLanes, segProfile, setA, setB);
+
         int normalLanes = 0;
+        ek = 0;
         for (int e = 0; e < pl.EdgeCap; e++)
         {
             if (pl.EdgeAlive[e] == 0)
@@ -338,14 +384,18 @@ internal static class CityGenerator
             bool art = pl.EdgeKind[e] == (byte)RoadKind.Arterial;
             int lanes = art ? 2 : 1;
             float speed = art ? city.ArterialSpeed : city.StreetSpeed;
-            NetworkStatus st = b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], out int si);
+            int prof = segProfile[ek];
+            NetworkStatus st = prof >= 0
+                ? b.AddProfileSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, prof, false, speed, setA[ek], setB[ek], out int si)
+                : b.AddSegment(pl.NodeOut[pl.EdgeA[e]], pl.NodeOut[pl.EdgeB[e]], ReadOnlySpan<Vec2>.Empty, lanes, lanes, speed, (RoadKind)pl.EdgeKind[e], setA[ek], setB[ek], out si);
+            ek++;
             if (st != NetworkStatus.Ok)
             {
                 return st.ToCreateStatus();
             }
 
             pl.EdgeOut[e] = si;
-            normalLanes += 2 * lanes;
+            normalLanes += prof >= 0 ? profiles!.LanesFwd[prof] + profiles.LanesBwd[prof] : 2 * lanes;
         }
 
         NetworkStatus cs = b.BuildAllConnectorsEx();
@@ -492,7 +542,7 @@ internal static class CityGenerator
                 }
 
                 int yellow = rules.DefaultYellowTicks;
-                int allRed = rules.DefaultAllRedTicks;
+                int allRed = rules.DefaultAllRedTicks + Rules.Intersections.SignalStore.ClearanceExtraTicks(store, n, b.Options);   // очистка коробки (ADR-0028); 0 при коробке 14 м
                 int cycle = g0 + g1 + (2 * (yellow + allRed));
                 int offset;
                 int seedCycle = 0;
@@ -562,9 +612,20 @@ internal static class CityGenerator
         return CreateStatus.Ok;
     }
 
-    private static bool ValidateDesc(in CityGenDesc c)
+    /// <summary>Округление координаты до ближайшего кратного модуля (от нуля на .5, как <see cref="RoundI"/>); module &lt;= 0 - без изменений.</summary>
+    internal static float SnapToModule(float v, float module) => module > 0f ? RoundI(v / module) * module : v;
+
+    /// <summary>block_m кратен модулю сетки (допуск 1e-3 м на запись в float).</summary>
+    internal static bool IsMultipleOfModule(float blockSize, float module)
     {
-        return c.BlockSize >= 50f &&
+        float k = blockSize / module;
+        return MathF.Abs(k - MathF.Round(k)) * module < 1e-3f;
+    }
+
+    private static bool ValidateDesc(in CityGenDesc c, float module)
+    {
+        return (!c.SnapNodes || (module > 0f && IsMultipleOfModule(c.BlockSize, module))) &&
+            c.BlockSize >= 50f &&
             c.SizeX >= 2f * c.BlockSize && c.SizeZ >= 2f * c.BlockSize &&
             c.Scale > 0f && float.IsFinite(c.Scale) &&
             c.ArterialEvery >= 2 &&
@@ -578,7 +639,7 @@ internal static class CityGenerator
     }
 
     /// <summary>Округление «от нуля» (как f32::round в Rust), чтобы порт совпадал на .5.</summary>
-    internal static int RoundI(float v) => (int)MathF.Round(v, MidpointRounding.AwayFromZero);
+    internal static int RoundI(float v) => DetMath.ToIntSat(MathF.Round(v, MidpointRounding.AwayFromZero));
 
     private static int MarkArterialLines(byte[] lines, int n, int every)
     {
@@ -660,12 +721,12 @@ internal static class CityGenerator
         return true;
     }
 
-    private static bool TryShift(GridPlan pl, int p, float dx, float dz)
+    private static bool TryShift(GridPlan pl, int p, float dx, float dz, float module)
     {
         float ox = pl.X[p];
         float oz = pl.Z[p];
-        pl.X[p] = ox + dx;
-        pl.Z[p] = oz + dz;
+        pl.X[p] = SnapToModule(ox + dx, module);   // module = 0 - без снапа; Validate (углы, длины) идёт уже по снапнутым координатам
+        pl.Z[p] = SnapToModule(oz + dz, module);
         if (ValidateAround(pl, p))
         {
             pl.NodeFlags[p] |= GridPlan.FlagShifted;
@@ -678,7 +739,7 @@ internal static class CityGenerator
     }
 
     /// <summary>0 — условия слияния не выполнены (делается сдвиг), 1 — слито, 2 — отменено валидацией (пропуск).</summary>
-    private static int TryMerge(GridPlan pl, int p)
+    private static int TryMerge(GridPlan pl, int p, float module)
     {
         int q = p + 1;
         if (q >= pl.NodeCap || pl.NodeAlive[q] == 0 ||
@@ -737,8 +798,8 @@ internal static class CityGenerator
             pl.SaveEdgeB[s] = pl.EdgeB[e];
         }
 
-        float mx = (pl.X[p] + pl.X[q]) * 0.5f;
-        float mz = (pl.Z[p] + pl.Z[q]) * 0.5f;
+        float mx = SnapToModule((pl.X[p] + pl.X[q]) * 0.5f, module);
+        float mz = SnapToModule((pl.Z[p] + pl.Z[q]) * 0.5f, module);
         pl.EdgeAlive[epq] = 0;
         pl.RemoveAdj(p, epq);
         pl.RemoveAdj(q, epq);

@@ -139,6 +139,18 @@ public class ScenarioLoaderTests
     }
 
     [Fact]
+    public void SnapNodes_DefaultOffWithoutProfiles_ExplicitOnNeedsBlockMultipleOfModule()
+    {
+        Assert.False(Load(Minimal()).City.SnapNodes);
+        Assert.False(Load(Minimal("\"city\": { \"block_m\": 150 }")).City.SnapNodes);
+        Assert.True(Load(Minimal("\"city\": { \"block_m\": 152, \"size_m\": [3040, 3040], \"snap_nodes\": true }")).City.SnapNodes);
+        ScenarioException e = Fails(Minimal("\"city\": { \"block_m\": 150, \"snap_nodes\": true }"));
+        Assert.Contains("$.city.block_m", e.Message, StringComparison.Ordinal);
+        Assert.Contains("multiple of module_m", e.Message, StringComparison.Ordinal);
+        Assert.Contains("$.city.snap_nodes", Fails(Minimal("\"city\": { \"snap_nodes\": 1 }")).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DefaultsApplied()
     {
         ScenarioDesc d = Load(Minimal());
@@ -212,7 +224,7 @@ public class ScenarioLoaderTests
         ScenarioDesc d = ScenarioLoader.Load(Path.Combine(ScenariosDir(), name + ".json"));
         RoutingDesc r = d.Routing;
         Assert.Equal(levels, r.Levels);
-        Assert.Equal(1000f, r.CellSize);
+        Assert.Equal(1016f, r.CellSize);
         Assert.Equal(4, r.Fanout);
         Assert.Equal(16, r.WindowSteps);
         Assert.Equal(pathfind, r.PathfindBudgetPerTick);
@@ -298,7 +310,7 @@ public class ScenarioLoaderTests
     {
         foreach (string f in Directory.GetFiles(ScenariosDir(), "*.json"))
         {
-            if (Path.GetFileName(f) == "vehicle-types.json")
+            if (Path.GetFileName(f) is "vehicle-types.json" or "road-profiles.json")
             {
                 continue;
             }
@@ -552,5 +564,66 @@ public class ScenarioLoaderTests
         // До шага L5 лестница без секции lod: поведение и хэш прежние.
         LoadedScenario sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(name, null));
         Assert.Equal(LodMode.Off, sc.Desc.Lod.Mode);
+    }
+
+    [Fact]
+    public void ToolsSection_DefaultsAndOverrides()
+    {
+        // Нет секции: заглушки таблицы стоимостей и границы по умолчанию (bbox сети + 2 км).
+        ScenarioDesc d = Load(Minimal());
+        Assert.False(d.Tools.HasWorldBounds);
+        Assert.Equal(10L, d.Tools.Costs.RoadPerMLaneStreet);
+        Assert.Equal(20L, d.Tools.Costs.RoadPerMLaneArterial);
+        Assert.Equal(50, d.Tools.Costs.DemolishRefundPct);
+
+        d = Load(Minimal("\"tools\": { \"costs\": { \"road_per_m_lane\": { \"street\": 7 }, \"turn_ban\": 3, \"demolish_refund_pct\": 80 }, "
+            + "\"world_bounds\": { \"min_x\": -100, \"min_z\": -200, \"max_x\": 300, \"max_z\": 400 } }"));
+        Assert.Equal(7L, d.Tools.Costs.RoadPerMLaneStreet);
+        Assert.Equal(20L, d.Tools.Costs.RoadPerMLaneArterial);
+        Assert.Equal(3L, d.Tools.Costs.TurnBan);
+        Assert.Equal(80, d.Tools.Costs.DemolishRefundPct);
+        Assert.True(d.Tools.HasWorldBounds);
+        Assert.Equal(-200f, d.Tools.BoundsMinZ);
+        Assert.Equal(300f, d.Tools.BoundsMaxX);
+
+        ScenarioException e = Fails(Minimal("\"tools\": { \"costs\": { \"demolish_refund_pct\": 101 } }"));
+        Assert.Contains("$.tools.costs.demolish_refund_pct", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"tools\": { \"world_bounds\": { \"min_x\": 5, \"min_z\": 0, \"max_x\": 1, \"max_z\": 1 } }"));
+        Assert.Contains("$.tools.world_bounds", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"tools\": { \"unknown\": 1 }"));
+        Assert.Contains("$.tools.unknown", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CityLandUse_ParsesDefaultsAndValues_DisabledByDefault()
+    {
+        Assert.False(Load(Minimal()).City.LandUse.Enabled);
+        Assert.False(Load(Minimal("\"city\": { \"landuse\": { \"enabled\": false, \"park_share\": 0.5 } }")).City.LandUse.Enabled);
+
+        LandUseDesc d = Load(Minimal("\"city\": { \"landuse\": { \"enabled\": true } }")).City.LandUse;
+        Assert.True(d.Enabled);
+        Assert.Equal(0.08f, d.ParkShare);
+        Assert.Equal(0.25f, d.PondShare);
+        Assert.Equal(LandUseCoast.None, d.Coast);
+        Assert.Equal(400f, d.CoastWidthM);
+
+        d = Load(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"park_share\": 0.2, \"pond_share\": 0, \"coast\": \"east\", \"coast_width_m\": 240 } }")).City.LandUse;
+        Assert.Equal(0.2f, d.ParkShare);
+        Assert.Equal(0f, d.PondShare);
+        Assert.Equal(LandUseCoast.East, d.Coast);
+        Assert.Equal(240f, d.CoastWidthM);
+    }
+
+    [Fact]
+    public void CityLandUse_RejectsBadValues_AndExplicitNetwork()
+    {
+        ScenarioException e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"coast\": \"up\" } }"));
+        Assert.Contains("$.city.landuse.coast", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"park_share\": 1.5 } }"));
+        Assert.Contains("$.city.landuse.park_share", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"landuse\": { \"enabled\": true, \"nope\": 1 } }"));
+        Assert.Contains("$.city.landuse.nope", e.Message, StringComparison.Ordinal);
+        e = Fails(Minimal("\"city\": { \"enabled\": false, \"landuse\": { \"enabled\": true } }, \"network\": { \"nodes\": [], \"segments\": [] }"));
+        Assert.Contains("$.city.landuse", e.Message, StringComparison.Ordinal);
     }
 }

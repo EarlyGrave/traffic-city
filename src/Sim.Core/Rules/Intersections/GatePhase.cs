@@ -4,6 +4,7 @@ using System.Numerics;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Peds;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -50,6 +51,10 @@ internal static class GatePhase
         // 0c. Снятие допуска на красном (§5.4 п. 6, ADR-0019): до сбора кандидатов и пересборки OutReserved/NodeBusy по допущенным.
         RefreshMasks(w);
         RevokeOnRed(w);
+        if (w.Peds != null)
+        {
+            RevokeOnPed(w);
+        }
 
         // 1. Сбор кандидатов. Обычно - по активным множествам (маски занятых полос, ADR-0019 A2); полный проход по машинам - в первый тик и
         // после смены сети/узлов (RefreshMasks), а в Debug - как эталон, с которым сверяется активный проход на каждом тике.
@@ -75,9 +80,71 @@ internal static class GatePhase
         g.PrevCount = g.NextCount;
         w.Work.GateCandidates += candidates;
 
-        // 2. Разрешение по узлам.
+        // 2. Разрешение по узлам: параллельно (scale.md §4), узлы друг с другом не связаны; слияние буферов воркеров - на главном потоке.
+        Resolve(w, in e);
+    }
+
+    private static void Resolve(World w, in RuleEnv e)
+    {
+        GateScratch g = w.Gate;
+        GateResolveJob job = w.GateResolve;
+        job.Prepare(w, in e);
+        int count = g.TouchedCount;
+        RunJob(w, job, count);
+        GateWorker[] ws = g.Workers;
+        for (int k = 0; k < ws.Length; k++)
+        {
+            GateWorker gw = ws[k];
+            Merge(g, gw);
+            for (int q = 0; q < gw.GrantedCount; q++)
+            {
+                w.Queue?.OnGranted(gw.Granted[q]);   // Q-meso: голова -> кинематика, ведомый очереди освобождается (колесо и маски - только на главном потоке)
+            }
+
+            gw.GrantedCount = 0;
+            gw.Collect(w);
+        }
+
+        g.TouchedCount = 0;
+    }
+
+    /// <summary>Запуск задания по узлам: на пуле ядра либо последовательно (без пула; в тестах - в обратном порядке).</summary>
+    private static void RunJob(World w, Util.IRangeJob job, int count)
+    {
+        if (w.Gate.ReverseOrder)
+        {
+            for (int k = count - 1; k >= 0; k--)
+            {
+                job.RunRange(0, k, k + 1);
+            }
+        }
+        else if (w.Pool != null)
+        {
+            w.Pool.Run(job, count);
+        }
+        else if (count > 0)
+        {
+            job.RunRange(0, 0, count);
+        }
+    }
+
+    /// <summary>Дописывает списки «тронутых» полос/узлов воркера в общие (порядок потребителям не важен: обнуление по списку) и обнуляет воркера.</summary>
+    private static void Merge(GateScratch g, GateWorker gw)
+    {
+        Array.Copy(gw.OutTouched, 0, g.OutTouched, g.OutTouchedCount, gw.OutTouchedCount);
+        g.OutTouchedCount += gw.OutTouchedCount;
+        gw.OutTouchedCount = 0;
+        Array.Copy(gw.BusyTouched, 0, g.BusyTouched, g.BusyTouchedCount, gw.BusyTouchedCount);
+        g.BusyTouchedCount += gw.BusyTouchedCount;
+        gw.BusyTouchedCount = 0;
+    }
+
+    internal static void ResolveNodes(World w, in RuleEnv e, GateWorker gw, int begin, int end)
+    {
+        GateScratch g = w.Gate;
+        VehicleStore v = w.Vehicles;
         Span<int> buf = stackalloc int[MaxCandidatesPerNode];
-        for (int k = 0; k < g.TouchedCount; k++)
+        for (int k = begin; k < end; k++)
         {
             int node = g.TouchedNodes[k];
             int count = 0;
@@ -103,18 +170,16 @@ internal static class GatePhase
             for (int q = 0; q < count; q++)
             {
                 int i = buf[q];
-                GateDeny deny = TryGrant(w, in e, node, i, g.CandConn[i]);
+                GateDeny deny = TryGrant(w, in e, gw, node, i, g.CandConn[i]);
                 g.DenyReason[i] = (byte)deny;
                 if (deny == GateDeny.Exit)
                 {
-                    w.Counters.GateDeniedExit++;
+                    gw.DeniedExit++;
                 }
             }
 
             g.NodeCandHead[node] = -1;
         }
-
-        g.TouchedCount = 0;
     }
 
     /// <summary>
@@ -183,6 +248,87 @@ internal static class GatePhase
         }
     }
 
+    /// <summary>
+    /// Снятие допуска при закрытии перехода (pedestrians.md §5.6, обобщение п. 6): для переходов узлов из <c>XClosedNow</c> (закрылись в этом тике) на входных полосах
+    /// connector'ов в масках <c>XIn | XOut</c> первая допущенная машина с connector'ом из маски, которая ещё <see cref="PedRules.CanStop"/> перед стоп-линией, теряет допуск
+    /// вместе с допущенными за ней. Машины, не успевающие остановиться, обязались и едут (их ждут пешеходы). Счётчик <c>GrantsRevokedPed</c>.
+    /// </summary>
+    private static void RevokeOnPed(World w)
+    {
+        PedWorld pw = w.Peds!;
+        CrossingState xs = pw.X;
+        PedNetwork pn = pw.Net;
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        LaneOccupancy occ = w.Occupancy;
+        ConnectorStore cs = w.Connectors;
+        Span<int> lanes = stackalloc int[2 * NetworkBuilder.MaxConnectorsPerNode];
+        for (int k = 0; k < xs.XClosedNowCount; k++)
+        {
+            int x = xs.XClosedNow[k];
+            if (x >= pn.MidXBase)
+            {
+                continue;
+            }
+
+            ref readonly NodeData nd = ref net.Nodes[pn.Edges[pn.XEdge[x]].Node];
+            byte closed = xs.XClosedNowBits[k];
+            ulong mask = ((closed & 1) != 0 ? pn.XIn[x] : 0UL) | ((closed & 2) != 0 ? pn.XOut[x] : 0UL);
+            ulong rest = mask;
+            int done = 0;
+            while (rest != 0UL)
+            {
+                int b = BitOperations.TrailingZeroCount(rest);
+                rest &= rest - 1UL;
+                int g = net.Lanes[nd.FirstConnector + b].ConflictGroup;
+                if (g < 0)
+                {
+                    continue;
+                }
+
+                int inLane = cs.InLane[g];
+                bool seen = false;
+                for (int q = 0; q < done; q++)
+                {
+                    seen |= lanes[q] == inLane;
+                }
+
+                if (seen)
+                {
+                    continue;
+                }
+
+                lanes[done++] = inLane;
+                float laneLen = net.LaneLength[inLane];
+                bool revoking = false;
+                int i = occ.LaneHead[inLane];
+                while (i != -1 && GateRules.IsGranted(v, i))
+                {
+                    int next = GateRules.BehindOn(v, i, inLane);
+                    if (v.Lane[i] == inLane)   // ghost: её допуск ведёт основная полоса
+                    {
+                        int gc = v.GrantConnector[i];
+                        if (!revoking && gc >= nd.FirstConnector && gc - nd.FirstConnector < 64 && ((mask >> (gc - nd.FirstConnector)) & 1UL) != 0UL)
+                        {
+                            float d = laneLen - v.S[i] - GateRules.StopLineOffset;
+                            revoking = PedRules.CanStop(d, v.Speed[i], w.Types[v.Type[i]].ComfortDecel);
+                        }
+
+                        if (revoking)
+                        {
+                            v.GateState[i] = 0;
+                            v.GrantConnector[i] = -1;
+                            w.Counters.GrantsRevokedPed++;
+                            occ.MarkLinked(i);
+                        }
+                    }
+
+                    i = next;
+                }
+            }
+        }
+    }
+
     /// <summary>«Цветной» режим светофора (<c>Fixed</c> или <c>Adaptive</c>, 2.5): есть красный/зелёный, действуют п. 1, 4b-bis и снятие допуска на красном; у <c>FlashYellow</c>/<c>Off</c> красного нет.</summary>
     private static bool IsColored(SignalMode m) => m == SignalMode.Fixed || m == SignalMode.Adaptive;
 
@@ -203,6 +349,7 @@ internal static class GatePhase
         Array.Clear(g.GatedMask);
         Array.Clear(g.ConnMask);
         Array.Clear(g.SignalMask);
+        Array.Fill(g.LaneNode, -1);
         int n = Math.Min(net.LaneCount, g.GatedMask.Length << 6);
         for (int lane = 0; lane < n; lane++)
         {
@@ -221,6 +368,40 @@ internal static class GatePhase
                 {
                     g.SignalMask[lane >> 6] |= bit;
                 }
+            }
+        }
+
+        // CSR «узел -> его полосы (Normal с воротами и connector'ы)», по возрастанию индекса полосы (порядок сумм OutReserved как у прохода по маске).
+        for (int lane = 0; lane < n; lane++)
+        {
+            int node = net.Lanes[lane].Kind == LaneKind.Connector ? net.Lanes[lane].Node : net.LaneGateNode[lane];
+            if (node >= 0 && node < g.NodeLaneStart.Length - 1 && (((g.GatedMask[lane >> 6] | g.ConnMask[lane >> 6]) >> (lane & 63)) & 1UL) != 0UL)
+            {
+                g.LaneNode[lane] = node;
+            }
+        }
+
+        Array.Clear(g.NodeLaneStart);
+        for (int lane = 0; lane < n; lane++)
+        {
+            if (g.LaneNode[lane] >= 0)
+            {
+                g.NodeLaneStart[g.LaneNode[lane] + 1]++;
+            }
+        }
+
+        for (int k = 0; k < g.NodeLaneStart.Length - 1; k++)
+        {
+            g.NodeLaneStart[k + 1] += g.NodeLaneStart[k];
+        }
+
+        Array.Copy(g.NodeLaneStart, g.NodeFill, g.NodeFill.Length);
+        for (int lane = 0; lane < n; lane++)
+        {
+            int node = g.LaneNode[lane];
+            if (node >= 0)
+            {
+                g.NodeLanes[g.NodeFill[node]++] = lane;
             }
         }
 
@@ -271,6 +452,10 @@ internal static class GatePhase
         Lod.QueueMeso? q = w.Queue;
         ulong[]? qKin = q?.KinMask;                   // Q-meso: полосы с кинематическими машинами (connector'ы, допущенные)
         ulong[]? qHead = q?.HeadMask[mesoBeat];       // и с головой очереди цвета такта; полосы только с очередью не обходятся
+
+        // Активные узлы: узлы занятых полос (по возрастанию индекса). Последовательно и дёшево: по маске полос, без чтения машин.
+        int[] laneNode = g.LaneNode;
+        ulong[] nodeMask = g.NodeActiveMask;
         for (int wi = 0; wi < occMask.Length; wi++)
         {
             ulong active = occMask[wi] & (gated[wi] | conn[wi]);
@@ -283,16 +468,43 @@ internal static class GatePhase
             {
                 int bit = BitOperations.TrailingZeroCount(active);
                 active &= active - 1UL;
-                int lane = (wi << 6) + bit;
-                if (((conn[wi] >> bit) & 1UL) != 0UL)
-                {
-                    ScanConnector(w, lane);
-                }
-                else
-                {
-                    candidates += ScanGatedLane(w, in e, lane, lodBits, laneColor, mesoBeat, stamp, farDistance, minDecel);
-                }
+                int n = laneNode[(wi << 6) + bit];
+                nodeMask[n >> 6] |= 1UL << (n & 63);
             }
+        }
+
+        int[] activeNodes = g.ActiveNodes;
+        int activeCount = 0;
+        for (int wi = 0; wi < nodeMask.Length; wi++)
+        {
+            ulong m = nodeMask[wi];
+            nodeMask[wi] = 0UL;
+            while (m != 0UL)
+            {
+                activeNodes[activeCount++] = (wi << 6) + BitOperations.TrailingZeroCount(m);
+                m &= m - 1UL;
+            }
+        }
+
+        g.ActiveCount = activeCount;
+        GateScanJob job = w.GateScan;
+        job.Prepare(w, in e, stamp, farDistance, minDecel, mesoBeat);
+        RunJob(w, job, activeCount);
+        GateWorker[] ws = g.Workers;
+        for (int k = 0; k < ws.Length; k++)
+        {
+            GateWorker gw = ws[k];
+            Merge(g, gw);
+            candidates += gw.Candidates;
+            gw.Candidates = 0;
+            w.Counters.BoxWaitTicks += gw.BoxWaitTicks;
+            gw.BoxWaitTicks = 0;
+            Array.Copy(gw.TouchedNodes, 0, g.TouchedNodes, g.TouchedCount, gw.TouchedCount);
+            g.TouchedCount += gw.TouchedCount;
+            gw.TouchedCount = 0;
+            Array.Copy(gw.NextList, 0, g.NextList, g.NextCount, gw.NextCount);
+            g.NextCount += gw.NextCount;
+            gw.NextCount = 0;
         }
 
         // Машины, связанные со списком полосы после прошлой фазы 4 (въезд, вставка, смена полосы, спавн): метка остановки перед светофором
@@ -362,7 +574,7 @@ internal static class GatePhase
     }
 
     /// <summary>Машины connector'а: узел занят (NodeBusy), допущенная резервирует выезд (то же, что ветка connector'а в <see cref="ScanAll"/>).</summary>
-    private static void ScanConnector(World w, int lane)
+    internal static void ScanConnector(World w, GateWorker gw, int lane)
     {
         NetworkStore net = w.Net;
         VehicleStore v = w.Vehicles;
@@ -378,20 +590,20 @@ internal static class GatePhase
                 continue;   // ghost: у connector'а смены полосы нет, но обход единообразен с Normal-полосой
             }
 
-            MarkBusy(g, cs, ld.ConflictGroup);
+            MarkBusy(gw.BusyTouched, ref gw.BusyTouchedCount, g.NodeBusy, cs, ld.ConflictGroup);
             if (GateRules.IsGranted(v, x))
             {
-                AddReserved(net, g, ld.ToLane, v.Length[x]);
+                AddReserved(net, gw.OutTouched, ref gw.OutTouchedCount, ld.ToLane, v.Length[x]);
                 if (v.Speed[x] < stuckSpeed)
                 {
-                    w.Counters.BoxWaitTicks++;
+                    gw.BoxWaitTicks++;
                 }
             }
         }
     }
 
     /// <summary>Полоса с воротами: префикс допущенных и первая недопущенная (кандидат). Возвращает 1, если кандидат есть.</summary>
-    private static int ScanGatedLane(World w, in RuleEnv e, int lane, byte[] lodBits, byte[] laneColor, int mesoBeat, int stamp, float farDistance, float minDecel)
+    internal static int ScanGatedLane(World w, in RuleEnv e, GateWorker gw, int lane, byte[] lodBits, byte[] laneColor, int mesoBeat, int stamp, float farDistance, float minDecel)
     {
         NetworkStore net = w.Net;
         VehicleStore v = w.Vehicles;
@@ -424,8 +636,8 @@ internal static class GatePhase
                 }
                 else
                 {
-                    AddReserved(net, g, net.Lanes[gc].ToLane, v.Length[x]);
-                    MarkBusy(g, cs, net.Lanes[gc].ConflictGroup);
+                    AddReserved(net, gw.OutTouched, ref gw.OutTouchedCount, net.Lanes[gc].ToLane, v.Length[x]);
+                    MarkBusy(gw.BusyTouched, ref gw.BusyTouchedCount, g.NodeBusy, cs, net.Lanes[gc].ConflictGroup);
                 }
 
                 x = behind;
@@ -477,10 +689,10 @@ internal static class GatePhase
             v.WaitTicks[x] = (ushort)Math.Min(ushort.MaxValue, v.WaitTicks[x] + waitStep);
             g.CandConn[x] = conn;
             g.CandStamp[x] = stamp;
-            g.NextList[g.NextCount++] = x;
+            gw.NextList[gw.NextCount++] = x;
             if (g.NodeCandHead[node] == -1)
             {
-                g.TouchedNodes[g.TouchedCount++] = node;
+                gw.TouchedNodes[gw.TouchedCount++] = node;
             }
 
             g.CandNext[x] = g.NodeCandHead[node];
@@ -819,7 +1031,9 @@ internal static class GatePhase
     }
 
     /// <summary>Ставит бит connector'а группы <paramref name="group"/> в <c>NodeBusy</c> его узла (D3); группа &lt; 0 - connector без записи в store.</summary>
-    private static void MarkBusy(GateScratch g, ConnectorStore cs, int group)
+    private static void MarkBusy(GateScratch g, ConnectorStore cs, int group) => MarkBusy(g.BusyTouched, ref g.BusyTouchedCount, g.NodeBusy, cs, group);
+
+    private static void MarkBusy(int[] touched, ref int touchedCount, ulong[] nodeBusy, ConnectorStore cs, int group)
     {
         if (group < 0)
         {
@@ -827,16 +1041,18 @@ internal static class GatePhase
         }
 
         int node = cs.Node[group];
-        ulong m = g.NodeBusy[node];
+        ulong m = nodeBusy[node];
         if (m == 0UL)
         {
-            g.BusyTouched[g.BusyTouchedCount++] = node;
+            touched[touchedCount++] = node;
         }
 
-        g.NodeBusy[node] = m | (1UL << cs.LocalBit[group]);
+        nodeBusy[node] = m | (1UL << cs.LocalBit[group]);
     }
 
-    private static void AddReserved(NetworkStore net, GateScratch g, int lane, float length)
+    private static void AddReserved(NetworkStore net, GateScratch g, int lane, float length) => AddReserved(net, g.OutTouched, ref g.OutTouchedCount, lane, length);
+
+    private static void AddReserved(NetworkStore net, int[] touched, ref int touchedCount, int lane, float length)
     {
         if ((uint)lane >= (uint)net.OutReserved.Length)
         {
@@ -845,16 +1061,16 @@ internal static class GatePhase
 
         if (net.OutReserved[lane] == 0f)
         {
-            g.OutTouched[g.OutTouchedCount++] = lane;
+            touched[touchedCount++] = lane;
         }
 
         net.OutReserved[lane] += length;
     }
 
     /// <summary>Условия допуска §5.4 по порядку; первое нарушенное - код отказа. <see cref="GateDeny.None"/> = допуск выдан.</summary>
-    private static GateDeny TryGrant(World w, in RuleEnv e, int node, int i, int conn)
+    private static GateDeny TryGrant(World w, in RuleEnv e, GateWorker gw, int node, int i, int conn)
     {
-        w.Work.GateTryGrantCalls++;
+        gw.TryGrantCalls++;
         NetworkStore net = w.Net;
         VehicleStore v = w.Vehicles;
         LaneOccupancy occ = w.Occupancy;
@@ -869,6 +1085,12 @@ internal static class GatePhase
         float v0 = v.DesiredSpeed[i];
         float li = v.Length[i];
         int g = cl.ConflictGroup;
+
+        // 0. Закрытие дренажем (4.3, T4): въезд на connector или на его выходную полосу закрыт - ждать нельзя, пока не сменится маршрут/connector по умолчанию.
+        if (net.ToolsTouched != 0 && ((cl.Flags & LaneFlags.Closed) != 0 || (net.Lanes[cl.ToLane].Flags & LaneFlags.Closed) != 0))
+        {
+            return GateDeny.Closed;
+        }
 
         // 1. Сигнал.
         int slot = nd.Signal;
@@ -900,9 +1122,33 @@ internal static class GatePhase
         }
 
         // 2. STOP на второстепенном рукаве: полная остановка у линии.
-        if (nd.Control == NodeControl.Stop && g >= 0 && (cs.Flags[g] & 1) != 0 && (v.GateState[i] & GateRules.StoppedAtLine) == 0)
+        if (g >= 0 && ((nd.Control == NodeControl.Stop && (cs.Flags[g] & 1) != 0) || ((cs.Flags[g] & 2) != 0 && nd.Control != NodeControl.Signal)) && (v.GateState[i] & GateRules.StoppedAtLine) == 0)
         {
             return GateDeny.Stop;
+        }
+
+        // 2-bis. Переход (pedestrians.md §5.6): connector в маске закрытого перехода узла - отказ, пока пешеходы не пройдут; машины, уже допущенные и не успевающие
+        // остановиться, едут (они обязались), остальные потеряли допуск в начале фазы (RevokeOnPed).
+        if (w.Peds != null && g >= 0)
+        {
+            CrossingState xs = w.Peds.X;
+            if (((xs.NodeXIn[node] | xs.NodeXOut[node]) >> cs.LocalBit[g] & 1UL) != 0UL)
+            {
+                int cin = cs.CrossInX![g];
+                int cout = cs.CrossOutX![g];
+                if (cin >= 0)
+                {
+                    xs.CarsWaiting[cin] = 1;   // машина ждёт пару переходов (вход и выход): окно машин у открытого из них держится, пока она не проедет
+                }
+
+                if (cout >= 0)
+                {
+                    xs.CarsWaiting[cout] = 1;
+                }
+
+                gw.CarCrossDelayTicks++;
+                return GateDeny.Ped;
+            }
         }
 
         // 3. Выезд свободен (don't-block-the-box) и место на самом connector'е.
@@ -941,7 +1187,7 @@ internal static class GatePhase
             int wait = v.WaitTicks[i];
             for (int k = cs.FirstConflict[g]; k < end; k++)
             {
-                w.Work.GateTryGrantEntries++;
+                gw.TryGrantEntries++;
                 ref readonly ConflictEntry ce = ref cs.Conflicts[k];
                 int other = firstConn + ce.OtherLocal;
                 int gOther = g - local + ce.OtherLocal;
@@ -1019,7 +1265,7 @@ internal static class GatePhase
                     // только если хвост выезда стоит. Если хвост движется, занятость выезда мимолётна, и без учёта очередь встречных «перепрыгивала»
                     // бы Y в каждый тик, когда выезд на миг занят.
                     byte dy = w.Gate.DenyReason[y];
-                    bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop;
+                    bool excused = dy == (byte)GateDeny.Signal || dy == (byte)GateDeny.Stop || dy == (byte)GateDeny.Ped;
                     if (dy == (byte)GateDeny.Exit)
                     {
                         int exitLane = cs.OutLane[gOther];
@@ -1029,7 +1275,7 @@ internal static class GatePhase
 
                     if (!excused)
                     {
-                        w.Counters.StarveDenials++;
+                        gw.StarveDenials++;
                         return GateDeny.Yield;
                     }
                 }
@@ -1053,7 +1299,7 @@ internal static class GatePhase
                     continue; // (a) тай-брейк: стоящий, ждущий меньше меня, пропускает
                 }
 
-                if (stationary && w.Gate.DenyReason[y] == (byte)GateDeny.Exit)
+                if (stationary && (w.Gate.DenyReason[y] == (byte)GateDeny.Exit || w.Gate.DenyReason[y] == (byte)GateDeny.Ped))
                 {
                     continue; // стоящий перед занятым выездом (don't-block-the-box) не угроза: он не въедет, пока его выезд не освободится
                 }
@@ -1091,23 +1337,23 @@ internal static class GatePhase
         // 5. Допуск.
         if (nd.Control == NodeControl.Signal)
         {
-            RecordSignalGrant(w, i, g, lane);
+            RecordSignalGrant(w, gw, i, g, lane);
         }
 
         v.GateState[i] = GateRules.Granted;
         v.GrantConnector[i] = conn;
         v.Ticket[i] = net.NodeTicket[node]++;
-        AddReserved(net, w.Gate, outLane, li);
-        MarkBusy(w.Gate, cs, g);   // новый допуск: участник ConflictGap фазы 5
-        w.Counters.GateWaitTicksTotal += v.WaitTicks[i];
+        AddReserved(net, gw.OutTouched, ref gw.OutTouchedCount, outLane, li);
+        MarkBusy(gw.BusyTouched, ref gw.BusyTouchedCount, w.Gate.NodeBusy, cs, g);   // новый допуск: участник ConflictGap фазы 5
+        gw.GateWaitTicksTotal += v.WaitTicks[i];
         v.WaitTicks[i] = 0;
-        w.Counters.Grants++;
+        gw.Grants++;
         if (inversion)
         {
-            w.Counters.PriorityInversions++;
+            gw.PriorityInversions++;
         }
 
-        w.Queue?.OnGranted(i);   // Q-meso: голова -> кинематика, ведомый очереди освобождается через h
+        gw.Granted[gw.GrantedCount++] = i;   // Q-meso: OnGranted (голова -> кинематика, ведомый освобождается) - после задания, на главном потоке
         return GateDeny.None;
     }
 
@@ -1115,17 +1361,18 @@ internal static class GatePhase
     /// Метрики допуска на светофорном узле (2.5 S1, вне хэша): ожидание по манёвру (сумма, гистограмма, максимум левых),
     /// доля остановок на артерии, накопление <c>ConnWaitSum/ConnGrantCount</c> (§6.9). Вызывается до сброса <c>GateState</c>/<c>WaitTicks</c>.
     /// </summary>
-    private static void RecordSignalGrant(World w, int i, int group, int lane)
+    private static void RecordSignalGrant(World w, GateWorker gw, int i, int group, int lane)
     {
         VehicleStore v = w.Vehicles;
         int wait = v.WaitTicks[i];
         if (group >= 0)
         {
             int m = w.Connectors.Maneuver[group];
-            w.SignalWait.Add(m, wait);
-            if (m >= (int)Maneuver.Left && wait > w.Counters.SignalLeftWaitMax)
+            gw.Signal.Add(m, wait);
+            gw.SignalDirty = true;
+            if (m >= (int)Maneuver.Left && wait > gw.LeftWaitMax)
             {
-                w.Counters.SignalLeftWaitMax = wait;
+                gw.LeftWaitMax = wait;
             }
 
             int slot = w.Net.Nodes[w.Connectors.Node[group]].Signal;
@@ -1139,10 +1386,10 @@ internal static class GatePhase
         int seg = w.Net.Lanes[lane].Segment;
         if (seg >= 0 && w.Net.Segments[seg].Kind == RoadKind.Arterial)
         {
-            w.Counters.ArterialSignalGrants++;
+            gw.ArterialGrants++;
             if ((v.GateState[i] & GateRules.StoppedBeforeSignal) != 0)
             {
-                w.Counters.ArterialSignalStops++;
+                gw.ArterialStops++;
             }
         }
     }

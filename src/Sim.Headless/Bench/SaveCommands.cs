@@ -5,6 +5,7 @@ using System.IO;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -20,16 +21,16 @@ public static class SaveCommands
     public const int ExitFailed = 1;
 
     public const string SaveUsage =
-        "Usage: Sim.Headless save --scenario <name|path> --ticks N --out <file> [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>] [--raw]\n" +
+        "Usage: Sim.Headless save --scenario <name|path> --ticks N --out <file> [--warmup-until-full] [--warmup-max-ticks M] [--threads N] [--scenarios-dir <dir>] [--packages-dir <dir>] [--raw]\n" +
         "  runs N ticks (after the optional warmup), writes the .tcsave envelope (--raw: the bare container), prints 'tick=<T> hash=<hex> active=<N>' and 'saved bytes=<B> save_ms=<ms>'\n";
 
     public const string LoadUsage =
-        "Usage: Sim.Headless load --in <file> [--ticks N] [--every K] [--threads N]\n" +
+        "Usage: Sim.Headless load --in <file> [--ticks N] [--every K] [--threads N] [--packages-dir <dir>]\n" +
         "  loads a save (strict hash check), prints 'loaded tick=<T> hash=<hex> active=<N> load_ms=<ms>' then, with --ticks, a 'hash'-style line every K ticks\n";
 
-    private static readonly string[] _saveAllowed = { "--scenario", "--ticks", "--out", "--warmup-max-ticks", "--scenarios-dir", "--threads" };
+    private static readonly string[] _saveAllowed = { "--scenario", "--ticks", "--out", "--warmup-max-ticks", "--scenarios-dir", "--threads", "--packages-dir" };
     private static readonly string[] _saveFlags = { "--warmup-until-full", "--raw" };
-    private static readonly string[] _loadAllowed = { "--in", "--ticks", "--every", "--threads" };
+    private static readonly string[] _loadAllowed = { "--in", "--ticks", "--every", "--threads", "--packages-dir" };
 
     public static int RunSave(string[] args, TextWriter output, TextWriter error)
     {
@@ -55,7 +56,7 @@ public static class SaveCommands
         LoadedScenario sc;
         try
         {
-            sc = ScenarioLoader.LoadInfo(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir")));
+            sc = PackageDirs.Load(ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir")), a);
         }
         catch (ScenarioException e)
         {
@@ -64,7 +65,17 @@ public static class SaveCommands
         }
 
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
-        AssetManifestBuilder.ForVehicleTypes(sc.TypeNames, sc.Desc.VehicleTypes, out AssetRef[] assets, out byte[] assetIds);
+        AssetRef[] assets;
+        byte[] assetIds;
+        if (sc.Catalog != null && sc.Packages != null)
+        {
+            AssetManifestBuilder.ForCatalog(sc.Catalog, sc.Packages, out assets, out assetIds);
+        }
+        else
+        {
+            AssetManifestBuilder.ForVehicleTypes(sc.TypeNames, sc.Desc.VehicleTypes, out assets, out assetIds);
+        }
+
         sim.SetAssetManifest(assets, assetIds);
         if (a.Has("--warmup-until-full"))
         {
@@ -124,7 +135,22 @@ public static class SaveCommands
 
         var options = new LoadOptions { StrictHash = 1 };
         long t0 = Stopwatch.GetTimestamp();
-        LoadStatus st = Simulation.Load(bytes, in options, new SimRuntimeOptions { WorkerThreads = threads }, out Simulation? sim, out LoadReport rep);
+        LoadStatus st;
+        Simulation? sim;
+        LoadReport rep;
+        SaveAssetsResult assetResult;
+        try
+        {
+            st = SaveAssets.Load(
+                bytes, in options, new SimRuntimeOptions { WorkerThreads = threads }, PackageDirs.For(Directory.GetCurrentDirectory(), a),
+                out sim, out rep, out assetResult);
+        }
+        catch (ScenarioException e)
+        {
+            error.WriteLine($"error: {e.Message}");
+            return ExitUsage;
+        }
+
         double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
         if (st != LoadStatus.Ok || sim == null)
         {
@@ -145,6 +171,15 @@ public static class SaveCommands
                 sim.Step(n);
                 done += n;
                 output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"tick={sim.Tick} hash={sim.ComputeStateHash():x16} active={sim.ActiveVehicleCount}"));
+            }
+
+            if (rep.AssetsInManifest > 0)
+            {
+                output.WriteLine($"assets: missing {assetResult.Missing}, changed {assetResult.Changed}, updated {assetResult.Updated}");
+                foreach (AssetNotice n in assetResult.Notices)
+                {
+                    output.WriteLine($"  {n}");
+                }
             }
         }
 

@@ -103,6 +103,7 @@ internal static class RoutePhase
             if (!w.Router.Refill(i))
             {
                 v.Flags[i] |= (byte)VehicleFlags.RouteMissed;
+                v.NextConn[i] = -1;   // маршрута больше нет: до конца фазы 7 первый ход - по умолчанию (кэш по маршруту разошёлся бы с NextLane; у сети без правок дозаполнение не срывается)
                 v.MarkRouteDirty(i);
             }
         }
@@ -400,15 +401,14 @@ internal static class RoutePhase
             int fromZone = t.FromZone;
             if (t.FromLane < 0)
             {
-                if ((uint)fromZone >= (uint)net.ZoneCount || net.Zones[fromZone].SpawnLaneCount <= 0)
+                if ((uint)fromZone >= (uint)net.ZoneCount || net.OpenZoneLaneCount(fromZone) <= 0)
                 {
                     trips.Set(k, in t);
                     k++;
                     continue;
                 }
 
-                ref readonly ZoneData z = ref net.Zones[fromZone];
-                t.FromLane = net.ZoneLanes[z.FirstSpawnLane + (int)((w.Tick + t.ToZone) % z.SpawnLaneCount)];
+                t.FromLane = net.OpenZoneLane(fromZone, (int)((w.Tick + t.ToZone) % net.OpenZoneLaneCount(fromZone)));
             }
 
             if (!budget.Has(rt))
@@ -431,6 +431,11 @@ internal static class RoutePhase
             {
                 trips.RemoveAt(k); // не на дороге: поездка отбрасывается (RouteFailed считает роутер)
                 w.Counters.TripsDropped++;
+                if (t.ResidentRef != 0)
+                {
+                    City.TripLegs.OnTripDropped(w, t.ResidentRef - 1, in t);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
+                }
+
                 continue;
             }
 

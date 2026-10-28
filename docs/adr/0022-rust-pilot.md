@@ -1,0 +1,93 @@
+# ADR-0022: Rust-пилот ядра: граница C ABI, модуль-пилот «Util + явная сеть», кросс-языковой golden
+
+- Статус: предложено, 2026-10-25 (этап 4.6, архитектор). Спецификация и задачи R1–R8: `docs/design/rust-pilot.md`.
+- Затрагивает: `core-api.md` §8 (PCG32 — без `rand_pcg`), §9 (новый `ComputeNetworkHash`, требования к float), §12 (C ABI пилота);
+  правило 8 CLAUDE.md распространяется на Rust; ADR-0001 (стек: Rust 1.97.0, edition 2024); ADR-0017 (воркеры — набросок для Rust).
+
+## Контекст
+- CLAUDE.md обещает перенос ядра на Rust (godot-rust/gdext) и держит ради этого правила 1–8: SoA, handle, без GC и исключений в `Step`,
+  свой PRNG, хэш по битовым образам, узкое API, JSON для обоих языков. Ни одно из правил пока не проверено второй реализацией.
+- Проверять надо там, где правила чаще всего ломаются незаметно: float-арифметика (порядок, FMA, `libm`), разбор чисел из JSON,
+  целочисленные переполнения и сдвиги, порядок итерации, раскладка struct на границе, владение памятью и ошибки на FFI.
+- Факты окружения (проверено 2026-10-25, подробности — спека §1): в облачном контейнере уже стоит rustup + Rust **1.97.0** (clippy, rustfmt;
+  актуальный stable — 1.99.1); crates.io (`index.crates.io`, `static.crates.io`) и `static.rust-lang.org` открыты через прокси; `sh.rustup.rs` — 403;
+  apt Ubuntu 24.04 даёт только rustc 1.75 (+ `rustc-1.74…1.83`) — без edition 2024.
+- Замер на этом контейнере (1 млн случайных аргументов, Linux x64): `MathF.Atan2`/`MathF.Sin` (.NET 8 и .NET 10) и Rust `f32::atan2`/`f32::sin`
+  совпали побитово (обе стороны зовут glibc); крейт `libm` (порт musl) отличается от них в 2 776 (atan2) и 13 534 (sin) случаях.
+  Приведение `(int)3e9f` / `(int)NaN`: .NET 8 — `int.MinValue`, .NET 10 — `int.MaxValue` / `0` (насыщение, как Rust `as`).
+  То есть Godot-клиент (net8.0) и headless (net10.0) уже сейчас расходятся на приведении вне диапазона.
+
+## Решение
+1. **Пилот — не перенос, а проверка правил.** Портируются: `Util` (PCG32, FNV-1a 64, XXH64, `Vec2`, правила float), загрузка подмножества JSON
+   сценария (`city.enabled = false`, секции `network` и `capacities`) и **построение явной сети**: узлы, сегменты, полосы, connector'ы, конфликты.
+   Это тот код, где больше всего float-геометрии (Безье, нормировки, длины, псевдоугол рукавов, пересечения полилиний) при нуле
+   трансцендентных функций в хэшируемых данных. Генератор города (sin/cos/atan2 влияют на топологию), IDM/MOBIL, фазы тика, сейвы, воркеры —
+   вне пилота. IDM — опциональная задача R7 (вектора чистой функции), без фаз.
+2. **Кросс-языковой golden**: язык-нейтральные файлы `tests/golden/rust-pilot/*.json` пишет C# (`Sim.Headless golden`), сверяют оба языка.
+   Сверяются `desc_hash` (разобранный JSON), `network_hash` (новый `Simulation.ComputeNetworkHash()`, FNV-1a 64 в каноническом порядке спеки §5.2),
+   `conflicts_hash`, код `CreateStatus` на сломанных сетях. `headings_hash` (atan2) — сверяется, но **не гейт**: равенство гарантировано только
+   на одной ОС с одним libm. Вектора `util.json`: PCG32, FNV-1a, XXH64.
+3. **Граница C ABI** (`crates/tc-ffi`, спека §2): opaque `tc_sim*`; `tc_sim_create(desc, opts, &out) → i32` (коды `CreateStatus` один в один),
+   `tc_sim_step`, `tc_sim_enqueue`, `tc_sim_vehicles(&len)` / `tc_sim_lane_points(&len)` → `ptr + len`, `tc_sim_network_hash`, `tc_sim_destroy`, `tc_abi_version`.
+   Владение: вход (`desc`, команда) — память вызывающего, читается только внутри вызова и копируется; выход — память ядра, валиден до
+   следующего `step`/`destroy`; `tc_sim*` освобождает только `tc_sim_destroy`. Ошибки — коды; паника не пересекает границу (`catch_unwind` в каждой
+   `extern "C"` → `TC_ERR_PANIC`, экземпляр «отравлен», дальнейшие вызовы — no-op). Строк на границе нет. `bool` → `u8`, enum → целое с проверкой на входе.
+   Пилотный `Step` — только `Tick++` и применение очереди команд (кольцо фиксированной ёмкости, переполнение — `0` и счётчик): проверяется форма API,
+   а не трафик. Проверка с C#: консольный `rust/ffi-smoke` (net10.0, `[DllImport]`, вне sln) строит `tc_scenario_desc` из C#-загрузчика и сравнивает
+   размеры struct и `network_hash` с C# в одном процессе.
+4. **Workspace `rust/`**: `crates/tc-core` (lib, `#![forbid(unsafe_code)]`, 0 зависимостей, без I/O — аналог Sim.Core), `crates/tc-scenarios`
+   (JSON → `ScenarioDesc`, свой минимальный JSON-ридер, 0 зависимостей; тесты golden читают файлы), `crates/tc-ffi` (`cdylib`, единственное место `unsafe`),
+   `ffi-smoke/` (C#). `rust-toolchain.toml` = `1.97.0` + clippy + rustfmt, edition 2024, `Cargo.lock` в git.
+5. **Правило 8 для Rust: ноль сторонних крейтов в пилоте**, включая dev-зависимости. Каждый будущий крейт — через ADR со списком транзитивных
+   зависимостей; CI сверяет `cargo metadata` с `rust/allowed-crates.txt` (пустой). `rand_pcg`, `serde_json`, `libm`, `rayon`, `cbindgen` — не нужны (спека §4).
+6. **Аналог BannedSymbols** — `rust/clippy.toml` (`disallowed-methods`/`disallowed-types`: `std::time`, `std::fs`, `std::io`, `std::env`, `std::thread::spawn`,
+   `std::collections::HashMap/HashSet` (случайный порядок), `f32::mul_add`, `f32::max/min`, трансцендентные `f32::*`) + `#![deny(clippy::print_stdout, clippy::print_stderr)]`
+   в `tc-core`; `clippy -D warnings` в CI. Арифметика PRNG/хэшей — только `wrapping_*`/`rotate_*`, `overflow-checks = true` в dev и release-test.
+7. **Float-правила (обе стороны, спека §6)**: только скалярные `+ − × ÷ sqrt`, `floor/ceil/round(AwayFromZero)`, `abs` в фиксированном порядке; без FMA
+   (RyuJIT и LLVM без fast-math не сливают `a·b+c` — запрещаем явный FMA и clippy-подсказку `suboptimal_flops`); `min/max` — своей функцией с семантикой .NET;
+   приведение float→int — только из доказанного диапазона; числа JSON — `f64` (корректное округление) → `as f32`, как C# `(float)double`; трансцендентные —
+   не в хэшируемом состоянии до решения владельца (вопрос 1).
+8. **CI**: новый job `rust` в `ci.yml`: `cargo fmt --check`, `clippy --workspace --all-targets -D warnings`, `cargo test --workspace`, `cargo build --release -p tc-ffi`,
+   проверка зависимостей, затем `dotnet run rust/ffi-smoke`. Гейт s1k и `perf/baseline.json` не меняются; Rust в бенч не входит.
+
+## Последствия
+- Golden делает портируемость проверяемой: любое изменение C#-построителя сети, меняющее байты, краснит C#-тест golden (обновление — только командой
+  `golden`, отдельным коммитом), а Rust-тест показывает, что порт отстал.
+- В C# добавляются `Simulation.ComputeNetworkHash()` и команда `golden`; поведение симуляции, хэш состояния и сейвы не меняются.
+- Найденные пилотом расхождения правил (уже: float→int между net8/net10, `libm` ≠ glibc) идут в `core-api.md` §9 и `lessons.md`; правка C# — отдельной задачей.
+- Godot позже: C#-клиент может звать ту же `.so/.dll` через `[DllImport]` (без gdext), либо gdext-расширение поверх `tc-core` (спека §9). Выбор — после пилота.
+- Цена: ~1.5–2 тыс. строк Rust (порт ~2 тыс. строк C#: `Network/*`, `ConnectorStore` построение, `Util`), CI +2–4 мин. Поддержка двух копий построителя
+  до решения о переезде — golden ловит дрейф, но правку приходится делать дважды.
+
+## Отвергнутые альтернативы
+- **Пилот на IDM + фазах 5–6** — нужна почти вся модель `World` (лидеры, ворота, маршруты): это уже перенос, а не пилот; чистая функция IDM — R7.
+- **Генератор города в пилоте** — упирается в sin/cos/atan2: без решения по детерминированной трансцендентной математике хэш сойдётся только на Linux.
+- **Хэш состояния мира вместо сетевого** — требует портировать всё, что в §9 core-api (счётчики, маршрутизацию, транспорт).
+- **`serde_json`** (+`serde`, `itoa`, `ryu`, `memchr`) — без фичи `float_roundtrip` разбор f64 не всегда корректно округлён (на последний бит),
+  то есть ломает ровно то, что проверяем; свой ридер подмножества JSON ≈ 300 строк и использует `str::parse::<f64>` (корректно округляет).
+- **`rand_pcg`** — совпадает побитово (`from_state_incr`), но это зависимость ради 20 строк; тест-вектора те же, что у C#.
+- **`libm` в Rust** — даёт кросс-ОС детерминизм только Rust; с C# (`MathF` → системный libm) расходится (замер выше). Вариант для вопроса 1 — порт
+  одного и того же musl-кода в обе стороны.
+- **cbindgen** — сторонний инструмент; заголовок пилота ~60 строк пишется руками, размеры struct сверяет `ffi-smoke`.
+- **gdext сразу** — вторая зависимость (крейт `godot`) и сборка расширения до того, как известна цена порта; набросок — спека §9.
+
+## Реализация R3 (`tc-scenarios`, 2026-10-26)
+- Ридер `json.rs` (≈ 300 строк, 0 зависимостей): RFC 8259 как `System.Text.Json` с `Disallow` комментариям, без висячих запятых, `MaxDepth = 64`
+  (65-й уровень — ошибка), `\u`-суррогаты только парами. Числа хранятся токеном: `f64` — `str::parse` (корректное округление) + `as f32`
+  (двойное округление как в C#); целое — токен без `.`/`e`/`E` (как `TryGetInt32/UInt64`; `seed` — ещё и десятичная строка из одних цифр).
+- Загрузчик `loader.rs` — подмножество: `format_version: 2`, `city.enabled = false`, явная сеть, `capacities` (дефолты и пределы как в C#, включая
+  `max_plan_steps` от `routing.levels`). Полностью разбираемые объекты (корень, `network`, узел, сегмент, `capacities`) отвергают неизвестные ключи и дубликаты;
+  `city`, `vehicles`, `demand`, `peds`, `routing` — выборочно (остальные ключи пропускаются), `transit`/`rules`/`lod` пропускаются. Вне подмножества
+  (`city.enabled != false`, `peds.enabled`, `demand.model = "residents"`, секции города) — ошибка, а не молчаливый пропуск. Файл типов ТС не читается
+  (ядро без I/O); `vehicle_types_file` проверяется только как строка, поэтому `load_ok` Rust может быть `true` там, где C# отвергнет сценарий из-за файла типов
+  (в golden таких нет).
+- Типы `ScenarioDesc`/`SimCapacities`/`NetworkDesc`/`NetworkOptions.DEFAULT` и `desc_hash` лежат в `tc-core::api::desc` (R4 дополняет, не переносит).
+- Результат: `desc_hash` и `load_ok` совпали с C#-golden на всех 10 сценариях (demo-grid + 9 фикстур) с первого прогона.
+
+## Реализация R5/R6 (`tc-core::intersections`, `tc-ffi`, `ffi-smoke`, 2026-10-26)
+- R5: порт `ComputePairs`/`WriteRows`/`ComputeRel`/`RecomputeRel` и `ConflictEntry` (8 Б, `reserved` = 0) в `connector_store.rs`; `min/max` — только `detmath::{min_net,max_net}`,
+  `ToCm` — `as i32` с насыщением (= `DetMath.ToIntSat`). `network_hash`, `conflicts_hash` и `counts.conflicts` совпали со всеми 10 golden с первого прогона.
+- R6: `tc-ffi` (`cdylib` + `rlib`) — единственный крейт с `unsafe`; `tc-core` остался `forbid(unsafe_code)`. Параметры построителя (`NetworkOptions.Default`) зашиты в обеих
+  реализациях и в `tc_scenario_desc` не передаются. Обёртки `guard`/`guard_mut`: NULL -> `catch_unwind` -> код; паника отравляет экземпляр (`AtomicBool`).
+  Пилотная очередь команд, `VehicleRenderData` и `PilotCounters` живут в `tc-core::api`/`sim`. `tc_sim_test_panic` экспортируется только с фичей `test-panic`.
+- `rust/ffi-smoke` — C#-консоль вне `traffic-city.sln` (net10.0, `[DllImport]`, `SafeHandle`, зеркальные struct): все сценарные golden, размеры struct, очередь, NULL-аргументы, паника.

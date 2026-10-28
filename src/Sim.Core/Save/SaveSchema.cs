@@ -14,10 +14,10 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 1;
+    public const int WorldVersion = 10;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
-    public const int HashVersion = 1;
+    public const int HashVersion = 4;
 
     /// <summary>Версия ядра-писателя: <c>major &lt;&lt; 20 | minor &lt;&lt; 10 | patch</c> (справочно).</summary>
     public const int WriterVersion = (0 << 20) | (1 << 10) | 0;
@@ -29,30 +29,32 @@ internal static partial class SaveSchema
     /// <summary>Блоки мира в каноническом порядке записи.</summary>
     public static BlockDef[] Blocks => _blocks ??= BuildBlocks();
 
-    private static BlockDef[] BuildBlocks() => new[]
+    private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Params(),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams()),
         Demand(),
         VehicleTypes(),
-        WorldState(),
-        Counters(),
+        RoadProfilesBlock(),
+        Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns()),
+        Extend(WorldState(), PedWorldState(), CityWorldState()),
+        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters()),
         NetworkCounts(),
         Nodes(),
-        Segments(),
-        Lanes(),
+        Extend(Segments(), new[] { SegmentProfileColumn() }),
+        Extend(Lanes(), new[] { LaneWidthColumn() }),
         Arms(),
         LaneNext(),
         Points(),
         Zones(),
         BusStatic(),
         Connectors(),
-        Signals(),
+        Extend(Signals(), PedSignalColumns()),
         NodeDynamic(),
         LaneDynamic(),
         SegmentDynamic(),
         BusDynamic(),
-        Vehicles(),
-        Trips(),
+        Extend(Vehicles(), new[] { VehicleResident() }, ParkingVehicleColumns()),
+        Extend(Trips(), ParkingTripColumns()),
         Queues(),
         Routes(),
         RouteGraphBlock(),
@@ -60,8 +62,21 @@ internal static partial class SaveSchema
         LodBlock(),
         QueueMesoBlock(),
         SignalMetricsBlock(),
+        PedsBlock(),
+        PedPaths(),
+        ResidentsBlock(),
+        CrossingsBlock(),
+        PedPathQueue(),
+        Extend(LotsBlock(), LotGridColumns()),
+        Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns()),
+        SkimsBlock(),
+        LedgerBlock(),
+        BudgetBlock(),
+        ParkingBlock(),
+        LandUseBlock(),
         Manifest(),
-    };
+    });
 
     /// <summary>FourCC всех блоков мира (читателю контейнера: остальные необязательные блоки уходят в <c>kept</c>).</summary>
     public static uint[] KnownBlockIds()

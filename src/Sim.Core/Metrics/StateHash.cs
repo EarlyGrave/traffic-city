@@ -149,6 +149,21 @@ internal static class StateHash
             }
         }
 
+        // 5c. Пешеходная фаза светофоров (pedestrians.md §6): только при peds (hash_version 2), у прежних сценариев секции нет.
+        if (w.Peds != null)
+        {
+            for (int s = 0; s < w.SignalCount; s++)
+            {
+                for (int k = 0; k < SignalStore.XSlots; k++)
+                {
+                    h.Add((int)sg.XWalkLeft[(s * SignalStore.XSlots) + k]);
+                    h.Add((int)sg.XClearLeft[(s * SignalStore.XSlots) + k]);
+                }
+
+                h.Add((int)sg.XServed[s]);
+            }
+        }
+
         // 6. Transit.
         for (int s = 0; s < w.Net.BusStopCount; s++)
         {
@@ -164,6 +179,31 @@ internal static class StateHash
         {
             h.Add(w.Net.BusRoutes[r].ActiveBuses);
             h.Add(w.Net.BusRoutes[r].LastDispatchTick);
+        }
+
+        // 6a. Карманы остановок (ADR-0029): только при bay_model = virtual и наличии остановок Bay - хэш прочих миров прежний.
+        if (w.TransitCfg.BayModel == BayModel.Virtual)
+        {
+            bool anyBay = false;
+            for (int s = 0; s < w.Net.BusStopCount && !anyBay; s++)
+            {
+                anyBay = w.Net.BusStops[s].Kind == BusStopKind.Bay;
+            }
+
+            if (anyBay)
+            {
+                for (int s = 0; s < w.Net.BusStopCount; s++)
+                {
+                    h.Add(w.Net.BusStops[s].BayUsed);
+                    h.Add(w.Net.BusStops[s].BayFlags);
+                    h.Add(w.Net.BusStops[s].BayExitFrom);
+                }
+
+                h.Add(w.Counters.BayEntries);
+                h.Add(w.Counters.BayFallbacks);
+                h.Add(w.Counters.BayYields);
+                h.Add(w.Counters.BayExitWaitTicksTotal);
+            }
         }
 
         // 7. Счётчики (по полям в порядке объявления).
@@ -201,6 +241,15 @@ internal static class StateHash
             h.Add(t.DestS);
             h.Add(t.Route);
             h.Add(t.RouteGen);
+            if (w.City != null)
+            {
+                h.Add(t.ResidentRef);   // только в режиме жителей: хэш прочих миров не меняется (CZ1)
+                if (w.City.Parking != null)
+                {
+                    h.Add(t.ParkRef);   // парковка (parking.md §13): поля только в режиме
+                    h.Add(t.ParkGen);
+                }
+            }
         }
 
         // 8a. Очередь перемаршрутизации в порядке очереди.
@@ -273,6 +322,32 @@ internal static class StateHash
 
             h.Add(lc.LodEvalRequested ? 1 : 0);
             h.Add(lc.LastLodEvalTick);
+        }
+
+        // 11. Пешеходы, жители, переходы (pedestrians.md §11): только при peds - хэш прежних сценариев не меняется.
+        if (w.Peds != null)
+        {
+            Peds.PedHash.Add(ref h, w);
+        }
+
+        // 12. Город: участки, здания, жители, деньги, скимы (zoning-demand.md §15): только при residents (hash_version 3) - хэш прежних сценариев не меняется.
+        if (w.City != null)
+        {
+            City.CityHash.Add(ref h, w);
+        }
+
+        // 13. Состояние инструментов (player-tools.md §10): пулы, арены, новые поля сети - только после первой структурной правки (ToolsTouched = 1);
+        // у сети без правок раздела нет - хэш прежний (TL1).
+        if (w.Net.ToolsTouched != 0)
+        {
+            h.Add(w.Net.ToolsTouched);
+            w.Net.AddToolStateToHash(ref h);
+            w.Connectors.RowArena.AddToHash(ref h);
+            w.Connectors.ConflictArena.AddToHash(ref h);
+            if (w.Ops.NextId != 1)
+            {
+                w.Ops.AddToHash(ref h);   // операции дренажа (T4): пока ни одной не заводили, раздела нет - хэш правленых сетей v4 прежний
+            }
         }
 
         return h.Value;

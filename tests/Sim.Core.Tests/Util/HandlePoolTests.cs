@@ -114,4 +114,35 @@ public class HandlePoolTests
         Assert.False(pool.TryAllocate(out _, out _));
         Assert.Equal(0, pool.Capacity);
     }
+
+    [Fact]
+    public void AdoptDense_MarksPrefixAliveWithGenerationOne_AndPeekIndexPredictsNext()
+    {
+        var pool = new HandlePool(8);
+        pool.AdoptDense(5);
+        Assert.Equal(5, pool.HighWater);
+        Assert.Equal(5, pool.AliveCount);
+        Assert.Equal(0, pool.FreeCount);
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.True(pool.IsAlive(i, 1));
+        }
+
+        Assert.Equal(5, pool.PeekIndex());
+        pool.Free(2);
+        pool.Free(4);
+        Assert.Equal(4, pool.PeekIndex());   // LIFO: сначала последний освобождённый
+        Assert.True(pool.TryAllocate(out int idx, out int gen));
+        Assert.Equal(4, idx);
+        Assert.Equal(3, gen);
+        Assert.Equal(2, pool.PeekIndex());
+        for (int k = 0; k < 4; k++)   // слот 2 из free-list, затем 5, 6, 7
+        {
+            Assert.True(pool.TryAllocate(out _, out _));
+        }
+
+        Assert.Equal(8, pool.HighWater);
+        Assert.Equal(-1, pool.PeekIndex());
+        Assert.False(pool.TryAllocate(out _, out _));
+    }
 }

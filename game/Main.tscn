@@ -4,21 +4,15 @@
 [ext_resource type="Script" path="res://Scripts/RtsCamera.cs" id="2_camera"]
 [ext_resource type="Script" path="res://Scripts/PerfHud.cs" id="3_hud"]
 
-[sub_resource type="Environment" id="Environment_main"]
-background_mode = 1
-background_color = Color(0.055, 0.065, 0.085, 1)
-ambient_light_source = 2
-ambient_light_color = Color(0.75, 0.8, 0.9, 1)
-ambient_light_energy = 0.7
+[ext_resource type="Script" path="res://Scripts/RenderStats.cs" id="4_stats"]
 
 [node name="Main" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_main")
+; окружение строит RenderPreset/VisualPreset.cs (небо, ambient, SSAO по пресету)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-rotation = Vector3(-0.9599311, 0.5235988, 0)
-shadow_enabled = false
+; направление, цвет, тени - RenderPreset/VisualPreset.cs
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("2_camera")
@@ -31,6 +25,9 @@ far = 40000.0
 [node name="SimHost" type="Node3D" parent="."]
 script = ExtResource("1_simhost")
 Scenario = "s1k"
+
+[node name="RenderStats" type="Node" parent="."]
+script = ExtResource("4_stats")
 
 [node name="Hud" type="CanvasLayer" parent="."]
 
@@ -47,4 +44,4 @@ offset_left = 8.0
 offset_top = 160.0
 offset_right = 800.0
 offset_bottom = 190.0
-text = "F1 heat | F2 signals | F3 perf | LMB select | WASD/RMB pan | Q,E/MMB rotate | wheel zoom | Space pause | +/- speed"
+text = "F1 heat | F2 signals | F peds mode | F3 perf | LMB select | WASD/RMB pan | Q,E/MMB rotate | wheel zoom | Space pause | +/- speed"

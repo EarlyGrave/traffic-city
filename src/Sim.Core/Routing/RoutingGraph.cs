@@ -125,7 +125,7 @@ internal sealed class RouteGraph
         for (int u = 0; u < DirSegCount; u++)
         {
             int node = EndNode[u];
-            if (n.Nodes[node].Control != NodeControl.Signal || n.Nodes[node].Signal < 0)
+            if (node < 0 || n.Nodes[node].Control != NodeControl.Signal || n.Nodes[node].Signal < 0)
             {
                 continue;
             }
@@ -189,6 +189,21 @@ internal sealed class RouteGraph
         for (int s = 0; s < n; s++)
         {
             ref readonly SegmentData sd = ref _net.Segments[s];
+            if (!NetworkAlive.IsAlive(sd.Generation))
+            {
+                SegCost[s * 2] = float.PositiveInfinity;
+                SegCost[(s * 2) + 1] = float.PositiveInfinity;
+                continue;
+            }
+
+            if ((sd.Flags & SegmentFlags.Closing) != 0)
+            {
+                // Закрыт дренажем (4.3, T4): вес +inf, A* и кастомизация оверлея его не раскрывают.
+                SegCost[s * 2] = float.PositiveInfinity;
+                SegCost[(s * 2) + 1] = float.PositiveInfinity;
+                continue;
+            }
+
             float ratio = Math.Clamp(loads[s].SpeedRatio, MinSpeedRatio, 1f);
             float cost = sd.Length / (sd.SpeedLimit * ratio);
             SegCost[s * 2] = cost;
@@ -208,6 +223,21 @@ internal sealed class RouteGraph
         for (int s = 0; s < n.SegmentCount; s++)
         {
             ref readonly SegmentData sd = ref n.Segments[s];
+            if (!NetworkAlive.IsAlive(sd.Generation))
+            {
+                // Мёртвый слот сегмента (4.3, T2): вершин и дуг нет, вес +inf.
+                for (int d = 0; d < 2; d++)
+                {
+                    int dead = (s * 2) + d;
+                    StartNode[dead] = -1;
+                    EndNode[dead] = -1;
+                    EndPos[dead] = default;
+                    SegCost[dead] = float.PositiveInfinity;
+                }
+
+                continue;
+            }
+
             vmax = MathF.Max(vmax, sd.SpeedLimit);
             for (int d = 0; d < 2; d++)
             {
@@ -217,7 +247,7 @@ internal sealed class RouteGraph
                 StartNode[u] = a;
                 EndNode[u] = b;
                 EndPos[u] = n.Nodes[b].Position;
-                SegCost[u] = sd.Length / sd.SpeedLimit;
+                SegCost[u] = (sd.Flags & SegmentFlags.Closing) != 0 ? float.PositiveInfinity : sd.Length / sd.SpeedLimit;
             }
         }
 
@@ -227,7 +257,7 @@ internal sealed class RouteGraph
         for (int u = 0; u < DirSegCount; u++)
         {
             ArcFirst[u] = arcs;
-            int cnt = CollectArcs(u);
+            int cnt = EndNode[u] < 0 ? 0 : CollectArcs(u);
             for (int k = 0; k < cnt; k++)
             {
                 if (arcs >= ArcCapacity)

@@ -33,3 +33,8 @@ Thumbs.db
 
 # Ролики render (perf/results)
 perf/results/*.mp4
+
+# Godot-клиент: скриншоты/FPS (scripts/godot-shot.sh)
+perf/results/godot/*
+# замеры рендера V1 («до»/«после») - в репозитории: детерминированные счётчики
+!perf/results/godot/stats-*.json

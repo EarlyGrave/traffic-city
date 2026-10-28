@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Gen;
 using Sim.Core.Lod;
 using Sim.Core.Metrics;
@@ -29,7 +30,13 @@ internal sealed class World : IDisposable
     public readonly VehicleTypeDesc[] Types;
     public readonly DemandDesc Demand;
     public readonly TransitDesc TransitCfg;
+    public readonly PedDesc PedCfg;            // с применёнными дефолтами (PedNetwork.WithDefaults); Enabled = false - пешеходов нет, ничего не выделено
     public readonly LodDesc LodCfg;            // с применёнными дефолтами (WorldBuilder.WithDefaults); Mode = Off - LOD нет
+    public float WorldGridOriginX, WorldGridOriginZ;   // начало мировой сетки 8 м (ADR-0030): из desc, пишется в сейв (PARM); поведение задаст RP5
+    public ToolsDesc ToolsCfg;                 // стоимости и границы инструментов игрока (конфигурация хоста: вне сейва и хэша)
+    public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
+    public CityDesc Town;           // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
+    public readonly ParkingDesc ParkCfg;     // секция parking (parking.md §14); нули, если режима нет (нужен demand.model = residents)
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -47,14 +54,25 @@ internal sealed class World : IDisposable
     public readonly SpawnerData Spawn;
     public readonly ConnectorStore Connectors;   // connector'ы и конфликтные пары (intersections.md §3, §4); строится в WorldBuilder
     public readonly SignalStore Signals;
+    public readonly Sim.Core.Tools.InverseLog Inv;    // обратные записи и scratch перенумерации (player-tools.md §8): не состояние, вне хэша и сейва
+    public readonly ToolOps Ops;                 // длительные операции инструментов (дренаж, 4.3 T4); состояние - в хэше и сейве при ToolsTouched = 1
+    public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
+    public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
     public readonly TickMasks Masks;             // маски кандидатов фаз 7-8 из фазы 6 (ADR-0019, A3); производное, вне хэша
+    public readonly float[] LaneYieldS;          // полоса -> S стены уступки (тыл автобуса в кармане) или -1; пишет фаза 8b, читает фаза 5; производное (ADR-0029, BB2): после загрузки пересобирается из BayFlags
+    public int BayYieldActive;                   // число активных уступок (0 - фаза 5 массив не читает)
+    public readonly int[] BayBus;                // остановка -> слот автобуса в её кармане (InBay) или -1; производное (ADR-0029), вне хэша и сейва: после загрузки пересобирается
+    public readonly Rules.Intersections.GateScanJob GateScan = new();
+    public readonly Rules.Intersections.GateResolveJob GateResolve = new();
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
     public CityGenResult CityInfo;
+    public LandUsePoly[] LandUse = System.Array.Empty<LandUsePoly>();   // VS8: city.landuse (seed + desc, строится в Create); в хэш не входит, в сейве - блок LUSE (w10), Load восстанавливает полигоны
+    public int LandUseVersion;
     public SignalPlanSeed[] SignalPlanSeeds = System.Array.Empty<SignalPlanSeed>();
     public GenTransit? Transit;
 
@@ -74,6 +92,8 @@ internal sealed class World : IDisposable
     public Pcg32 RngBehaviour;
     public Pcg32 RngTransit;
     public Pcg32 RngRouting;
+    public Pcg32 RngDemand;               // подпоток Demand (zoning-demand.md §18): Create города, события жителей, дневные проходы; в хэше только при residents
+    public Pcg32 RngPeds;                 // подпоток Peds (pedestrians.md §13): жители в Create, скорость при запуске поездки, время занятий
 
     // ---- время, команды, события, метрики ----
     public long Tick;
@@ -93,6 +113,7 @@ internal sealed class World : IDisposable
 
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
+    public int TargetPeds;                // цель активных пешеходов (SetPedTarget); при peds = PedCfg.Count
     public VehicleHandle Selected;
     public int[] LaneScratch = System.Array.Empty<int>();   // QualityMetrics: машин по полосам (scratch, всегда обнулён между выборками)
     public int GridlockStreak;            // фаза 9: подряд тиков, когда условие gridlock расходится с флагом
@@ -108,7 +129,20 @@ internal sealed class World : IDisposable
     public readonly byte[] LaneSignals;
     public readonly VehicleRenderData[][] Render;
     public long SnapshotTick;
+
+    // ---- пауза трафика агрегата (zoning-demand.md §9.2); производное, вне сейва и хэша ----
+    public int PausedTicks;               // подряд идущих тиков с паузой трафика (после двух снапшоты пусты в обоих буферах)
+    public long JumpedTicks;              // тиков, пропущенных прыжком (диагностика тестов)
+    public bool DisableJump;              // тест «прыжки = шаги»: прыжки выключены, пустые тики идут по одному
     public readonly int[] SnapshotSlots = new int[2]; // HighWater на момент снапшота в Render[i]; длина публикуемого спана (ADR-0010)
+
+    /// <summary>1 после первой структурной правки сети (<see cref="NetworkStore.ToolsTouched"/>): с этого момента раскладка, free-list'ы и новые поля сети входят в хэш и сейв (player-tools.md §10).</summary>
+    public byte ToolsTouched => Net.ToolsTouched;
+
+    /// <summary>
+    /// Сверка производных сети с полной перестройкой (player-tools.md §3 п. 4); для тестов и отладки (аллоцирует). <c>null</c> - всё совпало, иначе описание расхождения.
+    /// </summary>
+    public string? VerifyDerived() => DerivedCheck.Run(this);
 
     /// <summary>true = <c>Lod.Mode != Off</c>: ячейки построены, массивы уровней машин выделены.</summary>
     public bool LodEnabled => Lod != null;
@@ -141,6 +175,7 @@ internal sealed class World : IDisposable
         Pool = new WorkerPool(threads);
         Behaviour = new BehaviourJob(threads);
         Integrate = new IntegrateJob(threads);
+        Gate.EnsureWorkers(threads);
     }
 
     public void Dispose()
@@ -165,11 +200,22 @@ internal sealed class World : IDisposable
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);
+        ToolsCfg = desc.Tools;
+        WorldGridOriginX = desc.WorldGridOriginX;
+        WorldGridOriginZ = desc.WorldGridOriginZ;
+        Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
+        ParkCfg = desc.Demand.Model == DemandModel.Residents && desc.Parking.Enabled ? desc.Parking : default;
+        PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
+        if (desc.RoadProfiles.Enabled)
+        {
+            Net.Profiles = new RoadProfileStore(in desc.RoadProfiles);   // desc проверен WorldBuilder.Create (RoadProfileValidator)
+        }
+
         Builder = desc.City.Enabled
-            ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples)
-            : new NetworkBuilder(Net);
+            ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.City.CornerRadius))
+            : new NetworkBuilder(Net, NetworkOptions.Default.LaneWidth, NetworkOptions.Default.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.Network.CornerRadius));
         Vehicles = new VehicleStore(c.MaxVehicles, LodCfg.Mode != LodMode.Off);
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
@@ -182,9 +228,15 @@ internal sealed class World : IDisposable
         // 0 = по умолчанию (intersections.md §4): MaxNodes * 16 connector'ов, MaxConnectors * 6 записей конфликтов.
         int maxConnectors = c.MaxConnectors > 0 ? c.MaxConnectors : checked(c.MaxNodes * 16);
         int maxConflicts = c.MaxConflicts > 0 ? c.MaxConflicts : checked(maxConnectors * 6);
-        Connectors = new ConnectorStore(maxConnectors, maxConflicts);
+        Connectors = new ConnectorStore(maxConnectors, maxConflicts, PedCfg.Enabled);
         Signals = new SignalStore(c.MaxSignalizedNodes, rules.SignalArrowGapTicks);
+        Ops = new ToolOps(ToolOps.DefaultCapacity);
+        Inv = new Sim.Core.Tools.InverseLog(desc.Tools.InverseCapacity, c.CommandQueueCapacity);
         Masks = new TickMasks(c.MaxVehicles);
+        BayBus = new int[Net.BusStops.Length];
+        System.Array.Fill(BayBus, -1);
+        LaneYieldS = new float[c.MaxLanes];
+        System.Array.Fill(LaneYieldS, -1f);
         Gate = new GateScratch(c.MaxNodes, c.MaxVehicles, c.MaxLanes, maxConnectors);
         SignalWait = new SignalMetrics();
         Graph.AttachSignals(Signals, Gate.ConnDelay);
@@ -195,6 +247,8 @@ internal sealed class World : IDisposable
         RngBehaviour = Pcg32.ForStream(Seed, RngStream.Behaviour);
         RngTransit = Pcg32.ForStream(Seed, RngStream.Transit);
         RngRouting = Pcg32.ForStream(Seed, RngStream.Routing);
+        RngPeds = Pcg32.ForStream(Seed, RngStream.Peds);
+        RngDemand = Pcg32.ForStream(Seed, RngStream.Demand);
 
         Commands = new RingBuffer<Command>(c.CommandQueueCapacity);
         Events = new SimEvent[c.EventCapacity];

@@ -20,5 +20,17 @@
 Рекомендуемый setup script окружения: `apt update && apt install -y dotnet-sdk-10.0 dotnet-sdk-8.0`
 (8.0 нужен как рантайм для запуска net8.0-сборок, если понадобится).
 
+## Godot-клиент в облаке (скриншоты и FPS)
+GitHub releases / tuxfamily закрыты (403 / нет соединения), но релизы Godot есть на зеркале SourceForge
+`sourceforge.net/projects/godot-engine.mirror/files/4.7.2-stable/` (открыт; там же SHA512-SUMS). Видеокарты нет:
+Xvfb (в образе есть) + Mesa llvmpipe через OpenGL (`--rendering-driver opengl3`, `gl_compatibility`).
+`scripts/godot-shot.sh install` (скачать и проверить sha512, ~105 МБ, в `/opt/godot`), затем
+`scripts/godot-shot.sh shot s1k 120` -> `perf/results/godot/s1k.png`, `scripts/godot-shot.sh fps s1k 600` -> средний FPS.
+FPS - программный рендер на CPU (4 vCPU, шумит как и tick p95): годится для сравнения до/после, не для абсолютных бюджетов.
+`scripts/godot-shot.sh stats s1k [позы]` -> `perf/results/godot/stats-<сценарий>-<поза>-<пресет>.json` (PRESET, по умолчанию low): draw calls / примитивы / объекты (основной проход, тени),
+память, инстансы по батчам; `--fixed-fps 20` + `--warmup-ticks` + `--pose overview|mid|close` делают счётчики детерминированными (docs/design/render.md §8).
+Гейт клиента (V9): `scripts/godot-shot.sh gate` (stats по `SCENARIOS`, по умолчанию `s1k-peds s10k`, + `Sim.Headless render-compare` с бюджетом `low` и `perf/render-baseline.json`); `gate-update` / `render-update-baseline` - единственный способ менять baseline клиента. CI: job `render` (необязательная, ADR-0014).
+`--headless` не рендерит, `--write-movie` пишет PNG-кадры при фиксированном dt.
+
 ## Десктоп (Windows)
 Godot 4.7.2 .NET, .NET SDK 10 (x64) + .NET 8 Runtime (для Godot-проекта на net8.0), Git for Windows, Git LFS.

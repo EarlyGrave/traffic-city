@@ -251,7 +251,7 @@ public class NetworkTests
         Vec2 a = store.LanePoints[first.FirstPoint];
         Vec2 z = store.LanePoints[first.FirstPoint + first.PointCount - 1];
         Assert.True(z.X < 0 && a.X > 0, "прямо через центр, из +X в -X");
-        Assert.Equal(14f, first.Length, 2);
+        Assert.Equal(a.X - z.X, first.Length, 2);   // прямо: от стоп-линии E до начала W (отступы рукавов - ADR-0028)
     }
 
     [Fact]

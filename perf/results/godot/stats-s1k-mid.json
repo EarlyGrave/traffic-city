@@ -1,0 +1,118 @@
+{
+  "format": 1,
+  "scenario": "s1k",
+  "pose": "mid",
+  "warmup_ticks": 2400,
+  "stats_frame": 10,
+  "process_frame": 10,
+  "args": "--scenario s1k --warmup-ticks 2400 --pose mid --stats-frame 10",
+  "driver": "opengl3",
+  "method": "gl_compatibility",
+  "resolution": "1280x720",
+  "deterministic": {
+    "main": {
+      "source": "Viewport.GetRenderInfo(Visible)",
+      "draw_calls": 5,
+      "primitives": 64788,
+      "objects": 9
+    },
+    "shadow": {
+      "source": "Viewport.GetRenderInfo(Shadow)",
+      "draw_calls": 0,
+      "primitives": 0,
+      "objects": 0
+    },
+    "total": {
+      "source": "Performance.RenderTotal*InFrame",
+      "draw_calls": 5,
+      "primitives": 64788,
+      "objects": 9
+    },
+    "memory_bytes": {
+      "source": "Performance.Render*MemUsed",
+      "video": 16747395,
+      "texture": 7576515,
+      "buffer": 9170880
+    },
+    "vehicle_layer": {
+      "preset": "high",
+      "point_range_m": 2500,
+      "max_drawn_distance_m": 1045.5,
+      "dropped_by_cap": 0,
+      "lod0": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 200
+      },
+      "lod1": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 2000
+      },
+      "lod2": {
+        "placed": 50,
+        "wanted": 50,
+        "cap": 8000
+      },
+      "points": {
+        "placed": 87,
+        "wanted": 87,
+        "cap": 60000
+      }
+    },
+    "instances": {
+      "Vehicles_0_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 24,
+        "surfaces": 1
+      },
+      "Vehicles_0_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_0_lod2": {
+        "instances": 49,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 24,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod2": {
+        "instances": 1,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "Vehicles_points": {
+        "instances": 87,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "total": 137
+    }
+  },
+  "managed_alloc": {
+    "note": "GC.GetAllocatedBytesForCurrentThread, главный поток; max - по кадрам после прогрева (8 кадров: JIT, первое выделение буферов)",
+    "set_render_view_last_frame_bytes": 0,
+    "vehicle_layer_last_frame_bytes": 0,
+    "view_plus_layer_max_bytes": 0,
+    "step_calls": 10,
+    "step_max_bytes": 0,
+    "step_total_bytes": 286456
+  },
+  "timing": {
+    "note": "не детерминировано: llvmpipe, шум облака; GPU-время осмысленно только на реальном GPU",
+    "fps": 9,
+    "time_process_s": 0.112758,
+    "render_cpu_ms": 12.802000045776367,
+    "render_gpu_ms": 28.643999099731445
+  }
+}

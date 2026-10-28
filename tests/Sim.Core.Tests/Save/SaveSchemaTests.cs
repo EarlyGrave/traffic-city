@@ -80,7 +80,7 @@ public class SaveSchemaTests
     public void NetworkStructs_AreFullyCovered()
     {
         AllFieldsCovered(typeof(NodeData), "NNOD", string.Empty);
-        AllFieldsCovered(typeof(SegmentData), "NSEG", string.Empty, "Reserved");
+        AllFieldsCovered(typeof(SegmentData), "NSEG", string.Empty);
         AllFieldsCovered(typeof(LaneData), "NLAN", string.Empty);
         AllFieldsCovered(typeof(ZoneData), "NZON", string.Empty, "Reserved0", "Reserved1", "Reserved2");
     }

@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 /// ходит по этим данным (построение производных, обход списков). Ошибка - код <see cref="LoadStatus"/> и место в <see cref="LoadContext.FailColumn"/>/<see cref="LoadContext.FailRow"/>.
 /// После <c>Ok</c> <c>Step</c> безопасен: ни одна ссылка не выходит за массив.
 /// </summary>
-internal static class SaveValidator
+internal static partial class SaveValidator
 {
     private const float SBackTolerance = 1f;      // м: допуск S ниже нуля
     private const float SForwardTolerance = 20f;  // м: допуск S выше длины полосы (машина дошла до конца, переход - в фазе 7)
@@ -57,6 +57,24 @@ internal static class SaveValidator
             return LoadStatus.InvalidValue;
         }
 
+        LoadStatus pst = ValidatePedParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
+        pst = ValidateParkingParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
+        pst = ValidateCityParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||
@@ -70,7 +88,10 @@ internal static class SaveValidator
             return LoadStatus.InvalidValue;   // Q-meso только в all_meso (WorldBuilder.BuildLod)
         }
 
-        if (!Fin(c.NetLaneWidth) || c.NetLaneWidth <= 0f || c.NetLaneWidth > 100f || c.NetConnectorSamples < 2 || c.NetConnectorSamples > 64)
+        if (!Fin(c.NetLaneWidth) || c.NetLaneWidth <= 0f || c.NetLaneWidth > 100f || c.NetConnectorSamples < 2 || c.NetConnectorSamples > 64 ||
+            !Fin(c.NetCornerRadius) || c.NetCornerRadius < 0f || c.NetCornerRadius > 50f ||
+            c.RoadProfileMode > 1 || (c.RoadProfileMode == 1) != c.Desc.RoadProfiles.Enabled ||
+            !Fin(c.Desc.WorldGridOriginX) || !Fin(c.Desc.WorldGridOriginZ) || MathF.Abs(c.Desc.WorldGridOriginX) > 1e7f || MathF.Abs(c.Desc.WorldGridOriginZ) > 1e7f)
         {
             return LoadStatus.InvalidValue;
         }
@@ -92,6 +113,12 @@ internal static class SaveValidator
         b += (long)c.MaxConnectors * 120;
         b += (long)c.MaxConflicts * 8;
         b += (long)c.MaxVehicles * 64;   // очереди
+        b += (long)c.MaxPeds * (160L + (4L * Math.Max(0, c.MaxPedPathSteps)));   // пешеходы: поля и арена путей
+        b += (long)c.MaxResidents * 160L;
+        b += (long)c.MaxLots * 96L;   // город: участки, здания, жители (скимы проверяет ValidateCityParams)
+        b += (long)c.MaxBuildings * 260L;
+        b += (long)c.MaxCityResidents * 150L;
+        b += (long)Math.Max(0, c.MaxParking) * 220L;   // парковка (parking.md §16): объекты и окрестности; 0 (= лоты + здания + 64) уже учтён ёмкостями города
         return b;
     }
 
@@ -102,7 +129,14 @@ internal static class SaveValidator
     {
         World w = c.W;
         NetworkStore n = w.Net;
-        LoadStatus st = ValidateNetwork(c, w, n);
+        n.SyncPoolGenerations();   // поколения пулов - из столбцов Generation (читаются раньше), free-list'ы - из NETW
+        LoadStatus st = ValidateToolState(c, w, n);
+        if (st != LoadStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidateNetwork(c, w, n);
         if (st != LoadStatus.Ok)
         {
             return st;
@@ -116,6 +150,11 @@ internal static class SaveValidator
 
         for (int l = 0; l < n.LaneCount; l++)
         {
+            if (!n.LaneAlive(l))
+            {
+                continue;
+            }
+
             // Производное ворот обязано совпасть с прежним расчётом по цепочке полос (иначе фазы 4-7 увидели бы рассинхрон).
             bool same = n.Lanes[l].Kind == LaneKind.Connector
                 ? (n.LaneGateNode[l] >= 0) == GateRules.IsGatedConnectorSlow(n, in n.Lanes[l])
@@ -129,12 +168,23 @@ internal static class SaveValidator
         ConnectorStore cs = w.Connectors;
         for (int g = 0; g < cs.Count; g++)
         {
+            if (cs.Lane[g] < 0)
+            {
+                continue;   // мёртвая строка (дыра или запас блока): производных нет
+            }
+
             cs.Length[g] = n.Lanes[cs.Lane[g]].Length;
             cs.InLength[g] = n.Lanes[cs.InLane[g]].Length;
         }
 
         // Статика светофоров (рукава, оси, входные полосы Adaptive): производное от сети, строится тем же кодом, что при TryAdd.
         w.Signals.RebuildStatics(w);
+
+        // Прогресс операций дренажа - производное: считается по загруженным занятости и сети.
+        for (int k = 0; k < w.Ops.Count; k++)
+        {
+            w.Ops.Remaining[k] = Sim.Core.Network.ToolOpsPhase.CountOn(w, w.Ops.TargetIndex[k]);
+        }
 
         return LoadStatus.Ok;
     }
@@ -157,6 +207,21 @@ internal static class SaveValidator
         for (int i = 0; i < nodes; i++)
         {
             ref readonly NodeData nd = ref n.Nodes[i];
+            if (!NetworkAlive.IsAlive(nd.Generation))
+            {
+                if (!DeadNodeIsCanonical(in nd))
+                {
+                    return Bad(c, i, 1);
+                }
+
+                continue;
+            }
+
+            if ((nd.Flags & ~NodeFlags.Quiesce) != 0 || (n.ToolsTouched == 0 && (nd.Flags != 0 || nd.TurnBan != 0)))
+            {
+                return Bad(c, i, 1);
+            }
+
             bool built = nd.FirstArm >= 0;
             if (!Fin(nd.Position.X) || !Fin(nd.Position.Z) || !Fin(nd.Elevation) || !Fin(nd.Radius) || nd.Radius < 0f ||
                 (uint)nd.Control > (uint)NodeControl.RightHandRule || nd.Signal < -1 || nd.Signal >= sg.Count || nd.Zone < -1 || nd.Zone >= zones)
@@ -171,6 +236,14 @@ internal static class SaveValidator
                 {
                     return Bad(c, i, 2);
                 }
+
+                for (int a = 0; a < nd.ArmCount; a++)
+                {
+                    if (!n.SegmentAlive(n.NodeArms[nd.FirstArm + a]))
+                    {
+                        return Bad(c, i, 2);   // рукав - живой сегмент
+                    }
+                }
             }
             else if (nd.ArmCount != 0 || nd.ConnectorCount != 0)
             {
@@ -181,6 +254,32 @@ internal static class SaveValidator
         for (int i = 0; i < segs; i++)
         {
             ref readonly SegmentData sd = ref n.Segments[i];
+            if (!NetworkAlive.IsAlive(sd.Generation))
+            {
+                if (!DeadSegmentIsCanonical(in sd))
+                {
+                    return Bad(c, i, 3);
+                }
+
+                continue;
+            }
+
+            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
+                (n.ToolsTouched == 0 && ((sd.Flags & ~SegmentFlags.Mirrored) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
+            {
+                return Bad(c, i, 3);
+            }
+
+            // Профиль (w8): -1 - сегмент без профиля (legacy или дорога инструмента); иначе индекс каталога, а число полос и вид выводятся из профиля с учётом Mirrored.
+            RoadProfileStore? prof = n.Profiles;
+            bool mirrored = (sd.Flags & SegmentFlags.Mirrored) != 0;
+            if (sd.Profile < -1 || (prof == null ? sd.Profile != -1 : sd.Profile >= prof.Count) || (mirrored && sd.Profile < 0) ||
+                (prof != null && sd.Profile >= 0 &&
+                 (sd.LanesAB != prof.LanesAB(sd.Profile, mirrored) || sd.LanesBA != prof.LanesBA(sd.Profile, mirrored) || sd.Kind != prof.Kind[sd.Profile])))
+            {
+                return Bad(c, i, 3);
+            }
+
             if ((uint)sd.NodeA >= (uint)nodes || (uint)sd.NodeB >= (uint)nodes || !Fin(sd.Length) || sd.Length <= 0f || !Fin(sd.SpeedLimit) || sd.SpeedLimit <= 0f ||
                 (byte)sd.Kind > (byte)RoadKind.Arterial || sd.LanesAB > NetworkBuilder.MaxLanesPerDirection || sd.LanesBA > NetworkBuilder.MaxLanesPerDirection ||
                 sd.PointCount < 2 || sd.FirstPoint < 0 || (long)sd.FirstPoint + sd.PointCount > segPts)
@@ -198,6 +297,22 @@ internal static class SaveValidator
         for (int i = 0; i < lanes; i++)
         {
             ref readonly LaneData l = ref n.Lanes[i];
+            if (!NetworkAlive.IsAlive(l.Generation))
+            {
+                if (!NetworkStore.IsDeadLane(in l))
+                {
+                    return Bad(c, i, 5);   // мёртвая и запасная полоса - только канонический вид
+                }
+
+                continue;
+            }
+
+            if ((l.Flags & ~(LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut | LaneFlags.Closed | LaneFlags.Draining)) != 0 ||
+                (n.ToolsTouched == 0 && (l.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0))
+            {
+                return Bad(c, i, 4);
+            }
+
             if ((byte)l.Kind > (byte)LaneKind.BusBay || l.Direction > 1 || !Fin(l.Length) || l.Length <= 0f || !Fin(l.SpeedLimit) || l.SpeedLimit < 0f ||
                 l.PointCount < 2 || l.FirstPoint < 0 || (long)l.FirstPoint + l.PointCount > lanePts || l.FirstNext < 0 || l.NextCount < 0 ||
                 (long)l.FirstNext + l.NextCount > next || l.Left < -1 || l.Left >= lanes || l.Right < -1 || l.Right >= lanes || l.ConflictGroup < -1 ||
@@ -219,9 +334,35 @@ internal static class SaveValidator
                 return Bad(c, i, 6);
             }
 
+            if (!(l.Kind == LaneKind.Connector ? n.NodeAlive(l.Node) : n.SegmentAlive(l.Segment)) ||
+                l.Left < -1 || l.Left >= lanes || l.Right < -1 || l.Right >= lanes || (l.Left >= 0 && !n.LaneAlive(l.Left)) || (l.Right >= 0 && !n.LaneAlive(l.Right)))
+            {
+                return Bad(c, i, 6);   // полоса живая только вместе с владельцем: сегментом (Normal) или узлом (Connector)
+            }
+
             if (l.ConflictGroup >= 0 && (l.Kind != LaneKind.Connector || cs.Lane[l.ConflictGroup] != i))
             {
                 return Bad(c, i, 7);
+            }
+
+            // Ширина (w8): у connector'а 0, у обычной полосы положительная; на сегменте с профилем - ровно ширина полосы профиля (одна формула с эмиссией).
+            if (!Fin(l.Width) || l.Width < 0f || l.Width > 100f || (l.Kind == LaneKind.Connector ? l.Width != 0f : l.Width <= 0f))
+            {
+                return Bad(c, i, 5);
+            }
+
+            if (l.Kind != LaneKind.Connector && n.Profiles != null)
+            {
+                ref readonly SegmentData own = ref n.Segments[l.Segment];
+                if (own.Profile >= 0 && l.LaneNo >= (l.Direction == 0 ? own.LanesAB : own.LanesBA))
+                {
+                    return Bad(c, i, 5);
+                }
+
+                if (own.Profile >= 0 && l.Width != n.Profiles.LaneWidthM(own.Profile, (own.Flags & SegmentFlags.Mirrored) != 0, l.Direction, l.LaneNo))
+                {
+                    return Bad(c, i, 5);
+                }
             }
         }
 
@@ -265,6 +406,11 @@ internal static class SaveValidator
         for (int i = 0; i < lanes; i++)
         {
             ref readonly LaneData l = ref n.Lanes[i];
+            if (!n.LaneAlive(i))
+            {
+                continue;
+            }
+
             if (l.Kind == LaneKind.Connector)
             {
                 if (l.NextCount != 1 || n.LaneNext[l.FirstNext] != l.ToLane)
@@ -304,6 +450,11 @@ internal static class SaveValidator
         for (int i = 0; i < lanes; i++)
         {
             ref readonly LaneData l = ref n.Lanes[i];
+            if (!n.LaneAlive(i))
+            {
+                continue;
+            }
+
             for (int k = 1; k < l.PointCount; k++)
             {
                 if (n.LanePointS[l.FirstPoint + k] < n.LanePointS[l.FirstPoint + k - 1])
@@ -334,6 +485,21 @@ internal static class SaveValidator
         for (int i = 0; i < stops; i++)
         {
             ref readonly BusStopData s = ref n.BusStops[i];
+            if (!NetworkAlive.IsAlive(s.Generation))
+            {
+                if (!DeadBusStopIsCanonical(in s))
+                {
+                    return Bad(c, i, 15);
+                }
+
+                continue;
+            }
+
+            if (!n.LaneAlive(s.Lane) || (s.Route >= 0 && !n.BusRouteAlive(s.Route)))
+            {
+                return Bad(c, i, 15);
+            }
+
             if ((uint)s.Lane >= (uint)lanes || !Fin(s.S) || (uint)s.Kind > (uint)BusStopKind.Bay || s.Route < -1 || s.Route >= routes)
             {
                 return Bad(c, i, 15);
@@ -343,7 +509,17 @@ internal static class SaveValidator
         for (int i = 0; i < routes; i++)
         {
             ref readonly BusRouteData r = ref n.BusRoutes[i];
-            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > stops || r.HeadwayTicks < 0 || r.ActiveBuses < 0 ||
+            if (!NetworkAlive.IsAlive(r.Generation))
+            {
+                if (!DeadBusRouteIsCanonical(in r))
+                {
+                    return Bad(c, i, 16);
+                }
+
+                continue;
+            }
+
+            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > n.BusRouteStopCount || r.HeadwayTicks < 0 || r.ActiveBuses < 0 ||
                 (uint)r.VehicleType >= (uint)w.Types.Length)
             {
                 return Bad(c, i, 16);
@@ -358,10 +534,32 @@ internal static class SaveValidator
             }
         }
 
+        for (int i = 0; i < routes; i++)
+        {
+            ref readonly BusRouteData r = ref n.BusRoutes[i];
+            for (int k = 0; k < (NetworkAlive.IsAlive(r.Generation) ? r.StopCount : 0); k++)
+            {
+                if (!n.BusStopAlive(n.BusRouteStops[r.FirstStop + k]))
+                {
+                    return Bad(c, i, 17);   // остановка маршрута - живой слот
+                }
+            }
+        }
+
         // connector'ы и конфликты
         for (int g = 0; g < cs.Count; g++)
         {
             int ln = cs.Lane[g];
+            if (ln < 0)
+            {
+                if (!cs.DeadRowIsCanonical(g))
+                {
+                    return Bad(c, g, 18);
+                }
+
+                continue;
+            }
+
             if ((uint)ln >= (uint)lanes || n.Lanes[ln].Kind != LaneKind.Connector || (uint)cs.Node[g] >= (uint)nodes || (uint)cs.InLane[g] >= (uint)lanes ||
                 (uint)cs.OutLane[g] >= (uint)lanes || cs.LocalBit[g] >= NetworkBuilder.MaxConnectorsPerNode || cs.FirstConflict[g] < 0 ||
                 cs.ConflictCount[g] < 0 || (long)cs.FirstConflict[g] + cs.ConflictCount[g] > cs.ConflictsUsed || cs.Maneuver[g] > (byte)Maneuver.UTurn)
@@ -472,7 +670,7 @@ internal static class SaveValidator
             int lane = v.Lane[i];
             if (lane < -1 || lane >= lanes || v.GhostLane[i] < -1 || v.GhostLane[i] >= lanes || !Fin(v.S[i]) || !Fin(v.Speed[i]) || v.Speed[i] < 0f ||
                 !Fin(v.Accel[i]) || !Fin(v.Length[i]) || v.Length[i] <= 0f || v.Type[i] >= w.Types.Length || !Fin(v.DesiredSpeed[i]) ||
-                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 63)
+                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 127)
             {
                 return Bad(c, i, 30);
             }
@@ -512,7 +710,7 @@ internal static class SaveValidator
                 return Bad(c, i, 334);
             }
 
-            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Tie)
+            if (c.W.Gate.DenyReason[i] > (byte)GateDeny.Closed)
             {
                 return Bad(c, i, 340);
             }
@@ -536,6 +734,17 @@ internal static class SaveValidator
             {
                 return Bad(c, i, 34);
             }
+
+            // Автобус в виртуальном кармане (ADR-0029, bus-bays.md §3): автобус на остановке, вне списков полос, без ghost и смены полосы, целевая остановка существует.
+            if ((v.Flags[i] & (byte)VehicleFlags.InBay) != 0)
+            {
+                const byte need = (byte)VehicleFlags.IsBus | (byte)VehicleFlags.AtStop;
+                if ((v.Flags[i] & need) != need || lane != -1 || v.GhostLane[i] != -1 || v.LaneChangeDir[i] != 0 || v.Ahead[i] != -1 || v.Behind[i] != -1 ||
+                    v.GhostAhead[i] != -1 || v.GhostBehind[i] != -1 || Transit.BusStopRules.TargetStop(n, v, i) < 0)
+                {
+                    return Bad(c, i, 350);
+                }
+            }
         }
 
         return ValidateLists(c, w, v);
@@ -543,7 +752,7 @@ internal static class SaveValidator
 
     private static bool LinkOk(VehicleStore v, int link, int hw) => link == -1 || ((uint)link < (uint)hw && v.Pool.IsAlive(link));
 
-    private static LoadStatus ValidatePool(LoadContext c, Util.HandlePool p)
+    internal static LoadStatus ValidatePool(LoadContext c, Util.HandlePool p)
     {
         int hw = p.HighWater;
         int[] gen = p.GenerationArray;
@@ -688,7 +897,7 @@ internal static class SaveValidator
             ref readonly PendingTrip t = ref w.Trips.At(i);
             if (t.FromZone < -1 || t.FromZone >= n.ZoneCount || t.ToZone < -1 || t.ToZone >= n.ZoneCount || t.FromLane < -1 || t.FromLane >= n.LaneCount ||
                 t.Type >= w.Types.Length || t.DestLane < -1 || t.DestLane >= n.LaneCount || !Fin(t.FromS) || !Fin(t.DestS) || t.Route < -1 ||
-                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0)
+                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || t.ResidentRef < 0 || (t.ResidentRef != 0 && (w.City == null || t.ResidentRef > w.City.Residents.Capacity)))
             {
                 return Bad(c, i, 50);
             }
@@ -842,6 +1051,52 @@ internal static class SaveValidator
         return LoadStatus.Ok;
     }
 
+    /// <summary>
+    /// Карманы остановок (ADR-0029): <c>BayUsed</c> равен числу автобусов <c>InBay</c> этой остановки (0 или 1), карман бывает только у остановки <c>Bay</c> при <c>bay_model = virtual</c> и LOD выключенном,
+    /// <c>BayFlags</c> - известные биты, <c>BayExitFrom</c> не позже текущего тика и только при занятом кармане.
+    /// </summary>
+    private static LoadStatus ValidateBays(LoadContext c)
+    {
+        World w = c.W;
+        NetworkStore n = w.Net;
+        VehicleStore v = w.Vehicles;
+        int stops = n.BusStopCount;
+        var count = new byte[stops];
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            if (!v.Pool.IsAlive(i) || (v.Flags[i] & (byte)VehicleFlags.InBay) == 0)
+            {
+                continue;
+            }
+
+            int si = Transit.BusStopRules.TargetStop(n, v, i);
+            if (si < 0 || count[si] >= 2)
+            {
+                return Bad(c, i, 351);
+            }
+
+            count[si]++;
+        }
+
+        bool bays = w.TransitCfg.BayModel == BayModel.Virtual && w.Lod == null;
+        for (int s = 0; s < stops; s++)
+        {
+            ref readonly BusStopData st = ref n.BusStops[s];
+            if (!NetworkAlive.IsAlive(st.Generation))
+            {
+                continue;   // мёртвый слот: каноничность проверена в ValidateNetwork
+            }
+
+            if (st.BayUsed > 1 || st.BayUsed != count[s] || (st.BayFlags & ~BayStopFlags.Known) != 0 || st.BayExitFrom < -1 || st.BayExitFrom > w.Tick ||
+                (st.BayExitFrom >= 0 && st.BayUsed == 0) || (st.BayFlags != 0 && st.BayExitFrom < 0) || (st.BayUsed == 1 && (!bays || st.Kind != BusStopKind.Bay)))
+            {
+                return Bad(c, s, 352);
+            }
+        }
+
+        return LoadStatus.Ok;
+    }
+
     /// <summary>Конец загрузки: проверки, не привязанные к одному блоку.</summary>
     public static LoadStatus ValidateRest(LoadContext c)
     {
@@ -879,12 +1134,29 @@ internal static class SaveValidator
             owned[r >> 6] |= 1UL << (r & 63);
         }
 
+        LoadStatus bay = ValidateBays(c);
+        if (bay != LoadStatus.Ok)
+        {
+            return bay;
+        }
+
+        if (w.City == null)
+        {
+            for (int i = 0; i < v.HighWater; i++)
+            {
+                if (v.Resident[i] != -1)
+                {
+                    return Bad(c, i, 41);   // без города у машин нет жителей
+                }
+            }
+        }
+
         if ((w.Overlay != null) != (w.Routing.Levels > 0) || (w.Lod != null) != (w.LodCfg.Mode != LodMode.Off) ||
             (w.Queue != null) != (w.Lod != null && w.LodCfg.MesoModel == MesoModel.Queue))
         {
             return Bad(c, 0, 91);
         }
 
-        return LoadStatus.Ok;
+        return ValidateRefs(c);
     }
 }

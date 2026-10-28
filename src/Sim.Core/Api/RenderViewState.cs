@@ -31,8 +31,12 @@ internal sealed class RenderViewState
 
     public float X0, Z0, X1, Z1;
 
+    /// <summary>Растёт при каждом <see cref="Set"/>/<see cref="SetAll"/> (клиент сверяет, какой вид отражён в кадре); на состояние не влияет.</summary>
+    public int Version;
+
     // ---- сетка полос (производное сети, вне хэша) ----
     private int _lanesIndexed = -1;
+    private int _indexVersion = -1;   // версия сети индекса: после правок (дыры) число полос не показывает изменения
     private float _cellM, _originX, _originZ;
     private int _cellsX, _cellsZ;
     private int[] _cellStart = Array.Empty<int>();   // [cells + 1] CSR
@@ -49,6 +53,7 @@ internal sealed class RenderViewState
     /// <summary>Задаёт вид. Нечисловые координаты дают вид «всё»; границы упорядочиваются.</summary>
     public void Set(float x0, float z0, float x1, float z1)
     {
+        Version++;
         if (!float.IsFinite(x0) || !float.IsFinite(z0) || !float.IsFinite(x1) || !float.IsFinite(z1))
         {
             All = true;
@@ -62,7 +67,11 @@ internal sealed class RenderViewState
         Z1 = MathF.Max(z0, z1);
     }
 
-    public void SetAll() => All = true;
+    public void SetAll()
+    {
+        Version++;
+        All = true;
+    }
 
     /// <summary>Вид «всё» записал буфер <paramref name="b"/> целиком (префикс до <c>SnapshotSlots</c>): обнулять придётся диапазоном.</summary>
     public void MarkWrittenAll(int b)
@@ -176,6 +185,24 @@ internal sealed class RenderViewState
             }
         }
 
+        // Автобусы в виртуальных карманах (ADR-0029) в списках полос не состоят: добавляем по остановке, если полоса остановки пересекает вид.
+        NetworkStore net = w.Net;
+        int[] bayBus = w.BayBus;
+        for (int si = 0; si < net.BusStopCount; si++)
+        {
+            int bus = bayBus[si];
+            if (bus < 0)
+            {
+                continue;
+            }
+
+            int lane = net.BusStops[si].Lane;
+            if ((uint)lane < (uint)_laneStamp.Length && !(_bx1[lane] < X0 || _bx0[lane] > X1 || _bz1[lane] < Z0 || _bz0[lane] > Z1))
+            {
+                list[n++] = bus;
+            }
+        }
+
         return n;
     }
 
@@ -187,10 +214,12 @@ internal sealed class RenderViewState
 
     private void EnsureIndex(NetworkStore net)
     {
-        if (net.LaneCount == _lanesIndexed)
+        if (net.LaneCount == _lanesIndexed && (net.ToolsTouched == 0 || net.Version == _indexVersion))
         {
             return;
         }
+
+        _indexVersion = net.Version;
 
         int lanes = net.LaneCount;
         if (_bx0.Length < lanes)
@@ -238,8 +267,8 @@ internal sealed class RenderViewState
         int nx, nz;
         while (true)
         {
-            nx = Math.Max(1, (int)MathF.Ceiling((maxX - minX) / cellM));
-            nz = Math.Max(1, (int)MathF.Ceiling((maxZ - minZ) / cellM));
+            nx = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling((maxX - minX) / cellM)));
+            nz = Math.Max(1, DetMath.ToIntSat(MathF.Ceiling((maxZ - minZ) / cellM)));
             if ((long)nx * nz <= MaxCells)
             {
                 break;

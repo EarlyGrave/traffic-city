@@ -11,6 +11,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Headless.Scenarios;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 
 namespace Sim.Headless.Bench;
 
@@ -24,7 +25,10 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--stuck-report] [--spike-report] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>] [--warmup-days D] [--window am_peak]\n" +
+        "  --warmup-days D      residents scenarios: warm up D whole game days (then up to the window start, if any) instead of --warmup-ticks; JSON gets warmup_days\n" +
+        "  --window am_peak     residents scenarios: measure the morning peak, 6000 ticks (the default of --ticks here) from 6 slots before the earliest shift start; JSON gets window,\n" +
+        "                       compare refuses to mix values\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
         "                       (the probe adds ~10 timer reads per tick, so tick_ms of a --phases run is not for the gate)\n" +
         "  --threads N          worker threads of the core (SimRuntimeOptions.WorkerThreads, default 1); JSON gets threads, compare refuses to mix values\n" +
@@ -41,19 +45,41 @@ public static class BenchCommand
     public const int WarmupChunkTicks = 20;
     public const int DefaultWarmupMaxTicks = 30000;
 
-    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination" };
-    private static readonly string[] _flags = { "--warmup-until-full", "--phases" };
+    /// <summary>Окно утреннего пика residents-сценариев (zoning-demand.md §11): 6 000 тиков.</summary>
+    public const string AmPeak = "am_peak";
+    public const int AmPeakWindowTicks = 6000;
+
+    /// <summary>Прогрев городом: целые сутки и окно (<see cref="AmPeak"/> или null). Без жителей игнорируется.</summary>
+    internal readonly record struct CityWindow(int WarmupDays, string? Window);
+
+    private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--warmup-days", "--window", "--packages-dir" };
+    private static readonly string[] _flags = { "--warmup-until-full", "--phases", "--stuck-report", "--spike-report" };
+
+    /// <summary>Куда печатать разбор stuck-машин на конец окна (<c>--stuck-report</c>); null - не печатать.</summary>
+    private static TextWriter? _stuckReportSink;
+
+    /// <summary>Куда печатать самые долгие тики окна с разбивкой по фазам (<c>--spike-report</c>, нужен <c>--phases</c>); null - не печатать.</summary>
+    private static TextWriter? _spikeReportSink;
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
         if (!CliArgs.TryParse(args, _allowed, _flags, out CliArgs a)
-            || !a.TryGetInt("--ticks", 1, out int ticks, 2000)
+            || !a.TryGetInt("--ticks", 1, out int ticks, a.Has("--window") ? AmPeakWindowTicks : 2000)
+            || !a.TryGetInt("--warmup-days", 0, out int warmupDays, 0)
             || !a.TryGetInt("--warmup-ticks", 0, out int warmup, 200)
             || !a.TryGetInt("--warmup-max-ticks", 0, out int warmupMax, DefaultWarmupMaxTicks)
             || !a.TryGetInt("--repeat", 1, out int repeat, 1)
             || !a.TryGetInt("--threads", 1, out int threads, 1))
         {
             error.WriteLine($"bench: {a.Error}");
+            error.Write(Usage);
+            return ExitUsage;
+        }
+
+        string? window = a.Get("--window");
+        if (window != null && window != AmPeak)
+        {
+            error.WriteLine($"bench: --window: expected {AmPeak}, got '{window}'");
             error.Write(Usage);
             return ExitUsage;
         }
@@ -68,10 +94,12 @@ public static class BenchCommand
         }
 
         BenchResult r;
+        _stuckReportSink = a.Has("--stuck-report") ? error : null;
+        _spikeReportSink = a.Has("--spike-report") ? error : null;
         try
         {
             string path = ScenarioLocator.Resolve(scenario, a.Get("--scenarios-dir"));
-            LoadedScenario sc = ScenarioLoader.LoadInfo(path);
+            LoadedScenario sc = PackageDirs.Load(path, a);
             sc = ApplyOverrides(sc, a);
             string view = a.Get("--view") ?? "all";
             if (!ViewSpec.TryParse(view, out ViewSpec viewSpec))
@@ -81,7 +109,7 @@ public static class BenchCommand
                 return ExitUsage;
             }
 
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec);
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec, new CityWindow(warmupDays, window));
         }
         catch (ScenarioException e)
         {
@@ -134,19 +162,19 @@ public static class BenchCommand
             d.City.SignalCoordination = ScenarioLoader.ParseSignalCoordination(coord, "--signal-coordination");
         }
 
-        return new LoadedScenario(sc.Name, sc.TypeNames, d);
+        return new LoadedScenario(sc.Name, sc.TypeNames, d, sc.Catalog, sc.Packages, sc.Timeline);
     }
 
     /// <summary>
     /// <paramref name="repeat"/> независимых прогонов; в итог берётся прогон с медианным p95, p50 — медиана p50,
     /// аллокации — максимум (любая аллокация в любом прогоне видна). Все значения — в <c>tick_ms_runs</c>.
     /// </summary>
-    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
+    internal static BenchResult MeasureRepeated(LoadedScenario sc, int ticks, int warmup, int repeat, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default, CityWindow cityWindow = default)
     {
         var runs = new List<BenchResult>(repeat);
         for (int i = 0; i < repeat; i++)
         {
-            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads, view));
+            runs.Add(Measure(sc, ticks, warmup, warmupUntilFullMax, phases, threads, view, cityWindow));
         }
 
         List<BenchResult> byP95 = runs.OrderBy(x => x.P95).ToList();
@@ -171,13 +199,16 @@ public static class BenchCommand
     /// <summary>Цель сценария достигнута: активных не меньше <see cref="FullShare"/> от цели (цель 0 — всегда «полно»).</summary>
     public static bool IsFull(int active, int target) => active >= (int)Math.Floor(target * FullShare);
 
-    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default)
+    internal static BenchResult Measure(LoadedScenario sc, int ticks, int warmup, int warmupUntilFullMax = 0, bool phases = false, int threads = 1, ViewSpec view = default, CityWindow cityWindow = default)
     {
         var r = new BenchResult
         {
             Scenario = sc.Name,
+            ContentFingerprint = Sim.Scenarios.Mods.ContentFingerprint.Hex(Sim.Scenarios.Mods.ContentFingerprint.For(sc)),
             Ticks = ticks,
             WarmupTicks = warmup,
+            WarmupDays = cityWindow.WarmupDays,
+            Window = cityWindow.Window,
             Threads = threads,
             View = view.ToString(),
             Seed = sc.Desc.Seed,
@@ -195,13 +226,29 @@ public static class BenchCommand
         long memBefore = GC.GetTotalMemory(true);
         using Simulation sim = Simulation.Create(sc.Desc, new SimRuntimeOptions { WorkerThreads = threads });
         view.Apply(sim);
-        if (warmup > 0)
-        {
-            sim.Step(warmup);
-        }
-
+        var timeline = new TimelineRunner(sc.Timeline);   // команды сценария в абсолютных тиках симуляции, в том числе в прогреве
         int target = sc.Desc.Demand.TargetVehicles;
-        int warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax);
+        int warmedUp;
+        if (sim.HasCity && (cityWindow.WarmupDays > 0 || cityWindow.Window != null))
+        {
+            // Город: целые сутки прогрева и выход на начало окна утреннего пика (тик внутри суток); рампы OD-генератора нет.
+            long start = ((long)cityWindow.WarmupDays * sim.CityDayTicks) + (cityWindow.Window == AmPeak ? sim.CityAmPeakStartTickOfDay : 0);
+            while (sim.Tick < start)
+            {
+                timeline.Step(sim, (int)Math.Min(sim.CityDayTicks, start - sim.Tick));
+            }
+
+            warmedUp = (int)Math.Min(int.MaxValue, sim.Tick);
+        }
+        else
+        {
+            if (warmup > 0)
+            {
+                timeline.Step(sim, warmup);
+            }
+
+            warmedUp = WarmUpUntilFull(sim, target, warmup, warmupUntilFullMax, timeline);
+        }
 
         r.WarmupTicksActual = warmedUp;
         r.TargetVehicles = target;
@@ -213,25 +260,41 @@ public static class BenchCommand
         sim.CopySignalMetrics(sigBefore);
         sim.ResetSignalWindow();
         SimWork workBefore = sim.Work;
+        PedWindow? pedBefore = sim.HasPeds ? PedWindow.Snapshot(sim) : null;
         if (timer != null)
         {
             sim.OnPhaseEnd = timer.OnPhaseEnd;
         }
 
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
-        // воркеры аллоцируют в своих потоках: при threads > 1 меряем весь процесс (в окне больше никто не работает)
-        long allocBefore = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
+        r.LoadAvgStart = HostLoad.LoadAvg1();
+        HostLoad hostA = HostLoad.Read();
+        // воркеры аллоцируют в своих потоках: считаем поток бенча + воркеры пула (не фоновые потоки рантайма, см. SimThreadAlloc)
+        var allocProbe = new SimThreadAlloc(sim);
+        long allocBefore = allocProbe.Snapshot();
         long windowStart = Stopwatch.GetTimestamp();
+        long stuckSum = 0;
+        int stuckMax = 0;
         for (int i = 0; i < ticks; i++)
         {
             long t0 = Stopwatch.GetTimestamp();
             timer?.BeginTick(t0);
+            timeline.Feed(sim);
             sim.Step(1);
             samples[i] = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+            int st = sim.Counters.StuckVehicles;
+            stuckSum += st;
+            stuckMax = Math.Max(stuckMax, st);
         }
 
         long windowEnd = Stopwatch.GetTimestamp();
-        long allocAfter = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
+        r.StuckWindowMean = stuckSum / (double)ticks;
+        r.StuckWindowMax = stuckMax;
+        long allocAfter = allocProbe.Snapshot();
+        HostLoad hostB = HostLoad.Read();   // после снимка аллокаций: чтение /proc само аллоцирует
+        r.ForeignCores = HostLoad.ForeignCores(in hostA, in hostB);
+        r.StolenCores = HostLoad.StolenCores(in hostA, in hostB);
+        r.LoadAvgEnd = HostLoad.LoadAvg1();
         sim.OnPhaseEnd = null;
         r.Work = Delta(sim.Work, workBefore);
         r.PhaseMs = timer?.Summarize();
@@ -244,18 +307,49 @@ public static class BenchCommand
         r.TicksPerSec = ticks / windowSec;
         r.VehicleUpdatesPerSec = (sim.Counters.VehicleTicksTotal - vtBefore) / windowSec;
 
+        int maxIdx = 0;
+        for (int i = 1; i < samples.Length; i++)
+        {
+            if (samples[i] > samples[maxIdx])
+            {
+                maxIdx = i;
+            }
+        }
+
+        if (_spikeReportSink != null && timer != null)
+        {
+            SpikeReport.Write(samples, timer, sim.HasPeds, _spikeReportSink);
+        }
+
+        r.MaxTickIndex = maxIdx;
+        r.MaxTickPhaseMs = timer?.TickBreakdown(maxIdx, sim.HasPeds);
         Array.Sort(samples);
         r.P50 = Percentile(samples, 0.50);
         r.P95 = Percentile(samples, 0.95);
         r.P99 = Percentile(samples, 0.99);
+        r.P999 = Percentile(samples, 0.999);
         r.Max = samples[^1];
+        int spikes = 0;
+        for (int i = samples.Length - 1; i >= 0 && samples[i] > 2.5 * r.P50; i--)
+        {
+            spikes++;
+        }
+
+        r.SpikeTicks = spikes;
 
         using (Process self = Process.GetCurrentProcess())
         {
             r.PeakMemoryMb = self.PeakWorkingSet64 / (1024.0 * 1024.0);
         }
 
+        if (_stuckReportSink != null)
+        {
+            StuckReport.Write(sim, _stuckReportSink);
+        }
+
         r.Signal = SignalWindow.Compute(sim, in cBefore, sigBefore);
+        r.Lod = sc.Desc.Lod.Mode == LodMode.Off ? null : LodWindow.Compute(sc.Desc.Lod, sim, in cBefore, in workBefore);
+        r.Peds = pedBefore != null ? PedWindow.Compute(sim, pedBefore, in cBefore, in workBefore, ticks) : null;
         r.ActiveVehicles = sim.ActiveVehicleCount;
         r.RampComplete = IsFull(r.ActiveAtStart, target) && IsFull(r.ActiveVehicles, target);
         long memAfter = GC.GetTotalMemory(true);
@@ -264,7 +358,19 @@ public static class BenchCommand
         SimCounters c = sim.Counters;
         sim.GetStats(out SimStats s);
         r.PathfindQueries = c.PathfindQueries;
+        r.BayEntries = c.BayEntries;
+        r.BayFallbacks = c.BayFallbacks;
+        r.BayYields = c.BayYields;
+        r.BayExitWaitS = c.BayEntries > 0 ? c.BayExitWaitTicksTotal * 0.05 / c.BayEntries : null;
         r.Counters = c;
+        r.RouteDeferredWindow = c.RouteDeferred - cBefore.RouteDeferred;
+        r.PathfindQueriesWindow = c.PathfindQueries - cBefore.PathfindQueries;
+        r.PathfindWorkWindow = c.PathfindWork - cBefore.PathfindWork;
+        r.ReroutesWindow = c.Reroutes - cBefore.Reroutes;
+        r.TimedReroutesWindow = c.TimedReroutes - cBefore.TimedReroutes;
+        r.CustomizeWorkWindow = c.CustomizeWork - cBefore.CustomizeWork;
+        r.RefillLateWindow = c.RefillLate - cBefore.RefillLate;
+        r.CustomizeLagWindow = c.CustomizeLagTicks - cBefore.CustomizeLagTicks;
         r.AvgSpeedKmh = s.AvgSpeedKmh;
         r.AvgTripTimeS = s.AvgTripTimeS;
         r.TripsCompletedPerMin = s.TripsCompletedPerMin;
@@ -302,13 +408,21 @@ public static class BenchCommand
     /// После <paramref name="warmup"/> тиков (уже выполненных) догоняет рампу чанками по <see cref="WarmupChunkTicks"/> до
     /// <see cref="IsFull"/>, но не дальше <paramref name="warmupMax"/> всего (0 = не догонять). Возвращает число тиков прогрева.
     /// </summary>
-    internal static int WarmUpUntilFull(Simulation sim, int target, int warmup, int warmupMax)
+    internal static int WarmUpUntilFull(Simulation sim, int target, int warmup, int warmupMax, TimelineRunner? timeline = null)
     {
         int warmedUp = warmup;
         while (warmupMax > 0 && warmedUp < warmupMax && !IsFull(sim.ActiveVehicleCount, target))
         {
             int chunk = Math.Min(WarmupChunkTicks, warmupMax - warmedUp);
-            sim.Step(chunk);
+            if (timeline != null)
+            {
+                timeline.Step(sim, chunk);
+            }
+            else
+            {
+                sim.Step(chunk);
+            }
+
             warmedUp += chunk;
         }
 
@@ -396,8 +510,19 @@ public static class BenchCommand
         {
             w.WriteStartObject();
             w.WriteString("scenario", r.Scenario);
+            w.WriteString("content_fingerprint", r.ContentFingerprint);
             w.WriteNumber("ticks", r.Ticks);
             w.WriteNumber("warmup_ticks", r.WarmupTicks);
+            if (r.WarmupDays > 0)
+            {
+                w.WriteNumber("warmup_days", r.WarmupDays);
+            }
+
+            if (r.Window != null)
+            {
+                w.WriteString("window", r.Window);
+            }
+
             w.WriteNumber("threads", r.Threads);
             w.WriteString("view", r.View);
             w.WriteNumber("seed", r.Seed);
@@ -409,6 +534,10 @@ public static class BenchCommand
             w.WriteString("os", r.Os);
             WriteNullable(w, "cpu", r.Cpu);
             w.WriteNumber("cpu_count", r.CpuCount);
+            WriteNullable(w, "load_avg_1m_start", r.LoadAvgStart);
+            WriteNullable(w, "load_avg_1m_end", r.LoadAvgEnd);
+            WriteNullable(w, "host_foreign_cores", r.ForeignCores);
+            WriteNullable(w, "host_stolen_cores", r.StolenCores);
             w.WriteEndObject();
 
             w.WriteStartObject("perf");
@@ -417,11 +546,26 @@ public static class BenchCommand
             w.WriteNumber("p95", r.P95);
             w.WriteNumber("p99", r.P99);
             w.WriteNumber("max", r.Max);
+            w.WriteNumber("p999", r.P999);
+            w.WriteNumber("spike_ticks_over_2p5x_p50", r.SpikeTicks);
+            w.WriteNumber("max_tick_index", r.MaxTickIndex);
+            if (r.MaxTickPhaseMs is { } mp)
+            {
+                w.WriteStartObject("max_tick_phase_ms");
+                for (int ph = 0; ph < mp.Length; ph++)
+                {
+                    w.WriteNumber(PhaseTimer.Names[ph], mp[ph]);
+                }
+
+                w.WriteEndObject();
+            }
+
             w.WriteEndObject();
             if (r.PhaseMs is { } phaseMs)
             {
                 w.WriteStartObject("phase_ms");
-                for (int ph = 0; ph < PhaseTimer.PhaseCount; ph++)
+                int phaseCount = r.Peds != null ? PhaseTimer.TotalCount : PhaseTimer.PhaseCount;
+                for (int ph = 0; ph < phaseCount; ph++)
                 {
                     w.WriteStartObject(PhaseTimer.Names[ph]);
                     w.WriteNumber("p50", phaseMs[ph].P50);
@@ -472,8 +616,14 @@ public static class BenchCommand
             w.WriteNumber("avg_trip_time_s", r.AvgTripTimeS);
             w.WriteNumber("trips_completed_per_min", r.TripsCompletedPerMin);
             w.WriteNumber("stuck_vehicles", r.StuckVehicles);
+            w.WriteNumber("stuck_window_mean", r.StuckWindowMean);
+            w.WriteNumber("stuck_window_max", r.StuckWindowMax);
             w.WriteBoolean("gridlock_flag", r.Gridlock);
             WriteNullable(w, "bus_headway_deviation_s", r.BusHeadwayDeviationS);
+            w.WriteNumber("bay_entries", r.BayEntries);
+            w.WriteNumber("bay_fallbacks", r.BayFallbacks);
+            w.WriteNumber("bay_yields", r.BayYields);
+            WriteNullable(w, "bay_exit_wait_s_mean", r.BayExitWaitS);   // средняя задержка выезда из кармана на заезд, с (кумулятивно с начала симуляции)
             WriteNullable(w, "max_still_s", r.Signal.MaxStillS);
             w.WriteNumber("still_episodes_60s", r.Signal.StillEpisodes60);
             w.WriteNumber("still_episodes_120s", r.Signal.StillEpisodes120);
@@ -498,6 +648,16 @@ public static class BenchCommand
             WriteSignal(w, r.Signal);
             w.WriteEndObject();
 
+            if (r.Lod != null)
+            {
+                WriteLod(w, r.Lod);
+            }
+
+            if (r.Peds != null)
+            {
+                WritePeds(w, r.Peds);
+            }
+
             // Счётчики маршрутизации и оверлея (routing.md 9.10), накопительные с начала симуляции, кроме overlay_disabled (текущее).
             SimCounters k = r.Counters;
             w.WriteStartObject("routing");
@@ -521,6 +681,14 @@ public static class BenchCommand
             w.WriteNumber("customize_lag_ticks", k.CustomizeLagTicks);
             w.WriteNumber("overlay_rebuilds", k.OverlayRebuilds);
             w.WriteNumber("overlay_disabled", k.OverlayDisabled);
+            w.WriteNumber("route_deferred_window", r.RouteDeferredWindow);
+            w.WriteNumber("pathfind_queries_window", r.PathfindQueriesWindow);
+            w.WriteNumber("pathfind_work_window", r.PathfindWorkWindow);
+            w.WriteNumber("reroutes_window", r.ReroutesWindow);
+            w.WriteNumber("timed_reroutes_window", r.TimedReroutesWindow);
+            w.WriteNumber("customize_work_window", r.CustomizeWorkWindow);
+            w.WriteNumber("refill_late_window", r.RefillLateWindow);
+            w.WriteNumber("customize_lag_ticks_window", r.CustomizeLagWindow);
             w.WriteEndObject();
             w.WriteEndObject();
         }
@@ -528,7 +696,57 @@ public static class BenchCommand
         return Encoding.UTF8.GetString(ms.ToArray()) + "\n";
     }
 
+    /// <summary>Уровни детализации за окно замера (scale.md §5 S3, sim-lod.md §8): машины, машино-тики, средние скорости и stuck-события по уровням; <c>compare</c> их не гейтит.</summary>
+    private static void WriteLod(Utf8JsonWriter w, LodWindow l)
+    {
+        w.WriteStartObject("lod");
+        w.WriteString("mode", l.Mode);
+        w.WriteString("meso_model", l.MesoModel);
+        w.WriteNumber("micro_vehicles", l.MicroVehicles);
+        w.WriteNumber("meso_vehicles", l.MesoVehicles);
+        w.WriteNumber("vehicle_ticks_micro", l.VehicleTicksMicro);
+        w.WriteNumber("vehicle_ticks_meso", l.VehicleTicksMeso);
+        WriteNullable(w, "avg_speed_micro_kmh", l.AvgSpeedMicroKmh);
+        WriteNullable(w, "avg_speed_meso_kmh", l.AvgSpeedMesoKmh);
+        w.WriteNumber("stuck_events_micro", l.StuckEventsMicro);
+        w.WriteNumber("stuck_events_meso", l.StuckEventsMeso);
+        w.WriteNumber("lod_cell_flips", l.CellFlips);
+        w.WriteNumber("lod_budget_skips", l.BudgetSkips);
+        w.WriteNumber("meso_clamps", l.MesoClamps);
+        w.WriteString("note", "window deltas (after warmup); stuck_events_* are transitions into stuck by the level of the vehicle at that moment");
+        w.WriteEndObject();
+    }
+
     private static readonly string[] _maneuverNames = { "straight", "right", "left", "uturn" };
+
+    /// <summary>Метрики пешеходов и пассажиров за окно замера (pedestrians.md §9); <c>compare</c> их не гейтит, нужны отчёту и верификатору.</summary>
+    private static void WritePeds(Utf8JsonWriter w, PedWindow p)
+    {
+        w.WriteStartObject("peds");
+        w.WriteNumber("ped_active", p.ActiveNow);
+        w.WriteNumber("ped_target", p.Target);
+        w.WriteNumber("ped_active_mean", p.ActiveMean);
+        w.WriteNumber("ped_trips_completed", p.Trips);
+        w.WriteNumber("ped_trips_per_min", p.TripsPerMin);
+        WriteNullable(w, "ped_cross_wait_mean_s", p.CrossWaitMeanS);
+        WriteNullable(w, "ped_cross_wait_p95_s", p.CrossWaitP95S);
+        WriteNullable(w, "ped_stop_wait_mean_s", p.StopWaitMeanS);
+        WriteNullable(w, "ped_stop_wait_p95_s", p.StopWaitP95S);
+        w.WriteNumber("ped_stuck_events", p.StuckEvents);
+        WriteNullable(w, "car_cross_delay_s_per_veh_h", p.CarCrossDelaySPerVehH);
+        WriteNullable(w, "crossing_closed_share", p.CrossingClosedShare);
+        w.WriteNumber("bus_passengers_boarded", p.Boarded);
+        w.WriteNumber("bus_passengers_alighted", p.Alighted);
+        w.WriteNumber("bus_pax_on_board_mean", p.PaxOnBoardMean);
+        w.WriteNumber("ped_path_queries", p.PathQueries);
+        w.WriteNumber("ped_path_work", p.PathWork);
+        w.WriteNumber("ped_no_path", p.NoPath);
+        w.WriteNumber("ped_mode_fallback", p.ModeFallback);
+        w.WriteNumber("ped_events_per_tick", p.EventsPerTick);
+        w.WriteNumber("ped_alloc_failed", p.AllocFailed);
+        w.WriteNumber("ped_net_resets", p.NetResets);
+        w.WriteEndObject();
+    }
 
     /// <summary>Метрики светофоров за окно замера (intersections.md §10, 2.5); поля только добавляются, <c>compare</c> их не гейтит.</summary>
     private static void WriteSignal(Utf8JsonWriter w, SignalWindow s)
@@ -617,14 +835,18 @@ public static class BenchCommand
 internal sealed class BenchResult
 {
     public string Scenario = "";
+    public string ContentFingerprint = "";
     public int Ticks;
     public int WarmupTicks;
+    public int WarmupDays;
+    public string? Window;
     public int Threads = 1;
     public string View = "all";
     public ulong Seed;
     public string SignalMode = "fixed";
     public string SignalCoordination = "legacy";
     public SignalWindow Signal = new();
+    public PedWindow? Peds;
     public string? Commit;
     public string? Cpu;
     public string Runtime = "";
@@ -634,6 +856,11 @@ internal sealed class BenchResult
     public double P95;
     public double P99;
     public double Max;
+    public double P999;
+    public int SpikeTicks;              // тиков окна дольше 2.5 x p50 (шум хоста или реальные пики - см. environment.host_foreign_cores)
+    public int MaxTickIndex;
+    public double[]? MaxTickPhaseMs;    // разбивка самого долгого тика по фазам (только с --phases)
+    public double? LoadAvgStart, LoadAvgEnd, ForeignCores, StolenCores;
     public double TicksPerSec;
     public double VehicleUpdatesPerSec;
     public double AllocBytesPerTick;
@@ -647,11 +874,17 @@ internal sealed class BenchResult
     public bool RampComplete;
     public int WarmupTicksActual;
     public int StuckVehicles;
+    public double StuckWindowMean;      // среднее и максимум числа stuck-машин по тикам окна (stuck_vehicles - только на конец, шумит)
+    public int StuckWindowMax;
     public double? BytesPerVehicle;
     public double? BusHeadwayDeviationS;
     public long PathfindQueries;
+    public long BayEntries, BayFallbacks, BayYields;
+    public double? BayExitWaitS;
     public SimCounters Counters;
+    public long RouteDeferredWindow, PathfindQueriesWindow, PathfindWorkWindow, RefillLateWindow, CustomizeLagWindow, ReroutesWindow, TimedReroutesWindow, CustomizeWorkWindow;   // приращения за окно замера (routing.* - накопительные с начала)
     public SimWork Work;
+    public LodWindow? Lod;
     public PhaseStat[]? PhaseMs;
     public double AvgSpeedKmh;
     public double AvgTripTimeS;
@@ -659,6 +892,44 @@ internal sealed class BenchResult
     public bool Gridlock;
     public List<(int Node, uint Total, double PerMin)> Top10 { get; } = new();
     public List<(double P50, double P95)> Runs { get; } = new();
+}
+
+/// <summary>Разность счётчиков уровней детализации за окно замера (после - до).</summary>
+internal sealed class LodWindow
+{
+    public string Mode = "off";
+    public string MesoModel = "kinematic";
+    public int MicroVehicles, MesoVehicles;
+    public long VehicleTicksMicro, VehicleTicksMeso;
+    public double? AvgSpeedMicroKmh, AvgSpeedMesoKmh;
+    public long StuckEventsMicro, StuckEventsMeso;
+    public long CellFlips, BudgetSkips, MesoClamps;
+
+    public static LodWindow Compute(in LodDesc lod, Simulation sim, in SimCounters before, in SimWork workBefore)
+    {
+        SimCounters c = sim.Counters;
+        long meso = sim.Work.StuckEventsMeso - workBefore.StuckEventsMeso;
+        long total = c.StuckEventsTotal - before.StuckEventsTotal;
+        const double tickS = 1.0 / 20.0;
+        long vtMicro = c.MicroVehicleTicks - before.MicroVehicleTicks;
+        long vtMeso = c.MesoVehicleTicks - before.MesoVehicleTicks;
+        return new LodWindow
+        {
+            Mode = lod.Mode switch { LodMode.Auto => "auto", LodMode.AllMeso => "all_meso", _ => "off" },
+            MesoModel = lod.MesoModel == Sim.Core.Api.MesoModel.Queue ? "queue" : "kinematic",
+            MicroVehicles = c.MicroVehicles,
+            MesoVehicles = c.MesoVehicles,
+            VehicleTicksMicro = vtMicro,
+            VehicleTicksMeso = vtMeso,
+            AvgSpeedMicroKmh = vtMicro > 0 ? (c.MicroDistanceMm - before.MicroDistanceMm) / 1000.0 / (vtMicro * tickS) * 3.6 : null,
+            AvgSpeedMesoKmh = vtMeso > 0 ? (c.MesoDistanceMm - before.MesoDistanceMm) / 1000.0 / (vtMeso * tickS) * 3.6 : null,
+            StuckEventsMicro = total - meso,
+            StuckEventsMeso = meso,
+            CellFlips = c.LodCellFlips - before.LodCellFlips,
+            BudgetSkips = c.LodBudgetSkips - before.LodBudgetSkips,
+            MesoClamps = c.MesoClamps - before.MesoClamps,
+        };
+    }
 }
 
 /// <summary>Разность счётчиков светофоров за окно замера (после - до) и производные: средние, p95 по гистограмме, доля остановок.</summary>

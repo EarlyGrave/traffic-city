@@ -44,19 +44,29 @@
     "lane_width_m": number,             // дефолт 3.5
     "irregular_nodes": int,             // число узлов, сдвинутых/слитых для нерегулярности. Дефолт round(12·scale²) — считает загрузчик, если ключ опущен; генератор сам не масштабирует
     "irregular_jitter_m": number,       // макс. сдвиг нерегулярного узла, м. Дефолт 40
+    "snap_nodes": bool,                 // RP9 (road-profiles.md §5): узлы решётки (после джиттера, сдвига, слияния) на сетку module_m, шаг = block_m точно. Дефолт true с road_profiles_file, иначе false (прежнее поведение). block_m кратен module_m (8 м)
     "node_jitter_m": number,            // фоновый джиттер всех внутренних узлов, м (0..0.45·block_m). Дефолт 0 — улицы и артерии прямые. PRNG-draw делается всегда
     "removed_street_share": number,     // доля удалённых внутренних улиц (дырки в сетке, 0..0.5). Дефолт 0.15
     "connector_samples": int,           // точек полилинии connector'а. Дефолт 8
+    "corner_radius_m": number,         // ADR-0028: радиус скругления бордюра, 0..50 м. Отступ рукава узла степени >= 3 = max(7, полуширина самой широкой поперечной дороги + r); тупики/изгибы - 7 м. Дефолт 6; 0 - фиксированный отступ 7 м (как до ADR-0028)
     "signals": "arterial_x_arterial" | "all_arterial" | "none",   // где ставить светофоры. Дефолт "arterial_x_arterial"
     "minor_control": "yield" | "stop" | "right_hand",              // регулирование улица→артерия / улица×улица. Дефолт "yield" (улица×улица всегда right_hand)
     "signal_mode": "adaptive" | "fixed",                           // 2.5, ADR-0018. Дефолт "adaptive"
     "signal_coordination": "alternate" | "legacy" | "none",        // офсеты (intersections.md §6.7). Дефолт пока "legacy" (S3: "alternate" реализован, но по замеру s10k ухудшает stuck_episodes - ADR-0018); "legacy" — формула этапа 1
-    "progression_speed_factor": number                             // скорость волны = arterial_speed · k. Дефолт 1.0
+    "progression_speed_factor": number,                            // скорость волны = arterial_speed · k. Дефолт 1.0
+    "landuse": {                                                   // VS8 (visual-style.md §8, ADR-0027): парки, пруды, берег. Необязательный объект, версия формата не меняется. Только при city.enabled = true
+      "enabled": bool,                                             // дефолт false: без секции или с false сценарий побитово прежний
+      "park_share": number,                                        // 0..1, доля внутренних клеток решётки под парк (x2 у клетки рядом с удалённой улицей). Дефолт 0.08
+      "pond_share": number,                                        // 0..1, доля парков с прудом (флаг; пруд рисует клиент). Дефолт 0.25
+      "coast": "none" | "south" | "east" | "north" | "west",       // полоса воды за краем карты: south = +Z, north = -Z, east = +X, west = -X. Дефолт "none"
+      "coast_width_m": number                                      // ширина полосы, м; округляется до module_m, не меньше module_m. Дефолт 400
+    }
   },
 
   "network": {                          // явная сеть (тесты, ручные карты); взаимоисключима с city.enabled
     "nodes": [ { "id": string, "x": number, "z": number, "control": "none|yield|stop|signal|right_hand" } ],
-    "segments": [ { "a": string, "b": string, "lanes_ab": int, "lanes_ba": int, "speed_kmh": number, "kind": "street|arterial" } ]
+    "segments": [ { "a": string, "b": string, "lanes_ab": int, "lanes_ba": int, "speed_kmh": number, "kind": "street|arterial" } ],
+    "corner_radius_m": number         // то же, что city.corner_radius_m (ADR-0028), для явной сети. Дефолт 6; 0 - фиксированный отступ 7 м
   },
 
   "vehicles": {
@@ -88,6 +98,8 @@
     "hold_alpha": number,               // удержание по интервалу (ADR-0008): доля headway между отправлениями с остановки, 0..1; 0 - выключено. Дефолт 0.9
     "hold_max_s": number,               // верхний предел добавки к стоянке, с. Дефолт 60
     "hold_every_n": int,                // контрольные остановки: каждая N-я остановка маршрута (конечная не удерживает). Дефолт 1
+    "bay_model": "virtual" | "curb" | "lane",  // модель кармана остановок Bay (ADR-0029). Дефолт "virtual": автобус на время стоянки снимается с полосы и выезжает по gap acceptance. "curb" - как раньше (стоит на полосе); "lane" - резерв под настоящую полосу-карман (LaneKind.BusBay), пока ведёт себя как "curb"
+    "bay_yield_s": number,              // 0..60: через сколько секунд ожидания выезда ведомые уступают автобусу (ПДД 18.3; ADR-0029 BB2: волна уступки поднимается, когда автобус в кармане ждёт выезда дольше этого; 0 - сразу). Дефолт 3
     "routes_explicit": [ { "stops": [ { "lane": int, "s": number, "kind": "curb|bay" } ], "headway_s": number } ]
   },
 
@@ -152,8 +164,14 @@
     "command_queue": 1024, "events": 4096,
     "max_signalized_nodes": int,
     "max_connectors": int,              // дефолт max_nodes * 16 (intersections.md §4)
-    "max_conflicts": int                // дефолт max_connectors * 6
-  }
+    "max_conflicts": int,               // дефолт max_connectors * 6
+    "max_peds": int, "max_residents": int, "max_ped_path_steps": 64,  // только при секции peds (§2.4)
+    "max_lots": int, "max_buildings": int, "max_city_residents": int, "skim_obs_capacity": 65536   // только при demand.model = "residents" (§2.6)
+  },
+
+  "peds": { ... },                      // необязательно: пешеходы и жители (ADR-0020), §2.4; нет секции — выключено
+  "tools": { ... },                     // необязательно: стоимости инструментов игрока и границы мира (4.3 T7), §2.8
+  "calendar": {}, "zoning": {}, "residents": {}, "economy": {}, "choice": {}   // необязательно и только при demand.model = "residents" (ADR-0011, §2.6)
 }
 ```
 
@@ -325,7 +343,132 @@ arterial_every / 2` (при дефолтах 5 на ось, 25 светофор�
 MOBIL; s1m реже (7) — средняя по большому городу, пробки локальны. `stress-1m` короче (10 мин) — он только фиксирует
 предел. Бюджеты s1k/s10k — в CI (bench-gate); s100k и s1m — отчётный прогон верификатора с порогом.
 
+### 2.4 Секция `peds` и пассажиры (этап 3.1, ADR-0020, `docs/design/pedestrians.md`)
+
+Секция необязательна. Без неё пешеходов, жителей, тротуаров и переходов нет, и всё побитово как раньше. `format_version` остаётся 2.
+
+```
+"peds": {                               // → PedDesc
+  "enabled": bool,                      // дефолт true, если секция есть
+  "count": int,                         // цель активных пешеходов (в пути, у переходов, на остановках, в автобусах)
+  "residents": int,                     // жителей-источников; дефолт 2 · count
+  "spawn_ramp_s": number,               // дефолт 120
+  "speed_kmh": [min, max],              // скорость пешехода, выбирается при старте поездки. Дефолт [4.0, 5.4]
+  "activity_s": [min, max],             // пребывание дома/на работе между поездками. Дефолт [600, 1800]
+  "walk_only_m": number,                // пешком без автобуса до (по центрам зон). Дефолт 800
+  "max_walk_to_stop_m": number,         // радиус остановок у зоны. Дефолт 500
+  "max_walk_m": number,                 // предел пешей ноги (запасной режим, поиск пути). Дефолт 1500
+  "sidewalk_width_m": number,           // дефолт 3
+  "crosswalk_width_m": number,          // дефолт 3
+  "arterial_crossings": "signal_only" | "all",   // переходы через артерии вне светофоров. Дефолт "signal_only"
+  "midblock_at_stops": bool,            // переход на перегоне у остановок на улицах. Дефолт true
+  "walk_s": number,                     // «Walk» пешеходной фазы по вызову. Дефолт 5
+  "clear_speed_kmh": number,            // скорость для расчёта «Clear». Дефолт 4.3 (1.2 м/с)
+  "max_close_s": number,                // нерегулируемый переход закрыт для машин не дольше. Дефолт 10
+  "car_window_s": number,               // окно машинам после max_close_s. Дефолт 5
+  "pathfind_budget_per_tick": int,      // дефолт 8
+  "work_budget_per_tick": int,          // релаксаций за тик. Дефолт 8000
+  "stuck_cross_s": number,              // порог ped_stuck у перехода. Дефолт 120
+  "stuck_stop_s": number                // порог ped_stuck на остановке. Дефолт max(3 · transit.headway_s, 900)
+}
+```
+
+`transit.passenger_model`: `"counter"` (ADR-0008, счётчик и `passenger_rate_per_min`) | `"agents"` (пассажиры — пешеходы). Дефолт:
+`"agents"`, если секция `peds` включена, иначе `"counter"`. `"agents"` без `peds` — ошибка загрузчика.
+`transit.bidirectional` (bool, дефолт false): к каждому из `n` маршрутов генератор добавляет парный обратный (индекс `n + r`) по тем же сегментам и остановкам в обратном порядке на встречной полосе (`S' = Len - S`). Владелец принял 2026-10-25: включать только в `*-peds`
+(`pedestrians.md` §17 п. 3, §4.7). Прямые маршруты не меняются; `max_bus_routes` и `max_bus_stops` нужно удвоить, иначе `InvalidTransit`.
+
+Ёмкости (обязательны при секции `peds`): `max_peds` ≥ `count · 1.3`, `max_residents` ≥ `residents`, `max_ped_path_steps` (дефолт 64). Без включённой секции эти ключи — ошибка загрузчика.
+Загрузчик переводит скорости в мм/тик (`round(kmh / 3.6 · 50)`), секунды — в тики, метры — в мм для `PedDesc`, где ядро ждёт целые.
+Сценарии: `s1k-peds.json` (s1k + `count` 2 000, `residents` 4 000), `s10k-peds.json` (s10k + `count` 12 000 (3.1f, подбор по Парето: pedestrians.md §5.10), `residents` 24 000, бюджет ≤ 4 мс при 2 потоках, `--view focus`). Оба: `transit.bidirectional = true`,
+`activity_s = [30, 120]` (пешие поездки короче 20 минут, а при стандартных 10–30 мин покоя готовых жителей не хватает, чтобы держать `count` активных; с автобусными ногами P4 баланс можно вернуть к дефолту), `max_peds`
+= `1.3 · count`, `max_residents` = `residents`, `max_ped_path_steps` = 64; остальное — как у `s1k.json`/`s10k.json`.
+
+### 2.6 Режим жителей: `demand.model = "residents"` (этап 3.2, ADR-0011/0021, `docs/design/zoning-demand.md` §16)
+`demand.model` получает третье значение `"residents"`: OD-генератор выключен (`vehicles.count` не действует), поездки приходят от жителей города. Обязательны `lod.cell_m` (сетка ячеек скимов; считается и при `lod.mode = "off"`) и ёмкости
+`max_lots`, `max_buildings`, `max_city_residents` (ключ `max_residents` занят заготовками `peds`), `skim_obs_capacity` (дефолт 65 536). Секции `calendar`, `zoning`, `residents`, `economy`, `choice` необязательны (дефолты спеки,
+`CityDesc.Default()`), неизвестные ключи - ошибка; вне режима жителей их наличие - ошибка. Единицы: метры -> мм, секунды -> тики (20 Гц) или децисекунды, доли -> Q16 (`round(float(v) · 65536)`), множители -> Q8,
+`choice.theta_*_per_s` -> `θ64 = θ/10 · 64 · 2^16`. `calendar.day_s * 20` кратно 288 (слот = 1/288 суток; дефолт 3 600 с = 72 000 тиков). Ключи сверх первой редакции спеки: `zoning.max_paint_m2`, `residents.match_per_tick`,
+`residents.vacate_days`, `residents.switch_ratio`, `residents.r_bias`, `economy.c_target_pct`, `choice.asc_nonworker_s`; ключи казны города `economy.*` (4.2, E1, `city-economy.md` §13: `city_budget`, `tax_r_pct`, `tax_c_profit_pct`, `tax_i_profit_pct`, `land_tax_bp_day`, `bus_fare`, `initial_city_balance_per_resident`, `interest_bp_day`, `credit_days`, `maint_road_per_lane_km_day {street, arterial}`, `maint_bus_day`, `maint_stop_day`, `lv_ref`, `lv_slope_per_min`, `lv_min`, `lv_max`, `lv_shift`, `vot_pct`, `res_buffer_days`, `firm_buffer_days`, `payout_shift`, `evict_debt_days`, `budget_ewma_shift`, `undo_refund_s`, `max_tax_bp`, `max_land_bp_day`, `max_fare`; проценты `tax_*_pct` переводятся в базисные пункты `round(float(v) · 100)`, ставки не выше `max_tax_bp`, `land_tax_bp_day` не выше `max_land_bp_day`, `bus_fare` не выше `max_fare`, `lv_min <= lv_ref <= lv_max`, `vot_pct >= 1`; без `city_budget = true` режим выключен, а остальные ключи лишь хранятся; секция `economy` разрешена только при `residents`); `zoning.auto` - объект долей, `true` (доли по умолчанию) или `false`. `peds.source` (`"preform"`, дефолт, или
+`"city"`) задаёт источник поездок пешеходов; `"city"` требует `residents` и `peds`. Таблица типов зданий - из `buildings.json` пакетов (`format_version: 3`) либо базовая (`format_version: 2`).
+При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res-econ.json` (E2) - `s1k-res` с `economy.city_budget = true` и содержанием сети и автобусов (`maint_*`, подбор на s1k ≈ 90% дохода казны). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
+`peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
+
+**Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
+`access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
+`curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,
+доли в Q16 одним округлением (f64 -> f32, затем к ближайшему; ADR-0022). `capacities.max_parking` (только с секцией; 0 или нет ключа = `max_lots + max_buildings + 64`, раскрывается загрузчиком). Типы зданий `buildings.json`:
+`parking` (мест, дефолт 0), `parking_access` (`private`/`public`), `parking_fee`; `kind: "parking"` — гараж (ставит игрок, K6). Сценарий `scenarios/s1k-res-park.json` = `s1k-res` + `"parking": {"model": "resource"}`.
+### 2.5 `format_version: 3` — пакеты (этап 4.5, ADR-0015, `docs/design/modding.md` §3.4)
+
+Загрузчик принимает 2 и 3. Отличия v3 от v2:
+- `"packages": ["base", ...]` обязателен; ключ `vehicle_types_file` в v3 — ошибка `UnknownKey`. Типы ТС берутся из каталога
+  набора пакетов (`content/<id>/vehicles.json`) в порядке загрузки пакетов, `ScenarioDesc.VehicleTypes` — весь каталог
+  (`base`: `car` = 0, `bus` = 1).
+- Ссылки на типы — полные id (`base:vehicle/car`) или сокращение `vehicle/car` (ищется в `base`) в `vehicles.type_mix` и
+  `transit.bus_type`. Дефолты: `type_mix` — тип 0 набора, `bus_type` — `base:vehicle/bus`.
+  Пакет вне набора — `UndeclaredDependency`, нет ассета — `UnknownAssetRef`.
+- `city.road_assets` (`street`/`arterial` → id типа дороги) пока только проверяется.
+- Остальные секции (включая `peds`) без изменений: сценарий v3 даёт тот же `ScenarioDesc`, что v2 (приёмка M2).
+- `scenarios/s1k-v3.json`, `s10k-v3.json` — копии для тестов `BasePackageGoldenTests`; остальные файлы остаются v2.
+  Сценарий v2 на встроенных типах поднимается чистой функцией `FormatUpgrades.ScenarioV2ToV3` (в загрузчик она не встроена).
+- Каталоги пакетов: `ScenarioLoader.LoadInfo(path, searchDirs)`; по умолчанию — `content/` от корня репозитория.
+
+### 2.7 `timeline` и `api_version` (этап 4.5, M9, `modding.md` §3.5)
+
+Необязательные ключи верхнего уровня, в v2 и v3 (в `ScenarioDesc` не входят: `LoadedScenario.Timeline`). Сценарий без них даёт прежний `ScenarioDesc`.
+```json
+"api_version": 1,
+"timeline": [
+  { "tick": 50,  "cmd": { "kind": "set_node_control", "node": 0, "control": "signal" } },
+  { "tick": 100, "cmd": { "kind": "set_signal_plan", "node": 0, "mode": "fixed", "green_ticks": [200, 200], "yellow_ticks": 40, "all_red_ticks": 20 } },
+  { "tick": 300, "cmd": { "kind": "build_road", "a": [2000, 2000], "b": [2000, 2400], "speed_mps": 13.5, "lanes_ab": 1, "lanes_ba": 1 } },
+  { "tick": 300, "cmd": { "kind": "build_road", "a": [0, 0], "b": [200, 0], "road": "base:road/street_2" } }
+]
+```
+- `api_version` (число или semver-строка; сравнивается MAJOR) должен равняться `CoreInfo.ApiVersion` (сейчас 1), иначе `ApiVersionMismatch`.
+  `timeline` без `api_version` - `MissingKey`. `tick` >= 0, не убывает (`TimelineUnsorted`); одинаковые `tick` идут в порядке файла.
+- Команда ставится в очередь, когда `sim.Tick == tick`, перед `Step`, первый тик которого - `tick` (хэш равен ручному `Enqueue` в те же тики).
+  Просроченные записи (после прогрева) ставятся при первой подаче. Подаёт `TimelineRunner` (`Sim.Scenarios`): `run`, `hash`, `bench` (в том числе в прогреве).
+- `cmd.kind` - snake_case имя `CommandKind` (`build_road`, `spawn_trip`, `set_signal_plan`, `create_bus_route`, `append_bus_stop`, `spawn_bus`,
+  `select_vehicle`, `clear_selection`, `set_target_vehicle_count`, `set_ped_target`, `set_node_control`, `paint_zone`, `set_trip_execution`,
+  `remove_road`, `upgrade_road`, `split_road`, `set_arm_control`, `set_turn_ban`, `set_lane_flags`, `insert_bus_stop`, `remove_bus_stop`,
+  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
+  неизвестный ключ - ошибка с путём (`$.timeline[3].cmd.bogus: unknown key`). Единицы - как в ядре (метры, м/с `speed_mps`, тики `*_ticks`); точки `[x, z]`.
+  Ссылка на сущность - `{ "index": i, "generation": g }` (`generation` 0 = без проверки). Тип дороги: `road_kind` (`street`/`arterial`), потому что `kind` занят видом команды.
+- `build_road.road` (только v3) разворачивается хостом в вид/полосы/скорость каталога; явные поля команды перекрывают. `vehicle_type` - имя типа (v2) или id (v3).
+- Команды, которых ядро ещё не умеет (инструменты T3+, флаги `auto_split`/`curve`), не ломают прогон: ядро отвечает `CommandRejected(NotSupported)`,
+  `TimelineRunner.Rejects` и итоговая строка `timeline: N/M commands enqueued, R rejected, D dropped` в `run`/`hash` их перечисляют.
+
+### 2.8 Секция `tools` (этап 4.3, T7, `docs/design/player-tools.md` §7, §11)
+
+Необязательна; значения - заглушки до баланса экономики 4.2. Все деньги - целые единицы бюджета. В сейв и хэш не входит: хост ставит заново после `Load` (`Simulation.SetToolsConfig`).
+
+```jsonc
+"tools": {
+  "costs": {
+    "road_per_m_lane": { "street": 10, "arterial": 20 },  // за метр длины на полосу (обе стороны считаются)
+    "curve_factor_pct": 120,        // кривая = прямая x pct/100 (1..1000)
+    "node_signal": 500, "arm_sign": 50, "turn_ban": 100, "bus_stop": 200, "bus_route": 1000,
+    "demolish_refund_pct": 50,      // снос: возврат % стоимости постройки (0..100); Cost превью < 0
+    "upgrade_refund_pct": 50
+  },
+  "inverse_capacity": 4096,   // команд в буфере обратных записей за Step (0/нет - 4096)
+  "world_bounds": { "min_x": -3000, "min_z": -3000, "max_x": 3000, "max_z": 3000 }   // нет - bounding box сети + 2 км (OutOfBounds)
+}
+```
+Нет секции - те же значения по умолчанию, что в примере (кроме `world_bounds`). Нулевой `ToolsDesc` ядра (тесты) - всё бесплатно. `tools.preview_detour_work` (спека §7.3) пока не используется:
+связность в превью считается Tarjan'ом без ограниченного A*-объезда.
+
+### 2.9 Профили дорог: `road_profiles_file` (RP1, ADR-0030, `docs/design/road-profiles.md`)
+- Корневой ключ `road_profiles_file` (путь от каталога сценария) включает режим профилей; без него режим `legacy` (прежняя геометрия, хэши и сейвы без изменений). Формат каталога - `scenarios/road-profiles.json`, `format_version: 1`.
+- С каталогом генератору обязателен `city.profiles: {"street": id, "arterial": id}` (вид профиля должен совпасть), а каждому сегменту явной сети - `profile: id` (+ необязательный `mirrored: true`);
+  `lanes_ab`/`lanes_ba`/`kind` выводятся из профиля (с учётом `mirrored`), а если заданы - обязаны совпасть. Без каталога эти ключи - ошибка.
+- Тесты и golden подменяют файл каталога через `ScenarioOverrides.Profiles` (`tests/fixtures/road-profiles.fixture.json`); подмена действует, только если сценарий сам объявил `road_profiles_file`.
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
+
+В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.
 
 ```json
 {

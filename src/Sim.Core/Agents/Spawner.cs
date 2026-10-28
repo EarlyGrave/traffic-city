@@ -55,7 +55,11 @@ internal static class Spawner
             Init(w);
         }
 
-        Generate(w);
+        if (w.City == null)
+        {
+            Generate(w);   // 2a: OD-генератор; в режиме жителей поездки приходят от города (zoning-demand.md §4.1, §12)
+        }
+
         Dispatch(w);
     }
 
@@ -68,7 +72,7 @@ internal static class Spawner
         for (int z = 0; z < net.ZoneCount; z++)
         {
             ref readonly ZoneData zd = ref net.Zones[z];
-            if (zd.SpawnLaneCount <= 0)
+            if (net.OpenZoneLaneCount(z) <= 0)   // 4.3, T4: полосы, закрытые дренажем, не считаются
             {
                 continue;
             }
@@ -171,7 +175,7 @@ internal static class Spawner
 
             from = pairs[pick].FromZone;
             to = pairs[pick].ToZone;
-            if ((uint)from >= (uint)net.ZoneCount || (uint)to >= (uint)net.ZoneCount || net.Zones[from].SpawnLaneCount <= 0)
+            if ((uint)from >= (uint)net.ZoneCount || (uint)to >= (uint)net.ZoneCount || net.OpenZoneLaneCount(from) <= 0)
             {
                 return false;
             }
@@ -198,8 +202,7 @@ internal static class Spawner
             }
         }
 
-        ref readonly ZoneData zf = ref net.Zones[from];
-        int lane = net.ZoneLanes[zf.FirstSpawnLane + (int)w.RngSpawn.NextBelow((uint)zf.SpawnLaneCount)];
+        int lane = net.OpenZoneLane(from, (int)w.RngSpawn.NextBelow((uint)net.OpenZoneLaneCount(from)));
         trip = new PendingTrip
         {
             FromZone = from,
@@ -249,7 +252,7 @@ internal static class Spawner
         for (int z = 0; z < zc; z++)
         {
             ref readonly ZoneData zd = ref net.Zones[z];
-            float v = zd.SpawnLaneCount > 0 && ClassMatches(in zd, originClass) ? zd.Weight : 0f;
+            float v = net.OpenZoneLaneCount(z) > 0 && ClassMatches(in zd, originClass) ? zd.Weight : 0f;
             wt[z] = v;
             total += v;
         }
@@ -270,7 +273,7 @@ internal static class Spawner
             {
                 ref readonly ZoneData zd = ref net.Zones[z];
                 float v = 0f;
-                if (z != from && zd.SpawnLaneCount > 0 && ClassMatches(in zd, destClass))
+                if (z != from && net.OpenZoneLaneCount(z) > 0 && ClassMatches(in zd, destClass))
                 {
                     float dx = zd.Center.X - c0.X;
                     float dz = zd.Center.Z - c0.Z;
@@ -423,6 +426,11 @@ internal static class Spawner
                     continue; // маршрут начинается с этого направленного сегмента: соседние полосы зоны на других сегментах не подходят
                 }
 
+                if (net.LaneClosed(lane))
+                {
+                    continue; // полоса закрыта дренажем (4.3, T4): въезд запрещён и для появления
+                }
+
                 if (TryPlace(w, in trip, in t, lane, s, z.IsExternal != 0))
                 {
                     return true;
@@ -436,12 +444,41 @@ internal static class Spawner
         {
             w.Counters.TripsDropped++;
             w.Routes.Free(new RouteHandle(trip.Route, trip.RouteGen));
+            if (trip.ResidentRef != 0)
+            {
+                City.TripLegs.OnTripDropped(w, trip.ResidentRef - 1, in trip);
+            }
+
             return true;
         }
 
         float sCmd = trip.FromS > s ? trip.FromS : s;
         float len = net.Lanes[trip.FromLane].Length;
-        return TryPlace(w, in trip, in t, trip.FromLane, sCmd < len ? sCmd : len, false);
+        float s0 = sCmd < len ? sCmd : len;
+        if (TryPlace(w, in trip, in t, trip.FromLane, s0, false))
+        {
+            return true;
+        }
+
+        if (trip.ResidentRef != 0 && w.City?.Parking != null)
+        {
+            // Выезд из середины полосы (parking.md §6): нет зазора - попытки на 8 и 16 м назад (дальше от узла - правило горизонта ворот не нарушается), иначе поездка ждёт следующего тика.
+            for (int k = 1; k <= 2; k++)
+            {
+                float back = s0 - (8f * k);
+                if (back < s)
+                {
+                    break;
+                }
+
+                if (TryPlace(w, in trip, in t, trip.FromLane, back, false))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool TryPlace(World w, in PendingTrip trip, in VehicleTypeDesc t, int lane, float s, bool moving) =>
@@ -488,6 +525,11 @@ internal static class Spawner
         else
         {
             w.Occupancy.FindNeighbours(lane, s, out ahead, out behind);
+            if (behind != -1 && trip.ResidentRef != 0 && w.City?.Parking != null && Rules.Intersections.GateRules.IsGranted(v, behind))
+            {
+                return false;   // выезд из середины полосы (parking.md §6): допущенные ворот - префикс головы полосы, новая машина не встаёт перед допущенной (сверка активных множеств ворот)
+            }
+
             if (ahead != -1)
             {
                 gapAhead = v.S[ahead] - v.Length[ahead] - s;
@@ -539,6 +581,17 @@ internal static class Spawner
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;
         w.Emit(SimEventKind.VehicleSpawned, 0, h.Index, h.Generation);
+        if (trip.ResidentRef != 0)
+        {
+            if (trip.ParkRef != 0)
+            {
+                v.ParkFac[i] = trip.ParkRef - 1;   // резерв места цели переходит от заявки к машине (Reserved не меняется, parking.md §5)
+                v.ParkFacGen[i] = trip.ParkGen;
+            }
+
+            City.TripLegs.OnVehiclePlaced(w, trip.ResidentRef - 1, i);   // машина жителя: ссылка, InLeg, дедлайн WaitDepart снят
+        }
+
         return true;
     }
 }

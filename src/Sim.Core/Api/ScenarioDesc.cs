@@ -18,7 +18,13 @@ public struct ScenarioDesc
     public TransitDesc Transit;
     public RulesDesc Rules;
     public LodDesc Lod;                    // уровни детализации (ADR-0013, sim-lod.md §4); Mode = Off - LOD нет, поведение прежнее
+    public PedDesc Peds;                   // пешеходы и жители (ADR-0020, pedestrians.md); Enabled = false (по умолчанию) - ничего не выделяется и не меняется
+    public ToolsDesc Tools;                // инструменты игрока: стоимости и границы мира (player-tools.md §11); нули - бесплатно, границы по умолчанию
+    public CityDesc Town;                  // режим жителей (ADR-0011, zoning-demand.md §16): читается только при Demand.Model = Residents; иначе нули и ничего не выделяется
+    public ParkingDesc Parking;            // парковка как ресурс (ADR-0026, parking.md §14): читается только при Demand.Model = Residents и Parking.Enabled; нулевая структура = режима нет
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
+    public float WorldGridOriginX, WorldGridOriginZ;   // начало мировой сетки 8 м (ADR-0030, road-profiles.md §4.1), м; по умолчанию 0. Хранится в сейве (PARM), в хэш не входит: поведение задаст RP5/RP9
+    public RoadProfilesDesc RoadProfiles;  // каталог профилей дорог (ADR-0030, road-profiles.md); Profiles = null - режим legacy: прежняя геометрия, хэши и сейвы побитово прежние
 }
 
 public struct SimCapacities
@@ -36,6 +42,14 @@ public struct SimCapacities
     public int MaxSignalizedNodes;
     public int MaxConnectors;              // connector-полос всего; по умолчанию MaxNodes * 16
     public int MaxConflicts;               // записей ConflictEntry; по умолчанию MaxConnectors * 6
+    public int MaxPeds;                    // только при Peds.Enabled (pedestrians.md §12): >= Peds.Count * 1.3
+    public int MaxResidents;               // только при Peds.Enabled: >= Peds.Residents
+    public int MaxPedPathSteps;            // только при Peds.Enabled: шагов пути пешехода (дефолт загрузчика 64)
+    public int MaxLots;                    // только при Demand.Model = Residents (zoning-demand.md §2, §16): участков (JSON max_lots)
+    public int MaxBuildings;               // зданий (max_buildings)
+    public int MaxCityResidents;           // жителей города (JSON max_city_residents: ключ max_residents занят заготовками peds)
+    public int SkimObsCapacity;            // записей накопителя наблюдений скимов (skim_obs_capacity)
+    public int MaxParking;                 // только при Parking.Enabled (parking.md §14, capacities.max_parking): объектов стоянки; 0 = MaxLots + MaxBuildings + 64 (ParkingStore.CapacityFor)
 }
 
 /// <summary>
@@ -149,11 +163,16 @@ public struct CityGenDesc
     public float NodeJitter;               // фоновый джиттер всех внутренних узлов, м (дефолт 0)
     public float RemovedStreetShare;       // 0..0.5
     public int ConnectorSamples;
+    public float CornerRadius;             // city.corner_radius_m, м (ADR-0028): 0 = дефолт 6 м, < 0 = выключено (фиксированный отступ 7 м, как до ADR-0028)
     public CitySignals Signals;
     public MinorControl MinorControl;
     public CitySignalMode SignalMode;                  // city.signal_mode; 0 = fixed, 1 = adaptive (дефолт загрузчика сценариев)
     public CitySignalCoordination SignalCoordination;  // city.signal_coordination; 0 = legacy (формула этапа 1, дефолт), 1 = alternate, 2 = none
     public float ProgressionSpeedFactor;               // city.progression_speed_factor: v_p = ArterialSpeed * factor (0 = 1.0), калибровка волны alternate
+    public int StreetProfile;                          // city.profiles.street: индекс профиля + 1 (0 - нет; в режиме профилей обязателен); число полос - из профиля
+    public int ArterialProfile;                        // city.profiles.arterial: индекс профиля + 1
+    public bool SnapNodes;                             // city.snap_nodes (road-profiles.md §5): узлы на мировую сетку module_m, шаг решётки = block_m точно; дефолт загрузчика: true в режиме профилей, иначе false (прежнее поведение)
+    public LandUseDesc LandUse;                        // city.landuse (visual-style.md §8, ADR-0027): парки/вода; нулевая структура = выключено
 }
 
 // ---- network (явная сеть; ссылки на узлы - индексы в Nodes) ----
@@ -170,12 +189,15 @@ public struct SegmentDesc
     public int LanesAB, LanesBA;
     public float SpeedLimit;               // м/с
     public RoadKind Kind;
+    public int Profile;                    // индекс профиля + 1 (0 - нет); в режиме профилей обязателен, LanesAB/LanesBA/Kind тогда выводятся из профиля (с учётом Mirrored) и обязаны совпасть
+    public bool Mirrored;                  // сегмент A→B построен против направления рисования профиля (SegmentFlags.Mirrored)
 }
 
 public struct NetworkDesc
 {
     public NodeDesc[] Nodes;
     public SegmentDesc[] Segments;
+    public float CornerRadius;             // network.corner_radius_m, м (ADR-0028): 0 = дефолт 6 м, < 0 = выключено (фиксированный отступ 7 м)
 }
 
 // ---- demand (вкл. секцию "vehicles" JSON: целевое число машин, разгон, смесь типов) ----
@@ -184,6 +206,7 @@ public enum DemandModel : int
 {
     Gravity = 0,
     Uniform = 1,
+    Residents = 2,                         // ADR-0011: поездки от жителей города (zoning-demand.md); OD-генератор выключен, секции CityDesc обязательны
 }
 
 public struct ZoneDesc
@@ -258,4 +281,74 @@ public struct TransitDesc
     /// <summary>Контрольные остановки: каждая N-я остановка маршрута (1 - все, конечная не удерживает).</summary>
     public int HoldEveryN;
     public BusRouteDesc[] RoutesExplicit;  // необязательные явные маршруты
+
+    /// <summary>Модель пассажиров (ADR-0020); дефолт загрузчика: <see cref="PassengerModel.Agents"/> при включённых <c>peds</c>, иначе <see cref="PassengerModel.Counter"/>.</summary>
+    public PassengerModel PassengerModel;
+
+    /// <summary>Парный обратный маршрут к каждому (scenario-format.md §2.4, pedestrians.md §17 п. 3). P1: только поле; генератор его пока не читает.</summary>
+    public bool Bidirectional;
+
+    /// <summary>Модель кармана остановок <c>Bay</c> (ADR-0029, bus-bays.md); нулевая структура - <see cref="Api.BayModel.Curb"/> (прежнее поведение), дефолт загрузчика сценариев - <see cref="Api.BayModel.Virtual"/>.</summary>
+    public BayModel BayModel;
+
+    /// <summary>Ожидание автобуса в кармане до уступки ведомых, тики (BB2; в BB1 только хранится). Дефолт загрузчика 3 с = 60.</summary>
+    public int BayYieldTicks;
+}
+
+/// <summary>
+/// Модель кармана остановок <c>Bay</c> (ADR-0029). <c>Curb</c> - как раньше: автобус стоит на полосе и блокирует её. <c>Virtual</c> - автобус снимается со списка полосы на время стоянки
+/// и выезжает по gap acceptance. <c>Lane</c> зарезервировано под настоящую полосу-карман (<see cref="LaneKind.BusBay"/>, вариант B): пока ведёт себя как <c>Curb</c>.
+/// </summary>
+public enum BayModel : int
+{
+    Curb = 0,
+    Virtual = 1,
+    Lane = 2,
+}
+
+/// <summary>Модель пассажиров автобусов (ADR-0020): счётчик ADR-0008 или пассажиры-пешеходы.</summary>
+public enum PassengerModel : int
+{
+    Counter = 0,
+    Agents = 1,
+}
+
+/// <summary>Переходы через артерии вне светофоров (pedestrians.md §2.1, §17 п. 2).</summary>
+public enum ArterialCrossings : int
+{
+    SignalOnly = 0,
+    All = 1,
+}
+
+/// <summary>
+/// Секция сценария <c>peds</c> (scenario-format.md §2.4, pedestrians.md §12). Единицы ядра уже целые: мм, мм/тик (при 20 Гц), тики.
+/// Нулевая структура = выключено. Нули в остальных полях (desc, собранный вручную) заменяются дефолтами спеки
+/// (<c>Peds.PedNetwork.WithDefaults</c>). P1 использует только геометрию и политику переходов; поведение агентов - P2+.
+/// </summary>
+public struct PedDesc
+{
+    public bool Enabled;
+    public int Count;                      // цель активных пешеходов
+    public int Residents;                  // жителей-источников; дефолт загрузчика 2 * Count
+    public int SpawnRampTicks;             // дефолт 120 с
+    public int SpeedMinMmPerTick;          // round(км/ч / 3.6 * 50); дефолт 4.0 км/ч
+    public int SpeedMaxMmPerTick;          // дефолт 5.4 км/ч
+    public int ActivityMinTicks;           // дефолт 600 с
+    public int ActivityMaxTicks;           // дефолт 1800 с
+    public int WalkOnlyMm;                 // дефолт 800 м
+    public int MaxWalkToStopMm;            // дефолт 500 м
+    public int MaxWalkMm;                  // дефолт 1500 м
+    public int SidewalkWidthMm;            // дефолт 3000
+    public int CrosswalkWidthMm;           // дефолт 3000
+    public ArterialCrossings ArterialCrossings;   // дефолт SignalOnly
+    public bool MidblockAtStops;           // дефолт true (загрузчик); для desc, собранного вручную, задаётся явно
+    public int WalkTicks;                  // «Walk» пешеходной фазы; дефолт 5 с
+    public int ClearSpeedMmPerTick;        // дефолт 4.3 км/ч
+    public int MaxCloseTicks;              // дефолт 10 с
+    public int CarWindowTicks;             // дефолт 5 с
+    public int PathfindBudgetPerTick;      // дефолт 8
+    public int WorkBudgetPerTick;          // дефолт 8000
+    public int StuckCrossTicks;            // дефолт 120 с
+    public int StuckStopTicks;             // дефолт max(3 * transit.headway_s, 900) с
+    public PedSource Source;               // peds.source (zoning-demand.md §4.1): Preform - заготовка pedestrians.md §3 (дефолт), City - жители города (Z2); City требует Demand.Model = Residents
 }

@@ -104,6 +104,44 @@ public readonly ref struct NetworkView
     public readonly ReadOnlySpan<BusRouteData> BusRoutes;
     public readonly ReadOnlySpan<int> BusRouteStops;    // индексы остановок, диапазоны из BusRouteData
 
+    // Сеть пешеходов (ADR-0020, pedestrians.md §2.4): пусто, если секции peds нет. Статика: читать после Create/Load и при смене Version.
+    public readonly ReadOnlySpan<PedEdgeData> Sidewalks;   // тротуары и обходы тупиков (полилинии в PedEdgePoints)
+    public readonly ReadOnlySpan<PedEdgeData> Crossings;   // переходы узлов и перегонов (по два конца в PedEdgePoints)
+    public readonly ReadOnlySpan<Vec2> PedEdgePoints;
+    public readonly ReadOnlySpan<Vec2> PedCorners;         // позиции углов узлов, индекс = слот рукава в NodeArms (углы обходов тупиков - в полилиниях)
+    public readonly float SidewalkWidthM;
+    public readonly float CrosswalkWidthM;
+
+    // Каталог профилей и мировая сетка (RP10b, road-profiles.md §3.1): плоские blittable-срезы, живут вместе с миром и верны после Load (каталог из блока RPRF,
+    // начало сетки из PARM). Режим legacy: RoadProfiles/ProfileElems пусты, ModuleMm = 0, начало (0, 0). Статика: читать после Create/Load и при смене Version.
+    public readonly ReadOnlySpan<RoadProfileData> RoadProfiles;
+    public readonly ReadOnlySpan<RoadElemData> ProfileElems;   // диапазоны из RoadProfileData.FirstElem/ElemCount
+    public readonly int ModuleMm;                              // module_m * 1000; 0 - legacy
+    public readonly float GridOriginX, GridOriginZ;            // начало мировой сетки, м
+
+    // ---- живость и handle'ы (4.3, T2; player-tools.md §3 п. 5): Nodes/Segments/... идут до HighWater пула, мёртвые слоты (Generation чётное) клиент пропускает ----
+
+    /// <summary>Узел <paramref name="i"/> существует (<c>Generation</c> нечётное). Индекс вне диапазона - false.</summary>
+    public bool IsNodeAlive(int i) => (uint)i < (uint)Nodes.Length && NetworkAlive.IsAlive(Nodes[i].Generation);
+
+    public bool IsSegmentAlive(int i) => (uint)i < (uint)Segments.Length && NetworkAlive.IsAlive(Segments[i].Generation);
+
+    /// <summary>Полоса живая (мёртвая и запасная полоса блока имеет <c>Generation == 0</c>).</summary>
+    public bool IsLaneAlive(int i) => (uint)i < (uint)Lanes.Length && NetworkAlive.IsAlive(Lanes[i].Generation);
+
+    public bool IsBusStopAlive(int i) => (uint)i < (uint)BusStops.Length && NetworkAlive.IsAlive(BusStops[i].Generation);
+
+    public bool IsBusRouteAlive(int i) => (uint)i < (uint)BusRoutes.Length && NetworkAlive.IsAlive(BusRoutes[i].Generation);
+
+    /// <summary>Handle узла для команд и после <c>NodeRemapped</c>: индекс + текущее поколение. Вне диапазона - <see cref="EntityRef.None"/>.</summary>
+    public EntityRef NodeRef(int i) => (uint)i < (uint)Nodes.Length ? new EntityRef(i, Nodes[i].Generation) : EntityRef.None;
+
+    public EntityRef SegmentRef(int i) => (uint)i < (uint)Segments.Length ? new EntityRef(i, Segments[i].Generation) : EntityRef.None;
+
+    public EntityRef BusStopRef(int i) => (uint)i < (uint)BusStops.Length ? new EntityRef(i, BusStops[i].Generation) : EntityRef.None;
+
+    public EntityRef BusRouteRef(int i) => (uint)i < (uint)BusRoutes.Length ? new EntityRef(i, BusRoutes[i].Generation) : EntityRef.None;
+
     public NetworkView(
         int version,
         ReadOnlySpan<NodeData> nodes,
@@ -114,7 +152,18 @@ public readonly ref struct NetworkView
         ReadOnlySpan<ZoneData> zones,
         ReadOnlySpan<BusStopData> busStops,
         ReadOnlySpan<BusRouteData> busRoutes,
-        ReadOnlySpan<int> busRouteStops)
+        ReadOnlySpan<int> busRouteStops,
+        ReadOnlySpan<PedEdgeData> sidewalks = default,
+        ReadOnlySpan<PedEdgeData> crossings = default,
+        ReadOnlySpan<Vec2> pedEdgePoints = default,
+        ReadOnlySpan<Vec2> pedCorners = default,
+        float sidewalkWidthM = 0f,
+        float crosswalkWidthM = 0f,
+        ReadOnlySpan<RoadProfileData> roadProfiles = default,
+        ReadOnlySpan<RoadElemData> profileElems = default,
+        int moduleMm = 0,
+        float gridOriginX = 0f,
+        float gridOriginZ = 0f)
     {
         Version = version;
         Nodes = nodes;
@@ -126,6 +175,17 @@ public readonly ref struct NetworkView
         BusStops = busStops;
         BusRoutes = busRoutes;
         BusRouteStops = busRouteStops;
+        Sidewalks = sidewalks;
+        Crossings = crossings;
+        PedEdgePoints = pedEdgePoints;
+        PedCorners = pedCorners;
+        SidewalkWidthM = sidewalkWidthM;
+        CrosswalkWidthM = crosswalkWidthM;
+        RoadProfiles = roadProfiles;
+        ProfileElems = profileElems;
+        ModuleMm = moduleMm;
+        GridOriginX = gridOriginX;
+        GridOriginZ = gridOriginZ;
     }
 }
 

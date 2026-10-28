@@ -12,7 +12,8 @@ namespace Sim.Core.Tests.Network;
 /// <summary>
 /// Канонический порядок раскладки сети (save-format.md §13 п. 5): connector'ы и конфликты (<see cref="ConnectorStore"/>) лежат по возрастанию индекса узла, входы/выходы
 /// оверлея - по возрастанию DirSeg с запасом <see cref="Overlay.CapFor"/>, то есть раскладка живого мира после любой цепочки <c>BuildRoad</c> совпадает с раскладкой,
-/// построенной заново по тем же узлам и сегментам.
+/// построенной заново по тем же узлам и сегментам. Свойство относится к сетям без правок (4.3, player-tools.md §3 п. 3): после первой структурной правки раскладка - состояние
+/// (дыры, free-list'ы), его покрывают <c>ToolStateTests</c> (сейв-загрузка-сейв побайтно, <c>VerifyDerived</c>); тест ниже правок сети не делает.
 /// </summary>
 public class CanonicalLayoutTests
 {
@@ -159,8 +160,9 @@ public class CanonicalLayoutTests
     }
 
     [Fact]
-    public void BuildRoad_ToUnbuiltNodeBelowBuiltOnes_IsRejectedWithoutChanges()
+    public void BuildRoad_ToUnbuiltNodeBelowBuiltOnes_IsAccepted_AsLayoutEdit()
     {
+        // 4.3, T3: раньше такая команда отклонялась (раскладка по возрастанию узлов); теперь это правка раскладки: проходит, ставит ToolsTouched, производные согласованы.
         ScenarioDesc d = Desc();
         using Simulation sim = Simulation.Create(in d);
         World w = sim.World;
@@ -169,14 +171,14 @@ public class CanonicalLayoutTests
         int unbuilt = w.Builder.FindNode(new Sim.Core.Util.Vec2(10, 30));
         Assert.True(unbuilt >= 0 && w.Net.Nodes[unbuilt].FirstArm < 0);
         Assert.True(unbuilt < w.Net.HighestBuiltNode());
+        Assert.Equal(0, w.ToolsTouched);
 
-        int nodes = w.Net.NodeCount;
-        int segs = w.Net.SegmentCount;
         long rejected = Rejected(sim);
         Apply(sim, Road(10, 30, 10, 90));                        // присоединение к «низкому» неотстроенному узлу
-        Assert.Equal(rejected + 1, Rejected(sim));
-        Assert.Equal(nodes, w.Net.NodeCount);
-        Assert.Equal(segs, w.Net.SegmentCount);
+        Assert.Equal(rejected, Rejected(sim));
+        Assert.True(w.Net.Nodes[unbuilt].FirstArm >= 0);
+        Assert.Equal(1, w.ToolsTouched);
+        Assert.Null(w.VerifyDerived());
     }
 
     [Fact]

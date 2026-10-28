@@ -23,6 +23,12 @@ namespace Sim.Headless.Tests;
 /// (<c>--signal-mode fixed --signal-coordination legacy</c> у команды <c>hash</c>) и не изменились; хэши дефолта (adaptive) - в <c>AdaptiveGoldenHashTests</c>.
 /// 2.5 (удержание автобусов, ADR-0008): <c>hold_alpha</c> по умолчанию 0.9, хэш остановок включает <c>LastDepartTick</c> при удержании - все эталоны (и в
 /// <c>AdaptiveGoldenHashTests</c>) сняты заново; при <c>hold_alpha = 0</c> прежние константы совпадали побитово (проверено до смены дефолта).
+/// ADR-0028 (отступ рукава по ширине поперечной дороги + <c>corner_radius</c> 6 м): другая геометрия полос и connector'ов - все эталоны (и в <c>AdaptiveGoldenHashTests</c>)
+/// сняты заново (одинаковы при 1/2/3 потоках); с <c>city.corner_radius_m = 0</c> сеть побитово прежняя (<c>CornerRadiusTests.Disabled_ReproducesLegacyNetwork</c>).
+/// Интергрин по длине коробки (ADR-0028, all-red + (W - 14 м) / v): светофорные узлы s1k/s10k получают +15 тиков all-red, эталоны сняты ещё раз;
+/// с corner_radius_m = 0 хэши до ADR-0028 воспроизводятся (<c>LegacyCornerGoldenTests</c>). Полная загрузка s10k: tick=6100 1c87c60a48e9891e, tick=6300 66f87e2b42445be1 (до ADR-0029).
+/// ADR-0029 (виртуальный карман остановок, дефолт загрузчика <c>transit.bay_model = "virtual"</c>): в хэш добавлен раздел «карманы» и меняется поведение автобусов на остановках Bay -
+/// эталоны сняты заново отдельным коммитом (при 1/2/3 потоках одинаковы); с <c>bay_model = "curb"</c> эталоны до ADR-0029 воспроизводятся (<c>LegacyCornerGoldenTests</c>).
 /// </summary>
 public sealed class HotPathGoldenHashTests : IDisposable
 {
@@ -51,7 +57,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S1k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s1k", threads);
-        string[] expected = { "8e7670c4e70230d6", "5e8b5be6ec751616", "c141e37bf04ddfcb", "4079d8b13b566ce7" };
+        string[] expected = { "2af924566810da2f", "bf55c7d416e70bc8", "293a50c4eaa29f71", "558d3c3ef0b080e0" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(1000);
@@ -68,7 +74,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
     public void S10k_StateHash_MatchesGolden(int threads)
     {
         using Simulation sim = Create("s10k", threads);
-        string[] expected = { "d97664d172ab2725", "bd8865b113fb7aea", "bb180d853b599d66" };
+        string[] expected = { "968acda58db1f475", "b6de7d495370be2c", "4a215863ab2ef5ae" };
         for (int k = 0; k < expected.Length; k++)
         {
             sim.Step(200);
@@ -87,8 +93,8 @@ public sealed class HotPathGoldenHashTests : IDisposable
         Assert.Equal(0, code);
         string[] lines = o.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(2, lines.Length);
-        Assert.StartsWith("tick=1000 hash=8e7670c4e70230d6 ", lines[0], StringComparison.Ordinal);
-        Assert.StartsWith("tick=2000 hash=5e8b5be6ec751616 ", lines[1], StringComparison.Ordinal);
+        Assert.StartsWith("tick=1000 hash=2af924566810da2f ", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("tick=2000 hash=bf55c7d416e70bc8 ", lines[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -102,7 +108,7 @@ public sealed class HotPathGoldenHashTests : IDisposable
             lines[t - 1] = o.ToString();
         }
 
-        Assert.StartsWith("tick=1000 hash=8e7670c4e70230d6 ", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("tick=1000 hash=2af924566810da2f ", lines[0], StringComparison.Ordinal);
         Assert.Equal(lines[0], lines[1]);
         Assert.Equal(lines[0], lines[2]);
     }

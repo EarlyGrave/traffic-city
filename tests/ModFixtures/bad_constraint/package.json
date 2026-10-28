@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "id": "bad_constraint",
+  "version": "1.0.0",
+  "content_format": 1,
+  "requires": [
+    {
+      "id": "ok_alpha",
+      "version": "~1.0.0"
+    }
+  ]
+}

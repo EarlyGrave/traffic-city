@@ -3,6 +3,7 @@ using System.Numerics;
 using Sim.Core.Api;
 using Sim.Core.Gen;
 using Sim.Core.Network;
+using Sim.Core.Util;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -92,6 +93,21 @@ internal sealed class SignalStore
     public readonly byte[] SigLaneAxis;
     public readonly bool[] SigLaneLeft;      // среди connector'ов полосы есть Left/UTurn
 
+    // ---- пешеходная фаза (ADR-0020, pedestrians.md §6; объявлено в P2, логика - P3): состояние, в хэше (P3) и сейве SIGS ----
+    public const int XSlots = 8;             // переходов оси узла на слот SigX
+    public readonly ushort[] XWalkLeft;      // [c * XSlots] осталось тиков Walk
+    public readonly ushort[] XClearLeft;     // [c * XSlots] осталось тиков Clear
+    public readonly byte[] XServed;          // [c] маска переходов, обслуженных в этом зелёном
+
+    // ---- статика пешеходной фазы (производное от сети и PhaseMask, вне хэша и сейва; PedSignals.EnsureTables) ----
+    public readonly byte[] SigXCount;        // [c] переходов узла слота (<= XSlots)
+    public readonly byte[] PendingOther;     // [c] 1: в этом тике у зелёной оси есть вызов другой оси/стрелки (пишет StepAdaptive до чтения PedSignals.StepSlot; вне хэша и сейва)
+    public readonly int[] SigXIdx;           // [c * XSlots] индекс перехода (слот рукава)
+    public readonly sbyte[] SigXAxis;        // [c * XSlots] ось, в зелёном которой переход обслуживается (-1: нет встречной оси)
+    public readonly ushort[] SigXClear;      // [c * XSlots] длительность Clear, тики
+    public int SigXVersion = -1;             // NetworkStore.Version, для которой собраны таблицы
+    public int SigXBuiltCount = -1;
+
     private readonly int _defaultArrowGap;
 
     public SignalStore(int capacity, int arrowGapTicks = DefaultArrowGapTicks)
@@ -143,6 +159,14 @@ internal sealed class SignalStore
         SigLaneArm = new byte[c * MaxSigLanes];
         SigLaneAxis = new byte[c * MaxSigLanes];
         SigLaneLeft = new bool[c * MaxSigLanes];
+        XWalkLeft = new ushort[c * XSlots];
+        XClearLeft = new ushort[c * XSlots];
+        XServed = new byte[c];
+        SigXCount = new byte[c];
+        PendingOther = new byte[c];
+        SigXIdx = new int[c * XSlots];
+        SigXAxis = new sbyte[c * XSlots];
+        SigXClear = new ushort[c * XSlots];
     }
 
     public static ushort GreenOf(in SetSignalPlanCmd p, int k) => k switch
@@ -245,6 +269,53 @@ internal sealed class SignalStore
         };
     }
 
+    /// <summary>План по умолчанию для узла <paramref name="node"/>: <see cref="DefaultPlan(int, in RulesDesc, bool)"/> + надбавка all-red на очистку коробки (<see cref="ClearanceExtraTicks"/>, ADR-0028).</summary>
+    internal static SetSignalPlanCmd DefaultPlan(World w, int node, int phases, bool adaptive = true)
+    {
+        SetSignalPlanCmd p = DefaultPlan(phases, in w.Rules, adaptive);
+        p.AllRedTicks = (ushort)Math.Clamp(p.AllRedTicks + ClearanceExtraTicks(w.Net, node, w.Builder.Options), 0, ushort.MaxValue);
+        return p;
+    }
+
+    /// <summary>
+    /// Надбавка all-red узла на очистку коробки (ADR-0028): all-red по инженерной формуле <c>r = (W + L) / v</c>; базовый all-red (1 с) соответствует коробке
+    /// <c>W0 = 2 * NodeSetback</c> (14 м, до ADR-0028), поэтому <c>r(W) = r0 + (W - W0) / v</c>. <c>W = 2 * NodeData.Radius</c> - самый длинный проезд «прямо» через узел
+    /// (сумма отступов противоположных рукавов), <c>v</c> - наименьший лимит скорости рукавов узла (самый медленный подход очищает коробку дольше всех).
+    /// Тиков - вверх до целого. Коробка не шире <c>W0</c> (в том числе <c>corner_radius = 0</c>) - 0: поведение побитово прежнее. Узел без рукавов - 0.
+    /// </summary>
+    internal static int ClearanceExtraTicks(NetworkStore net, int node, in NetworkOptions o)
+    {
+        if ((uint)node >= (uint)net.NodeCount)
+        {
+            return 0;
+        }
+
+        ref readonly NodeData nd = ref net.Nodes[node];
+        float box = 2f * nd.Radius;
+        float box0 = 2f * o.NodeSetback;
+        if (!(box > box0) || nd.FirstArm < 0 || nd.ArmCount <= 0)
+        {
+            return 0;
+        }
+
+        float v = float.MaxValue;
+        for (int a = 0; a < nd.ArmCount; a++)
+        {
+            float lim = net.Segments[net.NodeArms[nd.FirstArm + a]].SpeedLimit;
+            if (lim < v)
+            {
+                v = lim;
+            }
+        }
+
+        if (!(v > 0f) || v == float.MaxValue)
+        {
+            return 0;
+        }
+
+        return DetMath.ToIntSat(MathF.Ceiling((box - box0) / v / PhysicsParams.DefaultDt));
+    }
+
     /// <summary>
     /// Подставляет дефолты <c>RulesDesc</c> вместо нулевых параметров (6.5): Adaptive - Green_k (MaxGreen), MinGreen, Gap, ArrowTrigger/Min/Max;
     /// Fixed со стрелкой - ArrowMax. Остальное - как в команде.
@@ -301,7 +372,7 @@ internal sealed class SignalStore
     /// Adaptive - ещё 1 &lt;= MinGreen &lt;= MaxGreen_k, Gap &gt;= 1, ArrowMin &lt;= ArrowMax, <c>CycleTicks == 0</c> (координация - S3) и при
     /// <paramref name="enforceRed"/> инвариант красного (5.6). Для Off/FlashYellow параметры цикла не проверяются.
     /// </summary>
-    public static bool IsValid(in SetSignalPlanCmd p, int axes, bool enforceRed = false)
+    public static bool IsValid(in SetSignalPlanCmd p, int axes, bool enforceRed = false, int pedGreenTicks = 0)
     {
         if (p.Mode == SignalMode.Off || p.Mode == SignalMode.FlashYellow)
         {
@@ -346,7 +417,7 @@ internal sealed class SignalStore
         {
             // Координация (6.7): 2 оси, C чётное, окно C/2 вмещает MinGreen, стрелку и два перехода. Инвариант красного даёт каркас окон, отдельно не проверяется.
             int arrowMax = arrows ? p.ArrowMaxTicks : 0;
-            return axes == 2 && (p.CycleTicks & 1) == 0 && (p.CycleTicks / 2) >= p.MinGreenTicks + arrowMax + (2 * yar) && MinGreenFits(in p, axes);
+            return axes == 2 && (p.CycleTicks & 1) == 0 && (p.CycleTicks / 2) >= Math.Max((int)p.MinGreenTicks, pedGreenTicks) + arrowMax + (2 * yar) && MinGreenFits(in p, axes);
         }
 
         for (int k = 0; k < axes; k++)
@@ -410,6 +481,13 @@ internal sealed class SignalStore
         CycleTicks[slot] = p.CycleTicks;
         Flags[slot] = p.Flags;
         Machine[slot] = 0;
+        XServed[slot] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(slot * XSlots) + j] = 0;
+            XClearLeft[(slot * XSlots) + j] = 0;
+        }
+
         if (p.Mode == SignalMode.Fixed || p.Mode == SignalMode.Adaptive)
         {
             for (int k = 0; k < MaxPhases; k++)
@@ -659,9 +737,162 @@ internal sealed class SignalStore
 
         BuildStatics(w, slot, node);
         ApplyPlan(slot, in resolved, w.Tick);
+        XServed[slot] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(slot * XSlots) + j] = 0;
+            XClearLeft[(slot * XSlots) + j] = 0;
+        }
+
+        SigXVersion = -1;
         w.Net.Nodes[node].Signal = slot;
         w.SignalCount = Count;
         return true;
+    }
+
+    /// <summary>Текущий план слота в виде команды (параметры, не состояние автомата): для перезапуска слота после перестройки узла (4.3, T3).</summary>
+    internal SetSignalPlanCmd ReadPlan(int slot)
+    {
+        var p = new SetSignalPlanCmd
+        {
+            Node = Node[slot],
+            Mode = Mode[slot],
+            OffsetTicks = OffsetTicks[slot],
+            PhaseCount = PhaseCount[slot],
+            YellowTicks = YellowTicks[slot],
+            AllRedTicks = AllRedTicks[slot],
+            MinGreenTicks = MinGreenTicks[slot],
+            GapTicks = GapTicks[slot],
+            ArrowTriggerTicks = ArrowTriggerTicks[slot],
+            ArrowMinTicks = ArrowMinTicks[slot],
+            ArrowMaxTicks = ArrowMaxTicks[slot],
+            CycleTicks = CycleTicks[slot],
+            Flags = Flags[slot],
+        };
+        for (int k = 0; k < MaxPhases; k++)
+        {
+            SetGreen(ref p, k, GreenTicks[(slot * MaxPhases) + k]);
+        }
+
+        return p;
+    }
+
+    /// <summary>Номера фаз рукавов слота: для каждого сегмента-рукава узла - фаза, чьей маске принадлежат его connector'ы (-1 - нет). Сравнение до и после перестройки узла.</summary>
+    internal void ArmPhases(World w, int slot, int node, Span<int> segs, Span<sbyte> phase, out int count)
+    {
+        NetworkStore net = w.Net;
+        ref readonly NodeData nd = ref net.Nodes[node];
+        count = 0;
+        int conns = Math.Min(nd.ConnectorCount, SignalMasks.MaxMaskedConnectors);
+        for (int c = 0; c < conns; c++)
+        {
+            int seg = net.Lanes[net.Lanes[nd.FirstConnector + c].FromLane].Segment;
+            int at = -1;
+            for (int k = 0; k < count; k++)
+            {
+                if (segs[k] == seg)
+                {
+                    at = k;
+                    break;
+                }
+            }
+
+            if (at < 0 && count < segs.Length)
+            {
+                at = count++;
+                segs[at] = seg;
+                phase[at] = -1;
+            }
+
+            if (at < 0)
+            {
+                continue;
+            }
+
+            for (int k = 0; k < PhaseCount[slot]; k++)
+            {
+                if ((PhaseMask[(slot * MaxPhases) + k] & (1UL << c)) != 0)
+                {
+                    phase[at] = (sbyte)k;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Слот узла после перестройки connector'ов (4.3, T3; player-tools.md §5 п. 4): маски фаз и статика заново; если оси узла те же (те же рукава в тех же фазах), план сохраняется
+    /// (<paramref name="oldSegs"/>/<paramref name="oldPhase"/> - <see cref="ArmPhases"/> до перестройки), иначе - план по умолчанию для новых осей с прежними режимом и временами.
+    /// Результат: 0 - план сохранён, 1 - сброшен (событие <c>SignalPlanReset</c> - у вызывающего), 2 - светофор снят (узел больше не может быть светофором).
+    /// </summary>
+    internal int Rebind(World w, int slot, int node, ReadOnlySpan<int> oldSegs, ReadOnlySpan<sbyte> oldPhase, int oldCount)
+    {
+        Span<ulong> masks = stackalloc ulong[MaxPhases];
+        if (!SignalMasks.Build(w.Net, node, masks, out int axes))
+        {
+            Remove(w, slot);
+            return 2;
+        }
+
+        SetSignalPlanCmd plan = ReadPlan(slot);
+        bool same = axes == PhaseCount[slot];
+        int result = 0;
+        PhaseCount[slot] = (byte)axes;
+        for (int k = 0; k < MaxPhases; k++)
+        {
+            PhaseMask[(slot * MaxPhases) + k] = masks[k];
+        }
+
+        if (same)
+        {
+            Span<int> segs = stackalloc int[NetworkStore.MaxArms];
+            Span<sbyte> phase = stackalloc sbyte[NetworkStore.MaxArms];
+            ArmPhases(w, slot, node, segs, phase, out int n);
+            same = n == oldCount;
+            for (int k = 0; k < n && same; k++)
+            {
+                int j = -1;
+                for (int q = 0; q < oldCount; q++)
+                {
+                    if (oldSegs[q] == segs[k])
+                    {
+                        j = q;
+                        break;
+                    }
+                }
+
+                same = j >= 0 && oldPhase[j] == phase[k];
+            }
+        }
+
+        if (!same)
+        {
+            SetSignalPlanCmd def = DefaultPlan(axes, in w.Rules, adaptive: plan.Mode == SignalMode.Adaptive);
+            def.Mode = plan.Mode;
+            def.YellowTicks = plan.YellowTicks;
+            def.AllRedTicks = plan.AllRedTicks;
+            def.OffsetTicks = plan.OffsetTicks;
+            if (plan.Mode == SignalMode.Off || plan.Mode == SignalMode.FlashYellow)
+            {
+                def.Flags = 0;
+            }
+
+            plan = def;
+            result = 1;
+        }
+
+        plan.PhaseCount = (byte)axes;
+        SetSignalPlanCmd resolved = Resolve(in plan, axes, in w.Rules);
+        if (!IsValid(in resolved, axes))
+        {
+            resolved = Resolve(DefaultPlan(w, node, axes), axes, in w.Rules);
+            result = 1;
+        }
+
+        BuildStatics(w, slot, node);
+        ApplyPlan(slot, in resolved, w.Tick);
+        SigXVersion = -1;
+        return result;
     }
 
     /// <summary>Загрузка сейва: статика (производное от сети и <c>PhaseMask</c>) всех слотов тем же кодом, что при <see cref="TryAdd"/>.</summary>
@@ -857,6 +1088,14 @@ internal sealed class SignalStore
         Count = last;
         w.SignalCount = Count;
         w.SignalStates[last] = default;
+        XServed[last] = 0;
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(last * XSlots) + j] = 0;
+            XClearLeft[(last * XSlots) + j] = 0;
+        }
+
+        SigXVersion = -1;
     }
 
     private void CopySlot(int dst, int src)
@@ -889,6 +1128,14 @@ internal sealed class SignalStore
         GreenElapsed[dst] = GreenElapsed[src];
         GapLeft[dst] = GapLeft[src];
         SpillTicks[dst] = SpillTicks[src];
+        XServed[dst] = XServed[src];
+        for (int j = 0; j < XSlots; j++)
+        {
+            XWalkLeft[(dst * XSlots) + j] = XWalkLeft[(src * XSlots) + j];
+            XClearLeft[(dst * XSlots) + j] = XClearLeft[(src * XSlots) + j];
+        }
+
+        SigXVersion = -1;   // таблицы пешеходной фазы пересоберутся
         HasArrow[dst] = HasArrow[src];
         ArmCountOf[dst] = ArmCountOf[src];
         SigLaneCount[dst] = SigLaneCount[src];
@@ -964,7 +1211,7 @@ internal sealed class SignalStore
                     continue;
                 }
 
-                SetSignalPlanCmd def = DefaultPlan(axes, in w.Rules, s.Adaptive);
+                SetSignalPlanCmd def = DefaultPlan(w, s.Node, axes, s.Adaptive);
                 def.OffsetTicks = s.OffsetTicks;
                 def.CycleTicks = axes == 2 ? s.CycleTicks : (ushort)0;
                 TryAdd(w, s.Node, in def, out _);

@@ -16,6 +16,8 @@ internal enum GateDeny : byte
     Box = 4,
     Yield = 5,
     Tie = 6,
+    Ped = 7,    // pedestrians.md §5.6 п. 2-bis: connector в маске закрытого перехода (DenyPed)
+    Closed = 8, // 4.3, T4 (player-tools.md §4.3): connector или его выходная полоса закрыты дренажем (DenyClosed)
 }
 
 /// <summary>

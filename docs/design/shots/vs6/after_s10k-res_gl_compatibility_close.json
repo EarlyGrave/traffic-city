@@ -1,0 +1,173 @@
+{
+  "format": 1,
+  "scenario": "s10k-res",
+  "pose": "close",
+  "warmup_ticks": 600,
+  "stats_frame": 30,
+  "process_frame": 30,
+  "args": "--scenario s10k-res --warmup-ticks 600 --pose close --stats-frame 30",
+  "driver": "opengl3",
+  "method": "gl_compatibility",
+  "resolution": "1280x720",
+  "deterministic": {
+    "main": {
+      "source": "Viewport.GetRenderInfo(Visible)",
+      "draw_calls": 31,
+      "primitives": 23666,
+      "objects": 51
+    },
+    "shadow": {
+      "source": "Viewport.GetRenderInfo(Shadow)",
+      "draw_calls": 0,
+      "primitives": 5424,
+      "objects": 0
+    },
+    "total": {
+      "source": "Performance.RenderTotal*InFrame",
+      "draw_calls": 31,
+      "primitives": 29090,
+      "objects": 51
+    },
+    "memory_bytes": {
+      "source": "Performance.Render*MemUsed",
+      "video": 59849283,
+      "texture": 33490539,
+      "buffer": 26358744
+    },
+    "vehicle_layer": {
+      "preset": "high",
+      "point_range_m": 2500,
+      "max_drawn_distance_m": 0,
+      "dropped_by_cap": 0,
+      "lod0": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 200
+      },
+      "lod1": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 2000
+      },
+      "lod2": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 8000
+      },
+      "points": {
+        "placed": 0,
+        "wanted": 0,
+        "cap": 60000
+      }
+    },
+    "instances": {
+      "Vehicles_0_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 24,
+        "surfaces": 1
+      },
+      "Vehicles_0_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_0_lod2": {
+        "instances": 0,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 24,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Vehicles_1_lod2": {
+        "instances": 0,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "Vehicles_points": {
+        "instances": 0,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "Buildings_ring": {
+        "instances": 109,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Buildings_ring_shadow": {
+        "instances": 109,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Pedestrians_lod0": {
+        "instances": 0,
+        "triangles_per_instance": 108,
+        "surfaces": 1
+      },
+      "Pedestrians_lod1": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "Pedestrians_points": {
+        "instances": 0,
+        "triangles_per_instance": 2,
+        "surfaces": 1
+      },
+      "CrossSignals": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "StopQueues": {
+        "instances": 0,
+        "triangles_per_instance": 12,
+        "surfaces": 1
+      },
+      "total": 218
+    }
+  },
+  "shadows": {
+    "enabled": true,
+    "mode": "Parallel4Splits",
+    "max_distance_m": 800,
+    "scaling_3d": 1,
+    "msaa_3d": "Msaa2X",
+    "geometry_nodes": 3488,
+    "caster_nodes": 3,
+    "casters": [
+      "Vehicles_0_lod0",
+      "Vehicles_1_lod0",
+      "Buildings_ring_shadow"
+    ]
+  },
+  "static_chunks": {
+    "note": "V4: меши чанков собираются при старте; surface_builds_after_first_frame должен быть 0 без изменений сети",
+    "chunk_nodes": 3470,
+    "surface_builds_total": 3470,
+    "surface_builds_after_first_frame": 732
+  },
+  "managed_alloc": {
+    "note": "GC.GetAllocatedBytesForCurrentThread, главный поток; max - по кадрам после прогрева (8 кадров: JIT, первое выделение буферов)",
+    "set_render_view_last_frame_bytes": 0,
+    "vehicle_layer_last_frame_bytes": 0,
+    "view_plus_layer_max_bytes": 0,
+    "step_calls": 30,
+    "step_max_bytes": 0,
+    "step_total_bytes": 1943400
+  },
+  "timing": {
+    "note": "не детерминировано: llvmpipe, шум облака; GPU-время осмысленно только на реальном GPU",
+    "fps": 17,
+    "time_process_s": 0.008835,
+    "render_cpu_ms": 0.5809999704360962,
+    "render_gpu_ms": 0.18299999833106995
+  }
+}

@@ -2,6 +2,7 @@ using System;
 using Sim.Core.Agents;
 using Sim.Core.Network;
 using Sim.Core.Rules.Intersections;
+using Sim.Core.Tools;
 using Sim.Core.Util;
 
 namespace Sim.Core.Api;
@@ -11,14 +12,26 @@ namespace Sim.Core.Api;
 /// <see cref="SimEventKind.CommandApplied"/> / <see cref="SimEventKind.CommandRejected"/> с эхом Tag.
 /// Applied: <c>A = (int)CommandKind</c>; Rejected: <c>A = (int)RejectReason</c>, <c>B = (int)CommandKind</c>.
 /// </summary>
-internal static class CommandDispatcher
+internal static partial class CommandDispatcher
 {
     public static void Run(World w)
     {
+        ToolOpsPhase.Run(w);   // 1а: финалы дренажа по состоянию конца прошлого тика (player-tools.md §12)
         while (w.Commands.TryDequeue(out Command cmd))
         {
+            if (w.Inv.RemapCount > 0)
+            {
+                // Перенумерация фазы 1 (player-tools.md §8.2): ссылки на пересозданные сущности переводятся на новые handle'ы.
+                CommandRefs.Remap(ref cmd, new RemapTable(new ReadOnlySpan<RemapEntry>(w.Inv.Remap, 0, w.Inv.RemapCount)));
+            }
+
+            InvCtx inv = InverseBuilder.Begin(w, in cmd);
+            long applied0 = w.Counters.CommandsApplied;
             Apply(w, in cmd);
+            InverseBuilder.End(w, in cmd, ref inv, w.Counters.CommandsApplied != applied0);
         }
+
+        w.Inv.ClearRemap();
     }
 
     private static void Apply(World w, in Command cmd)
@@ -50,6 +63,27 @@ internal static class CommandDispatcher
                 }
 
                 break;
+            case CommandKind.SetPedTarget:
+                if (w.Peds == null || cmd.SetPedTarget.Count < 0)
+                {
+                    Rejected(w, in cmd, w.Peds == null ? RejectReason.NotSupported : RejectReason.InvalidArgument);
+                }
+                else
+                {
+                    w.TargetPeds = cmd.SetPedTarget.Count;
+                    Applied(w, in cmd);
+                }
+
+                break;
+            case CommandKind.PaintZone:
+                Result(w, in cmd, City.Zoning.Apply(w, in cmd));
+                break;
+            case CommandKind.SetTripExecution:
+                Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
+                break;
+            case CommandKind.SetBudgetPolicy:
+                Result(w, in cmd, City.BudgetFlows.SetPolicy(w, in cmd));
+                break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
                 break;
@@ -62,9 +96,46 @@ internal static class CommandDispatcher
                 // TODO(step 4): транспорт.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
+            case CommandKind.SetArmControl:
+                SetArmControl(w, in cmd);
+                break;
+            case CommandKind.SetTurnBan:
+                SetTurnBan(w, in cmd);
+                break;
+            case CommandKind.SetLaneFlags:
+                SetLaneFlags(w, in cmd);
+                break;
+            case CommandKind.RemoveRoad:
+                RemoveRoad(w, in cmd);
+                break;
+            case CommandKind.UpgradeRoad:
+                UpgradeRoad(w, in cmd);
+                break;
+            case CommandKind.SplitRoad:
+            case CommandKind.InsertBusStop:
+            case CommandKind.RemoveBusStop:
+            case CommandKind.RemoveBusRoute:
+            case CommandKind.SetBusRouteParams:
+            case CommandKind.MergeAtNode:
+                // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
+                Rejected(w, in cmd, RejectReason.NotSupported);
+                break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
+        }
+    }
+
+    /// <summary>Итог обработчика города: <see cref="RejectReason.None"/> - применена, иначе отклонена с причиной.</summary>
+    private static void Result(World w, in Command cmd, RejectReason reason)
+    {
+        if (reason == RejectReason.None)
+        {
+            Applied(w, in cmd);
+        }
+        else
+        {
+            Rejected(w, in cmd, reason);
         }
     }
 
@@ -72,6 +143,22 @@ internal static class CommandDispatcher
     {
         w.Counters.CommandsApplied++;
         w.Emit(SimEventKind.CommandApplied, cmd.Tag, (int)cmd.Kind);
+    }
+
+    /// <summary>Отказ валидатора инструментов: счётчик неверных handle, событие исчерпанной ёмкости (если валидатор её назвал), затем <c>CommandRejected</c>.</summary>
+    private static void RejectTool(World w, in Command cmd, RejectReason reason, CapacityKind cap = 0)
+    {
+        if (reason == RejectReason.InvalidHandle)
+        {
+            w.Counters.InvalidHandleOps++;
+        }
+
+        if (reason == RejectReason.Capacity && cap != 0)
+        {
+            w.Emit(SimEventKind.CapacityExhausted, cmd.Tag, (int)cap, 1);
+        }
+
+        Rejected(w, in cmd, reason);
     }
 
     private static void Rejected(World w, in Command cmd, RejectReason reason)
@@ -82,45 +169,74 @@ internal static class CommandDispatcher
 
     private static void BuildRoad(World w, in Command cmd)
     {
-        BuildRoadCmd b = cmd.BuildRoad;
-        bool noConnectors = (b.Flags & 1) != 0;
-        if (!float.IsFinite(b.Ax) || !float.IsFinite(b.Az) || !float.IsFinite(b.Bx) || !float.IsFinite(b.Bz) ||
-            !float.IsFinite(b.SpeedLimit) || b.SpeedLimit <= 0f || b.LanesAB + b.LanesBA == 0)
+        // Общий валидатор превью и применения (player-tools.md §7.1): аргументы, привязка, границы, длина, рукава, ловушка, ёмкости - до первой мутации.
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            RejectTool(w, in cmd, why, chk.CapKind);
             return;
         }
 
+        if (chk.Reopen)
+        {
+            ReopenRoad(w, in cmd, chk.Seg);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
+            return;
+        }
+
+        BuildRoadCmd b = cmd.BuildRoad;
+        bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
         var a = new Vec2(b.Ax, b.Az);
         var z = new Vec2(b.Bx, b.Bz);
         if (!noConnectors)
         {
-            // Узел строится один раз (NodeAlreadyBuilt): новый сегмент в уже построенный узел не получил бы connector'ов.
-            // TODO(step 3): перестройка узла при добавлении рукава.
-            int na = w.Builder.FindNode(a);
-            int nb = w.Builder.FindNode(z);
-            if ((na >= 0 && w.Net.Nodes[na].FirstArm >= 0) || (nb >= 0 && w.Net.Nodes[nb].FirstArm >= 0))
-            {
-                Rejected(w, in cmd, RejectReason.NotSupported);
-                return;
-            }
+            // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла.
+            int na = chk.NodeA;
+            int nb = chk.NodeB;
 
-            // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла,
-            // поэтому ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных построить нельзя (вставка в середину
-            // перенумеровала бы connector'ы). Новые узлы всегда выше всех существующих.
+            // Канонический порядок раскладки (save-format.md §13 п. 5): connector'ы, конфликты и входы оверлея лежат по возрастанию индекса узла, пока сеть не правили.
+            // Построить ранее созданный (флаг 1), но ещё не построенный узел с индексом ниже построенных - уже правка раскладки: ToolsTouched (раскладка - состояние).
             int top = w.Net.HighestBuiltNode();
-            if ((na >= 0 && na < top) || (nb >= 0 && nb < top))
+            if ((na >= 0 && na < top && w.Net.Nodes[na].FirstArm < 0) || (nb >= 0 && nb < top && w.Net.Nodes[nb].FirstArm < 0))
             {
-                Rejected(w, in cmd, RejectReason.NotSupported);
-                return;
+                w.Net.ToolsTouched = 1;
             }
         }
 
-        int nodesBefore = w.Net.NodeCount;
-        NetworkStatus st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out int seg);
-        for (int n = nodesBefore; n < w.Net.NodeCount; n++)
+        w.Builder.ResetCreated();
+        NetworkStatus st;
+        int seg;
+        if (chk.Profile >= 0)
         {
-            w.Emit(SimEventKind.NodeCreated, cmd.Tag, n);
+            // Дорога по профилю (RP7): концы прилипают или создаются, полосы и тип берутся из профиля; отступы - по рукавам, уже стоящим в узлах.
+            st = w.Builder.AddNode(a, NodeControl.None, out int pa);
+            if (st == NetworkStatus.Ok)
+            {
+                st = w.Builder.AddNode(z, NodeControl.None, out int pb);
+                seg = -1;
+                if (st == NetworkStatus.Ok)
+                {
+                    st = w.Builder.AddProfileSegment(pa, pb, ReadOnlySpan<Vec2>.Empty, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg);
+                }
+            }
+            else
+            {
+                seg = -1;
+            }
+        }
+        else
+        {
+            st = w.Builder.AddSegment(a, z, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out seg);
+        }
+
+        if (st == NetworkStatus.Ok && !noConnectors && !CheckBuiltEnds(w, in cmd, seg))
+        {
+            return;
+        }
+
+        for (int k = 0; k < w.Builder.CreatedNodeCount; k++)
+        {
+            w.Emit(SimEventKind.NodeCreated, cmd.Tag, w.Builder.CreatedNodes[k]);   // порядок создания (в дыры сети индексы не растут)
         }
 
         if (st != NetworkStatus.Ok)
@@ -130,39 +246,127 @@ internal static class CommandDispatcher
         }
 
         w.Emit(SimEventKind.SegmentCreated, cmd.Tag, seg);
+        w.Inv.BuiltSeg = seg;
+        EmitRestoreRemaps(w, in cmd, seg);
+        bool rebuilt = false;
         if (!noConnectors)
         {
             ref readonly SegmentData sd = ref w.Net.Segments[seg];
             int lo = Math.Min(sd.NodeA, sd.NodeB);   // по возрастанию индекса узла (канонический порядок раскладки)
             int hi = Math.Max(sd.NodeA, sd.NodeB);
-            NetworkStatus c1 = w.Builder.BuildConnectorsEx(lo);
-            NetworkStatus c2 = w.Builder.BuildConnectorsEx(hi);
+            NetworkStatus c1 = BuildOrRebuildEnd(w, in cmd, lo, ref rebuilt);
+            NetworkStatus c2 = BuildOrRebuildEnd(w, in cmd, hi, ref rebuilt);
             NetworkStatus bad = c1 != NetworkStatus.Ok ? c1 : c2;
             if (bad == NetworkStatus.Ok)
             {
-                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений.
-                NetworkStatus k1 = w.Connectors.BuildConflicts(w.Net, lo);
-                NetworkStatus k2 = w.Connectors.BuildConflicts(w.Net, hi);
+                // Конфликтные пары новых узлов (intersections.md §3): без них ворота не видят пересечений (у перестроенных узлов строки уже есть).
+                NetworkStatus k1 = BuildConflictsIfFresh(w, lo);
+                NetworkStatus k2 = BuildConflictsIfFresh(w, hi);
                 bad = k1 != NetworkStatus.Ok ? k1 : k2;
             }
 
             if (bad != NetworkStatus.Ok)
             {
                 // Сегмент уже добавлен, но connector'ов нет (ёмкость): сообщаем об отказе, сеть остаётся согласованной по версии.
-                GrowOverlay(w);
+                GrowOverlay(w, rebuilt);
+                w.City?.LotGen.OnRoadBuilt(w, seg);   // сегмент уже в сети: участки вдоль него нужны, даже если connector'ы не построились
                 RejectNetwork(w, in cmd, bad);
                 return;
             }
         }
 
-        GrowOverlay(w);
+        GrowOverlay(w, rebuilt);
+        w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         Applied(w, in cmd);
     }
 
+    // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.
+    private static void EmitRestoreRemaps(World w, in Command cmd, int seg)
+    {
+        BuildRoadCmd b = cmd.BuildRoad;
+        if (b.RestoreOf.Generation == 0)
+        {
+            return;
+        }
+
+        ref readonly SegmentData sd = ref w.Net.Segments[seg];
+        w.Inv.AddRemap(EntityKind.Segment, in b.RestoreOf, new EntityRef(seg, sd.Generation));
+        w.Emit(SimEventKind.SegmentRemapped, cmd.Tag, b.RestoreOf.Index, seg);
+        for (int e = 0; e < 2; e++)
+        {
+            EntityRef old = e == 0 ? b.RestoreNodeA : b.RestoreNodeB;
+            int now = e == 0 ? sd.NodeA : sd.NodeB;
+            if (old.Generation != 0 && !(old.Index == now && old.Generation == w.Net.Nodes[now].Generation))
+            {
+                w.Inv.AddRemap(EntityKind.Node, in old, new EntityRef(now, w.Net.Nodes[now].Generation));
+                w.Emit(SimEventKind.NodeRemapped, cmd.Tag, old.Index, now);
+            }
+        }
+    }
+
+    // Концы нового сегмента: непостроенный узел строится как раньше, построенный - перестраивается (врезка рукава, 4.3 T3).
+    private static NetworkStatus BuildOrRebuildEnd(World w, in Command cmd, int node, ref bool rebuilt)
+    {
+        if (w.Net.Nodes[node].FirstArm < 0)
+        {
+            return w.Builder.BuildConnectorsEx(node);
+        }
+
+        rebuilt = true;
+        return NodeEdit.Rebuild(w, node, rejectTrap: false, cmd.Tag);
+    }
+
+    private static NetworkStatus BuildConflictsIfFresh(World w, int node)
+    {
+        ref readonly NodeData nd = ref w.Net.Nodes[node];
+        if (nd.ConnectorCount > 0 && w.Net.Lanes[nd.FirstConnector].ConflictGroup >= 0)
+        {
+            return NetworkStatus.Ok;
+        }
+
+        return w.Connectors.BuildConflicts(w.Net, node);
+    }
+
+    // Перестройка построенных концов должна получиться до любых изменений: иначе новый сегмент (с созданными узлами) снимается и команда отклоняется (Busy и т.п.).
+    private static bool CheckBuiltEnds(World w, in Command cmd, int seg)
+    {
+        ref readonly SegmentData sd = ref w.Net.Segments[seg];
+        int lo = Math.Min(sd.NodeA, sd.NodeB);
+        int hi = Math.Max(sd.NodeA, sd.NodeB);
+        NetworkStatus bad = NetworkStatus.Ok;
+        if (w.Net.Nodes[lo].FirstArm >= 0)
+        {
+            bad = NodeEdit.Check(w, lo, rejectTrap: false);
+        }
+
+        if (bad == NetworkStatus.Ok && w.Net.Nodes[hi].FirstArm >= 0)
+        {
+            bad = NodeEdit.Check(w, hi, rejectTrap: false);
+        }
+
+        if (bad == NetworkStatus.Ok)
+        {
+            return true;
+        }
+
+        NetworkEdit.ReleaseSegment(w, seg);
+        for (int k = w.Builder.CreatedNodeCount - 1; k >= 0; k--)
+        {
+            NetworkEdit.ReleaseNode(w, w.Builder.CreatedNodes[k]);
+        }
+
+        w.Net.Version++;
+        Rejected(w, in cmd, RejectOf(bad));
+        return false;
+    }
+
+    private static RejectReason RejectOf(NetworkStatus st) => ToolValidator.RejectOf(st);
+
     // Сеть выросла (routing.md 9.3 "BuildRoad"): граф пересобирается сразу, оверлей дописывает новые узлы/входы/выходы,
     // помечает ячейки грязными или (не хватило запаса) перестраивается целиком.
-    private static void GrowOverlay(World w)
+    private static void GrowOverlay(World w, bool rebuilt = false)
     {
+        w.Peds?.OnNetworkGrown(w); // сеть пешеходов - производное сети: пересобирается целиком (pedestrians.md §2); при выключенных peds - null
         w.Lod?.OnNetworkGrown(); // LOD-ячейки: новые узлы и полосы получают ячейку (sim-lod.md §1); при Lod.Mode = Off - null
         w.Vehicles.MarkAllRouteDirty();
         // Rebuild сбрасывает SegCost к свободному потоку: возвращаем веса по текущей загрузке, иначе под нагрузкой пороговая
@@ -175,7 +379,15 @@ internal static class CommandDispatcher
             return;
         }
 
-        ov.OnNetworkGrown();
+        if (rebuilt || w.Net.ToolsTouched != 0)
+        {
+            ov.RebuildAfterEdit();   // правка раскладки: слоты занимаются заново, дуги узлов меняются - инкремент оверлея (дописывание в конец) неприменим
+        }
+        else
+        {
+            ov.OnNetworkGrown();
+        }
+
         w.Counters.OverlayRebuilds = ov.Rebuilds;
         w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;
     }
@@ -188,27 +400,17 @@ internal static class CommandDispatcher
     private static void SetSignalPlan(World w, in Command cmd)
     {
         SetSignalPlanCmd p = cmd.SetSignalPlan;
-        if ((uint)p.Node >= (uint)w.Net.NodeCount)
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            RejectTool(w, in cmd, why);
             return;
         }
 
         ref readonly NodeData nd = ref w.Net.Nodes[p.Node];
-        if (nd.Control != NodeControl.Signal || nd.Signal < 0 || nd.Signal >= w.Signals.Count)
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
-
-        // 2.5: нулевые параметры Adaptive/стрелки -> дефолты RulesDesc; затем проверка (для Adaptive - с инвариантом красного, intersections.md 5.6).
         int axes = w.Signals.PhaseCount[nd.Signal];
         SetSignalPlanCmd resolved = SignalStore.Resolve(in p, axes, in w.Rules);
-        if (!SignalStore.IsValid(in resolved, axes, enforceRed: true))
-        {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
-            return;
-        }
 
         w.Signals.ApplyPlan(nd.Signal, in resolved, w.Tick);
         w.Vehicles.MarkAllRouteDirty();
@@ -222,9 +424,11 @@ internal static class CommandDispatcher
     private static void SetNodeControl(World w, in Command cmd)
     {
         SetNodeControlCmd c = cmd.SetNodeControl;
-        if ((uint)c.Node >= (uint)w.Net.NodeCount || (uint)c.Control > (uint)NodeControl.RightHandRule)
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
         {
-            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            RejectTool(w, in cmd, why);
             return;
         }
 
@@ -233,14 +437,8 @@ internal static class CommandDispatcher
         {
             if (nd.Signal < 0)
             {
-                if (w.Signals.Count >= w.Signals.Capacity)
-                {
-                    Rejected(w, in cmd, RejectReason.Capacity);
-                    return;
-                }
-
                 int axes = SignalStore.AxesOf(w, c.Node);
-                SetSignalPlanCmd plan = SignalStore.DefaultPlan(axes, in w.Rules);
+                SetSignalPlanCmd plan = SignalStore.DefaultPlan(w, c.Node, axes);   // all-red с надбавкой на очистку коробки (ADR-0028)
                 if (axes < 1 || !w.Signals.TryAdd(w, c.Node, in plan, out _))
                 {
                     Rejected(w, in cmd, RejectReason.InvalidArgument);
@@ -265,6 +463,36 @@ internal static class CommandDispatcher
         }
 
         Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// Handle узла (индекс + поколение, player-tools.md §2, ADR-0023): слот жив и (при <paramref name="gen"/> != 0) поколение совпало, иначе <c>InvalidHandle</c>
+    /// и <c>InvalidHandleOps++</c>. <c>gen == 0</c> - без проверки поколения (генератор, тесты); мёртвый слот отклоняется всегда.
+    /// </summary>
+    private static bool CheckNodeHandle(World w, in Command cmd, int node, int gen) => CheckEntity(w, in cmd, EntityKind.Node, new EntityRef(node, gen));
+
+    /// <summary>
+    /// Проверка <see cref="EntityRef"/> команды (узел, сегмент, остановка, маршрут): слот жив и поколение совпало (<c>Generation == 0</c> - без проверки поколения), иначе
+    /// <c>InvalidHandle</c> (+<c>InvalidHandleOps</c>) и <c>false</c>. Общая точка для команд инструментов T3..T9: ни одна из них не обращается к слоту до этой проверки.
+    /// </summary>
+    internal static bool CheckEntity(World w, in Command cmd, EntityKind kind, in EntityRef r)
+    {
+        NetworkStore n = w.Net;
+        bool ok = kind switch
+        {
+            EntityKind.Node => n.ResolveNode(in r),
+            EntityKind.Segment => n.ResolveSegment(in r),
+            EntityKind.BusStop => n.ResolveBusStop(in r),
+            EntityKind.BusRoute => n.ResolveBusRoute(in r),
+            _ => false,
+        };
+        if (!ok)
+        {
+            w.Counters.InvalidHandleOps++;
+            Rejected(w, in cmd, RejectReason.InvalidHandle);
+        }
+
+        return ok;
     }
 
     private static void RejectNetwork(World w, in Command cmd, NetworkStatus st)
@@ -296,7 +524,7 @@ internal static class CommandDispatcher
         if (fromLane)
         {
             ref readonly LaneData l = ref w.Net.Lanes[t.FromLane];
-            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length;
+            fromLane = l.Kind == LaneKind.Normal && float.IsFinite(t.FromS) && t.FromS >= 0f && t.FromS <= l.Length && (l.Flags & LaneFlags.Closed) == 0;
         }
 
         if (!zoneOk || (!fromZone && !fromLane) || (uint)t.VehicleType >= (uint)w.Types.Length || t.Count < 1)

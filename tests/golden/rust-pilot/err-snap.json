@@ -1,0 +1,7 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/err-snap.json",
+  "load_ok": true,
+  "create_status": 4,
+  "desc_hash": "5599640643422e8d"
+}

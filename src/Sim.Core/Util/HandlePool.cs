@@ -59,6 +59,23 @@ internal sealed class HandlePool
         _aliveCount = n;
     }
 
+    /// <summary>Генератор/построение: слоты <c>[0, count)</c> заняты подряд с поколением 1 (free-list пуст). Для хранилищ, где данные пишутся плотным массивом, минуя <see cref="TryAllocate"/>.</summary>
+    internal void AdoptDense(int count)
+    {
+        Debug.Assert(count >= 0 && count <= Capacity);
+        for (int i = 0; i < count; i++)
+        {
+            _generation[i] = 1;
+        }
+
+        _highWater = count;
+        _freeCount = 0;
+        _aliveCount = count;
+    }
+
+    /// <summary>Индекс, который выдаст следующий <see cref="TryAllocate"/> (верх free-list либо <c>HighWater</c>), или -1, если места нет. Состояние не меняет.</summary>
+    public int PeekIndex() => _freeCount > 0 ? _freeList[_freeCount - 1] : _highWater < Capacity ? _highWater : -1;
+
     public int AliveCount => _aliveCount;
 
     /// <summary>Верхняя граница для обходов «по всем слотам».</summary>

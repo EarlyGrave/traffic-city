@@ -1,0 +1,6 @@
+{
+  "golden_version": 1,
+  "scenario": "tests/golden/rust-pilot/scenarios/err-profile-lane-width.json",
+  "load_ok": false,
+  "profile_error": "ElementWidth"
+}

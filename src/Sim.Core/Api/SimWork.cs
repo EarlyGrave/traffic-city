@@ -50,6 +50,26 @@ public struct SimWork
     /// <summary>Слотов, просмотренных фазой 10 (HighWater).</summary>
     public long SnapshotSlots;
 
+    /// <summary>Событий колеса таймеров пешеходов и жителей, обработанных фазой 4p (ped_events_per_tick = разность / тики).</summary>
+    public long PedEvents;
+
+    /// <summary>Переходов в stuck у машин meso-уровня (Q-meso и кинематический meso); micro = <c>Counters.StuckEventsTotal</c> минус это (bench JSON, <c>lod.stuck_events_*</c>).</summary>
+    public long StuckEventsMeso;
+
+    // ---- инструменты игрока (4.3, player-tools.md §13): вне хэша, как остальные счётчики работы ----
+
+    /// <summary>Перестроек узла (<c>NodeEdit.Rebuild</c>).</summary>
+    public long NodeRebuilds;
+
+    /// <summary>Команд инструментов, принятых / отклонённых.</summary>
+    public long ToolCommandsApplied, ToolCommandsRejected;
+
+    /// <summary>Операций дренажа начато / закончено; событий «дренаж застрял»; наибольшая длительность законченной операции, тики.</summary>
+    public long ToolOpsStarted, ToolOpsFinished, DrainStalls, DrainTicksMax;
+
+    /// <summary>Маршрутов, освобождённых при закрытии элемента / переносе (перемаршрутизация).</summary>
+    public long RouteReleasesOnClose;
+
     // Сырой счётчик вызовов ConflictGap: фазы 5 и 6 берут разность до/после цикла и пишут в именованные поля выше.
     internal long ConflictGapCallsRaw;
 
@@ -70,6 +90,15 @@ public struct SimWork
         RouteRefillChecks += o.RouteRefillChecks;
         NextConnRecomputes += o.NextConnRecomputes;
         SnapshotSlots += o.SnapshotSlots;
+        PedEvents += o.PedEvents;
+        NodeRebuilds += o.NodeRebuilds;
+        ToolCommandsApplied += o.ToolCommandsApplied;
+        ToolCommandsRejected += o.ToolCommandsRejected;
+        ToolOpsStarted += o.ToolOpsStarted;
+        ToolOpsFinished += o.ToolOpsFinished;
+        DrainStalls += o.DrainStalls;
+        DrainTicksMax = System.Math.Max(DrainTicksMax, o.DrainTicksMax);
+        RouteReleasesOnClose += o.RouteReleasesOnClose;
         ConflictGapCallsRaw += o.ConflictGapCallsRaw;
     }
 }

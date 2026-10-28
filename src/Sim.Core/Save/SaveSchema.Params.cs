@@ -119,6 +119,28 @@ internal static partial class SaveSchema
         PreWorld = true,
     };
 
+    // ---- PARM, w6 (ADR-0028): радиус скругления построителя (нужен BuildRoad после загрузки); ids продолжают 184 ----
+    private static ColumnDef[] NetGeometryParams() => new[]
+    {
+        Col.Scalar<float>(185, "NetCornerRadius", w => w.Builder.Options.CornerRadius, (c, v) => c.NetCornerRadius = v, "0"),
+    };
+
+    // ---- PARM, w7 (ADR-0029): модель кармана остановок и ожидание до уступки; ids продолжают 185 ----
+    private static ColumnDef[] BayParams() => new[]
+    {
+        Col.Scalar<int>(186, "TransitBayModel", w => (int)w.TransitCfg.BayModel, (c, v) => c.Desc.Transit.BayModel = (BayModel)v, "0"),
+        Col.Scalar<int>(187, "TransitBayYieldTicks", w => w.TransitCfg.BayYieldTicks, (c, v) => c.Desc.Transit.BayYieldTicks = v, "60"),
+    };
+
+    // ---- CNTR, w7 (ADR-0029): счётчики кармана; ids продолжают 149 ----
+    private static ColumnDef[] BayCounters() => new[]
+    {
+        Col.Scalar<long>(150, "BayEntries", w => w.Counters.BayEntries, (c, v) => c.W.Counters.BayEntries = v),
+        Col.Scalar<long>(151, "BayFallbacks", w => w.Counters.BayFallbacks, (c, v) => c.W.Counters.BayFallbacks = v),
+        Col.Scalar<long>(152, "BayYields", w => w.Counters.BayYields, (c, v) => c.W.Counters.BayYields = v),
+        Col.Scalar<long>(153, "BayExitWaitTicksTotal", w => w.Counters.BayExitWaitTicksTotal, (c, v) => c.W.Counters.BayExitWaitTicksTotal = v),
+    };
+
     private static BlockDef Demand() => new("DEMD", "спрос: смесь типов, зоны и OD-пары", new[]
     {
         Col.Custom(

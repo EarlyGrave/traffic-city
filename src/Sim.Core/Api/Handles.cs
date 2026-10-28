@@ -261,3 +261,35 @@ public readonly struct RouteHandle : IEquatable<RouteHandle>
 
     public static bool operator !=(RouteHandle a, RouteHandle b) => !a.Equals(b);
 }
+
+/// <summary>Handle сущности Pedestrian (index + generation; Generation == 0 - Null). Пешеходы живут только при секции <c>peds</c> (ADR-0020).</summary>
+[StructLayout(LayoutKind.Sequential, Size = 8)]
+public readonly struct PedHandle : IEquatable<PedHandle>
+{
+    public readonly int Index;
+    public readonly int Generation;
+
+    public PedHandle(int index, int generation)
+    {
+        Index = index;
+        Generation = generation;
+    }
+
+    public static PedHandle Null => default;
+
+    public bool IsNull => Generation == 0;
+
+    public ulong Packed => ((ulong)(uint)Generation << 32) | (uint)Index;
+
+    public static PedHandle FromPacked(ulong v) => new((int)(uint)v, (int)(uint)(v >> 32));
+
+    public bool Equals(PedHandle o) => Index == o.Index && Generation == o.Generation;
+
+    public override bool Equals(object? obj) => obj is PedHandle h && Equals(h);
+
+    public override int GetHashCode() => Index ^ (Generation * 397);
+
+    public static bool operator ==(PedHandle a, PedHandle b) => a.Equals(b);
+
+    public static bool operator !=(PedHandle a, PedHandle b) => !a.Equals(b);
+}

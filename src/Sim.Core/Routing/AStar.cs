@@ -134,7 +134,7 @@ internal sealed class AStarSearcher
                 }
 
                 float ng = gv + _g.ArcCost[a] + _g.SegCost[w];
-                if (_seen[w] == id && ng >= _gScore[w])
+                if (float.IsPositiveInfinity(ng) || (_seen[w] == id && ng >= _gScore[w]))
                 {
                     continue;
                 }

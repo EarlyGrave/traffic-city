@@ -65,6 +65,7 @@ internal static class GenFixture
             IrregularNodes = c.GetProperty("irregular_nodes").GetInt32(),
             IrregularJitter = c.GetProperty("irregular_jitter_m").GetSingle(),
             NodeJitter = c.TryGetProperty("node_jitter_m", out var nj) ? nj.GetSingle() : 0f,
+            SnapNodes = c.TryGetProperty("snap_nodes", out var sn) && sn.GetBoolean(),
             RemovedStreetShare = c.GetProperty("removed_street_share").GetSingle(),
             ConnectorSamples = c.GetProperty("connector_samples").GetInt32(),
             Signals = c.GetProperty("signals").GetString() switch
@@ -142,7 +143,7 @@ internal static class GenFixture
     {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         run.Net = new NetworkStore(run.Caps);
-        run.Builder = new NetworkBuilder(run.Net, run.City.LaneWidth, run.City.ConnectorSamples);
+        run.Builder = new NetworkBuilder(run.Net, run.City.LaneWidth, run.City.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(run.City.CornerRadius));
         run.RngCity = Pcg32.ForStream(run.Seed, RngStream.CityGen);
         run.RngZones = Pcg32.ForStream(run.Seed, RngStream.Zones);
         run.RngTransit = Pcg32.ForStream(run.Seed, RngStream.Transit);

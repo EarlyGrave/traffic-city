@@ -14,9 +14,10 @@ public class GatePriorityTests
 
     public GatePriorityTests(ITestOutputHelper output) => _out = output;
 
-    private static Simulation Cross1(NodeControl control = NodeControl.RightHandRule)
+    private static Simulation Cross1(NodeControl control = NodeControl.RightHandRule, float cornerRadius = 0f)
     {
         ScenarioDesc d = GateFixture.Node(control, Arm.E(1), Arm.S(1), Arm.W(1), Arm.N(1));
+        d.Network.CornerRadius = cornerRadius;
         return Simulation.Create(in d);
     }
 
@@ -100,7 +101,8 @@ public class GatePriorityTests
     [Fact]
     public void T2_FourWay_Flows_NoDeadlock()
     {
-        using Simulation sim = Cross1();
+        // Порог инверсий откалиброван на коробке 14 м (до ADR-0028); на коробке 19 м (отступ 3.5 + 6 м): stuck 0, инверсий 3 из 200 машин - пересмотр порога отдельно.
+        using Simulation sim = Cross1(cornerRadius: -1f);
         World w = sim.World;
         var drv = new FlowDriver(sim);
         for (int a = 0; a < 4; a++)

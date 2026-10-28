@@ -1,0 +1,151 @@
+{
+  "format_version": 2,
+  "name": "net-skew",
+  "seed": 7,
+  "duration_s": 10,
+  "vehicle_types_file": "../../../../scenarios/vehicle-types.json",
+  "city": {
+    "enabled": false
+  },
+  "network": {
+    "nodes": [
+      {
+        "id": "n0",
+        "x": 0.001,
+        "z": -0.1,
+        "control": "none"
+      },
+      {
+        "id": "n1",
+        "x": 123.456,
+        "z": 77.7,
+        "control": "none"
+      },
+      {
+        "id": "n2",
+        "x": -150.25,
+        "z": 160.125,
+        "control": "none"
+      },
+      {
+        "id": "n3",
+        "x": 200.3,
+        "z": -90.9,
+        "control": "none"
+      },
+      {
+        "id": "n4",
+        "x": 60.7,
+        "z": 12.3,
+        "control": "none"
+      },
+      {
+        "id": "n5",
+        "x": 310.123,
+        "z": 40.5,
+        "control": "none"
+      },
+      {
+        "id": "n6",
+        "x": -80.01,
+        "z": -120.77,
+        "control": "none"
+      }
+    ],
+    "segments": [
+      {
+        "a": "n0",
+        "b": "n1",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n0",
+        "b": "n2",
+        "lanes_ab": 1,
+        "lanes_ba": 2,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n0",
+        "b": "n3",
+        "lanes_ab": 2,
+        "lanes_ba": 1,
+        "speed_kmh": 60,
+        "kind": "arterial"
+      },
+      {
+        "a": "n0",
+        "b": "n4",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 30,
+        "kind": "street"
+      },
+      {
+        "a": "n1",
+        "b": "n4",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 50,
+        "kind": "street"
+      },
+      {
+        "a": "n3",
+        "b": "n5",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 70,
+        "kind": "arterial"
+      },
+      {
+        "a": "n0",
+        "b": "n6",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 35,
+        "kind": "street"
+      },
+      {
+        "a": "n2",
+        "b": "n1",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 45,
+        "kind": "street"
+      }
+    ]
+  },
+  "vehicles": {
+    "count": 0,
+    "spawn_ramp_s": 1
+  },
+  "demand": {
+    "zone_m": 200,
+    "model": "uniform",
+    "external_share": 0,
+    "min_trip_m": 0
+  },
+  "routing": {
+    "levels": 1,
+    "cell_m": 250,
+    "pathfind_budget_per_tick": 8
+  },
+  "capacities": {
+    "max_vehicles": 64,
+    "max_nodes": 16,
+    "max_segments": 32,
+    "max_lanes": 512,
+    "max_lane_points": 4096,
+    "max_zones": 16,
+    "max_bus_routes": 1,
+    "max_bus_stops": 1,
+    "max_routes": 256,
+    "max_plan_steps": 8192,
+    "max_pending_trips": 64,
+    "max_signalized_nodes": 4
+  }
+}

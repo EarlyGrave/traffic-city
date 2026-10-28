@@ -173,7 +173,7 @@ internal readonly struct RuleEnv
             return -1;
         }
 
-        int bestTier = 3;
+        int bestTier = 4;
         int best = net.LaneNext[l.FirstNext];
         for (int n = 0; n < l.NextCount && bestTier > 0; n++)
         {
@@ -184,6 +184,10 @@ internal readonly struct RuleEnv
             {
                 ref readonly LaneData t = ref net.Lanes[to];
                 tier = t.Segment == l.Segment ? 2 : (t.NextCount <= 0 ? 1 : 0);
+                if ((t.Flags & LaneFlags.Closed) != 0 || (net.Lanes[c].Flags & LaneFlags.Closed) != 0)
+                {
+                    tier = 3;   // закрыто дренажем (4.3, T4): выбирается, только если открытых выездов нет
+                }
             }
 
             if (tier < bestTier)

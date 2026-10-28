@@ -164,7 +164,7 @@ public sealed class Simulation : IDisposable
 
     // ---- управление ----
     public long Tick { get; }                    // число выполненных тиков с момента Create
-    public void Step(int ticks);                 // ticks >= 1; выполняет §7 ticks раз
+    public void Step(int ticks);                 // ticks >= 1; выполняет §7 ticks раз (агрегат без агентов перепрыгивает пустые тики: результат тот же, zoning-demand.md §9.2)
     public bool Enqueue(in Command cmd);         // false = очередь полна (команда отброшена, счётчик++)
     public int PendingCommands { get; }
 
@@ -188,6 +188,23 @@ public sealed class Simulation : IDisposable
     // ---- метрики ----
     public ref readonly SimCounters Counters { get; }                // монотонные счётчики, §11
     public void GetStats(out SimStats stats);                        // производные значения, §11
+
+    // ---- город (3.2, ADR-0011, `zoning-demand.md` §13; без demand.model = residents - false/0/пусто) ----
+    public bool HasCity { get; }
+    public bool GetCityStats(out CityStats stats);                   // население, работа, жильё, здания, спрос, деньги по классам (Σ = 0)
+    public int CityDayTicks { get; }                                  // сутки города в тиках (Z5; нужны долгим прогонам и bench --window)
+    public long CityJumpedTicks { get; }                              // тиков, перепрыгнутых агрегатом без работы (диагностика, вне сейва и хэша)
+    public long CityCarCellCrossingsYesterday { get; }                // Σ L за вчера: пересечений клеток машинными ногами; × CityCellM / 1000 = машино-км в сутки (оценка)
+    public float CityCellM { get; }
+    public int CityAmPeakStartTickOfDay { get; }                      // начало окна am_peak внутри суток (bench --window am_peak)
+    public int GetBuildings(Span<BuildingRenderData> dst);           // 24 Б на слот пула; BuildingsVersion/BuildingSlotCount - перечитывать при смене версии
+    public int GetLots(Span<LotRenderData> dst);                     // 28 Б на участок (RP10b: + Orient/CellsF/CellsD/CellX/CellZ); LotsVersion/LotCount
+    public bool TryGetResidentInfo(int index, int generation, out ResidentInfo info);   // EntityRef - с волной инструментов T1
+    public bool TryGetBuildingInfo(int index, int generation, out BuildingInfo info);
+    public int GetAccessibility(Span<int> perCell, AccessKind kind); // heatmap; Z1 - нули, поле считает Z3
+    public bool CopyFlowTotals(Span<long> dst, FlowPeriod period);   // Simulation.FlowKindCount = 17 видов потоков за вчера/сегодня/всё время (виды 13-16 - казна, 4.2)
+    public bool GetCityBudget(out CityBudgetInfo info);              // 4.2 (E1): казна; false - города или city_budget нет. Потоки по видам за вчера - CopyFlowTotals
+    public int GetLandValue(Span<int> perCell);                      // 4.2 (E1): цена места по ячейкам (heatmap, тот же массив, что берёт земельный налог); 0 - бюджета нет
     public ReadOnlySpan<uint> NodeThroughput { get; }                // [MaxNodes] машин, проехавших узел (всего)
     public ReadOnlySpan<BusRouteStats> BusRouteStats { get; }        // [MaxBusRoutes]
 
@@ -214,11 +231,25 @@ public sealed class Simulation : IDisposable
 
     // ---- детерминизм ----
     public ulong ComputeStateHash();                                 // §9, O(N), не вызывать каждый тик в проде
+    public ulong ComputeNetworkHash();                               // §9: FNV-1a 64 статики сети (кросс-языковой golden Rust-пилота, rust-pilot.md §5.2); в хэш состояния не входит
 
     // ---- запросы (read-only, O(1)) ----
     public bool IsAlive(VehicleHandle h);
     public bool TryGetVehicleInfo(VehicleHandle h, out VehicleInfo info);   // для инспектора/HUD
     public bool TryPickVehicle(float x, float z, float radius, out VehicleHandle h); // O(N) по живым, для клика
+
+    // Пешеходы (3.1, ADR-0020, pedestrians.md §10; без секции peds спаны пусты, запросы возвращают false). Реализация: Api/Simulation.Peds.cs
+    public bool HasPeds { get; }
+    public ReadOnlySpan<PedestrianRenderData> Pedestrians { get; }          // 24 Б, индекс = слот пула пешеходов, длина = HighWater; вне вида / PendingPath / OnBus - Flags = 0
+    public ReadOnlySpan<PedestrianRenderData> PreviousPedestrians { get; }  // тик SnapshotTick - 1 (двойной буфер без копии, как у машин)
+    public ReadOnlySpan<byte> CrossingStates { get; }                       // биты 0-1 XState, 2-3 сигнал (P3); индекс - слот рукава, затем переходы на перегоне
+    public ReadOnlySpan<ushort> PedEdgeCounts { get; }                      // пешеходов на ребре сети пешеходов (heatmap «вдали»)
+    public ReadOnlySpan<ushort> BusStopWaiting { get; }                     // ожидающих на остановках (режим agents)
+    public int ActivePedCount { get; } public int ResidentCount { get; } public int PedTarget { get; }
+    public bool IsAlive(PedHandle h);
+    public bool TryGetPedInfo(PedHandle h, out PedInfo info);
+    public bool TryPickPedestrian(float x, float z, float radius, out PedHandle h);
+    public void CopyPedWaitHistograms(long[] cross, long[] stop);           // накопительные гистограммы ожидания (256 корзин по 1 с) для p95 хоста
 }
 
 public delegate void PhaseProbe(int phase);   // phase = номер фазы §7 (1..10); подфазы 2b/4a/8b — в составе своих номеров
@@ -359,7 +390,16 @@ public enum CommandKind : int
     ClearSelection = 8,
     SetTargetVehicleCount = 9,  // целевое число живых машин (спавнер догоняет)
     SetNodeControl = 10,        // тип регулирования узла: none/yield/stop/signal [шаг 3]
+    SetPedTarget = 12,          // 3.1: цель активных пешеходов {Count} (4 Б); без секции peds - NotSupported. 11 закреплён за SetLodFocus
     SetLodFocus = 11,           // слот фокуса/закрепления LOD {Slot 0..7, Kind Clear/Focus/Pin, X, Z, RadiusM} (ADR-0013, `sim-lod.md` §4)
+    // 13..22 заняты планом инструментов (`player-tools.md` §1)
+    PaintZone = 23,             // 3.2, ADR-0011: зона на участках в прямоугольнике {X0,Z0,X1,Z1, ZoneKind, Density} (20 Б); Z1 - NotSupported (заглушка `Zoning.Apply`), тело - Z6
+    SetTripExecution = 24,      // 3.2: {Mode} (1 Б) micro/aggregate; запрос откладывается до границы суток (`CityWorld.ExecPending`), micro -> aggregate калибрует K; Mode > 1 - InvalidArgument, без города - NotSupported (Z5)
+    // 4.3, ADR-0023, player-tools.md §1-2 (T1: типы и номера; T3: 28-30, T4: 25 и отмена `BuildRoad(RestoreOf)` работают; остальные - NotSupported до T5..T9); ссылки - EntityRef {Index, Generation}, 0 = без проверки
+    RemoveRoad = 25, UpgradeRoad = 26, SplitRoad = 27, SetArmControl = 28, SetTurnBan = 29, SetLaneFlags = 30,
+    InsertBusStop = 31, RemoveBusStop = 32, RemoveBusRoute = 33, SetBusRouteParams = 34, MergeAtNode = 35,
+    // 4.2, ADR-0025, city-economy.md §11 (E1): номер 25 из спеки занят инструментами - взят следующий свободный
+    SetBudgetPolicy = 36,       // {BudgetPolicy (16 Б)}: ожидающая политика, действует с границы суток; без города - NotSupported; Enable на городе без бюджета - NotSupported (тело - E2); бюджет не выключить; ставки > max_* - BudgetRule
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
@@ -451,10 +491,27 @@ public struct SetNodeControlCmd { public int Node; public NodeControl Control; }
 - Каждая команда даёт ровно одно событие: `CommandApplied`/`CommandRejected` с эхом `Tag`
   и кодом причины (`SimEvent.A = (int)RejectReason`), плюс события-следствия
   (`NodeCreated`, `SegmentCreated`, `BusRouteCreated`), из которых клиент узнаёт созданные индексы.
-- `BuildRoad` во время движения допустим: только добавление (снос — этап 2). После применения
+- `BuildRoad` во время движения допустим. После применения
   `Network.Version++`; граф маршрутизации и оверлей достраиваются сразу (`routing.md` §9.3), планы и окна едущих машин остаются
   валидными (они хранят направленные сегменты и полосы, а не индексы матриц); connector'ы и конфликты
   затронутых узлов перестраиваются, их допуски сбрасываются (`intersections.md` §5.7).
+- **Врезка в построенный узел (4.3, T3).** Конец дороги в построенном узле перестраивает узел (`player-tools.md` §5): новый блок connector'ов, перенос ссылок выживших
+  connector'ов (`Relocate`), светофор узла - маски заново (оси те же - план сохранён; иначе план по умолчанию и событие `SignalPlanReset`). Исчезающий connector, на котором
+  стоят машины, - `Busy` (команда отклонена целиком, новый сегмент снят; повторить позже; дренаж узла - T4); предел рукавов/connector'ов - `NodeLimit`. Первая такая правка
+  ставит `ToolsTouched` (раскладка - состояние). Правило «новые узлы выше построенных» снято: построить ранее созданный непостроенный узел ниже построенных - тоже правка раскладки.
+  В Q-meso (`lod.meso_model = queue`) врезка и `SetTurnBan` - `NotSupported` (состояние очередей по полосам не переносится).
+- **`SetArmControl` {Node, ArmSlot, Control}** (на месте): знак рукава (слот - номер в `NodeArms`, по часовой): 0 авто (по умолчанию), 1 главный, 2 «уступи», 3 «стоп».
+  Хранится битами `ArmFlags` (бит1 принудительно главный, бит2 принудительно второстепенный, бит3 знак «стоп»; бит0 - итоговый `ArmMinor`) и переживает перестройку узла (по сегменту рукава).
+  Второстепенный рукав на узле без правил включает режим «уступи» (`Control = Yield`); сняты все - режим возвращается в «правая рука». У светофорного узла знаки сохраняются, но не действуют.
+  Пересчитывает флаги и `Rel` конфликтов, сбрасывает допуски узла. `ArmSlot >= ArmCount`, `Control > 3`, не построенный узел - `InvalidArgument`.
+- **`SetTurnBan` {Node, FromArm, ToArm, Banned}** (перестройка узла): запрет манёвра рукав -> рукав (слоты 0..7; `FromArm == ToArm` - разворот). Запрет, оставляющий входную полосу,
+  у которой были выезды, без выезда, - `CreatesTrap`; занятый исчезающий connector - `Busy`. Запрет хранится в `NodeData.TurnBan` по слотам и переносится при перестройке по сегментам рукавов.
+- **`SetLaneFlags` {Seg, Dir, LaneNo, Flags, Mask}** (на месте): биты `BusOnly`/`NoLaneChangeOut` по маске; `Closed/Draining` ядро ставит само (в маске - `InvalidArgument`). Читает MOBIL.
+- **`RemoveRoad` {Seg, Flags}** (дренаж, T4; `player-tools.md` §4.3): сегмент закрывается для въезда (`SegmentClosing`), заводится операция (`Simulation.ToolOps`: `Id`, цель, `Remaining`, `StartTick`), удаление - в фазе 1а, когда сегмент и его connector'ы
+  опустеют (`SegmentRemoved`, `NodeRemoved` для осиротевших узлов без `Flags` бит0 `KeepNodes`, `ToolOpFinished`). Машины и пешеходы не удаляются; застрявший дренаж - `DrainStalled(id, Remaining)` раз в 60 с, цель остаётся закрытой.
+  Отказы: `InvalidHandle`, `Busy` (уже закрывается), `NotSupported` (остановка автобуса на сегменте - до T9; Q-meso), `Capacity` (256 операций), `InvalidArgument` (неизвестные биты `Flags`). Отмена: `BuildRoad` с `RestoreOf` = handle закрывающегося сегмента переоткрывает его.
+  Клиент: закрывающийся сегмент (`SegmentData.Flags` бит0, полосы `Closed`) рисовать «перекрыто»; после финала слот сегмента мёртв (`Generation` чётное).
+- Метрики инструментов (`SimWork.NodeRebuilds`, `ToolCommandsApplied`, ...) - вне хэша и сейва.
 
 ## 5. Снапшоты
 
@@ -536,6 +593,11 @@ FFI (будущий Rust): `void tc_sim_vehicles(const TcSim*, const VehicleRend
 const VehicleRenderData** prev, int32_t* prev_len, int64_t* snapshot_tick)` — указатели в память ядра,
 только чтение, валидны до `tc_sim_step`/`tc_sim_destroy`. В Rust-API: `fn vehicles(&self) -> &[VehicleRenderData]`.
 
+Копия видимого (**[4.1 S8]**, ADR-0024 п. 3, `Api/Simulation.Copy.cs`): `bool CopyVisibleVehicles(Span<VehicleRenderData> cur, Span<VehicleRenderData> prev, out int count)` и
+`CopyVisiblePeds` - компактно, только слоты с `Flags != 0` текущего снапшота, в порядке слотов; `prev[k]` - тот же слот тиком раньше (нули, если слота нет в прошлом
+буфере); `Index`/`Generation` сохраняются. Ёмкость = `min(cur.Length, prev.Length)`; не хватило - `false`, скопированы первые, `count` = сколько нужно. 0 B, на хэш
+не влияет, вызывать на потоке `Step` между тиками. `ViewVersion` растёт при каждом `SetRenderView*`. FFI: `tc_sim_copy_visible(sim, cur, prev, cap, *count, *snapshot_tick)`.
+
 Потребители: Godot `game/Scripts/SimHost.UpdateVehicles` и `Sim.Headless` `FrameRenderer.DrawVehicles` уже
 обходят `cur.Length` с проверкой `i < prev.Length` — правка кода не нужна. Снапшот пишется всегда, в том числе в
 headless; режим `SnapshotEnabled = false` (ленивый/выключенный снапшот для headless) — отложен (ADR-0010 «F»).
@@ -554,6 +616,9 @@ headless; режим `SnapshotEnabled = false` (ленивый/выключен�
 по цвету ячейки) **не сделаны**: ADR-0014 не принят, семантика не определена (решение владельца, sim-lod.md §11).
 `bench --view all|focus|x0,z0,x1,z1` (по умолчанию `all`; `focus` = 3×3 км вокруг центра сети) эмулирует клиента; результат содержит `view`,
 `compare` не сравнивает прогоны с разным видом.
+
+Поток симуляции клиента (**[этап 4.1]**, ADR-0024): спаны читает только поток, вызывающий `Step`; главному потоку он отдаёт компактную копию
+видимого — `CopyVisibleVehicles(cur, prev, out count)` / `CopyVisiblePeds` (живые слоты вида этого тика + их prev), только чтение, гарантии выше не меняются.
 
 ### 5.3 Загрузка сегментов (оверлей heatmap)
 
@@ -639,6 +704,13 @@ public readonly ref struct NetworkView
 Это те же массивы, что использует ядро (§6), отданные read-only. Клиент перестраивает меши
 дорог только при смене `Version`.
 
+**Сеть с дырами (4.3, T2, `player-tools.md` §3, ADR-0023).** `Nodes/Segments/BusStops/BusRoutes` идут до `HighWater` своего пула, а не до числа живых: в них бывают мёртвые слоты.
+Признак - поле `Generation` в `*Data` (**нечётное = занят, чётное = свободен**; отдельного массива `Alive` нет - то же поле, что в handle'ах). Мёртвый слот
+хранит канонические значения (ссылки -1, остальное 0): клиент его пропускает. У полосы `Generation` = 1 (живая) или 0 (мёртвая и запасная полоса блока). Хелперы `NetworkView`:
+`IsNodeAlive/IsSegmentAlive/IsLaneAlive/IsBusStopAlive/IsBusRouteAlive(i)` и `NodeRef/SegmentRef/BusStopRef/BusRouteRef(i)` -> `EntityRef` (индекс + текущее поколение; для
+команд и для правки handle'ов после `*Remapped`: поколение нового слота читается отсюда). `SegmentData.Flags` (бит0 `Closing`, бит1 `Curve`, `Cx/Cz` - контрольная точка),
+`NodeData.Flags` (бит0 `Quiesce`), `NodeData.TurnBan`, `LaneData.Flags` (бит2 `Closed`, бит3 `Draining`), `BusStopData.Generation` - у сети без правок нули/единицы как прежде.
+
 ### 5.7 События
 
 ```csharp
@@ -650,7 +722,14 @@ public enum SimEventKind : int
     GridlockOn = 20, GridlockOff = 21,
     CapacityExhausted = 30,      // A = (int)CapacityKind, B = сколько отброшено за тик
     EventsOverflow = 31,         // всегда последний элемент, если события не влезли
+    // 4.3 (player-tools.md §7.2, §8.2; T1 - номера, события с T3..T9):
+    SegmentClosing = 40, SegmentRemoved = 41, NodeRemoved = 42, NodeRebuilt = 43, SignalPlanReset = 44, ToolOpFinished = 45,
+    DrainStalled = 46, ZoneAccessLost = 47, BusStopCreated = 48, BusStopRemoved = 49,
+    SegmentRemapped = 50, NodeRemapped = 51, BusStopRemapped = 52, BusRouteRemapped = 53,   // A = старый индекс, B = новый
 }
+// RejectReason 6..15 (4.3): TooShort, TooSharp, Overlap, NodeLimit, Busy, CreatesTrap, InsufficientFunds, Unreachable, ZoneRule, OutOfBounds.
+// RejectReason 16 (4.2, E1): BudgetRule (политика бюджета вне пределов, выключение бюджета, политика без бюджета). InsufficientFunds (12) выдаёт E4.
+// События 4.2 (E1): BudgetNegative = 55, BudgetLimitReached = 56, BudgetRecovered = 57, PolicyApplied = 58 (A = номер суток; PolicyApplied.B = Fare новой политики).
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 24)]
 public struct SimEvent
@@ -661,6 +740,10 @@ public struct SimEvent
     public int A, B;             // зависят от Kind: индексы/поколения/коды
 }
 ```
+
+**Проверка handle'ов (4.3, T2).** Команда со ссылкой на узел (`SetSignalPlan.Node/NodeGen`, `SetNodeControl.Node/NodeGen`; `EntityRef` в командах T3..T9) отклоняется
+`RejectReason.InvalidHandle` (`Counters.InvalidHandleOps++`), если слот мёртв либо `Generation != 0` и не равна поколению слота. `Generation == 0` - без проверки поколения
+(генератор, тесты); индекс вне `[0, HighWater)` - по-прежнему `InvalidArgument`. Правила для `Restore*`-полей - `ToolTypes.cs`.
 
 Буфер `EventCapacity` очищается в начале каждого `Step`. Переполнение — последняя запись
 `EventsOverflow`, остальные теряются (`Counters.EventsDropped += n`).
@@ -742,7 +825,7 @@ Connector-полосы: по одной на разрешённый манёвр
 без спец-случаев: connector — такая же полилиния, как и обычная полоса.
 Реализация (`NetworkBuilder`): правила манёвров — интерфейс `IConnectorRules` (точка расширения шага 3);
 порядок connector'ов полосы в `LaneNext`: прямо, направо, налево, разворот. Манёвр «прямо» — поворот ≤ 30°.
-Радиус узла этапа 1 фиксирован: `NodeData.Radius = NodeSetback` (7 м, `intersections.md` §1). Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
+Отступ стоп-линий — по рукавам (ADR-0028, `intersections.md` §1): у узла степени ≥ 3 `max(NodeSetback, полуширина поперечной + CornerRadius)`, у тупиков и изгибов `NodeSetback` (7 м); `NodeData.Radius` — наибольший отступ рукавов узла. Полоса, которой правила не дали ни одного connector'а (средняя на T-образном), получает все допустимые
 направления («relaxed»-проход). Разворот — только на тупике (узел с одним сегментом). Узел строится один раз
 (`NodeAlreadyBuilt`); `NodeData.FirstArm == -1` — узел ещё не построен. Рукава ≤ 16 на узел. Ошибки построения —
 `NetworkStatus` (ёмкости → `CreateStatus.NetworkTooLarge`, остальное → `InvalidNetwork`).
@@ -753,7 +836,7 @@ Connector-полосы: по одной на разрешённый манёвр
   `LanePointS` (`LanePointS[First] = 0`, последняя = `Length`).
 - **Соглашение для параллельных полос**: все `Normal`-полосы одного сегмента имеют
   `Length = Segment.Length` (длина оси **между отступами от узлов**: ось обрезается на
-  `NodeSetback` = 7 м у обоих концов, иначе connector «прямо» имел бы нулевую длину), а их
+  отступы рукавов у обоих концов — не меньше `NodeSetback` = 7 м, ADR-0028; иначе connector «прямо» имел бы нулевую длину), а их
   полилинии — ось, смещённая вправо по ходу A→B на `T/2 − (LaneNo + 0.5) * LaneWidth`
   для A→B и на `−(T/2 − (LaneNo + 0.5) * LaneWidth)` для B→A, `T = (LanesAB + LanesBA) * LaneWidth`
   (LaneNo 0 — крайняя правая, дальше всех от оси; односторонняя дорога центрируется на оси).
@@ -970,7 +1053,13 @@ connector'ов узла (`PhaseMask : ulong`, ≤ 64 connector'ов на узе�
 | 7 | **Переходы**: (a) начало смены полосы для `LaneChangeDir != 0` — вставка в целевую, ghost в исходной; завершение манёвров; (b) `s' ≥ Length` → перенос на следующую полосу маршрута (`RouteCursor++`, `s' −= Length`, PushTail, пересчёт `DesiredSpeed`, `PointHint = 0`); фиксация `NodeThroughput[node]++` при выходе с connector'а | S, Route | Lane, списки, RouteCursor | `Agents/TransitionPhase.cs` |
 | 8 | **Прибытие/деспаун**: `Lane == DestLane && S >= DestS` → `TripCompleted`, счётчики времени поездки, `Free`; автобус на конечной — **[шаг 4]**. Деспаун застрявших запрещён | S, Dest | VehicleStore, Counters, Events | `Agents/ArrivalPhase.cs` |
 | 9 | **Метрики**: stuck/unstuck (§11), gridlock, `SegmentLoads`, `BusRouteStats`, счётчики | всё | Counters, SegmentLoads | `Metrics/MetricsPhase.cs` |
+| 2d / 3b / 4p | **Пешеходы** (3.1, `pedestrians.md` §8; только при `peds`): `PedSpawn` (после 2b: очередь готовых жителей → пешеходы `PendingPath`), `PedPhase.Route` (после 3: пути в бюджете), `PedPhase.Run` (после 4a, до 4b: события колеса таймеров, автоматы переходов); зонд шлёт номера 11, 12, 13 и метку 14 (время 4a отнести к gate) | Residents, Peds, Crossings | Peds, Residents, Crossings, TimerWheel, Counters | `Peds/Ped{Spawn,Phase,Router}.cs` |
 | 10 | **Снапшот** (§5.2): заполнить `Render[(tick+1) & 1][..HighWater]` и `SnapshotSlots` (позиция по полилинии с `PointHint` + `Lateral`, курс из `LanePieceHeading`), `SelectedRoute` | S, Lane, Lateral, флаги | RenderBuffers | `Api/SnapshotPhase.cs` |
+
+**Город (3.2, `zoning-demand.md` §12; только при `demand.model = residents`).** Фаза **2r** `CityPhase.Events` — сразу после команд, до спавна: события колеса жителей
+текущего тика по возрастанию индекса (план дня, выезд, конец занятия, дедлайн `WaitDepart`), заявки ног (машина — `PendingTrip.ResidentRef` в `PendingTrips`, пешком/автобус — `PedWorld.RequestLeg`);
+2a (OD-генератор) выключена. Фаза **9r** `CityPhase.Periodic` — после метрик: `ArrivalRing` по порядку (кладут 4p — пешеход, 8 — машина; наблюдение в скимы, состояние жителя, следующее событие плана),
+граница суток. Без `residents` обе фазы не исполняются.
 
 `Tick++` — после фазы 10. События фаз 2–9 попадают в `Events` того же `Step`.
 
@@ -1076,7 +1165,7 @@ public struct Pcg32
 Сидирование: `ScenarioDesc.Seed` → подпотоки с фиксированными `stream`-номерами
 (`RngStream` enum): `CityGen = 1`, `Zones = 2`, `Spawn = 3` (OD-пары, тип ТС, стартовая полоса),
 `Behaviour = 4` (зарезервировано: шум в параметрах водителей — этап 2), `Transit = 5`,
-`Routing = 6` (разрешение ничьих). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
+`Routing = 6` (разрешение ничьих), `Peds = 7` (жители в `Create`, скорость пешехода при запуске поездки, время занятий; `pedestrians.md` §13), `Demand = 8` (город: `Create`, события жителей, дневные проходы; `zoning-demand.md` §18). Каждая подсистема владеет своим `Pcg32` в фиксированном поле
 `World` — никаких общих генераторов, чтобы добавление вызова в одной подсистеме не меняло
 поток другой. Генератор города использует только `CityGen`, поэтому сеть зависит от seed и
 `CityGenDesc`, но не от числа машин.
@@ -1123,8 +1212,20 @@ public struct Fnv1a64
 10. LOD (только при `Lod.Mode != Off`, ADR-0013): в п.3 для живых ещё `Lod`, для meso — `MesoAllow`; затем по ячейкам
     `CellLevel, CellHoldUntil, CellCongStreak`, слоты `Focus[0..7]`, `LodEvalRequested`, `LastLodEvalTick`. `RenderView` не входит.
 
+11. Пешеходы (только при `peds`, `hash_version` 2; `Peds/PedHash.cs`): `Peds`-PRNG, `TargetPeds`; пул и поля пешеходов (живые слоты; путь - шаги `[0, PathCount)`); жители и очередь готовых; состояние переходов
+    (по индексу `x`), очереди остановок, `PaxHead`; очередь путей; гистограммы ожидания; счётчики группы «пешеходы». Списки по рёбрам, колесо таймеров, `RenderHint` - производные, не хэшируются.
+
+12. Город (только при `demand.model = residents`, `hash_version` 4; `City/CityHash.cs`): `Demand`-PRNG, сутки и режим исполнения, курсоры, сглаженный спрос; участки (состояние), здания и жители (живые слоты, планы, ноги),
+    очередь ищущих работу; `External`/`City` и потоки; скимы (данные, `K`, накопители отсортированным слепком, `LS_ref`), `CellLoads`; `Resident` живых машин; счётчики группы «город». Геометрия участков, колесо жителей, сетка занятости
+    нарезки - производные, не хэшируются. С `hash_version` 4 при `economy.city_budget` дописывается раздел казны (политики, цена земли, сглаженные доход и расход, переносы остатков, долг, кредиты undo, потоки 13-16, фонд оплаты живых зданий, счётчики казны); вне бюджета хэш прежний.
+
+13. Состояние инструментов (4.3, T2; только при `World.ToolsTouched = 1` - после первой структурной правки сети; `NetworkStore.AddToolStateToHash`): `ToolsTouched`; пулы узлов, сегментов, остановок и
+    маршрутов (`HighWater`, длина и содержимое free-list); арены `Lanes, LanePoints, SegmentPoints, NodeArms, LaneNext, ZoneLanes, BusRouteStops` и строк/конфликтов connector'ов (хвост, потери,
+    дыры по классам сверху вниз, битовая карта «блок по лестнице»); по узлам `Generation, Flags, TurnBan`, по сегментам `Generation, Flags, Cx, Cz`, поколения остановок и маршрутов, `LaneData.Flags` полос.
+    Без правок раздела нет - хэш прежний (TL1); `hash_version` не меняется.
+
 Не входят: снапшоты, события, `SegmentLoads` (производные), геометрия сети (детерминирована
-seed'ом; при желании — отдельный `ComputeNetworkHash()`, не требуется этапом 1).
+seed'ом; отдельный `ComputeNetworkHash()` (4.6, R2) — состав и порядок в `rust-pilot.md` §5.2, в хэш состояния не входит).
 Требование: `float`-арифметика в ядре без `MathF.FusedMultiplyAdd` и без зависимости от
 вектора SIMD (JIT может менять порядок) — только скалярные операции в фиксированном порядке;
 результат должен совпадать x64 ↔ arm64 на .NET (IEEE-754, без x87). Тест детерминизма:
@@ -1277,7 +1378,14 @@ int32_t  tc_sim_save(tc_sim*, uint8_t* dst, int64_t cap, int64_t* written, const
 int32_t  tc_sim_save_stream(tc_sim*, int32_t (*write)(void* user, const uint8_t* data, int64_t len), void* user);
 int32_t  tc_sim_load(const uint8_t* src, int64_t len, const tc_load_options*, const tc_runtime_options*, tc_sim** out, tc_load_report*);  // LoadStatus
 int32_t  tc_sim_inspect_save(const uint8_t* head64, tc_save_header_info* out);
+// Превью инструментов игрока (player-tools.md §7, 4.3 T7). Между tc_sim_step, тот же поток; состояние не меняет; ничего не выделяет (кроме scratch связности при первом вызове).
+int32_t  tc_sim_preview(tc_sim*, const tc_command* cmd, tc_preview_result* out, tc_preview_issue* issues, int32_t issues_cap,
+                        tc_vec2* axis, int32_t axis_cap, uint32_t flags);   // возврат = RejectReason вердикта (0 - применится); flags: бит0 Detail (RoutesThrough)
+void     tc_sim_set_tools_config(tc_sim*, const tc_tools_desc*);          // стоимости и границы; конфигурация хоста, вне сейва и хэша (после tc_sim_load задать заново)
 ```
+
+`tc_preview_result`, `tc_preview_issue`, `tc_tools_desc` - раскладка C# `PreviewResult` (Pack 8), `PreviewIssue` (Pack 4) и `ToolsDesc` (`Api/ToolTypes.cs`, `Api/ToolsDesc.cs`);
+`issues_cap`/`axis_cap` - ёмкость буферов хоста: ядро считает все предупреждения (`IssueCount`), пишет `IssuesWritten = min(cap, IssueCount)`; `axis` - `AxisPointCount` точек.
 
 `tc_scenario_desc` — та же структура, где `T[]` заменены на `(const T*, int32_t)`; строк нет.
 Указатели из `tc_sim_*` валидны до следующего `tc_sim_step`/`tc_sim_destroy`. В C#-версии
@@ -1382,3 +1490,11 @@ src/Sim.Core/
    connector'ом, сигнал исправен»).
 4. ~~`StepPhased` для профилирования~~ — решено: зонд `OnPhaseEnd` (§3).
 5. Шум параметров водителей (стрим `Behaviour`) — этап 2; поля под него не резервируем, кроме стрима PRNG.
+
+### RP10b: каталог профилей, сетка и клетки участков в read API
+
+Read-only, без аллокаций, blittable; ядро формат сейва, хэши и golden не меняет (данные уже лежат в `RPRF`, `PARM.WorldGridOriginX/Z`, `LOTS`).
+
+- `NetworkView` получил `RoadProfiles` (`ReadOnlySpan<RoadProfileData>`, 12 Б: `FirstElem`, `WidthMm`, `ElemCount`, `Kind`, `LanesFwd/Bwd`), `ProfileElems` (`ReadOnlySpan<RoadElemData>`, 12 Б: `Kind`, `Dir`, `OffsetMm` от оси слева направо по A→B, `WidthMm`), `ModuleMm` и `GridOriginX/Z`. Верны после `Load` (каталог из `RPRF`, начало из `PARM`): клиенту дескриптор не нужен. Legacy: срезы пусты, `ModuleMm = 0`, начало (0, 0). `Simulation.Network` подставляет начало сетки мира, `NetworkStore.GetView(originX, originZ)`.
+- `LotRenderData` расширен с 16 до 28 Б (вариант «шире структура», а не отдельный `GetLotCells`: один проход `GetLots`, одна версия `LotsVersion`, участок целиком). Поля: `Orient` (бывший `R0`, байт 15; 255 - legacy), `CellsF`, `CellsD`, `CellX`, `CellZ` (int, Pack 4, размер 28 = кратно 4). Хелперы `OnGrid`, `DepthDir`, `TryGetCellBounds` повторяют `LotBuilder.CellBounds` (тест сверяет). Legacy: `Orient = 255`, клетки 0.
+- Rust-пилот: `LotRenderData` и вью в `rust/` не зеркалируются (есть только `RoadProfilesDesc` как desc), синхронизировать нечего; при порте вью - те же раскладки.

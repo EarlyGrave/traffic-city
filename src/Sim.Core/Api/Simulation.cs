@@ -85,10 +85,23 @@ public sealed partial class Simulation : IDisposable
         World w = _w;
         w.EventCount = 0;
         w.EventsOverflowed = false;
+        w.Inv.ClearRecords();
         w.Pool?.Wake();
-        for (int t = 0; t < ticks; t++)
+        for (int t = 0; t < ticks;)
         {
+            if (w.City != null)
+            {
+                long jump = Demand.AggregateExec.IdleSpan(w, ticks - t);   // агрегат без агентов: пустые тики перепрыгиваем (zoning-demand.md §9.2)
+                if (jump > 0)
+                {
+                    Demand.AggregateExec.Jump(w, jump);
+                    t += (int)jump;
+                    continue;
+                }
+            }
+
             PhaseList.RunTick(w);
+            t++;
         }
 
         w.Pool?.Rest();
@@ -180,7 +193,16 @@ public sealed partial class Simulation : IDisposable
         }
     }
 
-    public NetworkView Network => _disposed ? default : _w.Net.GetView();
+    /// <summary>Обратные записи за последний <c>Step</c>, по одной на применённую команду инструмента, в порядке применения (player-tools.md §8.1).</summary>
+    public ReadOnlySpan<InverseRecord> Inverses => _disposed ? default : new ReadOnlySpan<InverseRecord>(_w.Inv.Recs, 0, _w.Inv.RecCount);
+
+    /// <summary>Команды обратных записей: <c>[First, First+Count)</c> - в порядке, в котором их ставят в очередь (один <c>Step</c>, подряд).</summary>
+    public ReadOnlySpan<Command> InverseCommands => _disposed ? default : new ReadOnlySpan<Command>(_w.Inv.Cmds, 0, _w.Inv.CmdCount);
+
+    /// <summary>Длительные операции инструментов (дренаж сноса) с прогрессом: для индикатора на дороге (player-tools.md §7.2).</summary>
+    public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views();
+
+    public NetworkView Network => _disposed ? default : _w.Net.GetView(_w.WorldGridOriginX, _w.WorldGridOriginZ);
 
     /// <summary>События последнего Step (буфер очищается в его начале).</summary>
     public ReadOnlySpan<SimEvent> Events => _disposed ? default : new ReadOnlySpan<SimEvent>(_w.Events, 0, _w.EventCount);
@@ -264,6 +286,9 @@ public sealed partial class Simulation : IDisposable
 
     /// <summary>FNV-1a 64 по состоянию (core-api 9). O(N), не вызывать каждый тик в проде.</summary>
     public ulong ComputeStateHash() => _disposed ? 0UL : StateHash.Compute(_w);
+
+    /// <summary>FNV-1a 64 статики сети после построения и connector'ов (rust-pilot.md §5.2): кросс-языковой golden Rust-пилота. В хэш состояния не входит.</summary>
+    public ulong ComputeNetworkHash() => _disposed ? 0UL : NetworkHash.Network(_w);
 
     // ---- запросы ----
 

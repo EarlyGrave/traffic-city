@@ -18,6 +18,29 @@ public enum SimEventKind : int
     GridlockOff = 21,
     CapacityExhausted = 30,      // A = (int)CapacityKind, B = сколько отброшено за тик
     EventsOverflow = 31,         // всегда последний элемент, если события не влезли
+
+    // Инструменты игрока (4.3, player-tools.md §7.2, §8.2). T1: номера закреплены, события выдаются с T3..T9.
+    SegmentClosing = 40,         // A = индекс сегмента, B = поколение (началось закрытие/дренаж)
+    SegmentRemoved = 41,         // A = индекс сегмента, B = поколение
+    NodeRemoved = 42,            // A = индекс узла, B = поколение
+    NodeRebuilt = 43,            // A = индекс узла
+    SignalPlanReset = 44,        // A = индекс узла (план сброшен перестройкой)
+    ToolOpFinished = 45,         // A = id операции (ToolOpView.Id), B = (int)CommandKind
+    DrainStalled = 46,           // A = id операции, B = Remaining (раз за период; цель остаётся Closing)
+    ZoneAccessLost = 47,         // A = индекс зоны
+    BusStopCreated = 48,         // A = индекс остановки, B = поколение
+    BusStopRemoved = 49,         // A = индекс остановки, B = поколение
+    SegmentRemapped = 50,        // A = старый индекс, B = новый индекс (поколение нового - из handle'ов сегмента)
+    NodeRemapped = 51,           // то же для узла
+    BusStopRemapped = 52,        // то же для остановки
+    BusRouteRemapped = 53,       // то же для маршрута
+    ZoneLotsLost = 54,           // A = индекс снесённого сегмента, B = число потерянных участков (режим жителей; zoning-demand.md §14)
+
+    // Экономика города (4.2, city-economy.md §10, E1): номера закреплены; BudgetNegative/LimitReached/Recovered выдаёт E2 на границе суток.
+    BudgetNegative = 55,         // A = номер суток, B = City (насыщенно в int): первый день City < 0
+    BudgetLimitReached = 56,     // A = номер суток, B = City (насыщенно в int): казна ушла за кредитный лимит
+    BudgetRecovered = 57,        // A = номер суток, B = City (насыщенно в int): казна вернулась в лимит
+    PolicyApplied = 58,          // A = номер суток, B = Fare новой политики: ожидающая политика стала действующей
 }
 
 /// <summary>Причина отказа команды: <c>SimEvent.A</c> для <see cref="SimEventKind.CommandRejected"/>.</summary>
@@ -29,6 +52,19 @@ public enum RejectReason : int
     InvalidArgument = 3,
     UnknownKind = 4,
     NotSupported = 5,
+
+    // Инструменты игрока (player-tools.md §6). Коды 1..99 совпадают с IssueCode-ошибками превью.
+    TooShort = 6,               // сегмент или половина разреза < tools.min_segment_m
+    TooSharp = 7,               // угол рукавов < min_arm_angle_deg или радиус Безье < min_curve_radius_m
+    Overlap = 8,                // ось пересекает сегмент не в узле или идёт параллельно ближе ширины проезжей части
+    NodeLimit = 9,              // рукавов > 6, connector'ов > 64
+    Busy = 10,                  // цель уже в операции (снос закрывающегося, апгрейд дренируемого)
+    CreatesTrap = 11,           // односторонний сегмент в узел без выездов
+    InsufficientFunds = 12,     // экономика (4.2): City - цена < -кредитный лимит (применяет E4)
+    Unreachable = 13,           // нет пути от соседней остановки
+    ZoneRule = 14,              // резерв ADR-0011
+    OutOfBounds = 15,           // вне tools.world_bounds
+    BudgetRule = 16,            // экономика (4.2): ставки политики за пределами, выключение бюджета, политика без бюджета
 }
 
 /// <summary>Какая ёмкость исчерпана: <c>SimEvent.A</c> для <see cref="SimEventKind.CapacityExhausted"/>.</summary>

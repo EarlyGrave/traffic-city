@@ -33,7 +33,21 @@ internal sealed class LoadContext
     public OdPairDesc[] OdPairs = Array.Empty<OdPairDesc>();
     public float[] TypeMix = Array.Empty<float>();
     public float NetLaneWidth = 3.5f;
+    public float NetCornerRadius;   // w6 (ADR-0028); 0 - фиксированный отступ (сейвы до w6)
     public int NetConnectorSamples = 8;
+    public int RoadProfileMode;     // w8 (ADR-0030): 0 - legacy, 1 - режим профилей (блок RPRF обязателен)
+    public int LandUseCount;        // w10 (visual-style.md §8): число полигонов землепользования (блок LUSE обязателен при > 0)
+
+    // каталог профилей (RPRF, PreWorld): столбцы по группам, собираются в RoadProfilesDesc в After блока
+    public int RprfModuleMm;
+    public byte[] RprfKind = Array.Empty<byte>();
+    public int[] RprfWidthMm = Array.Empty<int>();
+    public byte[] RprfElemCount = Array.Empty<byte>();
+    public ushort[] RprfIdLength = Array.Empty<ushort>();
+    public byte[] RprfElemKind = Array.Empty<byte>();
+    public byte[] RprfElemDir = Array.Empty<byte>();
+    public int[] RprfElemWidthMm = Array.Empty<int>();
+    public byte[] RprfIdBlob = Array.Empty<byte>();
 
     /// <summary>Длины групп свободной длины (-1 - ещё не задана); см. <see cref="ColumnDef.Group"/>.</summary>
     public readonly long[] Group = new long[8];
@@ -47,6 +61,18 @@ internal sealed class LoadContext
     public int SelectedIndex;
     public int SelectedGeneration;
     public readonly ulong[] RngState = new ulong[6];
+    public ulong PedRngState;
+    public ulong DemandRngState;
+
+    // город (zoning-demand.md §15): сетка ячеек (PARM), таблица типов зданий (BTYP), накопитель наблюдений скимов (SKIM) до вставки в таблицу
+    public float CityGridOriginX;
+    public float CityGridOriginZ;
+    public int CityGridCellsX;
+    public int CityGridCellsZ;
+    public Sim.Core.Api.BuildingTypeDesc[] BuildingTypes = Array.Empty<Sim.Core.Api.BuildingTypeDesc>();
+    public int[]? ObsKeys;
+    public long[]? ObsSums;
+    public int[]? ObsCounts;
 
     public float LodOriginX;
     public float LodOriginZ;

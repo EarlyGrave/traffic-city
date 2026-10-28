@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "buildings": [
+    { "name": "too_big", "kind": "commercial", "density": "low", "capacity": 2001, "shop_capacity": 10 },
+    { "name": "bad_kind", "kind": "park", "density": "low", "capacity": 4 },
+    { "name": "shop_in_home", "kind": "residential", "density": "high", "capacity": 4, "shop_capacity": 3 }
+  ]
+}
