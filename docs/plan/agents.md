@@ -216,3 +216,5 @@
 | L41 | precommit-docs-skip (локал, worktree) | haiku | pre-commit пропускает проверки для коммитов только из документации (*.md, docs/**, CLAUDE.md) | done |
 | 168 | ci-ab (облако, worktree) | sonnet | ADR-0031: A/B бенча s1k в CI | done, merged (scripts/bench-ab.sh, общий scripts/bench-args.sh, ci.yml build-test-bench: база = HEAD^1 / merge-base, B1 H1 B2 H2 B3 H3; негативный тест — FAIL ×2.2; CI 40644955722 success, медианы 0.3035 / 0.2987) |
 | L40 | rp8-profiles (локал, worktree) | sonnet | RP8: *-res на профили, корпус w10, замеры | done, merged (участков 1 781 → 4 555 на s1k-res, D=2 ≈ 34 %; ожидания ≥ 60 с s10k-res 9.57 % → 9.34 %, бюджет 0.15 %; 4 res-теста закреплены на legacy) |
+| L42 | rp8-map-test (локал, worktree) | sonnet | BuildRoad-тест парковки на профильном res-сценарии, дорога внутри карты | done, merged |
+| L43 | stage4-verify (локал, worktree) | haiku | Верификация волны этапа 4 | done (всё зелёное; s10k-peds ожидания 0.485 %; *-res без рампы; stuck сводки ≠ JSON) |
