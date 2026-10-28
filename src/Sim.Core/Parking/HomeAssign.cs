@@ -100,6 +100,10 @@ internal static class HomeAssign
         if (hf > 0 && p.Pool.IsAlive(hf, res.HomeFacGen[r]))
         {
             p.Assigned[hf]--;
+            if (cf != hf)
+            {
+                p.HomeAway[hf]--;   // HomeAway ведётся инкрементально: закрепивший, чья машина не здесь, уходит из счёта
+            }
         }
 
         if (cf == 0)

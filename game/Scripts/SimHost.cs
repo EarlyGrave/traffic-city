@@ -48,6 +48,13 @@ public partial class SimHost : Node3D
     private PedChunks? _pedStatic;
     private LandUseChunks? _landUse;
     private BuildingLayer? _buildings;
+    private WorldGrid? _grid;
+    private bool _gridArg;           // --grid: сетка 8 м показана сразу (скриншоты)
+    private bool _noSnapArg;         // --no-snap: снап выключен
+    private bool _hasSnapDemo;       // --snap-demo x z: превью снапа в фиксированной точке
+    private Vector2 _snapDemo;
+    private bool _profRes;
+    private bool _viaSave;           // --prof-res: сценарий *-res в режиме профилей (подмена JSON в памяти, как ProfileSaveFixtures.Res)
     private BoxBatch? _signals;
     private int[] _signalLanes = Array.Empty<int>();
     private MeshInstance3D? _routeNode;
@@ -109,6 +116,7 @@ public partial class SimHost : Node3D
         _renderStats = GetNodeOrNull<RenderStats>("../RenderStats");
 
         InfoMode.Init();
+        WorldGrid.Init();
         string name = Scenario;
         string[] args = OS.GetCmdlineUserArgs();
         ParseArgs(args, ref name);
@@ -170,7 +178,8 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
-    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов).
+    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов),
+    /// RP10: <c>--grid</c> (сетка 8 м показана сразу), <c>--no-snap</c>, <c>--snap-demo x z</c> (превью снапа в точке + строка <c>[snap]</c> в журнале), <c>--prof-res</c> (сценарий <c>*-res</c> с профилями фикстуры; Shift+G - сетка, G - снап).
     /// </summary>
     /// <summary>Час суток из <c>HH:MM</c> или десятичных часов (<c>19</c>, <c>19.5</c>).</summary>
     private static bool TryParseHour(string v, out float hour)
@@ -195,6 +204,30 @@ public partial class SimHost : Node3D
             if (a == "--hud")
             {
                 _showHud = true;
+            }
+            else if (a == "--grid")
+            {
+                _gridArg = true;
+            }
+            else if (a == "--no-snap")
+            {
+                _noSnapArg = true;
+            }
+            else if (a == "--prof-res")
+            {
+                _profRes = true;
+            }
+            else if (a == "--via-save")
+            {
+                _viaSave = true;
+            }
+            else if (a == "--snap-demo" && i + 2 < args.Length
+                && float.TryParse(args[i + 1], NumberStyles.Float, inv, out float sdx)
+                && float.TryParse(args[i + 2], NumberStyles.Float, inv, out float sdz))
+            {
+                _hasSnapDemo = true;
+                _snapDemo = new Vector2(sdx, sdz);
+                i += 2;
             }
             else if (a == "--render-preset" && i + 1 < args.Length)
             {
@@ -419,6 +452,7 @@ public partial class SimHost : Node3D
         }
 
         _info.Update(delta, _camera?.Distance ?? 1000f);
+        _grid?.Update(delta, _camera?.Camera, GetViewport().GetMousePosition(), Input.IsKeyPressed(Key.Shift));
         if (_roadHeat != null && _info.Visible)
         {
             // heatmap дорог в шейдере: раз в 0.5 с обновляется только текстура данных, мешей не трогаем (render.md §3.5);
@@ -482,6 +516,18 @@ public partial class SimHost : Node3D
                 case Key.Key3 when _info.Active:
                     _info.SetLayer(InfoMode.LayerZones); // слой «Зоны»: землепользование и участки рисует LandUseChunks (VS9)
                     break;
+                case Key.G when _grid != null:
+                    if (key.ShiftPressed)
+                    {
+                        _grid.ToggleShown();
+                    }
+                    else
+                    {
+                        _grid.ToggleSnap();
+                    }
+
+                    GD.Print(_grid.StatusText());
+                    break;
                 case Key.F2:
                     _signalsOn = !_signalsOn;
                     if (_signals != null)
@@ -544,6 +590,53 @@ public partial class SimHost : Node3D
         }
     }
 
+    /// <summary>
+    /// Сценарий в режиме профилей без отдельного файла (<c>--prof-res</c>): тот же набор подмен, что у <c>ProfileSaveFixtures.Res</c> -
+    /// <c>road_profiles_file</c>, профили генератора, запас участков (на сетке 8 м их заметно больше, чем вдоль дороги).
+    /// </summary>
+    private static ScenarioDesc LoadProfileRes(string path)
+    {
+        string dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path)) ?? ".";
+        System.Text.Json.Nodes.JsonNode n = System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(path))!;
+        n["road_profiles_file"] = "road-profiles.json";
+        n["city"]!["profiles"] = new System.Text.Json.Nodes.JsonObject { ["street"] = "street_2", ["arterial"] = "arterial_4" };
+        System.Text.Json.Nodes.JsonNode caps = n["capacities"]!;
+        caps["max_lots"] = 12_000;
+        caps["max_buildings"] = 9_000;
+        return ScenarioLoader.Parse(
+            n.ToJsonString(),
+            rel => System.IO.File.ReadAllText(System.IO.Path.Combine(dir, rel)),
+            System.IO.Path.GetFileNameWithoutExtension(path) + "-prof",
+            ScenarioLoader.DefaultSearchDirs(dir)).Desc;
+    }
+
+    /// <summary>
+    /// Проверка RP10b без UI загрузки: мир сохраняется в память и грузится заново без дескриптора, дальше клиент читает каталог профилей и сетку только из вью/снапшотов.
+    /// </summary>
+    private static Simulation? ReloadViaSave(Simulation src, out string error)
+    {
+        error = string.Empty;
+        var bytes = new byte[src.MeasureSave()];
+        SaveStatus ss = src.Save(bytes, out long written);
+        src.Dispose();
+        if (ss != SaveStatus.Ok)
+        {
+            error = "Save failed: " + ss;
+            return null;
+        }
+
+        var o = new LoadOptions { StrictHash = 1 };
+        LoadStatus ls = Simulation.Load(bytes.AsSpan(0, (int)written), in o, default, out Simulation? loaded, out _);
+        if (ls != LoadStatus.Ok || loaded == null)
+        {
+            error = "Load failed: " + ls;
+            return null;
+        }
+
+        GD.Print("[via-save] мир сохранён и загружен без дескриптора");
+        return loaded;
+    }
+
     private bool TryStart(string nameOrPath, out string error)
     {
         error = string.Empty;
@@ -562,7 +655,7 @@ public partial class SimHost : Node3D
         ScenarioDesc desc;
         try
         {
-            desc = ScenarioLoader.LoadInfo(path).Desc;
+            desc = _profRes ? LoadProfileRes(path) : ScenarioLoader.LoadInfo(path).Desc;
         }
         catch (ScenarioException e)
         {
@@ -577,8 +670,32 @@ public partial class SimHost : Node3D
             return false;
         }
 
+        if (_viaSave)
+        {
+            sim = ReloadViaSave(sim, out error);
+            if (sim == null)
+            {
+                return false;
+            }
+        }
+
         _sim = sim;
-        RoadProfileLayouts.Set(in desc.RoadProfiles); // сечения дорог для RoadChunks/PedChunks (RP6); без каталога - legacy
+        _grid = new WorldGrid(this);
+        _grid.Configure(sim.Network, in desc);
+        _grid.SetSnap(!_noSnapArg);
+        if (_gridArg)
+        {
+            _grid.SetShown(true, true);
+        }
+
+        if (_hasSnapDemo)
+        {
+            _grid.SetFixedPoint(_snapDemo.X, _snapDemo.Y);
+            GD.Print(_grid.DescribeSnap(_snapDemo.X, _snapDemo.Y));
+        }
+
+        GD.Print(_grid.StatusText());
+        RoadProfileLayouts.Set(sim.Network); // сечения дорог для RoadChunks/PedChunks (RP6, RP10b: из вью ядра, не из desc); без каталога - legacy
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));

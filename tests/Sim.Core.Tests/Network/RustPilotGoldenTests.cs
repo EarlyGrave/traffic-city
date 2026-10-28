@@ -32,7 +32,19 @@ public sealed class RustPilotGoldenTests
     [Fact]
     public void UtilJson_MatchesGeneratedVectors()
     {
-        Assert.Equal(RustPilotGolden.UtilJson(), ReadGolden("util.json"));
+        Assert.Equal(RustPilotGolden.UtilJson(_root), ReadGolden("util.json"));
+    }
+
+    [Fact]
+    public void IdmPowJson_MatchesGeneratedVectors()
+    {
+        // MathF.Pow при delta не из {2, 4} - системный libm (glibc/UCRT), между ОС расходится (rust-pilot.md §6.3): строго только при TC_STRICT_HEADINGS=1.
+        if (Environment.GetEnvironmentVariable("TC_STRICT_HEADINGS") != "1")
+        {
+            return;
+        }
+
+        Assert.Equal(RustPilotGolden.IdmPowJson(_root), ReadGolden("idm-pow.json"));
     }
 
     [Theory]
