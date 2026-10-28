@@ -195,6 +195,8 @@ public enum IssueCode : ushort
     NearCapacity = 110,
     UndoUnavailable = 111,        // обратная запись не влезет
     ZoneLotsLost = 112,           // резерв ADR-0011
+    ZoneBuildingsAbandoned = 114, // PaintZone: здания другого вида уйдут в Abandoned; Value = сколько
+    ZoneNothingToPaint = 115,     // PaintZone: под прямоугольником нет ни одного участка (Info)
     SetbackShort = 113,           // RP7: отступ соседнего рукава меньше h + corner_radius нового профиля (ADR-0028: рукава не перестраиваются); Value = нехватка, мм
 }
 
@@ -229,6 +231,30 @@ public struct PreviewResult
     public int DrainVehicles, DrainPeds, BusStopsLost, ZonesLosingAccess;
     public int RoutesThrough;             // -1 - не считалось (нужен PreviewOptions.Detail)
     public int IssueCount, IssuesWritten, AxisPointCount;
+
+    // PaintZone (UI-C1, ui-spec.md §5.2): тот же обход, что у применения (City/Zoning.cs). Для остальных команд - нули.
+    public int ZoneLots;                  // участки, получающие зону (центр внутри прямоугольника, не Lost)
+    public int ZoneLotsChanged;           // из них реально меняются (вид, плотность или Painted)
+    public int ZoneCells;                 // клетки 8 м этих участков
+    public int ZoneAbandon;               // здания другого вида, которые уйдут в Abandoned
+    public int ZoneUnavailableCells;      // клетки прямоугольника без участка: дорога, вода, парк, нет доступа к дороге
+}
+
+/// <summary>Состояния <see cref="PaintLotMark.State"/>.</summary>
+public static class PaintLotMarkState
+{
+    public const byte Unchanged = 0;      // участок уже в этом состоянии
+    public const byte Zoned = 1;          // будет зонирован
+    public const byte ZonedAbandon = 2;   // будет зонирован, здание другого вида уйдёт в Abandoned
+}
+
+/// <summary>Подсветка превью <c>PaintZone</c>: участок (индекс в <c>GetLots</c>), его центр и что с ним станет.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct PaintLotMark
+{
+    public int Lot;
+    public byte State;                    // PaintLotMarkState
+    public float X, Z;
 }
 
 // ---------------------------------------------------------------- undo (§8)

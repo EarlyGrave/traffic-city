@@ -576,3 +576,10 @@
 - Move It: перемещение объектов — нет команды в ядре.
 - Фоторежим, кинокамера.
 - Геймпад.
+
+### Ядро: UI-C1 — превью `PaintZone` (агент 178, ночь N1) [Факт: слит в ветке `claude/cool-newton-91p1tr-n1`]
+- `Simulation.Preview(Command.MakePaintZone(..), out PreviewResult r, issues)`: `r.Verdict` — тот же `Zoning.Check`, что в применении (`InvalidArgument`, `ZoneRule` для площади больше `max_paint_m2`, `NotSupported` без режима жителей); `r.AX/AZ/BX/BZ` — упорядоченный прямоугольник; `r.Cost = 0`.
+- Счётчики: `ZoneLots` (участки под прямоугольником, не `Lost`), `ZoneLotsChanged` (из них реально меняются), `ZoneCells` (клетки 8 м этих участков), `ZoneAbandon` (здания другого вида → `Abandoned`), `ZoneUnavailableCells` (клетки прямоугольника без участка: дорога, вода, парк, нет доступа к дороге — отдельных причин ядро не различает, клиент при необходимости красит серым всё, где нет участка). Считаются тем же обходом (`Zoning.Scan`), что и применение.
+- Предупреждения: `IssueCode.ZoneBuildingsAbandoned` (114, `Value` = число зданий; оранжевая подсветка), `ZoneNothingToPaint` (115, Info), `UndoUnavailable` (111).
+- Подсветка по участкам: `Simulation.PreviewPaintMarks(in PaintZoneCmd, Span<PaintLotMark>)` → число участков; `PaintLotMark { Lot, State (PaintLotMarkState: Unchanged/Zoned/ZonedAbandon), X, Z }`, индекс `Lot` — в `GetLots`.
+- Отступление от формулировки «клетки»: ядро зонирует по участкам, а не по клеткам сетки; клетки — оценка по `CellsF × CellsD` участков (legacy-участок = 1).

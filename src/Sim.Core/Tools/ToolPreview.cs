@@ -51,6 +51,11 @@ internal static class ToolPreview
     {
         r = default;
         r.RoutesThrough = -1;
+        if (cmd.Kind == CommandKind.PaintZone)
+        {
+            return RunPaintZone(w, in cmd, ref r, issues);
+        }
+
         var c = default(ToolCheck);
         RejectReason v = ToolValidator.Check(w, in cmd, ref c);
         var iw = new IssueWriter(issues);
@@ -120,6 +125,69 @@ internal static class ToolPreview
         r.IssueCount = iw.Total;
         r.IssuesWritten = iw.Written;
         return v;
+    }
+
+    // ---------------------------------------------------------------- PaintZone (UI-C1)
+
+    /// <summary>
+    /// Превью <c>PaintZone</c> (ui-spec.md §5.2): вердикт и счётчики дают те же <c>Zoning.Check</c> и <c>Zoning.Scan</c>, что у применения. Стоимости нет (зонирование бесплатно).
+    /// Подсветка по участкам - <see cref="PreviewMarks"/>.
+    /// </summary>
+    private static RejectReason RunPaintZone(World w, in Command cmd, ref PreviewResult r, Span<PreviewIssue> issues)
+    {
+        var iw = new IssueWriter(issues);
+        RejectReason v = Zoning.Check(w, in cmd.PaintZone, out ZonePlan plan);
+        r.Verdict = v;
+        PaintZoneCmd p = cmd.PaintZone;
+        float cx = (p.X0 + p.X1) * 0.5f;
+        float cz = (p.Z0 + p.Z1) * 0.5f;
+        if (v != RejectReason.None)
+        {
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, EntityKind.None, -1, 0, cx, cz);
+        }
+        else
+        {
+            Zoning.Scan(w, w.City!, in p, ref plan, apply: false, default, out _);
+            r.AX = plan.X0;
+            r.AZ = plan.Z0;
+            r.BX = plan.X1;
+            r.BZ = plan.Z1;
+            r.ZoneLots = plan.Lots;
+            r.ZoneLotsChanged = plan.Changed;
+            r.ZoneCells = plan.Cells;
+            r.ZoneAbandon = plan.Abandon;
+            r.ZoneUnavailableCells = Math.Max(0, plan.RectCells - plan.Cells);
+            if (plan.Lots == 0)
+            {
+                iw.Add(IssueCode.ZoneNothingToPaint, IssueSeverity.Info, EntityKind.None, -1, 0, cx, cz);
+            }
+
+            if (plan.Abandon > 0)
+            {
+                iw.Add(IssueCode.ZoneBuildingsAbandoned, IssueSeverity.Warning, EntityKind.None, -1, 0, cx, cz, plan.Abandon);
+            }
+
+            if (Zoning.BuildInverse(w, in p, default) > InverseLog.MaxPerRecord)
+            {
+                iw.Add(IssueCode.UndoUnavailable, IssueSeverity.Warning, EntityKind.None, -1, 0, cx, cz);
+            }
+        }
+
+        r.IssueCount = iw.Total;
+        r.IssuesWritten = iw.Written;
+        return v;
+    }
+
+    /// <summary>Подсветка превью <c>PaintZone</c> по участкам; возвращает, сколько участков под прямоугольником (записано не больше <c>marks.Length</c>). Отказ - 0.</summary>
+    public static int PreviewMarks(World w, in PaintZoneCmd p, Span<PaintLotMark> marks)
+    {
+        if (Zoning.Check(w, in p, out ZonePlan plan) != RejectReason.None)
+        {
+            return 0;
+        }
+
+        Zoning.Scan(w, w.City!, in p, ref plan, apply: false, marks, out int total);
+        return total;
     }
 
     // ---------------------------------------------------------------- BuildRoad

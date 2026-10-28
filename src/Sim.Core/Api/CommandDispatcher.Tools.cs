@@ -28,7 +28,7 @@ internal static partial class CommandDispatcher
         ref NodeData nd = ref n.Nodes[node];
         if (w.Builder.ArmOverrideOf(node, c.ArmSlot) == c.Control)
         {
-            Applied(w, in cmd);
+            AppliedPaid(w, in cmd, in chk);
             return;
         }
 
@@ -40,7 +40,7 @@ internal static partial class CommandDispatcher
         w.Gate.FullScan = true;
         w.Vehicles.MarkAllRouteDirty();
         w.Work.ToolCommandsApplied++;
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ internal static partial class CommandDispatcher
         ulong want = c.Banned == 1 ? old | bit : old & ~bit;
         if (want == old)
         {
-            Applied(w, in cmd);
+            AppliedPaid(w, in cmd, in chk);
             return;
         }
 
@@ -75,7 +75,7 @@ internal static partial class CommandDispatcher
         NetworkStatus st = w.Builder.PlanRebuild(w, node, rejectTrap: c.Banned == 1, out RebuildPlan rp);
         if (st == NetworkStatus.Ok && rp.Plan == rp.OConnN && rp.Survived == rp.OConnN && rp.Arms == rp.OArms)
         {
-            Applied(w, in cmd);   // манёвр и так не порождал connector'ов (нет полос): запрет только запомнен
+            AppliedPaid(w, in cmd, in chk);   // манёвр и так не порождал connector'ов (нет полос): запрет только запомнен
             return;
         }
 
@@ -93,7 +93,7 @@ internal static partial class CommandDispatcher
 
         NetworkEdit.RefreshDerived(w);
         w.Work.ToolCommandsApplied++;
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
@@ -119,17 +119,17 @@ internal static partial class CommandDispatcher
         NetworkEdit.RefreshDerived(w, pedsChanged: false);
         w.Work.ToolOpsStarted++;
         w.Work.ToolCommandsApplied++;
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>Отмена сноса: сегмент открывается, операция снимается (граф и оверлей пересчитываются: вес снова конечный).</summary>
-    private static void ReopenRoad(World w, in Command cmd, int seg)
+    private static void ReopenRoad(World w, in Command cmd, in ToolCheck chk, int seg)
     {
         SegmentClosure.Reopen(w, seg);
         w.Ops.RemoveAt(w.Ops.FindSegment(seg));
         NetworkEdit.RefreshDerived(w, pedsChanged: false);
         w.Work.ToolCommandsApplied++;
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
@@ -160,7 +160,7 @@ internal static partial class CommandDispatcher
             w.Work.ToolCommandsApplied++;
         }
 
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
@@ -180,7 +180,7 @@ internal static partial class CommandDispatcher
 
         if (chk.Reshape == ReshapeMode.None)
         {
-            Applied(w, in cmd);
+            AppliedPaid(w, in cmd, in chk);
             return;
         }
 
@@ -214,6 +214,6 @@ internal static partial class CommandDispatcher
 
         n.ToolsTouched = 1;
         w.Work.ToolCommandsApplied++;
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 }

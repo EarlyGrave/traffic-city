@@ -33,7 +33,8 @@ internal struct ToolCheck
     public int Seg;                         // целевой сегмент (снос, правка полос) или -1
     public int Node;                        // целевой узел или -1
     public bool Reopen;                     // BuildRoad(RestoreOf) = отмена сноса
-    public long Cost;                       // > 0 трата, < 0 возврат
+    public long Cost;                       // > 0 трата, < 0 возврат; при city_budget - эффективная (undo-кредит учтён, ToolCosts.Resolve)
+    public int CreditSlot;                  // запись UndoCredits, которую погасит применение (-1 - нет)
 
     // Профили (RP7): итоговые значения команды после разбора (-1 - без профиля).
     public int Profile;
@@ -79,6 +80,15 @@ internal static partial class ToolValidator
             CommandKind.SetSignalPlan => CheckSetSignalPlan(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
+        if (c.Reason == RejectReason.None)
+        {
+            c.Reason = ToolCosts.Resolve(w, in cmd, ref c);   // E4: цена с undo-кредитом и InsufficientFunds - одно место для превью и применения
+        }
+        else
+        {
+            c.CreditSlot = -1;
+        }
+
         return c.Reason;
     }
 
