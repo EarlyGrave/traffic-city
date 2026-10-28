@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| N5 облачные долги: s10k-peds 4 потока, rebaseline s1k (отдельный коммит) | облако | claude/adoring-ritchie-cxzib8-n5b | perf/baseline.json, perf/results/ | 2026-10-28 |
