@@ -108,7 +108,21 @@ public sealed class RoadsWorld : IRoadsWorld
             }
         }
 
-        if (seg < 0)
+        return seg >= 0 && TryHit(v, seg, out hit);
+    }
+
+    /// <summary>Сегмент по индексу (инспектор сегмента, UI3): handle, концы, профиль и ширина - как у наведения курсором.</summary>
+    public bool TryHit(int seg, out SegmentHit hit)
+    {
+        hit = default;
+        NetworkSnapshot? snap = _net();
+        return snap != null && TryHit(snap.View, seg, out hit);
+    }
+
+    private static bool TryHit(NetworkView v, int seg, out SegmentHit hit)
+    {
+        hit = default;
+        if (!v.IsSegmentAlive(seg))
         {
             return false;
         }

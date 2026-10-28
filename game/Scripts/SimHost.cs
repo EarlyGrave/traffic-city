@@ -93,19 +93,16 @@ public partial class SimHost : Node3D
     private RtsCamera? _camera;
     private PerfHud? _hud;
     private UiRoot? _ui;
-    private bool _vehSelected;       // выбрана машина (для инспектора UI; в ядре выбор хранится отдельно)
     private bool _statusError;
     private RenderStats? _renderStats;
     private string _pose = string.Empty;
     private bool _timeAuto;        // --time-of-day auto: час суток из игрового времени (только при demand.model = residents)
     private int _dayTicks;         // calendar.day_s * 20; 0 - нет календаря (фиксированный час)
     private Label? _status;
-    private Label? _inspector;
     private PedMesh? _peds;
     private CrosswalkMesh? _cross;
     private PedMode _pedMode = PedMode.Auto;
     private PedHandle _selPed;
-    private double _inspectTimer;
     private bool _pedHeatShown;
     private int _warmupTicks;
     private int _demolishCount;      // --demolish-test N: снести N сегментов после прогрева (проверка мёртвых слотов сети в слоях клиента)
@@ -129,9 +126,8 @@ public partial class SimHost : Node3D
     private int _ftSkip = 60;
     private const int SelectCentralSignal = -2;
     private int _selectNodeArg = -1;
-    private NodePanel.NodePreset? _presetArg;
+    private NodeArms.NodePreset? _presetArg;
     private NodePicker? _nodePicker;
-    private NodePanel? _nodePanel;
     private float _viewX0, _viewZ0, _viewX1, _viewZ1;
     private float _mapX0, _mapZ0, _mapX1, _mapZ1;
 
@@ -380,9 +376,9 @@ public partial class SimHost : Node3D
             {
                 _presetArg = args[++i] switch
                 {
-                    "fixed" => NodePanel.NodePreset.Fixed,
-                    "flash" => NodePanel.NodePreset.Flash,
-                    _ => NodePanel.NodePreset.Adaptive,
+                    "fixed" => NodeArms.NodePreset.Fixed,
+                    "flash" => NodeArms.NodePreset.Flash,
+                    _ => NodeArms.NodePreset.Adaptive,
                 };
             }
             else if (a == "--select-ped")
@@ -622,7 +618,7 @@ public partial class SimHost : Node3D
             UpdatePeds(f, newFrame, alpha, dist, delta);
         }
 
-        _nodePanel?.Refresh(f.Network.View, f, delta);
+        UpdateInspect(f, alpha, delta);
 
         if (_signalsOn)
         {
@@ -739,10 +735,7 @@ public partial class SimHost : Node3D
             o |= HostOverlays.LaneSignals;
         }
 
-        if (_nodePanel != null && _nodePanel.Node >= 0)
-        {
-            o |= HostOverlays.LaneSignals | HostOverlays.CrossingStates | HostOverlays.SignalStates | HostOverlays.NodeThroughput | HostOverlays.SignalMetrics;
-        }
+        o |= InspectOverlays();
 
         if (_info.Visible)
         {
@@ -760,84 +753,6 @@ public partial class SimHost : Node3D
             _overlays = o;
             _host?.SetOverlays(o);
         }
-    }
-
-    /// <summary>Ответы потока симуляции на запросы клика (почтовый ящик, ADR-0024 п. 4); устаревшие id пропускаются.</summary>
-    private void HandleResponses()
-    {
-        if (_host == null)
-        {
-            return;
-        }
-
-        while (_host.TryReadResponse(out HostResponse r))
-        {
-            if (r.RequestId != _pickId || _pickStage == PickStage.None)
-            {
-                continue;
-            }
-
-            if (_pickStage == PickStage.Ped)
-            {
-                if (r.Found)
-                {
-                    SetSelectedPed(r.Pedestrian);
-                    _vehSelected = false;
-                    DeselectNode();
-                    _inspectTimer = 0;
-                    SendCommand(Command.MakeClearSelection());
-                    _routeDirty = true;
-                    _routeTick = -1;
-                    _pickStage = PickStage.None;
-                }
-                else
-                {
-                    SetSelectedPed(PedHandle.Null);
-                    RequestVehiclePick();
-                }
-            }
-            else
-            {
-                FinishVehiclePick(r.Found, r.Vehicle);
-                _pickStage = PickStage.None;
-            }
-        }
-    }
-
-    private void RequestVehiclePick()
-    {
-        _pickStage = PickStage.Vehicle;
-        _pickId = _host!.TryRequestPickVehicle(_pickHit.X, _pickHit.Z, _pickVehicleRadius);
-        if (_pickId == 0)
-        {
-            _pickStage = PickStage.None;
-        }
-    }
-
-    private void FinishVehiclePick(bool found, VehicleHandle h)
-    {
-        _vehSelected = found;
-        if (found)
-        {
-            SendCommand(Command.MakeSelectVehicle(h));
-            DeselectNode();
-        }
-        else
-        {
-            SendCommand(Command.MakeClearSelection());
-            int node = _nodePicker?.Pick(_frame!.Network.View, _pickHit.X, _pickHit.Z, MathF.Max(NodePicker.MinRadius, _pickDist * 0.01f)) ?? -1;
-            if (node >= 0)
-            {
-                SelectNode(_frame!.Network.View, node, false);
-            }
-            else
-            {
-                DeselectNode();
-            }
-        }
-
-        _routeDirty = true;
-        _routeTick = -1;
     }
 
     private void SendCommand(in Command cmd)
@@ -1030,9 +945,9 @@ public partial class SimHost : Node3D
                 StepSpeed(0.5f);
             }
         }
-        else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } mb)
         {
-            PickVehicleAtMouse();
+            PickAtMouse(mb.Position);
         }
     }
 
@@ -1465,15 +1380,6 @@ public partial class SimHost : Node3D
                 _peds.SetLod0Shadows(true);
             }
 
-            _inspector = new Label
-            {
-                Name = "PedInspector",
-                Visible = false,
-                Position = new Vector2(8f, 290f),
-            };
-            _inspector.AddThemeColorOverride("font_color", Palette.InspectorText);
-            _inspector.AddThemeColorOverride("font_shadow_color", Palette.TextShadow);
-            GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_inspector);
         }
 
         _signals = new BoxBatch("Signals", new Vector3(0.7f, 0.5f, 3.0f), true);
@@ -1501,20 +1407,10 @@ public partial class SimHost : Node3D
 
         _nodePicker = new NodePicker();
         AddChild(_nodePicker);
-        _nodePanel = new NodePanel();
-        _nodePanel.PresetRequested += OnNodePreset;
-        _nodePanel.AddThemeStyleboxOverride("panel", UiTheme.DebugPanelStyle()); // текст панели рассчитан на тёмный фон (до UI3)
-        if (_ui != null)
-        {
-            _ui.RightDock.AddChild(_nodePanel);
-        }
-        else
-        {
-            GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_nodePanel);
-        }
+        AttachInspector();
     }
 
-    private void OnNodePreset(int node, NodePanel.NodePreset preset)
+    private void OnNodePreset(int node, NodeArms.NodePreset preset)
     {
         // до создания хоста (--node-preset в TryStart) - напрямую в ядро, потом - в кольцо команд хоста (+1 тик лага)
         if (_host != null && _frame != null)
@@ -1522,7 +1418,7 @@ public partial class SimHost : Node3D
             NetworkView net = _frame.Network.View;
             if (net.IsNodeAlive(node))
             {
-                SendCommand(NodePanel.MakePreset(node, net.Nodes[node].Generation, preset));
+                SendCommand(NodeArms.MakePreset(node, net.Nodes[node].Generation, preset));
             }
         }
         else if (_bootSim != null)
@@ -1530,25 +1426,8 @@ public partial class SimHost : Node3D
             NetworkView net = _bootSim.Network;
             if (net.IsNodeAlive(node))
             {
-                SendCommand(NodePanel.MakePreset(node, net.Nodes[node].Generation, preset));
+                SendCommand(NodeArms.MakePreset(node, net.Nodes[node].Generation, preset));
             }
-        }
-    }
-
-    /// <summary>Выбрать узел (клик или <c>--select-node</c>): панель + кольцо; <paramref name="focus"/> - поставить камеру на узел.</summary>
-    private void SelectNode(NetworkView net, int node, bool focus)
-    {
-        if (_nodePanel == null || _nodePicker == null || !net.IsNodeAlive(node))
-        {
-            return;
-        }
-
-        _nodePanel.Open(node);
-        _nodePicker.ShowAt(in net.Nodes[node]);
-        if (focus)
-        {
-            Vec2 p = net.Nodes[node].Position;
-            _camera?.SetPose(new Vector3(p.X, 0f, p.Z), 110f, 55f, 0f);
         }
     }
 
@@ -1577,12 +1456,6 @@ public partial class SimHost : Node3D
         }
 
         return best;
-    }
-
-    private void DeselectNode()
-    {
-        _nodePanel?.Close();
-        _nodePicker?.Clear();
     }
 
     private void LogInfo(Simulation sim)
@@ -1635,6 +1508,7 @@ public partial class SimHost : Node3D
                 && sim.TryPickPedestrian(snap[i].X, snap[i].Z, 0.5f, out PedHandle h))
             {
                 _selPed = h;
+                _selKind = InspectKind.Pedestrian;
                 if (!_hasCamArgs)
                 {
                     _hasCamArgs = true;
@@ -1774,49 +1648,6 @@ public partial class SimHost : Node3D
         }
 
         _pedHeatShown = !agents;
-        UpdateInspector(f, delta);
-    }
-
-    private void UpdateInspector(SimFrame f, double delta)
-    {
-        if (_inspector == null)
-        {
-            return;
-        }
-
-        if (_selPed.IsNull)
-        {
-            _inspector.Visible = false;
-            return;
-        }
-
-        _inspectTimer -= delta;
-        if (_inspectTimer > 0)
-        {
-            return;
-        }
-
-        // кадр несёт PedInfo того пешехода, которого ему назвали; выбор только что поменялся - ждём кадр с новым handle
-        if (!f.SelectedPed.Equals(_selPed))
-        {
-            return;
-        }
-
-        _inspectTimer = 0.25;
-        if (!f.SelectedPedValid)
-        {
-            SetSelectedPed(PedHandle.Null);
-            _inspector.Visible = false;
-            return;
-        }
-
-        PedInfo info = f.SelectedPedInfo;
-
-        const double dt = 1.0 / Simulation.TicksPerSecond;
-        _inspector.Visible = true;
-        _inspector.Text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Pedestrian #{_selPed.Index} (gen {_selPed.Generation})\nstate {info.State}  leg {info.Leg}\nresident {info.Resident}  edge {info.Edge}\nwaiting {info.WaitTicks * dt:0.0} s  trip {info.TripTicks * dt:0.0} s\nsteps left {info.StepsLeft}  at ({info.X:0.0}, {info.Z:0.0})");
     }
 
     private string PedHudText(SimFrame f)
@@ -1875,55 +1706,6 @@ public partial class SimHost : Node3D
         _signals.End();
     }
 
-    /// <summary>
-    /// Клик (ADR-0024 п. 4): запрос к потоку симуляции через почтовый ящик, ответ приходит в одном из следующих кадров (<see cref="HandleResponses"/>).
-    /// Порядок как раньше: пешеход (в режиме agents) -> машина -> узел сети (узлы статичны, ищутся по копии сети в кадре).
-    /// </summary>
-    private void PickVehicleAtMouse()
-    {
-        if (_host == null || _camera == null)
-        {
-            return;
-        }
-
-        Camera3D cam = _camera.Camera;
-        Vector2 mp = GetViewport().GetMousePosition();
-        Vector3 origin = cam.ProjectRayOrigin(mp);
-        Vector3 dir = cam.ProjectRayNormal(mp);
-        if (dir.Y > -1e-4f)
-        {
-            return;
-        }
-
-        float t = -origin.Y / dir.Y;
-        _pickHit = origin + (dir * t);
-        _pickDist = origin.DistanceTo(_pickHit);
-        _pickVehicleRadius = MathF.Max(RoutePickMinRadius, _pickDist * 0.012f);
-        float dist = _camera.Distance;
-        if (_peds != null && PedsAsAgents(dist))
-        {
-            _pickStage = PickStage.Ped;
-            _pickId = _host.TryRequestPickPedestrian(_pickHit.X, _pickHit.Z, MathF.Max(1.5f, _pickDist * 0.01f));
-            if (_pickId == 0)
-            {
-                _pickStage = PickStage.None;
-            }
-
-            return;
-        }
-
-        SetSelectedPed(PedHandle.Null);
-        RequestVehiclePick();
-    }
-
-    private void ClearSelection()
-    {
-        _vehSelected = false;
-        SendCommand(Command.MakeClearSelection());
-        SetSelectedPed(PedHandle.Null);
-        DeselectNode();
-        _routeDirty = true;
-    }
     private void UpdateRoute(SimFrame f)
     {
         if (_routeMesh == null)
@@ -1938,7 +1720,7 @@ public partial class SimHost : Node3D
         // Окно дозаполняется ядром и сдвигает Cursor - лента перерисовывается каждый снапшот, поэтому конец ленты «растёт» вместе с машиной.
         // Окно маршрута приходит копией в кадре (ADR-0024 п. 3).
         ReadOnlySpan<RouteStep> steps = f.RouteSteps;
-        if (steps.IsEmpty)
+        if (!_routeShown || steps.IsEmpty || !f.RouteVehicle.Equals(_selVeh))
         {
             return;
         }
@@ -2046,20 +1828,5 @@ public partial class SimHost : Node3D
         {
             _host?.RequestFreshHeavyOverlays();
         }
-    }
-
-    /// <summary>Что показывать в правой панели UI: выбор в мире (пешеход, узел, машина) -> тип инспектора.</summary>
-    private void SyncUiInspector()
-    {
-        if (_ui == null)
-        {
-            return;
-        }
-
-        InspectKind kind = !_selPed.IsNull ? InspectKind.Pedestrian
-            : (_nodePanel != null && _nodePanel.Node >= 0) ? InspectKind.Node
-            : _vehSelected ? InspectKind.Vehicle
-            : InspectKind.None;
-        _ui.Router.SetInspector(kind);
     }
 }

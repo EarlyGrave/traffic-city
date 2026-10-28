@@ -50,6 +50,8 @@ public partial class SimHost
         _tools = new ToolCommandService(_host);
         RoadCatalog catalog = RoadCatalog.FromView(_frame.Network.View);
         var world = new RoadsWorld(catalog, () => _frame?.Network, _grid, () => _cityHud, () => _paused);
+        _roadsWorld = world;
+        _catalog = catalog;
         _roadTool = new RoadsTool(_tools, world);
         _roadTool.Message += ToolToast;
         _roadTool.Logged += GD.Print;
@@ -96,6 +98,7 @@ public partial class SimHost
         }
 
         _tools.Pump();
+        _roadTool.Tick(); // «Снести» из инспектора: клик после прихода превью (подтверждение P13)
         if (_tools.UndoDepth != _shownUndo || _tools.RedoDepth != _shownRedo)
         {
             _shownUndo = _tools.UndoDepth;
@@ -113,7 +116,8 @@ public partial class SimHost
         _roadsStrip.Sync();
         Viewport vp = GetViewport();
         Vector2 mp = vp.GetMousePosition();
-        bool overUi = vp.GuiGetHoveredControl() != null || _ui.WorldInputBlocked;
+        // курсор вне окна - не над миром (иначе луч из-за края окна «наводит» инструмент на случайную дорогу)
+        bool overUi = vp.GuiGetHoveredControl() != null || _ui.WorldInputBlocked || !vp.GetVisibleRect().HasPoint(mp);
         ToolMods mods = Input.IsActionPressed(UiActions.SnapOverride) ? ToolMods.Shift : ToolMods.None;
         int ver = _frame?.NetworkVersion ?? -1;
         if (mp != _toolMouse || mods != _toolMods || overUi != _toolOverUi || ver != _toolNetVersion)

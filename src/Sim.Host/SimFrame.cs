@@ -95,6 +95,13 @@ public sealed class SimFrame
 
     public PedInfo SelectedPedInfo { get; internal set; }
 
+    /// <summary>Машина в инспекторе (<see cref="SimThreadHost.SetSelectedVehicle"/>) на момент сборки кадра и её <see cref="VehicleInfo"/> (<see cref="SelectedVehicleValid"/>).</summary>
+    public VehicleHandle SelectedVehicle { get; internal set; }
+
+    public bool SelectedVehicleValid { get; internal set; }
+
+    public VehicleInfo SelectedVehicleInfo { get; internal set; }
+
     /// <summary>Метрики ожидания на светофорах (подписка <see cref="HostOverlays.SignalMetrics"/>); null, пока нет подписки.</summary>
     public SignalMetrics? SignalMetrics { get; internal set; }
 
