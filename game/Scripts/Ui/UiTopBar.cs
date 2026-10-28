@@ -47,6 +47,9 @@ public sealed class UiTopBar
     private float _shownScale = -1f;
     private bool _blinkDim;
 
+    /// <summary>Кнопка «События» (UI6): открывает список уведомлений.</summary>
+    public Button NotesButton { get; private set; } = null!;
+
     /// <summary>Собрать содержимое в <paramref name="bar"/> (пустую панель верхней полосы UI1).</summary>
     public UiTopBar(PanelContainer bar)
     {
@@ -102,9 +105,9 @@ public sealed class UiTopBar
         right.AddThemeConstantOverride("separation", 4);
         row.AddChild(right);
         Button notes = TimeButton("События", 0f);
-        notes.Disabled = true;
-        notes.TooltipText = "Уведомления и события — позже (UI6)";
+        notes.TooltipText = "Список последних уведомлений";
         right.AddChild(notes);
+        NotesButton = notes;
         Button settings = TimeButton("⚙", 30f);
         settings.Disabled = true;
         settings.TooltipText = "Настройки (F10) — позже (UI12)";
@@ -196,7 +199,7 @@ public sealed class UiTopBar
             _shownBalance = d.Balance;
             _shownFlow = d.FlowPerDay;
             _shownInsolvent = d.Insolvent;
-            _balance.Text = "¤ " + Group(d.Balance);
+            _balance.Text = "$ " + Group(d.Balance);
             string sign = d.FlowPerDay >= 0 ? "+" : "−";
             _flow.Text = (d.FlowPerDay >= 0 ? "▲ " : "▼ ") + sign + Short(Math.Abs(d.FlowPerDay)) + "/д";
             _flow.AddThemeColorOverride("font_color", d.FlowPerDay >= 0 ? UiPalette.TextSecondary : UiPalette.Error);
