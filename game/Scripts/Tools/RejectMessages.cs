@@ -88,8 +88,8 @@ public static class RejectMessages
             IssueCode.NearCapacity => "Близок предел объектов",
             IssueCode.UndoUnavailable => "Отменить это действие будет нельзя",
             IssueCode.ZoneLotsLost => string.Create(CultureInfo.InvariantCulture, $"Участков под застройку потеряется: {value}"),
-            IssueCode.ZoneBuildingsAbandoned => string.Create(CultureInfo.InvariantCulture, $"Здания другого вида будут заброшены: {value}"),
-            IssueCode.ZoneNothingToPaint => "Здесь нет участков под зону",
+            IssueCode.ZoneBuildingsAbandoned => string.Create(CultureInfo.InvariantCulture, $"Здания другого вида опустеют: {value}"),
+            IssueCode.ZoneNothingToPaint => "Здесь нечего красить. Выделите участки у дороги",
             IssueCode.SetbackShort => "Мало места от соседней дороги до перекрёстка",
             _ => "Есть замечание",
         };
