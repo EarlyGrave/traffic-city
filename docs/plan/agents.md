@@ -228,6 +228,12 @@
 | 173 | s0q-probe (облако, worktree) | haiku | 5.2 S0q: чистый замер частей фазы 4 очереди (s100k-q, s100k off) | done (без таймеров, 4 потока: s100k-q p95 23.55 мс, gate 7.22; off p95 32.01, gate 7.33. Фаза 4 q 4t по частям: collect 3.45 (×2.84 к 1 потоку), синтез голов 1.64, сигналы 1.29, resolve 1.04, RevokeStale 0.65, преамбула 0.27, колесо 0.19 — последовательные 4.04 мс) |
 | L48 | snapshot-perf (локал, worktree) | sonnet | O1: регрессия снапшота L3b | done, merged (регрессию уже снял N1; снапшот s1k ~52 мкс, остаток — float-математика; −1 % s1k / −4.6 % s10k по BDN; тест побайтного golden снапшота) |
 | L49 | s10-client-thread (локал, worktree) | sonnet | O2 = S10: клиент Godot на SimThreadHost | done, merged (главный поток s10k ×1 mean 1.21 → 0.14 мс; рендер-статистика совпадает, кроме 2 из 8 поз: убран сброс гистерезиса LOD; ручные клики не проверены; вопрос по alloc/tick в HUD — в работе) |
+<<<<<<< HEAD
 | 174 | p3-p2 (облако, worktree) | sonnet | 5.2 P2: пакет запросов фазы 3 на воркерах (routing-parallel.md) | wip |
 | 175 | gate-s4c (облако, worktree) | sonnet | 5.2 S4c: пол фазы 4 побитово (lod-controller.md) | wip |
 | 176 | progression-spec (облако, worktree) | opus | 6.5: спека прогрессии и показателей города | done (progression.md, ADR-0034; KPI K1–K6 в кольце CKPI, вехи M0–M6, Locked=17, события 59–62, world_version 11; стартовый game-city.json на базе s10k-res; задачи PG1–PG7 облако, UI16/UI-L/UI-N локал) |
+=======
+| L50 | ui1-shell (локал, worktree) | sonnet | UI1: каркас UI (UiRoot, UiRouter, тема, масштаб, InputMap, --ui-state/--ui-shot) | done, merged (UI +20…+38 draw calls в проходе total; main/shadow без изменений; клики мышью не проверены) |
+| L51 | ui2-topbar (локал, worktree) | sonnet | UI2 + время: верхняя полоса (казна, жители, часы), пауза и ×1/×2/×4 | done, merged (пауза останавливает шаг; жители и казна читаются под AcquireExclusive раз в секунду — перенести в SimFrame после T13; знак валюты ¤ — вопрос владельцу) |
+| L54 | ui6-toasts (локал, worktree) | sonnet | UI6: уведомления (тосты, агрегация, список «События», «Показать»), знак валюты $ | done, merged (на синтетическом источнике; подключение к SimHost — после L53; нужны события ядра с местом: затор, линия автобуса, парковка) |
+>>>>>>> origin/dev

@@ -7,6 +7,7 @@ using Sim.Core.Network;
 using Sim.Core.Util;
 using Sim.Host;
 using Sim.Scenarios;
+using TrafficCity.Ui;
 
 namespace TrafficCity;
 
@@ -90,6 +91,9 @@ public partial class SimHost : Node3D
     private ImmediateMesh? _routeMesh;
     private RtsCamera? _camera;
     private PerfHud? _hud;
+    private UiRoot? _ui;
+    private bool _vehSelected;       // выбрана машина (для инспектора UI; в ядре выбор хранится отдельно)
+    private bool _statusError;
     private RenderStats? _renderStats;
     private string _pose = string.Empty;
     private bool _timeAuto;        // --time-of-day auto: час суток из игрового времени (только при demand.model = residents)
@@ -117,6 +121,7 @@ public partial class SimHost : Node3D
     private bool _frameTiming;       // --frame-timing: время кадра главного потока (мс) в журнал при выходе
     private int _maxFpsArg;          // --max-fps N: потолок FPS окна (замеры без vsync)
     private float _timeScaleArg = 1f; // --time-scale X: стартовая скорость игры
+    private bool _pausedArg;         // --paused: старт на паузе (после прогрева)
     private readonly System.Collections.Generic.List<float> _ftProcess = new(4096);
     private readonly System.Collections.Generic.List<float> _ftEngine = new(4096);
     private readonly System.Collections.Generic.List<float> _ftWall = new(4096);
@@ -133,6 +138,10 @@ public partial class SimHost : Node3D
     private double _statsTimer;
     private bool _paused;
     private float _timeScale = 1f;
+    private bool _hasCity;           // сценарий в режиме жителей: у города есть население (и, возможно, казна)
+    private double _cityHudTimer;
+    private long _cityHudTick = -1;
+    private CityHudData _cityHud;
     private bool _signalsOn;
     private bool _routeDirty;
     private long _routeTick = -1;
@@ -147,6 +156,13 @@ public partial class SimHost : Node3D
         _camera = GetNodeOrNull<RtsCamera>("../CameraRig");
         _hud = GetNodeOrNull<PerfHud>("../Hud/PerfHud");
         _status = GetNodeOrNull<Label>("../Hud/Status");
+        _ui = GetNodeOrNull<UiRoot>("../Ui");
+        if (_ui != null)
+        {
+            _ui.Router.InfoChanged += OnUiInfoChanged;
+            _ui.Router.InfoLayerChanged += OnUiInfoLayer;
+            _ui.Router.InspectorCloseRequested += ClearSelection;
+        }
         _renderStats = GetNodeOrNull<RenderStats>("../RenderStats");
 
         InfoMode.Init();
@@ -179,9 +195,15 @@ public partial class SimHost : Node3D
             _renderStats.ExtraArgs = ArgsWithoutPaths(args);
         }
 
+        if (!_infoArg && _ui?.StartMode == UiMode.Info)
+        {
+            _infoArg = true; // --ui-state info = --info traffic
+        }
+
         if (_infoArg)
         {
             _info.Snap(true, _infoArgLayer);
+            _ui?.Router.MirrorInfo(true, _infoArgLayer);
         }
 
         if (_showHud)
@@ -268,6 +290,10 @@ public partial class SimHost : Node3D
             else if (a == "--time-scale" && i + 1 < args.Length)
             {
                 float.TryParse(args[++i], NumberStyles.Float, inv, out _timeScaleArg);
+            }
+            else if (a == "--paused")
+            {
+                _pausedArg = true;
             }
             else if (a == "--no-snap")
             {
@@ -498,11 +524,12 @@ public partial class SimHost : Node3D
         _lastDelta = delta;
         if (_hudPending && _hud != null)
         {
-            _hud.Visible = true;
+            SetDebugOverlay(true);
             _hudPending = false;
         }
 
         HandleResponses();
+        SyncUiInspector();
 
         long allocA = GC.GetAllocatedBytesForCurrentThread();
         UpdateRenderView(_host, delta);
@@ -536,6 +563,7 @@ public partial class SimHost : Node3D
             OnNewFrame(f);
         }
 
+        RefreshCityHud(f, delta);
         if (_timeAuto && _dayTicks > 0)
         {
             // тик 0 = 00:00; обновляем раз в ~секунду игрового времени (20 тиков), не каждый кадр
@@ -591,7 +619,7 @@ public partial class SimHost : Node3D
         }
 
         _info.Update(delta, _camera?.Distance ?? 1000f);
-        _grid?.Update(delta, _camera?.Camera, GetViewport().GetMousePosition(), Input.IsKeyPressed(Key.Shift));
+        _grid?.Update(delta, _camera?.Camera, GetViewport().GetMousePosition(), Input.IsActionPressed(UiActions.SnapOverride));
         if (newFrame && f.SegmentLoadsFresh && _roadHeat != null && _info.Visible)
         {
             // heatmap дорог в шейдере: раз в 10 тиков (2 Гц) приходит копия нагрузок, обновляется только текстура данных, мешей не трогаем (render.md §3.5)
@@ -727,6 +755,7 @@ public partial class SimHost : Node3D
                 if (r.Found)
                 {
                     SetSelectedPed(r.Pedestrian);
+                    _vehSelected = false;
                     DeselectNode();
                     _inspectTimer = 0;
                     SendCommand(Command.MakeClearSelection());
@@ -760,6 +789,7 @@ public partial class SimHost : Node3D
 
     private void FinishVehiclePick(bool found, VehicleHandle h)
     {
+        _vehSelected = found;
         if (found)
         {
             SendCommand(Command.MakeSelectVehicle(h));
@@ -801,6 +831,87 @@ public partial class SimHost : Node3D
         _host?.SetSelectedPed(h);
     }
 
+    // ---- время и данные для верхней полосы (UI2) ----
+
+    /// <summary>Игра на паузе: аккумулятор не копится, целевой тик стоит, поток симуляции не шагает.</summary>
+    public bool TimePaused => _paused;
+
+    /// <summary>Множитель скорости игры (1 = реальное время; кнопки ×1/×2/×4, клавиши +/- - 0.125-16).</summary>
+    public float TimeScale => _timeScale;
+
+    /// <summary>Симуляция запущена (хост создан, первый кадр получен): свойства сценария ниже достоверны.</summary>
+    public bool IsReady => _host != null && _frame != null;
+
+    /// <summary>Тик последнего кадра симуляции (0 до старта).</summary>
+    public long SimTick => _frame?.SnapshotTick ?? 0;
+
+    /// <summary>Тиков в игровых сутках (calendar.day_s * 20); 0 - у сценария нет календаря.</summary>
+    public int DayTicks => _dayTicks;
+
+    /// <summary>Сценарий в режиме жителей: есть население, зонирование, возможно казна.</summary>
+    public bool HasCity => _hasCity;
+
+    /// <summary>Население и казна, обновляются раз в секунду (под эксклюзивным доступом), пока идёт время.</summary>
+    public CityHudData CityHud => _cityHud;
+
+    /// <summary>Изменились пауза или скорость.</summary>
+    public event Action? TimeChanged;
+
+    public void TogglePause() => SetPaused(!_paused);
+
+    public void SetPaused(bool paused)
+    {
+        if (_paused != paused)
+        {
+            _paused = paused;
+            TimeChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Задать скорость (снимает паузу): кнопки ×1/×2/×4 и клавиши 1/2/3 вне инфо-режима.</summary>
+    public void SetSpeed(float scale)
+    {
+        _timeScale = Math.Clamp(scale, 0.125f, 16f);
+        _paused = false;
+        TimeChanged?.Invoke();
+    }
+
+    /// <summary>Клавиши +/-: ×2 или ÷2 в отладочном диапазоне 0.125-16 (ui-spec.md §9); паузу не снимает.</summary>
+    private void StepSpeed(float factor)
+    {
+        _timeScale = Math.Clamp(_timeScale * factor, 0.125f, 16f);
+        TimeChanged?.Invoke();
+    }
+
+    private void RefreshCityHud(SimFrame f, double delta)
+    {
+        _cityHudTimer -= delta;
+        if (!_hasCity || _host == null || _cityHudTimer > 0 || f.SnapshotTick == _cityHudTick)
+        {
+            return; // на паузе тик не меняется - данные те же, поток симуляции не трогаем
+        }
+
+        _cityHudTimer = 1.0;
+        _cityHudTick = f.SnapshotTick;
+        using ExclusiveAccess ex = _host.AcquireExclusive();
+        Simulation? sim = ex.Simulation;
+        if (sim == null)
+        {
+            return;
+        }
+
+        var d = new CityHudData { HasPopulation = true, Population = sim.CityPopulation };
+        if (sim.GetCityBudget(out CityBudgetInfo b))
+        {
+            d.HasBudget = true;
+            d.Balance = b.Balance;
+            d.FlowPerDay = b.IncomeEwma - b.ExpenseEwma;
+            d.Insolvent = b.Insolvent != 0;
+        }
+
+        _cityHud = d;
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_host == null)
@@ -808,89 +919,69 @@ public partial class SimHost : Node3D
             return;
         }
 
-        if (@event is InputEventKey { Pressed: true, Echo: false } key)
+        if (@event is InputEventKey { Pressed: true, Echo: false })
         {
-            switch (key.Keycode)
+            // F1, слои 1-3 и Esc обрабатывает UiRoot (роутер состояния интерфейса); тут - остальные действия мира
+            if (UiActions.Pressed(@event, UiActions.GridShowToggle) && _grid != null)
             {
-                case Key.F1:
-                    _info.Toggle();
-                    _host.RequestFreshHeavyOverlays();
-                    break;
-                case Key.Key1 when _info.Active:
-                    _info.SetLayer(InfoMode.LayerTraffic);
-                    break;
-                case Key.Key2 when _info.Active:
-                    _info.SetLayer(InfoMode.LayerPeds);
-                    _host.RequestFreshHeavyOverlays();
-                    break;
-                case Key.Key3 when _info.Active:
-                    _info.SetLayer(InfoMode.LayerZones); // слой «Зоны»: землепользование и участки рисует LandUseChunks (VS9)
-                    break;
-                case Key.G when _grid != null:
-                    if (key.ShiftPressed)
-                    {
-                        _grid.ToggleShown();
-                    }
-                    else
-                    {
-                        _grid.ToggleSnap();
-                    }
-
-                    GD.Print(_grid.StatusText());
-                    break;
-                case Key.F2:
-                    _signalsOn = !_signalsOn;
-                    if (_signals != null)
-                    {
-                        _signals.Node.Visible = _signalsOn;
-                    }
-
-                    break;
-                case Key.T:
-                    // ручной час суток: T - +1 ч, Shift+T - -1 ч (выключает привязку к игровому времени)
-                    _timeAuto = false;
-                    RenderPreset.SetHour(GetParent(), RenderPreset.Hour + (key.ShiftPressed ? -1f : 1f));
-                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
-                    break;
-                case Key.F4:
-                    // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
-                    // для них перезапуск с --render-preset.
-                    _lod = LodConfig.Load(_contentDir, _lod.Preset == "low" ? "high" : "low");
-                    RenderPreset.Apply(GetParent(), _lod);
-                    GD.Print(RenderPreset.Describe(_lod) + " (F4: LOD/лимиты слоёв - после перезапуска)");
-                    break;
-                case Key.F3:
-                    if (_hud != null)
-                    {
-                        _hud.Visible = !_hud.Visible;
-                    }
-
-                    break;
-                case Key.F:
-                    _pedMode = _pedMode switch
-                    {
-                        PedMode.Auto => PedMode.Heat,
-                        PedMode.Heat => PedMode.Agents,
-                        _ => PedMode.Auto,
-                    };
-                    break;
-                case Key.Space:
-                    _paused = !_paused;
-                    break;
-                case Key.Equal:
-                case Key.Plus:
-                case Key.KpAdd:
-                    _timeScale = Math.Min(_timeScale * 2f, 16f);
-                    break;
-                case Key.Minus:
-                case Key.KpSubtract:
-                    _timeScale = Math.Max(_timeScale / 2f, 0.125f);
-                    break;
-                case Key.Escape:
-                    ClearSelection();
-                    break;
-                default:
-                    break;
+                _grid.ToggleShown();
+                GD.Print(_grid.StatusText());
+            }
+            else if (UiActions.Pressed(@event, UiActions.GridSnapToggle) && _grid != null)
+            {
+                _grid.ToggleSnap();
+                GD.Print(_grid.StatusText());
+            }
+            else if (@event.IsActionPressed(UiActions.SignalsOverlay))
+            {
+                _signalsOn = !_signalsOn;
+                if (_signals != null)
+                {
+                    _signals.Node.Visible = _signalsOn;
+                }
+            }
+            else if (UiActions.Pressed(@event, UiActions.TimeOfDayNext) || UiActions.Pressed(@event, UiActions.TimeOfDayPrev))
+            {
+                // ручной час суток: T - +1 ч, Shift+T - -1 ч (выключает привязку к игровому времени)
+                _timeAuto = false;
+                RenderPreset.SetHour(GetParent(), RenderPreset.Hour + (UiActions.Pressed(@event, UiActions.TimeOfDayPrev) ? -1f : 1f));
+                GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
+            }
+            else if (@event.IsActionPressed(UiActions.RenderPresetToggle))
+            {
+                // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
+                // для них перезапуск с --render-preset.
+                _lod = LodConfig.Load(_contentDir, _lod.Preset == "low" ? "high" : "low");
+                RenderPreset.Apply(GetParent(), _lod);
+                GD.Print(RenderPreset.Describe(_lod) + " (F4: LOD/лимиты слоёв - после перезапуска)");
+            }
+            else if (@event.IsActionPressed(UiActions.PerfHud))
+            {
+                if (_hud != null)
+                {
+                    SetDebugOverlay(!_hud.Visible);
+                }
+            }
+            else if (@event.IsActionPressed(UiActions.PedModeCycle))
+            {
+                _pedMode = _pedMode switch
+                {
+                    PedMode.Auto => PedMode.Heat,
+                    PedMode.Heat => PedMode.Agents,
+                    _ => PedMode.Auto,
+                };
+            }
+            else if (@event.IsActionPressed(UiActions.TimePause))
+            {
+                TogglePause();
+            }
+            else if (@event.IsActionPressed(UiActions.TimeFaster))
+            {
+                StepSpeed(2f);
+            }
+            else if (@event.IsActionPressed(UiActions.TimeSlower))
+            {
+                StepSpeed(0.5f);
             }
         }
         else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
@@ -994,6 +1085,7 @@ public partial class SimHost : Node3D
 
         _bootSim = sim;
         _timeScale = _timeScaleArg;
+        _paused = _pausedArg;
         if (_maxFpsArg > 0)
         {
             Engine.MaxFps = _maxFpsArg;
@@ -1017,6 +1109,7 @@ public partial class SimHost : Node3D
         RoadProfileLayouts.Set(sim.Network); // сечения дорог для RoadChunks/PedChunks (RP6, RP10b: из вью ядра, не из desc); без каталога - legacy
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
+        _hasCity = desc.Demand.Model == DemandModel.Residents;
         string contentDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "content"));
         _contentDir = contentDir;
         _lod = LodConfig.Load(contentDir, _renderPreset);
@@ -1337,7 +1430,15 @@ public partial class SimHost : Node3D
         AddChild(_nodePicker);
         _nodePanel = new NodePanel();
         _nodePanel.PresetRequested += OnNodePreset;
-        GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_nodePanel);
+        _nodePanel.AddThemeStyleboxOverride("panel", UiTheme.DebugPanelStyle()); // текст панели рассчитан на тёмный фон (до UI3)
+        if (_ui != null)
+        {
+            _ui.RightDock.AddChild(_nodePanel);
+        }
+        else
+        {
+            GetNodeOrNull<CanvasLayer>("../Hud")?.AddChild(_nodePanel);
+        }
     }
 
     private void OnNodePreset(int node, NodePanel.NodePreset preset)
@@ -1744,6 +1845,7 @@ public partial class SimHost : Node3D
 
     private void ClearSelection()
     {
+        _vehSelected = false;
         SendCommand(Command.MakeClearSelection());
         SetSelectedPed(PedHandle.Null);
         DeselectNode();
@@ -1835,6 +1937,56 @@ public partial class SimHost : Node3D
         if (_status != null)
         {
             _status.Text = text;
+            _statusError = text.StartsWith("ERROR", StringComparison.Ordinal);
+            _status.Visible = _statusError || (_hud?.Visible ?? false);
         }
+    }
+
+    /// <summary>Отладочный оверлей (F3): перф-HUD и строка подсказок; ошибка запуска показывается всегда.</summary>
+    private void SetDebugOverlay(bool on)
+    {
+        if (_hud != null)
+        {
+            _hud.Visible = on;
+        }
+
+        if (_status != null)
+        {
+            _status.Visible = on || _statusError;
+        }
+    }
+
+    private void OnUiInfoChanged(bool on)
+    {
+        if (_info.Active != on)
+        {
+            _info.Toggle();
+        }
+
+        _host?.RequestFreshHeavyOverlays();
+    }
+
+    private void OnUiInfoLayer(int layer)
+    {
+        _info.SetLayer(layer);
+        if (layer == InfoMode.LayerPeds)
+        {
+            _host?.RequestFreshHeavyOverlays();
+        }
+    }
+
+    /// <summary>Что показывать в правой панели UI: выбор в мире (пешеход, узел, машина) -> тип инспектора.</summary>
+    private void SyncUiInspector()
+    {
+        if (_ui == null)
+        {
+            return;
+        }
+
+        InspectKind kind = !_selPed.IsNull ? InspectKind.Pedestrian
+            : (_nodePanel != null && _nodePanel.Node >= 0) ? InspectKind.Node
+            : _vehSelected ? InspectKind.Vehicle
+            : InspectKind.None;
+        _ui.Router.SetInspector(kind);
     }
 }

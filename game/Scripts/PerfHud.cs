@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Text;
 using Godot;
+using TrafficCity.Ui;
 
 namespace TrafficCity;
 
@@ -28,7 +29,7 @@ public partial class PerfHud : Label
     public override void _Ready()
     {
         Visible = false;
-        Position = new Vector2(8, 8);
+        Position = new Vector2(8, UiMetrics.TopBarHeight + 8);
         AddThemeColorOverride("font_color", Palette.HudText);
         AddThemeColorOverride("font_shadow_color", Palette.TextShadow);
         AddThemeConstantOverride("shadow_offset_x", 1);
