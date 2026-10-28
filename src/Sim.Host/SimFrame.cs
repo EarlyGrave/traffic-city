@@ -14,6 +14,27 @@ public sealed class SimFrame
     internal PedestrianRenderData[] PedCurArr = Array.Empty<PedestrianRenderData>();
     internal PedestrianRenderData[] PedPrevArr = Array.Empty<PedestrianRenderData>();
 
+    // оверлеи по подписке (HostOverlays); длина - в *Count, ёмкость растёт редко
+    internal byte[] LaneSignalsArr = Array.Empty<byte>();
+    internal byte[] CrossingStatesArr = Array.Empty<byte>();
+    internal ushort[] BusWaitingArr = Array.Empty<ushort>();
+    internal SignalState[] SignalStatesArr = Array.Empty<SignalState>();
+    internal uint[] NodeThroughputArr = Array.Empty<uint>();
+    internal SegmentLoad[] SegmentLoadsArr = Array.Empty<SegmentLoad>();
+    internal ushort[] PedEdgeCountsArr = Array.Empty<ushort>();
+    internal RouteStep[] RouteStepsArr = Array.Empty<RouteStep>();
+
+    internal int VehicleCount;
+    internal int PedCount;
+    internal int LaneSignalsCount;
+    internal int CrossingStatesCount;
+    internal int BusWaitingCount;
+    internal int SignalStatesCount;
+    internal int NodeThroughputCount;
+    internal int SegmentLoadsCount;
+    internal int PedEdgeCountsCount;
+    internal int RouteStepsCount;
+
     /// <summary>Номер публикации (с 1); растёт на каждый опубликованный кадр.</summary>
     public long Sequence { get; internal set; }
 
@@ -35,8 +56,47 @@ public sealed class SimFrame
     /// <summary>Байты, аллоцированные потоком симуляции с начала его работы (для HUD «alloc/tick»).</summary>
     public long SimThreadAllocatedBytes { get; internal set; }
 
-    internal int VehicleCount;
-    internal int PedCount;
+    /// <summary>Есть ли в мире пешеходы (секция <c>peds</c>) и их счётчики на тике кадра.</summary>
+    public bool HasPeds { get; internal set; }
+
+    public int ActivePedCount { get; internal set; }
+
+    public int PedTarget { get; internal set; }
+
+    /// <summary>Версии статики на тике кадра: при смене клиент пересобирает слои (сеть - из <see cref="Network"/>, остальное - под <c>AcquireExclusive</c>).</summary>
+    public int LandUseVersion { get; internal set; }
+
+    public int LotsVersion { get; internal set; }
+
+    public int BuildingsVersion { get; internal set; }
+
+    /// <summary>Копия сети на момент последней смены её версии (общая для кадров, неизменяемая); версия = <see cref="NetworkVersion"/>.</summary>
+    public NetworkSnapshot Network { get; internal set; } = null!;
+
+    public int NetworkVersion => Network.Version;
+
+    /// <summary>Подписки, с которыми собран кадр (<see cref="HostOverlays"/>): оверлей вне подписки в кадре пуст.</summary>
+    public HostOverlays Overlays { get; internal set; }
+
+    /// <summary>Кадр содержит свежую копию тяжёлого оверлея (раз в <see cref="SimThreadHost.HeavyOverlayTicks"/> тиков либо после новой подписки).</summary>
+    public bool SegmentLoadsFresh { get; internal set; }
+
+    public bool PedEdgeCountsFresh { get; internal set; }
+
+    /// <summary>Окно маршрута выбранной машины: <see cref="RouteVehicle"/> (Null - нет), <see cref="RouteCursor"/>, шаги в <see cref="RouteSteps"/>.</summary>
+    public VehicleHandle RouteVehicle { get; internal set; }
+
+    public int RouteCursor { get; internal set; }
+
+    /// <summary>Пешеход, выбранный клиентом (<see cref="SimThreadHost.SetSelectedPed"/>) на момент сборки кадра, и его <see cref="PedInfo"/> (<see cref="SelectedPedValid"/>).</summary>
+    public PedHandle SelectedPed { get; internal set; }
+
+    public bool SelectedPedValid { get; internal set; }
+
+    public PedInfo SelectedPedInfo { get; internal set; }
+
+    /// <summary>Метрики ожидания на светофорах (подписка <see cref="HostOverlays.SignalMetrics"/>); null, пока нет подписки.</summary>
+    public SignalMetrics? SignalMetrics { get; internal set; }
 
     /// <summary>Видимые машины на <see cref="SnapshotTick"/>: компактно, только живые слоты; <c>Index</c>/<c>Generation</c> сохранены.</summary>
     public ReadOnlySpan<VehicleRenderData> Vehicles => new(CurArr, 0, VehicleCount);
@@ -47,4 +107,22 @@ public sealed class SimFrame
     public ReadOnlySpan<PedestrianRenderData> Pedestrians => new(PedCurArr, 0, PedCount);
 
     public ReadOnlySpan<PedestrianRenderData> PreviousPedestrians => new(PedPrevArr, 0, PedCount);
+
+    public ReadOnlySpan<byte> LaneSignals => new(LaneSignalsArr, 0, LaneSignalsCount);
+
+    public ReadOnlySpan<byte> CrossingStates => new(CrossingStatesArr, 0, CrossingStatesCount);
+
+    public ReadOnlySpan<ushort> BusStopWaiting => new(BusWaitingArr, 0, BusWaitingCount);
+
+    public ReadOnlySpan<SignalState> SignalStates => new(SignalStatesArr, 0, SignalStatesCount);
+
+    public ReadOnlySpan<uint> NodeThroughput => new(NodeThroughputArr, 0, NodeThroughputCount);
+
+    /// <summary>Нагрузка сегментов; осмысленна при <see cref="SegmentLoadsFresh"/>.</summary>
+    public ReadOnlySpan<SegmentLoad> SegmentLoads => new(SegmentLoadsArr, 0, SegmentLoadsCount);
+
+    /// <summary>Пешеходов на рёбрах; осмысленна при <see cref="PedEdgeCountsFresh"/>.</summary>
+    public ReadOnlySpan<ushort> PedEdgeCounts => new(PedEdgeCountsArr, 0, PedEdgeCountsCount);
+
+    public ReadOnlySpan<RouteStep> RouteSteps => new(RouteStepsArr, 0, RouteStepsCount);
 }

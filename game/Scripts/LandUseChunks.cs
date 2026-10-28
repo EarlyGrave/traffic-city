@@ -48,7 +48,7 @@ public sealed class LandUseChunks
     /// <summary>Есть ли что рисовать (землепользование выключено и нет участков - слой не нужен).</summary>
     public static bool Needed(Simulation sim) => sim.LandUse.Length > 0 || sim.LotCount > 0;
 
-    public bool IsStale(Simulation sim) => sim.LandUseVersion != BuiltLandUseVersion || sim.LotsVersion != BuiltLotsVersion;
+    public bool IsStale(int landUseVersion, int lotsVersion) => landUseVersion != BuiltLandUseVersion || lotsVersion != BuiltLotsVersion;
 
     /// <summary>Собрать слой заново: старые чанки освобождаются, новые добавляются в тот же корень.</summary>
     public void Rebuild(Simulation sim)
