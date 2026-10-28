@@ -6,8 +6,14 @@ render_mode diffuse_lambert, specular_disabled, depth_draw_opaque, shadows_disab
 
 uniform vec3 ground_color : source_color = vec3(0.9, 0.9, 0.9);
 
+varying vec3 wpos;
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
 void fragment() {
-	ALBEDO = world_info(ground_color, 1.0);
+	ALBEDO = world_grid(world_info(ground_color, 1.0), wpos, distance(wpos, CAMERA_POSITION_WORLD));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }

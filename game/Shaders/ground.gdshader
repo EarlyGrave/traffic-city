@@ -8,9 +8,11 @@ render_mode diffuse_lambert, specular_disabled, depth_draw_opaque, shadows_disab
 uniform vec3 shore_color : source_color = vec3(0.92, 0.95, 0.97);
 
 varying vec3 zone_col;
+varying vec3 wpos;
 
 void vertex() {
 	zone_col = CUSTOM0.rgb;
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
@@ -20,7 +22,7 @@ void fragment() {
 	if (info_layer == 3) {
 		col = mix(col, zone_col, info_mode * step(0.001, zone_col.r + zone_col.g + zone_col.b));
 	}
-	ALBEDO = col;
+	ALBEDO = world_grid(col, wpos, distance(wpos, CAMERA_POSITION_WORLD));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
