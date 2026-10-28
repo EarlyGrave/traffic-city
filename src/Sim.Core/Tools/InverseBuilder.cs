@@ -1,5 +1,6 @@
 using System;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Network;
 
 namespace Sim.Core.Tools;
@@ -27,7 +28,7 @@ internal static class InverseBuilder
         CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan or CommandKind.SetLaneFlags
             or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode
             or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop or CommandKind.RemoveBusStop
-            or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams => true,
+            or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams or CommandKind.PaintZone => true,
         _ => false,
     };
 
@@ -67,6 +68,9 @@ internal static class InverseBuilder
                 break;
             case CommandKind.UpgradeRoad:
                 BeginUpgradeRoad(w, in cmd, ref ctx);
+                break;
+            case CommandKind.PaintZone:
+                BeginPaintZone(w, in cmd, ref ctx);
                 break;
             default:
                 ctx.NoInverse = true;   // SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
@@ -141,12 +145,13 @@ internal static class InverseBuilder
         }
 
         log.Cmds[at] = c;
+        log.Cmds[at].Flags |= CommandFlags.Inverse;   // city-economy.md §8.3: цену обратной определяет запись undo-кредита
         ctx.N++;
     }
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad;
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone;
 
     /// <summary>
     /// <c>UpgradeRoad</c>, у которого обратной записи не будет: сегмент без профиля получает профиль (вернуть «без профиля» командой нельзя). Зеркало <c>BeginUpgradeRoad</c> для превью.
@@ -155,6 +160,36 @@ internal static class InverseBuilder
     {
         var chk = default(ToolCheck);
         return ToolValidator.Check(w, in cmd, ref chk) == RejectReason.None && chk.Reshape != ReshapeMode.None && chk.Profile >= 0 && w.Net.Segments[chk.Seg].Profile < 0;
+    }
+
+    /// <summary>
+    /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.
+    /// Отклоняемая команда (валидатор) записи не даёт. Заброшенные зданием участки зону вернут, здание - нет (undo логический).
+    /// </summary>
+    private static void BeginPaintZone(World w, in Command cmd, ref InvCtx ctx)
+    {
+        if (Zoning.Check(w, in cmd.PaintZone, out _) != RejectReason.None)
+        {
+            ctx.Inactive = true;
+            return;
+        }
+
+        InverseLog log = w.Inv;
+        int room = Math.Min(InverseLog.MaxPerRecord, log.Cmds.Length - ctx.Start);
+        Span<Command> dst = room > 0 ? log.Cmds.AsSpan(ctx.Start, room) : default;
+        int n = Zoning.BuildInverse(w, in cmd.PaintZone, dst);
+        if (n > room)
+        {
+            ctx.Truncated = true;
+            return;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            dst[i].Flags |= CommandFlags.Inverse;
+        }
+
+        ctx.N = n;
     }
 
     private static void BeginUpgradeRoad(World w, in Command cmd, ref InvCtx ctx)
