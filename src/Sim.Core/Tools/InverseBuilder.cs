@@ -154,15 +154,6 @@ internal static class InverseBuilder
         or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone;
 
     /// <summary>
-    /// <c>UpgradeRoad</c>, у которого обратной записи не будет: сегмент без профиля получает профиль (вернуть «без профиля» командой нельзя). Зеркало <c>BeginUpgradeRoad</c> для превью.
-    /// </summary>
-    public static bool UpgradeLacksInverse(World w, in Command cmd)
-    {
-        var chk = default(ToolCheck);
-        return ToolValidator.Check(w, in cmd, ref chk) == RejectReason.None && chk.Reshape != ReshapeMode.None && chk.Profile >= 0 && w.Net.Segments[chk.Seg].Profile < 0;
-    }
-
-    /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.
     /// Отклоняемая команда (валидатор) записи не даёт. Заброшенные зданием участки зону вернут, здание - нет (undo логический).
     /// </summary>
@@ -201,18 +192,32 @@ internal static class InverseBuilder
         }
 
         ref readonly SegmentData sd = ref w.Net.Segments[chk.Seg];
+        if (chk.CancelShrink)
+        {
+            // Отмена дренажа полос (T5): обратная - снова та правка, что ждала (redo), со скоростью до отмены.
+            int k = w.Ops.FindShrink(chk.Seg);
+            ToolOps.UnpackReshape(w.Ops.TargetGen[k], out int ab, out int ba, out RoadKind kind, out int profile, out bool mirrored);
+            var redo = new UpgradeRoadCmd
+            {
+                Seg = new EntityRef(chk.Seg, sd.Generation),
+                SpeedLimit = sd.SpeedLimit,
+                LanesAB = (byte)ab,
+                LanesBA = (byte)ba,
+                Kind = kind,
+                Profile = (ushort)(profile + 1),
+                Flags = (byte)(profile >= 0 ? (mirrored ? UpgradeRoadFlags.Mirrored : 0) : (sd.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
+            };
+            Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in redo));
+            return;
+        }
+
         if (chk.Reshape == ReshapeMode.None)
         {
             return;
         }
 
-        if (chk.Profile >= 0 && sd.Profile < 0)
-        {
-            ctx.NoInverse = true;
-            return;
-        }
-
-        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип. Флаги ReshapeMode.Swap на занятость не влияют: возврат проходит тот же валидатор.
+        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип; сегмент без профиля, получающий профиль, возвращается с NoProfile (T5).
+        // Занятость на обратную не влияет: возврат проходит тот же валидатор (перенос машин или дренаж ShrinkLanes).
         var u = new UpgradeRoadCmd
         {
             Seg = new EntityRef(chk.Seg, sd.Generation),
@@ -221,7 +226,7 @@ internal static class InverseBuilder
             LanesBA = sd.LanesBA,
             Kind = sd.Kind,
             Profile = (ushort)(sd.Profile + 1),
-            Flags = (byte)(sd.Profile >= 0 && (sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0),
+            Flags = (byte)(sd.Profile >= 0 ? ((sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0) : (chk.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
         };
         Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in u));
     }

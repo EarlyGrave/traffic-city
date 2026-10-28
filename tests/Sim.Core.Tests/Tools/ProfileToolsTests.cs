@@ -951,24 +951,68 @@ public sealed class ProfileToolsTests
     }
 
     [Fact]
-    public void Undo_UpgradeLegacyToProfile_HasNoInverse_AndPreviewWarns()
+    public void Undo_UpgradeLegacyToProfile_UndoRemovesProfile_RedoRestores()
     {
+        // T5: обратная к «без профиля -> профиль» - UpgradeRoad с NoProfile (полосы и тип прежние, ширина стандартная).
         using Simulation sim = Quiet();
-        RoadProfileStore st = sim.World.Net.Profiles!;
-        BuildRoadCmd legacy = ToolsFixture.Road(new Vec2(600f, 600f), new Vec2(600f, 900f));
+        BuildRoadCmd legacy = ToolsFixture.Road(new Vec2(600f, 600f), new Vec2(600f, 900f), 2);
         Assert.Equal(RejectReason.None, Run(sim, Command.MakeBuildRoad(in legacy, 1)));
         int seg = SegmentAt(sim, 600f, 600f, 600f, 900f);
-        Command up = Upgrade(sim, seg, P("street_2"), false);
+        SegmentData before = sim.World.Net.Segments[seg];
+        Command up = Upgrade(sim, seg, P("arterial_4"), false);
         Command copy = up;
         var issues = new PreviewIssue[8];
         Assert.Equal(RejectReason.None, sim.Preview(in copy, out PreviewResult pr, issues));
-        Assert.Contains(issues.Take(pr.IssuesWritten), i => i.Code == IssueCode.UndoUnavailable);
+        Assert.DoesNotContain(issues.Take(pr.IssuesWritten), i => i.Code == IssueCode.UndoUnavailable);
         var stack = new UndoStack();
         UndoResult r = stack.Execute(sim, new[] { up });
         Assert.Equal(0, r.Rejected);
-        Assert.Equal(1, r.Applied);
-        Assert.False(r.Recorded);
-        _ = st;
+        Assert.True(r.Recorded);
+        Settle(sim);
+        AssertMatchesProfile(sim, seg, P("arterial_4"), false);
+        Assert.True(stack.Undo(sim).Ok);
+        Settle(sim);
+        SegmentData back = sim.World.Net.Segments[seg];
+        Assert.Equal(-1, back.Profile);
+        Assert.Equal(before.LanesAB, back.LanesAB);
+        Assert.Equal(before.LanesBA, back.LanesBA);
+        Assert.Equal(before.Kind, back.Kind);
+        Assert.Equal(sim.World.Builder.Options.LaneWidth, sim.World.Net.Lanes[back.FirstLaneAB].Width);
+        Assert.True(stack.Redo(sim).Ok);
+        Settle(sim);
+        AssertMatchesProfile(sim, seg, P("arterial_4"), false);
+    }
+
+    [Fact]
+    public void Undo_Redo_NarrowingDuringDrain_CancelsAndReapplies()
+    {
+        // T5: undo во время дренажа полос отменяет операцию, redo ставит её снова; после финала undo возвращает полосы (перенос машин).
+        using Simulation sim = Simulation.Create(BigCross(), new SimRuntimeOptions());
+        sim.SetToolsConfig(ToolsFixture.Unbounded);
+        sim.Step(5);
+        NetworkStore n = sim.World.Net;
+        int seg = -1;
+        for (int s = 0; s < n.SegmentCount && seg < 0; s++)
+        {
+            seg = n.SegmentAlive(s) && n.Segments[s].Profile == P("arterial_4") ? s : -1;
+        }
+
+        var stack = new UndoStack();
+        TestScenarios.PlaceCar(sim, n.Segments[seg].FirstLaneAB + 1, 25f);   // машина на убираемой полосе (LaneNo 1)
+        UndoResult r = stack.Execute(sim, new[] { Upgrade(sim, seg, P("street_2"), false) });
+        Assert.True(r.Recorded && r.Rejected == 0);
+        Assert.True(sim.World.Ops.FindShrink(seg) >= 0);
+        Assert.True(stack.Undo(sim).Ok);
+        Assert.True(sim.World.Ops.FindShrink(seg) < 0);
+        AssertMatchesProfile(sim, seg, P("arterial_4"), false);
+        Assert.True(stack.Redo(sim).Ok);
+        Settle(sim);
+        AssertMatchesProfile(sim, seg, P("street_2"), false);
+        Assert.True(stack.Undo(sim).Ok);
+        Settle(sim);
+        AssertMatchesProfile(sim, seg, P("arterial_4"), false);
+        Assert.Null(sim.World.VerifyDerived());
+        using Simulation twin = ToolsFixture.RoundTrip(sim);
     }
 
     // ---------------------------------------------------------------- журнал команд

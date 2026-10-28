@@ -110,9 +110,16 @@ internal static partial class ToolValidator
         }
         else
         {
+            bool noProfile = (u.Flags & UpgradeRoadFlags.NoProfile) != 0;
             if (mirrored)
             {
                 return RejectReason.InvalidArgument;
+            }
+
+            if (noProfile)
+            {
+                profile = -1;   // снять профиль: полосы и тип - из команды (обратная к «без профиля -> профиль»)
+                curMirrored = false;
             }
 
             if (u.LanesAB != 255)
@@ -130,7 +137,7 @@ internal static partial class ToolValidator
                 return RejectReason.InvalidArgument;
             }
 
-            if (sd.Profile >= 0 && (lanesAB != sd.LanesAB || lanesBA != sd.LanesBA || kind != sd.Kind))
+            if (!noProfile && sd.Profile >= 0 && (lanesAB != sd.LanesAB || lanesBA != sd.LanesBA || kind != sd.Kind))
             {
                 return RejectReason.InvalidArgument;   // полосы и тип сегмента с профилем - только через профиль
             }

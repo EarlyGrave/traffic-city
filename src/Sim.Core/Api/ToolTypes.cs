@@ -80,7 +80,13 @@ public static class UpgradeRoadFlags
     /// <summary>Новый профиль применяется «против» направления рисования (ADR-0030, RP7); только вместе с <see cref="UpgradeRoadCmd.Profile"/> != 0.</summary>
     public const byte Mirrored = 2;
 
-    public const byte Supported = KeepKind | Mirrored;
+    /// <summary>
+    /// Снять профиль (T5): сегмент становится «без профиля» (полосы стандартной ширины), полосы и тип - из команды. Только с <see cref="UpgradeRoadCmd.Profile"/> == 0, без <see cref="Mirrored"/>.
+    /// Пишет обратная запись ядра для правки «без профиля -> профиль».
+    /// </summary>
+    public const byte NoProfile = 4;
+
+    public const byte Supported = KeepKind | Mirrored | NoProfile;
 }
 
 /// <summary>
