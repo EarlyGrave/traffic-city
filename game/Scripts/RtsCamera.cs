@@ -56,6 +56,15 @@ public partial class RtsCamera : Node3D
         Apply();
     }
 
+    /// <summary>Текущая цель позы (для сейва): точка на земле, расстояние, наклон и поворот в градусах - то, что принимает <see cref="SetPose"/>.</summary>
+    public void GetPose(out Vector3 center, out float distance, out float pitchDeg, out float yawDeg)
+    {
+        center = _targetPos;
+        distance = _targetDistance;
+        pitchDeg = Mathf.RadToDeg(_pitch);
+        yawDeg = Mathf.RadToDeg(_yaw);
+    }
+
     public override void _Ready()
     {
         _camera = GetNode<Camera3D>("Camera3D");

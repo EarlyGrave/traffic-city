@@ -40,6 +40,10 @@ public static class UiActions
     public static readonly StringName GridShowToggle = "grid_show_toggle";
     public static readonly StringName SnapOverride = "snap_override";
 
+    // сохранение (меню, T6.1)
+    public static readonly StringName QuickSave = "quick_save";
+    public static readonly StringName QuickLoad = "quick_load";
+
     /// <summary>Esc: отмена протяжки -> выход из инструмента -> закрыть инспектор -> выйти из инфо -> меню (ui-spec.md §2).</summary>
     public static readonly StringName Cancel = "game_cancel";
 
@@ -49,7 +53,7 @@ public static class UiActions
         CamForward, CamBack, CamLeft, CamRight, CamRotateLeft, CamRotateRight, CamFast,
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
         TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
-        GridSnapToggle, GridShowToggle, SnapOverride, Cancel,
+        GridSnapToggle, GridShowToggle, SnapOverride, QuickSave, QuickLoad, Cancel,
     };
 
     /// <summary>Добавить действия, которых ещё нет в <see cref="InputMap"/> (повторный вызов ничего не меняет; ремап из файла настроек не затирается).</summary>
@@ -81,6 +85,9 @@ public static class UiActions
         Add(GridSnapToggle, Phys(Key.G));
         Add(GridShowToggle, Phys(Key.G, shift: true));
         Add(SnapOverride, Code(Key.Shift));
+
+        Add(QuickSave, Code(Key.F5));
+        Add(QuickLoad, Code(Key.F9));
 
         Add(Cancel, Code(Key.Escape));
     }
