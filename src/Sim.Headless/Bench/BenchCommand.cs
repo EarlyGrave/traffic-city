@@ -269,8 +269,9 @@ public static class BenchCommand
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
         r.LoadAvgStart = HostLoad.LoadAvg1();
         HostLoad hostA = HostLoad.Read();
-        // воркеры аллоцируют в своих потоках: при threads > 1 меряем весь процесс (в окне больше никто не работает)
-        long allocBefore = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
+        // воркеры аллоцируют в своих потоках: считаем поток бенча + воркеры пула (не фоновые потоки рантайма, см. SimThreadAlloc)
+        var allocProbe = new SimThreadAlloc(sim);
+        long allocBefore = allocProbe.Snapshot();
         long windowStart = Stopwatch.GetTimestamp();
         long stuckSum = 0;
         int stuckMax = 0;
@@ -289,7 +290,7 @@ public static class BenchCommand
         long windowEnd = Stopwatch.GetTimestamp();
         r.StuckWindowMean = stuckSum / (double)ticks;
         r.StuckWindowMax = stuckMax;
-        long allocAfter = threads > 1 ? GC.GetTotalAllocatedBytes(true) : GC.GetAllocatedBytesForCurrentThread();
+        long allocAfter = allocProbe.Snapshot();
         HostLoad hostB = HostLoad.Read();   // после снимка аллокаций: чтение /proc само аллоцирует
         r.ForeignCores = HostLoad.ForeignCores(in hostA, in hostB);
         r.StolenCores = HostLoad.StolenCores(in hostA, in hostB);
