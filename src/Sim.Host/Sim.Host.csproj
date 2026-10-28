@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Sim.Core/Sim.Core.csproj" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

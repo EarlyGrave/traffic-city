@@ -33,6 +33,10 @@ public sealed partial class UiRoot : CanvasLayer
     private readonly Button[] _layerButtons = new Button[3];
     private readonly System.Collections.Generic.Dictionary<string, Button> _toolButtons = new();
     private UiTopBar _topBarView = null!;
+    private UiMenus _menus = null!;
+    private bool _mainMode;          // показано главное меню: игры нет, панели скрыты
+    private bool _menuShown;         // страница меню игры (Esc) уже построена для текущего открытия
+    private string _startMenu = string.Empty; // --ui-menu pause|load: открыть меню на старте (скриншоты)
     private SimHost? _host;
     private bool _zonesKnown;
     private Window? _window;
@@ -76,6 +80,12 @@ public sealed partial class UiRoot : CanvasLayer
     /// <summary>Модальный слой (меню, бюджет, настройки): полноэкранный, блокирует клики в мир, пока виден.</summary>
     public Control Modal => _modal;
 
+    /// <summary>Главное меню, меню игры (Esc) и список сейвов: события и данные подключает SimHost.</summary>
+    public UiMenus Menus => _menus;
+
+    /// <summary>Показано главное меню (игры нет).</summary>
+    public bool InMainMenu => _mainMode;
+
     public override void _EnterTree()
     {
         Layer = 10;
@@ -101,6 +111,15 @@ public sealed partial class UiRoot : CanvasLayer
                 break;
             default:
                 break; // info: состояние мира выставляет SimHost (Snap) и зеркалит в роутер
+        }
+
+        if (_startMenu.Length > 0 && !_mainMode)
+        {
+            _router.OpenMenu(); // скриншот меню игры: страница строится в Refresh
+            if (_startMenu == "load")
+            {
+                _menus.ShowLoad();
+            }
         }
 
         if (_demoList)
@@ -132,6 +151,7 @@ public sealed partial class UiRoot : CanvasLayer
     public override void _Process(double delta)
     {
         _topBarView.Update(this);
+        _menus.Update(delta);
         UpdateCapabilities();
         _notify.Update(delta);
         if (_host is { IsReady: true } h && !_timeSet && h.DayTicks > 0)
@@ -161,7 +181,11 @@ public sealed partial class UiRoot : CanvasLayer
         // Esc живёт здесь, а не в SimHost: порядок «протяжка -> инструмент -> инспектор -> инфо -> меню» знает только роутер
         if (@event.IsActionPressed(UiActions.Cancel))
         {
-            if (_notify.ListOpen)
+            if (_menus.HandleCancel())
+            {
+                // страница меню израсходовала Esc (назад со списка / главное меню)
+            }
+            else if (!_router.MenuOpen && _notify.ListOpen)
             {
                 _notify.SetListOpen(false); // список уведомлений закрывается первым: он поверх всего, кроме модального меню
             }
@@ -171,6 +195,10 @@ public sealed partial class UiRoot : CanvasLayer
             }
 
             GetViewport().SetInputAsHandled();
+        }
+        else if (_mainMode || _router.MenuOpen)
+        {
+            // под меню (главным или Esc) горячие клавиши времени и инфо-режима молчат
         }
         else if (@event.IsActionPressed(UiActions.InfoToggle))
         {
@@ -252,6 +280,10 @@ public sealed partial class UiRoot : CanvasLayer
                 && int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame))
             {
                 _shotFrame = frame;
+            }
+            else if (args[i] == "--ui-menu" && i + 1 < args.Length)
+            {
+                _startMenu = args[++i];
             }
             else if (args[i] == "--ui-demo-toasts")
             {
@@ -469,19 +501,24 @@ public sealed partial class UiRoot : CanvasLayer
         _modal = new Control { Name = "Modal", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
         _modal.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         _root.AddChild(_modal);
-        _modal.AddChild(new ColorRect { Name = "Scrim", Color = UiPalette.Scrim, MouseFilter = Control.MouseFilterEnum.Ignore }.WithFullRect());
-        var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        center.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        _modal.AddChild(center);
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(360f, 0f) };
-        center.AddChild(panel);
-        var box = new VBoxContainer();
-        panel.AddChild(box);
-        box.AddChild(new Label { Text = "Меню", ThemeTypeVariation = UiTheme.LabelHeader });
-        box.AddChild(Secondary("Заглушка: настройки, сохранение, выход — UI12.", Control.SizeFlags.Fill, HorizontalAlignment.Left));
-        Button close = MakeButton("Закрыть  Esc", toggle: false, disabled: false);
-        close.Pressed += _router.CloseMenu;
-        box.AddChild(close);
+        _menus = new UiMenus(_root, _modal);
+        _menus.ResumeRequested += _router.CloseMenu;
+    }
+
+    /// <summary>
+    /// Главное меню вместо игры (SimHost при старте без сценария): панели игры скрыты, Esc ничего не закрывает. Выход - только перезагрузкой сцены.
+    /// Для скриншотов страница списка открывается аргументом <c>--ui-menu load</c>.
+    /// </summary>
+    public void EnterMainMenu()
+    {
+        _mainMode = true;
+        _menus.ShowMain();
+        if (_startMenu == "load")
+        {
+            _menus.ShowLoad();
+        }
+
+        Refresh();
     }
 
     // ---- видимость по состоянию ----
@@ -518,7 +555,22 @@ public sealed partial class UiRoot : CanvasLayer
         bool showInspector = _router.Inspected is InspectKind.Vehicle or InspectKind.Demo;
         _inspector.Visible = showInspector;
         _inspectorTitle.Text = _router.Inspected == InspectKind.Demo ? "Инспектор (макет)" : "Транспорт";
-        _modal.Visible = _router.MenuOpen;
+        bool menu = _router.MenuOpen && !_mainMode;
+        if (menu && !_menuShown)
+        {
+            _menus.ShowPause();
+        }
+
+        _menuShown = menu;
+        _modal.Visible = menu || _mainMode;
+
+        // главное меню: игровых панелей нет (мира тоже)
+        bool hud = !_mainMode;
+        _topBar.Visible = hud;
+        _toolbar.Visible = hud;
+        _rightDock.Visible = hud;
+        _toasts.Visible = hud;
+        _toolOptions.Visible = hud && tool != null;
     }
 }
 
