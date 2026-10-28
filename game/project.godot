@@ -50,3 +50,15 @@ info_bg_light={
 "type": "vec3",
 "value": Vector3(0.9215, 0.8797, 0.7914)
 }
+grid_on={
+"type": "float",
+"value": 0.0
+}
+grid_params={
+"type": "vec4",
+"value": Vector4(8, 0, 0, 19)
+}
+grid_color={
+"type": "vec3",
+"value": Vector3(0.2, 0.25, 0.32)
+}
