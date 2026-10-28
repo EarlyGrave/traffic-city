@@ -9,7 +9,7 @@ namespace TrafficCity;
 
 /// <summary>
 /// Дороги чанками (docs/design/render.md §5.2, §4.3; visual-style.md §4, урезанная VS3a): ближние чанки 250 м - LOD0 (до <see cref="LodConfig.RoadLod0"/>) и LOD1
-/// (до <see cref="LodConfig.RoadLod1"/>), дальние чанки 2 000 м - дальняя лента (клиент строит сам, видна от камеры и без верхней границы:
+/// (до <see cref="LodConfig.RoadLod1"/>), дальние чанки 1 000 м (RoadFarCell) - дальняя лента (клиент строит сам, видна от камеры и без верхней границы:
 /// <see cref="LodConfig.RoadFar"/> - бюджет, на общем плане s10k+ камера дальше). Штатные <c>visibility_range</c> и frustum culling движка.
 /// На каждом уровне - сплошной асфальт: одна лента на сегмент на всю ширину проезжей части (оба направления) и сплошная площадка перекрёстка - многоугольник
 /// из торцов лент рукавов и внешней кромки правых поворотов (connector'ы lane0 -> lane0, смещённые наружу на полполосы). Ширины, смещения и концы полос берутся
@@ -30,13 +30,60 @@ public sealed partial class RoadChunks
     public const float NearHalfDiag = 177f;
 
     /// <summary>
-    /// Запас перекрытия ближнего LOD1 и дальней ленты: центр дальнего чанка (2 000 м) может быть дальше центра вложенного ближнего на ≈1 237 м
-    /// (полудиагональ 1 414 - 177), поэтому ближний слой держится до <c>begin дальнего + FarOverlap</c> - иначе у края дальнего чанка появляются дыры.
+    /// Ячейка дальней ленты дорог и тротуаров, м. Меньше <see cref="FarCell"/> (его делят землепользование и участки): полудиагональ 707 м позволяет
+    /// включать ленту только там, где все её точки уже за пределами Road0, - иначе скошенные углы ленты (FarY над землёй) торчат из-под скруглений LOD0.
     /// </summary>
-    public const float FarOverlap = 1240f;
+    public const float RoadFarCell = 1000f;
 
-    /// <summary>Дальняя лента видна от этой дистанции (до центра её чанка).</summary>
-    public static float FarBegin(LodConfig lod) => lod.RoadLod1;
+    /// <summary>Полудиагональ ячейки дальней ленты.</summary>
+    public const float FarHalfDiag = 707f;
+
+    /// <summary>Запас на сегменты, выходящие за свою ячейку (центр AABB чанка не равен центру ячейки).</summary>
+    public const float RangeSlack = 100f;
+
+    /// <summary>
+    /// Дальняя лента видна от этой дистанции (до центра её чанка): все точки её ячейки не ближе <c>Lod0End - NearHalfDiag</c> = порога LOD0 от камеры,
+    /// и не раньше начала LOD1 по данным (<see cref="LodConfig.RoadLod1"/>).
+    /// </summary>
+    public static float FarBegin(LodConfig lod) => MathF.Max(lod.RoadLod1, Lod0End(lod) + FarHalfDiag);
+
+    /// <summary>Конец диапазона Road0 (до центра чанка): порог LOD0 + полудиагональ ячейки; с него начинается Road1.</summary>
+    public static float Lod0End(LodConfig lod) => lod.RoadLod0 + NearHalfDiag;
+
+    /// <summary>
+    /// Конец диапазона Road1: пока лента скрыта (центр её чанка ближе <see cref="FarBegin"/>), её точки могут быть дальше на полудиагональ,
+    /// а центр ближнего чанка с такой точкой - ещё на полудиагональ ближней ячейки.
+    /// </summary>
+    public static float Lod1End(LodConfig lod) => FarBegin(lod) + FarHalfDiag + NearHalfDiag + RangeSlack;
+
+    /// <summary>
+    /// Страж щели: Road0 [0, Lod0End], Road1 [Lod0End, Lod1End] и RoadFar [FarBegin, inf) покрывают [0, inf) без дыр, а ближний слой перекрывает ленту.
+    /// Margin узлов обязан быть 0 (<see cref="ChunkGrid.Emit"/>), иначе на каждой границе мёртвая зона (lessons.md, агент L34).
+    /// </summary>
+    public static bool CheckRanges(LodConfig lod, out string error)
+    {
+        float e0 = Lod0End(lod);
+        float e1 = Lod1End(lod);
+        float fb = FarBegin(lod);
+        if (lod.RoadLod0 <= 0f || e0 > e1)
+        {
+            error = $"Road0 [0, {e0:0.#}], Road1 [{e0:0.#}, {e1:0.#}]: Road1 не стыкуется с Road0";
+        }
+        else if (fb <= 0f || fb > e1 - FarHalfDiag - NearHalfDiag)
+        {
+            error = $"RoadFar [{fb:0.#}, inf) не перекрывает Road1 (до {e1:0.#}) с запасом на полудиагонали ячеек";
+        }
+        else if (fb - FarHalfDiag < lod.RoadLod0)
+        {
+            error = $"RoadFar от {fb:0.#}: её ближние точки (на {fb - FarHalfDiag:0.#} м) заходят в зону Road0 (до {lod.RoadLod0:0.#} м)";
+        }
+        else
+        {
+            error = string.Empty;
+        }
+
+        return error.Length == 0;
+    }
 
     private const float Lod1Tolerance = 0.4f;
     private const float FarTolerance = 6f;
@@ -313,7 +360,7 @@ public sealed partial class RoadChunks
             float y = KindY(net, s);
             MeshBuilder b0 = ChunkGrid.Get(lod0, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4, true);
             MeshBuilder b1 = ChunkGrid.Get(lod1, ChunkGrid.Key(segCx[s], segCz[s], NearCell), 4);
-            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], FarCell), 4);
+            MeshBuilder bf = ChunkGrid.Get(far, ChunkGrid.Key(segCx[s], segCz[s], RoadFarCell), 4);
             if (geo[s].Profiled)
             {
                 AddProfileRoad(net, s, geo[s], b0, 0f, y, col, Detail.Full, true, ends0);
@@ -341,15 +388,20 @@ public sealed partial class RoadChunks
             Color pc = Palette.AsphaltVertex;
             AddJunction(net, nd, arms, geo, ends0, ChunkGrid.Get(lod0, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4, true), py, pc, true, int.MaxValue, Detail.Full);
             AddJunction(net, nd, arms, geo, ends1, ChunkGrid.Get(lod1, ChunkGrid.Key(nd.Position.X, nd.Position.Z, NearCell), 4), py, pc, false, Lod1CornerPoints, Detail.Walk);
-            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, FarCell), 4), FarY, pc, false, 0, Detail.Asphalt);
+            AddJunction(net, nd, arms, geo, endsF, ChunkGrid.Get(far, ChunkGrid.Key(nd.Position.X, nd.Position.Z, RoadFarCell), 4), FarY, pc, false, 0, Detail.Asphalt);
         }
 
         GD.Print(string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{FarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {FarBegin(lod) + FarOverlap:0} м; полоса {defW:0.##} м, сегментов с профилем {profiled})"));
-        ChunkGrid.Emit(Root, lod0, "Road0", _material, 0f, lod.RoadLod0 + NearHalfDiag);
-        ChunkGrid.Emit(Root, lod1, "Road1", _material, lod.RoadLod0 + NearHalfDiag, FarBegin(lod) + FarOverlap);
-        // дальняя лента от FarBegin; ближний LOD1 держится до FarBegin + FarOverlap, чтобы не было дыр (центры чанков разных сеток)
+            $"[roads] chunks: lod0 {lod0.Count}, lod1 {lod1.Count}, far {far.Count} (ячейки {NearCell:0}/{RoadFarCell:0} м, LOD0 до {lod.RoadLod0:0} м, лента от {FarBegin(lod):0} м без верхней границы дальности, LOD1 до {Lod1End(lod):0} м; полоса {defW:0.##} м, сегментов с профилем {profiled})"));
+        if (!CheckRanges(lod, out string rangeError))
+        {
+            GD.PushError("[roads] щель в диапазонах видимости LOD: " + rangeError);
+        }
+
+        ChunkGrid.Emit(Root, lod0, "Road0", _material, 0f, Lod0End(lod));
+        ChunkGrid.Emit(Root, lod1, "Road1", _material, Lod0End(lod), Lod1End(lod));
+        // дальняя лента от FarBegin; ближний LOD1 держится до Lod1End (см. CheckRanges), чтобы не было дыр (центры чанков разных сеток)
         // верхней границы нет: на общем плане s10k/s1m камера дальше 6 000 м (render-budgets road.far_distance_m), а лента - единственное, что видно
         ChunkGrid.Emit(Root, far, "RoadFar", _material, FarBegin(lod), 0f);
     }
