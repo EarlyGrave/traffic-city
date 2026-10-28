@@ -9,7 +9,7 @@ public static class GoldenCommand
 {
     public const string Usage =
         "Usage: Sim.Headless golden --out <dir> [--root <repo root>]\n" +
-        "  Writes util.json and one <scenario>.json per scenario (scenarios/demo-grid.json and <dir>/scenarios/*.json).\n" +
+        "  Writes util.json, idm-pow.json and one <scenario>.json per scenario (scenarios/demo-grid.json and <dir>/scenarios/*.json).\n" +
         "  Fixtures in <dir>/scenarios are inputs and are never rewritten. Output is byte-deterministic.";
 
     private const int ExitOk = 0;
@@ -52,8 +52,10 @@ public static class GoldenCommand
         root = Path.GetFullPath(root);
         Directory.CreateDirectory(outDir);
         var utf8 = new UTF8Encoding(false);
-        File.WriteAllText(Path.Combine(outDir, "util.json"), RustPilotGolden.UtilJson(), utf8);
+        File.WriteAllText(Path.Combine(outDir, "util.json"), RustPilotGolden.UtilJson(root), utf8);
         output.WriteLine("util.json");
+        File.WriteAllText(Path.Combine(outDir, "idm-pow.json"), RustPilotGolden.IdmPowJson(root), utf8);
+        output.WriteLine("idm-pow.json");
         foreach (string path in RustPilotGolden.ScenarioPaths(root, outDir))
         {
             string file = RustPilotGolden.FileNameFor(path);

@@ -1,5 +1,5 @@
-# Аналог src/Sim.Core/BannedSymbols.txt (docs/design/rust-pilot.md §7). Единственное исключение -
-# detmath::atan2_system с #[allow(clippy::disallowed_methods)] и комментарием.
+# Аналог src/Sim.Core/BannedSymbols.txt (docs/design/rust-pilot.md §7). Исключения (оба с allow и комментарием) -
+# detmath::atan2_system, detmath::powf_system с #[allow(clippy::disallowed_methods)] и комментарием.
 disallowed-types = [
     { path = "std::collections::HashMap", reason = "случайный порядок итерации; используй FixedHashMap (rust-pilot.md §6.2)" },
     { path = "std::collections::HashSet", reason = "случайный порядок итерации; используй FixedHashMap (rust-pilot.md §6.2)" },

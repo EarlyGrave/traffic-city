@@ -25,5 +25,6 @@
 pub mod api;
 pub mod intersections;
 pub mod network;
+pub mod rules;
 pub mod sim;
 pub mod util;
