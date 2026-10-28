@@ -250,7 +250,9 @@ internal sealed partial class NetworkStore
         Profiles != null ? Profiles.ViewElems : default,
         Profiles?.ModuleMm ?? 0,
         gridOriginX,
-        gridOriginZ);
+        gridOriginZ,
+        new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount),
+        new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount));
 
     /// <summary>Раздел профилей хэша (только режим профилей, ADR-0030): каталог, <c>Segment.Profile</c> и <c>Lane.Width</c> всех слотов.</summary>
     private void AddProfileStateToHash(ref Fnv1a64 h)

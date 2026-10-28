@@ -119,6 +119,27 @@ public readonly ref struct NetworkView
     public readonly int ModuleMm;                              // module_m * 1000; 0 - legacy
     public readonly float GridOriginX, GridOriginZ;            // начало мировой сетки, м
 
+    // Рукава узлов и знаки (N2): NodeArms/ArmFlags параллельны, диапазон узла - NodeData.FirstArm/ArmCount. Живое состояние сети (верно после Load без desc).
+    public readonly ReadOnlySpan<int> NodeArms;         // сегменты, инцидентные узлу, по часовой стрелке
+    public readonly ReadOnlySpan<byte> ArmFlags;        // биты <see cref="ArmFlagBits"/>
+
+    /// <summary>Знак рукава <paramref name="arm"/> (слот 0..ArmCount-1) узла <paramref name="node"/> в кодах <c>SetArmControl</c>: 0 авто, 1 главный, 2 уступи, 3 стоп; вне диапазона - 0.</summary>
+    public int ArmSign(int node, int arm)
+    {
+        if ((uint)node >= (uint)Nodes.Length || (uint)arm >= (uint)Nodes[node].ArmCount)
+        {
+            return 0;
+        }
+
+        int at = Nodes[node].FirstArm + arm;
+        if ((uint)at >= (uint)ArmFlags.Length)
+        {
+            return 0;
+        }
+
+        return ArmFlagBits.SignOf(ArmFlags[at]);
+    }
+
     // ---- живость и handle'ы (4.3, T2; player-tools.md §3 п. 5): Nodes/Segments/... идут до HighWater пула, мёртвые слоты (Generation чётное) клиент пропускает ----
 
     /// <summary>Узел <paramref name="i"/> существует (<c>Generation</c> нечётное). Индекс вне диапазона - false.</summary>
@@ -163,8 +184,12 @@ public readonly ref struct NetworkView
         ReadOnlySpan<RoadElemData> profileElems = default,
         int moduleMm = 0,
         float gridOriginX = 0f,
-        float gridOriginZ = 0f)
+        float gridOriginZ = 0f,
+        ReadOnlySpan<int> nodeArms = default,
+        ReadOnlySpan<byte> armFlags = default)
     {
+        NodeArms = nodeArms;
+        ArmFlags = armFlags;
         Version = version;
         Nodes = nodes;
         Segments = segments;

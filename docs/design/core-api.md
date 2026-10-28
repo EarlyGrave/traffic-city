@@ -1498,3 +1498,12 @@ Read-only, без аллокаций, blittable; ядро формат сейв�
 - `NetworkView` получил `RoadProfiles` (`ReadOnlySpan<RoadProfileData>`, 12 Б: `FirstElem`, `WidthMm`, `ElemCount`, `Kind`, `LanesFwd/Bwd`), `ProfileElems` (`ReadOnlySpan<RoadElemData>`, 12 Б: `Kind`, `Dir`, `OffsetMm` от оси слева направо по A→B, `WidthMm`), `ModuleMm` и `GridOriginX/Z`. Верны после `Load` (каталог из `RPRF`, начало из `PARM`): клиенту дескриптор не нужен. Legacy: срезы пусты, `ModuleMm = 0`, начало (0, 0). `Simulation.Network` подставляет начало сетки мира, `NetworkStore.GetView(originX, originZ)`.
 - `LotRenderData` расширен с 16 до 28 Б (вариант «шире структура», а не отдельный `GetLotCells`: один проход `GetLots`, одна версия `LotsVersion`, участок целиком). Поля: `Orient` (бывший `R0`, байт 15; 255 - legacy), `CellsF`, `CellsD`, `CellX`, `CellZ` (int, Pack 4, размер 28 = кратно 4). Хелперы `OnGrid`, `DepthDir`, `TryGetCellBounds` повторяют `LotBuilder.CellBounds` (тест сверяет). Legacy: `Orient = 255`, клетки 0.
 - Rust-пилот: `LotRenderData` и вью в `rust/` не зеркалируются (есть только `RoadProfilesDesc` как desc), синхронизировать нечего; при порте вью - те же раскладки.
+
+### N2: знаки рукавов, план светофора и «заброшено» в read API
+
+Чистое чтение существующего состояния: хэш, сейв и golden-ы не менялись, `LotRenderData` остаётся 28 Б (занят свободный бит `Flags`).
+
+- `NetworkView.NodeArms` (`ReadOnlySpan<int>`, сегменты узла по часовой) и `NetworkView.ArmFlags` (`ReadOnlySpan<byte>`, параллелен `NodeArms`); диапазон узла — `NodeData.FirstArm/ArmCount`. Биты — `ArmFlagBits`: `Minor = 1` (второстепенный, вычисляется), `ForceMajor = 2`, `ForceMinor = 4`, `Stop = 8` (переопределения игрока). `NetworkView.ArmSign(node, arm)` возвращает знак игрока в кодах `SetArmControl` (0 авто, 1 главный, 2 уступи, 3 стоп; вне диапазона 0), `ArmFlagBits.SignOf(byte)` — то же по байту.
+- `Simulation.TryGetSignalPlan(int node, out SetSignalPlanCmd plan)` — текущий план светофора узла: `Mode` (Fixed/Adaptive/FlashYellow/Off), `PhaseCount`, `Green0..7`, `YellowTicks`, `AllRedTicks`, `OffsetTicks`, `CycleTicks`, `Flags` и параметры адаптива. `false` — узла нет, он мёртв или без светофора. Без аллокаций.
+- `LotRenderFlags.Abandoned = 8` — здание участка в состоянии `Abandoned` (производное от `Buildings.State`, в сейве не хранится).
+- Всё верно после `Load` без desc (состояние живёт в ядре и сейве).
