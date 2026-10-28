@@ -35,6 +35,8 @@ public sealed class PedMesh
     private readonly float[] _hi2 = new float[3];
     private readonly float[] _lo2 = new float[3];
     private byte[] _level = Array.Empty<byte>();
+    private int[] _seen = Array.Empty<int>();   // по слоту ядра: номер последнего Update, где слот был виден
+    private int _stamp;
 
     public PedMesh(Node parent, LodConfig cfg)
     {
@@ -83,17 +85,11 @@ public sealed class PedMesh
     /// Перезаписать инстансы. <paramref name="cam"/> - позиция камеры; <paramref name="allRange"/> - режим agents: точки на всём виде,
     /// иначе дальше <see cref="LodConfig.PedPointRange"/> пешеходов не рисуем (там heatmap); (selIndex, selGen) - выбранный пешеход (-1 - нет).
     /// </summary>
-    public void Update(Simulation sim, float alpha, Vector3 cam, bool allRange, int selIndex, ushort selGen)
+    public void Update(ReadOnlySpan<PedestrianRenderData> cur, ReadOnlySpan<PedestrianRenderData> prev, float alpha, Vector3 cam, bool allRange, int selIndex, ushort selGen)
     {
-        ReadOnlySpan<PedestrianRenderData> cur = sim.Pedestrians;
-        ReadOnlySpan<PedestrianRenderData> prev = sim.PreviousPedestrians;
         Array.Clear(_stateCounts);
         Array.Clear(_placed);
-        if (_level.Length < cur.Length)
-        {
-            Array.Resize(ref _level, cur.Length);
-            Array.Fill(_level, Unset);
-        }
+        _stamp++;
 
         for (int k = 0; k < 2; k++)
         {
@@ -128,10 +124,21 @@ public sealed class PedMesh
             ref readonly PedestrianRenderData c = ref cur[i];
             if ((c.Flags & PedRenderFlags.Active) == 0)
             {
-                _level[i] = Unset;
                 continue;
             }
 
+            int slot = c.Index;
+            if (slot >= _level.Length)
+            {
+                int old = _level.Length;
+                Array.Resize(ref _level, Math.Max(slot + 1, old * 2));
+                Array.Resize(ref _seen, _level.Length);
+                Array.Fill(_level, Unset, old, _level.Length - old);
+            }
+
+            // состояние гистерезиса живёт, пока слот был виден в прошлом вызове (как раньше: неактивный слот сбрасывался)
+            bool continued = _seen[slot] == _stamp - 1;
+            _seen[slot] = _stamp;
             float x = c.X;
             float z = c.Z;
             float heading = c.Heading;
@@ -150,7 +157,7 @@ public sealed class PedMesh
             float dy = c.Y - cam.Y;
             float dz = z - cam.Z;
             float d2 = (dx * dx) + (dy * dy) + (dz * dz);
-            int lv = _level[i] == Unset ? 0 : _level[i];
+            int lv = !continued || _level[slot] == Unset ? 0 : _level[slot];
             while (lv < Culled && d2 > _hi2[lv])
             {
                 lv++;
@@ -161,7 +168,7 @@ public sealed class PedMesh
                 lv--;
             }
 
-            _level[i] = (byte)lv;
+            _level[slot] = (byte)lv;
             bool sel = c.Index == selIndex && c.Generation == selGen;
             if (lv == Culled && !sel)
             {

@@ -34,6 +34,8 @@ public sealed class VehicleLayer
     private readonly int[] _placed = new int[LodConfig.Levels];
     private readonly int[] _desired = new int[LodConfig.Levels];
     private byte[] _level = Array.Empty<byte>();
+    private int[] _seen = Array.Empty<int>();   // по слоту ядра: номер последнего Update, где слот был виден
+    private int _stamp;
 
     /// <summary>Информационный режим: stuck-красный показывается только в слое «Трафик».</summary>
     public InfoMode? Info { get; set; }
@@ -104,21 +106,19 @@ public sealed class VehicleLayer
             $"veh LOD0 {_placed[0]}/{_cfg.Caps[0]}  LOD1 {_placed[1]}/{_cfg.Caps[1]}  LOD2 {_placed[2]}/{_cfg.Caps[2]}  pts {_placed[3]}/{_cfg.Caps[3]}  dropped {DroppedByCap}  [{_cfg.Preset}]");
     }
 
-    public void Update(Simulation sim, float alpha, Vector3 cam)
+    /// <summary>
+    /// Перерисовать машины из кадра хоста (ADR-0024): <paramref name="cur"/> - компактный список видимых слотов, <paramref name="prev"/> - те же слоты тиком раньше
+    /// (по индексу списка). Состояние LOD-гистерезиса хранится по слоту ядра (<c>Index</c>), а не по позиции в списке.
+    /// </summary>
+    public void Update(ReadOnlySpan<VehicleRenderData> cur, ReadOnlySpan<VehicleRenderData> prev, float alpha, Vector3 cam)
     {
-        ReadOnlySpan<VehicleRenderData> cur = sim.Vehicles;
-        ReadOnlySpan<VehicleRenderData> prev = sim.PreviousVehicles;
         int types = _types.Length;
         if (types == 0)
         {
             return;
         }
 
-        if (_level.Length < cur.Length)
-        {
-            Array.Resize(ref _level, cur.Length);
-            Array.Fill(_level, Unset);
-        }
+        _stamp++;
 
         for (int k = 0; k < LodConfig.Levels; k++)
         {
@@ -144,10 +144,21 @@ public sealed class VehicleLayer
             ref readonly VehicleRenderData c = ref cur[i];
             if ((c.Flags & (byte)VehicleRenderFlags.Active) == 0)
             {
-                _level[i] = Unset;
                 continue;
             }
 
+            int slot = c.Index;
+            if (slot >= _level.Length)
+            {
+                int old = _level.Length;
+                Array.Resize(ref _level, Math.Max(slot + 1, old * 2));
+                Array.Resize(ref _seen, _level.Length);
+                Array.Fill(_level, Unset, old, _level.Length - old);
+            }
+
+            // состояние гистерезиса живёт, пока слот был виден в прошлом вызове (как раньше: неактивный слот сбрасывался)
+            bool continued = _seen[slot] == _stamp - 1;
+            _seen[slot] = _stamp;
             float x = c.X;
             float z = c.Z;
             float heading = c.Heading;
@@ -168,7 +179,8 @@ public sealed class VehicleLayer
             float d2 = (dx * dx) + (dy * dy) + (dz * dz);
 
             // желаемый уровень с гистерезисом: вниз по детальности при d > порог, вверх при d < 0.9 порога предыдущего уровня
-            int lv = _level[i] == Unset ? 0 : _level[i];
+            // новая в виде машина (в прошлом кадре слот был другим или пуст) начинает с LOD0, как раньше после неактивного слота
+            int lv = !continued || _level[slot] == Unset ? 0 : _level[slot];
             while (lv < Culled && d2 > _hi2[lv])
             {
                 lv++;
@@ -179,7 +191,7 @@ public sealed class VehicleLayer
                 lv--;
             }
 
-            _level[i] = (byte)lv;
+            _level[slot] = (byte)lv;
             if (lv == Culled)
             {
                 continue;

@@ -4,6 +4,7 @@ using System.Text;
 using Godot;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Host;
 
 namespace TrafficCity;
 
@@ -90,7 +91,7 @@ public sealed partial class NodePanel : PanelContainer
     }
 
     /// <summary>Перерисовка раз в 0.25 с; текст не пересобирается лишний раз, если строка не изменилась.</summary>
-    public void Refresh(Simulation sim, double delta)
+    public void Refresh(NetworkView net, SimFrame frame, double delta)
     {
         if (Node < 0)
         {
@@ -104,14 +105,13 @@ public sealed partial class NodePanel : PanelContainer
         }
 
         _timer = RefreshInterval;
-        NetworkView net = sim.Network;
         if (!net.IsNodeAlive(Node))
         {
             Close();
             return;
         }
 
-        string s = Build(sim, net, in net.Nodes[Node]);
+        string s = Build(frame, net, in net.Nodes[Node]);
         if (!string.Equals(s, _last, StringComparison.Ordinal))
         {
             _last = s;
@@ -175,7 +175,7 @@ public sealed partial class NodePanel : PanelContainer
         row.AddChild(b);
     }
 
-    private string Build(Simulation sim, NetworkView net, in NodeData nd)
+    private string Build(SimFrame frame, NetworkView net, in NodeData nd)
     {
         CultureInfo inv = CultureInfo.InvariantCulture;
         int armCount = CollectArms(net, Node, in nd);
@@ -184,7 +184,7 @@ public sealed partial class NodePanel : PanelContainer
         Array.Clear(_armPed, 0, _armPed.Length);
 
         // сигнал по манёврам: лучший (Green > Yellow > Red) среди connector'ов рукава и манёвра
-        ReadOnlySpan<byte> ls = sim.LaneSignals;
+        ReadOnlySpan<byte> ls = frame.LaneSignals;
         for (int c = nd.FirstConnector; c < nd.FirstConnector + nd.ConnectorCount; c++)
         {
             if (!net.IsLaneAlive(c))
@@ -214,7 +214,7 @@ public sealed partial class NodePanel : PanelContainer
         }
 
         // очередь: стоящие машины в радиусе у узла, по рукаву с наибольшим косинусом
-        ReadOnlySpan<VehicleRenderData> veh = sim.Vehicles;
+        ReadOnlySpan<VehicleRenderData> veh = frame.Vehicles;
         for (int i = 0; i < veh.Length; i++)
         {
             ref readonly VehicleRenderData v = ref veh[i];
@@ -251,7 +251,7 @@ public sealed partial class NodePanel : PanelContainer
         }
 
         // пешеходные переходы узла
-        ReadOnlySpan<byte> states = sim.CrossingStates;
+        ReadOnlySpan<byte> states = frame.CrossingStates;
         ReadOnlySpan<PedEdgeData> crossings = net.Crossings;
         bool anyPed = false;
         for (int j = 0; j < crossings.Length; j++)
@@ -274,7 +274,7 @@ public sealed partial class NodePanel : PanelContainer
         _sb.Append("[b]Node #").Append(Node.ToString(inv)).Append("[/b]  ").Append(nd.Control.ToString())
             .Append("  arms ").Append(armCount.ToString(inv)).Append('\n');
         bool signal = nd.Control == NodeControl.Signal && nd.Signal >= 0;
-        ReadOnlySpan<SignalState> ss = sim.SignalStates;
+        ReadOnlySpan<SignalState> ss = frame.SignalStates;
         if (signal && nd.Signal < ss.Length)
         {
             SignalState st = ss[nd.Signal];
@@ -317,9 +317,9 @@ public sealed partial class NodePanel : PanelContainer
             _sb.Append("no pedestrian crossings\n");
         }
 
-        ReadOnlySpan<uint> thr = sim.NodeThroughput;
+        ReadOnlySpan<uint> thr = frame.NodeThroughput;
         _sb.Append("passed ").Append(Node < thr.Length ? thr[Node].ToString(inv) : "0").Append(" veh\n");
-        sim.CopySignalMetrics(_metrics);
+        frame.SignalMetrics?.CopyTo(_metrics);
         _sb.Append("mean signal wait, whole city:");
         string[] names = { "S", "R", "L", "U" };
         for (int m = 0; m < Maneuvers; m++)

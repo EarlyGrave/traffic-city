@@ -29,9 +29,9 @@ public sealed class CrosswalkMesh
     private readonly BoxBatch _markers;
     private readonly BoxBatch _queues;
 
-    public CrosswalkMesh(Simulation sim)
+    public CrosswalkMesh(NetworkView net)
     {
-        Refresh(sim);
+        Refresh(net);
 
         _markers = new BoxBatch("CrossSignals", new Vector3(MarkerSize, 1.8f, MarkerSize), true);
         _queues = new BoxBatch("StopQueues", new Vector3(1f, 1f, 1f), false);
@@ -41,9 +41,8 @@ public sealed class CrosswalkMesh
     /// Перечитать статику сети (при смене <c>NetworkView.Version</c>: снос и перестройка, 4.3). База слотов средних переходов - длина <c>PedCorners</c>
     /// (= хвост арены рукавов), а не сумма <c>ArmCount</c> живых узлов: в арене после сноса остаются дыры. Мёртвые остановки не рисуются.
     /// </summary>
-    public void Refresh(Simulation sim)
+    public void Refresh(NetworkView net)
     {
-        NetworkView net = sim.Network;
         _crossings = net.Crossings.ToArray();
         _points = net.PedEdgePoints.ToArray();
         _armBase = net.PedCorners.Length;
@@ -68,9 +67,8 @@ public sealed class CrosswalkMesh
     public int StopWaitingTotal { get; private set; }
 
     /// <summary>Маркеры Walk/Clear/DontWalk у светофорных переходов внутри прямоугольника вида (мировые координаты).</summary>
-    public void UpdateMarkers(Simulation sim, float x0, float z0, float x1, float z1)
+    public void UpdateMarkers(ReadOnlySpan<byte> states, float x0, float z0, float x1, float z1)
     {
-        ReadOnlySpan<byte> states = sim.CrossingStates;
         int needed = 0;
         for (int j = 0; j < _crossings.Length; j++)
         {
@@ -107,9 +105,8 @@ public sealed class CrosswalkMesh
     }
 
     /// <summary>Кубы над остановками: размер растёт с числом ожидающих (<c>BusStopWaiting</c>).</summary>
-    public void UpdateQueues(Simulation sim)
+    public void UpdateQueues(ReadOnlySpan<ushort> waiting)
     {
-        ReadOnlySpan<ushort> waiting = sim.BusStopWaiting;
         int n = Math.Min(waiting.Length, _stopPos.Length);
         int needed = 0;
         int total = 0;
