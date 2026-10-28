@@ -62,10 +62,10 @@ public class TimedBudgetTests
     }
 
     /// <summary>Запросы и релаксации тика, в котором очередь плановых запросов только что заполнена.</summary>
-    private static (long Queries, long Work) FirstTickAfterBurst(int workBudget, out int queued, out long avgCostBefore)
+    private static (long Queries, long Work) FirstTickAfterBurst(int workBudget, int threads, out int queued, out long avgCostBefore)
     {
         ScenarioDesc d = S10k(120, workBudget);
-        using Simulation sim = Simulation.Create(in d);
+        using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         queued = Prepare(sim);
         SimCounters c0 = sim.Counters;
         avgCostBefore = c0.PathfindQueries > 0 ? c0.PathfindWork / c0.PathfindQueries : 0;
@@ -74,18 +74,20 @@ public class TimedBudgetTests
         return (c1.PathfindQueries - c0.PathfindQueries, c1.PathfindWork - c0.PathfindWork);
     }
 
-    [Fact]
-    public void TimedRequests_AreLimitedByWorkShare_NotOnlyByCount()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void TimedRequests_AreLimitedByWorkShare_NotOnlyByCount(int threads)
     {
         // Контроль: без лимита по работе в тике обслуживается доля по числу запросов (16 из 64).
-        (long qFree, long wFree) = FirstTickAfterBurst(0, out int queued, out long avgCost);
+        (long qFree, long wFree) = FirstTickAfterBurst(0, threads, out int queued, out long avgCost);
         _out.WriteLine($"free: queued={queued} queries={qFree} work={wFree} avgCostEarlier={avgCost}");
         Assert.True(qFree >= 8, $"контроль: без лимита по работе в тике должно идти много плановых запросов, получено {qFree}");
         long avg = Math.Max(1, wFree / Math.Max(1, qFree));
 
         // Бюджет порядка 5 запросов: плановым 1/4 = 1.25 запроса -> первый всегда, второй - только если первый был дешёвым.
         int budget = (int)(5 * avg);
-        (long qLim, long wLim) = FirstTickAfterBurst(budget, out _, out _);
+        (long qLim, long wLim) = FirstTickAfterBurst(budget, threads, out _, out _);
         long cap = budget / RoutePhase.TimedBudgetDivisor;
         _out.WriteLine($"limited: budget={budget} cap={cap} queries={qLim} work={wLim} (avg query work {avg})");
         Assert.True(qLim >= 1, "плановый запрос обслуживается хотя бы один");

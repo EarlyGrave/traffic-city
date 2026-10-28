@@ -48,6 +48,15 @@ public sealed class EditFuzzTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void NodeEdits_Fuzz_FourThreads_KeepDerivedConsistent_AndSaveRoundTrips(int seed)
+    {
+        ulong hash = Run(seed, threads: 4, commands: 70, roundTrips: true);
+        Assert.NotEqual(0UL, hash);
+    }
+
     [Fact]
     public void NodeEdits_Fuzz_WithPedestrians()
     {
@@ -64,9 +73,26 @@ public sealed class EditFuzzTests
         Assert.Equal(h1, h3);
     }
 
-    private static ulong Run(int seed, int threads, int commands, bool roundTrips, bool peds = false)
+    // Пакет параллельных запросов фазы 3 (ADR-0032): правки сети (BuildRoad -> SyncGraph, волны оверлея) при 1 и 4 потоках дают тот же хэш,
+    // сбор и повтор не расходятся (Mismatch = 0).
+    [Fact]
+    public void NodeEdits_Fuzz_BatchOneAndFourThreads_SameHash_NoMismatch()
+    {
+        long mm1 = 0, mm4 = 0, c4 = 0;
+        ulong off = Run(7, threads: 1, commands: 40, roundTrips: false, setup: w => w.Router.Batch.MaxCandidates = 0);
+        ulong h4 = Run(7, threads: 4, commands: 40, roundTrips: false, probe: w => { mm4 = w.Router.Batch.Mismatch; c4 = w.Router.Batch.Committed; });
+        ulong h1 = Run(7, threads: 1, commands: 40, roundTrips: false, setup: w => w.Router.Batch.SingleThread = true, probe: w => mm1 = w.Router.Batch.Mismatch);
+        Assert.Equal(off, h4);
+        Assert.Equal(off, h1);
+        Assert.Equal(0, mm1);
+        Assert.Equal(0, mm4);
+        Assert.True(c4 > 0, "пакет использовался");
+    }
+
+    private static ulong Run(int seed, int threads, int commands, bool roundTrips, bool peds = false, Action<World>? setup = null, Action<World>? probe = null)
     {
         using Simulation sim = ToolsFixture.Small(300, threads, buses: !peds, peds: peds);
+        setup?.Invoke(sim.World);
         World w = sim.World;
         NetworkStore n = w.Net;
         var rng = new Random(seed);
@@ -144,6 +170,7 @@ public sealed class EditFuzzTests
         Assert.True(w.Work.NodeRebuilds >= 8, $"перестроек узлов {w.Work.NodeRebuilds}");
         Assert.True(w.Work.ToolCommandsApplied >= 8);
         Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, сносов начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}");
+        probe?.Invoke(w);
         return sim.ComputeStateHash();
     }
 

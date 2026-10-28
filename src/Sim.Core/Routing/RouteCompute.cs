@@ -13,7 +13,7 @@ internal enum QueryStage : byte
     MaterializeFail = 1,  // развёртывание первых DirSeg не удалось (RouteFailed)
     LayoutFail = 2,       // раскладка на полосы не удалась (RouteFailed)
     Found = 3,
-    Overflow = 4,         // зарезервировано для пакета (P2): стек не влез в арену воркера
+    Overflow = 4,         // только в пакете (RouteBatch): стек плана не влез в арену воркера - запрос считается заново при фиксации
 }
 
 /// <summary>
@@ -30,6 +30,8 @@ internal struct QueryResult
     public int UnpackWork;
     public int StepCount;
     public int StackLen;
+    public int Worker;       // пакет: воркер, в арене плана которого лежит стек (Found)
+    public int PlanOff;      // пакет: смещение стека в арене плана воркера
 }
 
 /// <summary>

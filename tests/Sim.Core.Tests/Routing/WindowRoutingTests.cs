@@ -234,14 +234,17 @@ public class WindowRoutingTests
     }
 
     // H-T10: бюджет работы мал - запросы обслуживаются по одному за тик в порядке очереди, дозаполнения не голодают.
-    [Fact]
-    public void WorkBudget_SmallServesInQueueOrder_RefillsNotStarved()
+    // 4 потока: пакет параллельных запросов (ADR-0032) не меняет семантику бюджета.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void WorkBudget_SmallServesInQueueOrder_RefillsNotStarved(int threads)
     {
         ScenarioDesc d = Step3.S1k();
         d.Routing.WorkBudgetPerTick = 1;
         d.Routing.PathfindBudgetPerTick = 0;
         d.Demand.SpawnRampTicks = 1200;
-        using Simulation sim = Simulation.Create(in d);
+        using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         World w = sim.World;
         long prev = 0;
         for (int t = 0; t < 4000; t++)
