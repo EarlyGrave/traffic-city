@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using TrafficCity.Ui;
 
 namespace TrafficCity;
 
@@ -82,22 +83,22 @@ public partial class RtsCamera : Node3D
 
         float dt = (float)delta;
         Vector2 move = Vector2.Zero;
-        if (Input.IsKeyPressed(Key.W))
+        if (Input.IsActionPressed(UiActions.CamForward))
         {
             move.Y -= 1;
         }
 
-        if (Input.IsKeyPressed(Key.S))
+        if (Input.IsActionPressed(UiActions.CamBack))
         {
             move.Y += 1;
         }
 
-        if (Input.IsKeyPressed(Key.A))
+        if (Input.IsActionPressed(UiActions.CamLeft))
         {
             move.X -= 1;
         }
 
-        if (Input.IsKeyPressed(Key.D))
+        if (Input.IsActionPressed(UiActions.CamRight))
         {
             move.X += 1;
         }
@@ -110,17 +111,17 @@ public partial class RtsCamera : Node3D
         if (move != Vector2.Zero)
         {
             move = move.Normalized();
-            float fast = Input.IsKeyPressed(Key.Shift) ? 3f : 1f;
+            float fast = Input.IsActionPressed(UiActions.CamFast) ? 3f : 1f;
             PanGround(move.X, move.Y, PanSpeed * _distance * fast * dt);
         }
 
         float rot = 0f;
-        if (Input.IsKeyPressed(Key.Q))
+        if (Input.IsActionPressed(UiActions.CamRotateLeft))
         {
             rot -= 1f;
         }
 
-        if (Input.IsKeyPressed(Key.E))
+        if (Input.IsActionPressed(UiActions.CamRotateRight))
         {
             rot += 1f;
         }
