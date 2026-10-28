@@ -291,7 +291,7 @@ internal static class InverseBuilder
         RemoveRoadCmd c = cmd.RemoveRoad;
         NetworkStore n = w.Net;
         InverseLog log = w.Inv;
-        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindSegment(c.Seg.Index) >= 0)
+        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindAny(c.Seg.Index) >= 0)
         {
             return;   // команда будет отклонена
         }

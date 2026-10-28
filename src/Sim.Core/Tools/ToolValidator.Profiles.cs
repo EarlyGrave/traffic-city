@@ -64,7 +64,8 @@ internal static partial class ToolValidator
         ref readonly SegmentData sd = ref n.Segments[seg];
         Vec2 mid = n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)];
         Mark(ref c, EntityKind.Segment, seg, sd.Generation, mid);
-        if ((sd.Flags & SegmentFlags.Closing) != 0 || w.Ops.FindSegment(seg) >= 0)
+        int shrinkOp = w.Ops.FindShrink(seg);
+        if ((sd.Flags & SegmentFlags.Closing) != 0 || (shrinkOp < 0 && w.Ops.FindAny(seg) >= 0))
         {
             return RejectReason.Busy;
         }
@@ -137,6 +138,27 @@ internal static partial class ToolValidator
 
         NetworkBuilder bld = w.Builder;
         ReshapeMode mode = bld.PlanReshape(seg, profile, curMirrored, lanesAB, lanesBA, speed, kind);
+        if (shrinkOp >= 0)
+        {
+            // Сегмент в дренаже полос (T5): разрешено только вернуть прежние полосы (отмена операции, undo) и сменить скорость; остальное - после финала.
+            if (mode != ReshapeMode.None && mode != ReshapeMode.Speed)
+            {
+                return RejectReason.Busy;
+            }
+
+            c.CancelShrink = true;
+            c.Seg = seg;
+            c.Profile = profile;
+            c.Mirrored = curMirrored;
+            c.LanesAB = (byte)lanesAB;
+            c.LanesBA = (byte)lanesBA;
+            c.Kind = kind;
+            c.Speed = speed;
+            c.Reshape = mode;
+            c.LengthM = bld.FullAxisLength(seg);
+            return RejectReason.None;
+        }
+
         c.Profile = profile;
         c.Mirrored = curMirrored;
         c.LanesAB = (byte)lanesAB;
@@ -151,19 +173,12 @@ internal static partial class ToolValidator
             return RejectReason.None;   // ничего не меняется: применится без последствий
         }
 
-        // Полосы или тип: connector'ы концов перестраиваются (другая пара полос) - сегмент и его connector'ы обязаны быть пусты.
+        // Полосы или тип: connector'ы концов перестраиваются (другая пара полос). Занятый сегмент (T5): уцелевшие полосы переносятся с машинами, убираемые и обречённые занятые
+        // connector'ы сначала пустеют - операция ShrinkLanes (дренаж), правка - в её финале.
         bool layout = mode == ReshapeMode.Swap || kind != sd.Kind;
-        if (layout)
+        if (layout && mode == ReshapeMode.Swap && HasBusStop(n, seg))
         {
-            if (ToolOpsPhase.CountOn(w, seg) > 0)
-            {
-                return RejectReason.Busy;
-            }
-
-            if (mode == ReshapeMode.Swap && HasBusStop(n, seg))
-            {
-                return RejectReason.NotSupported;   // остановка на сегменте - до T9
-            }
+            return RejectReason.NotSupported;   // остановка на сегменте - до T9
         }
 
         // Односторонний результат не должен оставлять въезд без выезда.
@@ -204,6 +219,28 @@ internal static partial class ToolValidator
         if (rb != RejectReason.None)
         {
             return rb;
+        }
+
+        if (layout)
+        {
+            c.Drain = bld.VanishingOccupancy(w, seg, lanesAB, lanesBA);
+            NetworkStatus ends = bld.PlanReshapeEnds(w, seg, lanesAB, lanesBA, kind, close: false, out int doomedBusy);
+            if (ends != NetworkStatus.Ok)
+            {
+                c.CapKind = CapacityKind.Lanes;
+                return RejectOf(ends);
+            }
+
+            c.Drain += doomedBusy;
+            if (c.Drain > 0)
+            {
+                if (w.Ops.Count >= w.Ops.Capacity)
+                {
+                    return RejectReason.Capacity;
+                }
+
+                c.Mechanism = 2;
+            }
         }
 
         // Геометрия профиля: наложение на соседние дороги (только для профиля, вышедшего за прежний край).

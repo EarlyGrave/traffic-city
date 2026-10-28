@@ -339,6 +339,13 @@ internal static class ToolPreview
         int seg = c.Seg;
         ref readonly SegmentData sd = ref n.Segments[seg];
         r.NewLanes = c.Reshape == ReshapeMode.Swap ? c.LanesAB + c.LanesBA : 0;
+        r.DrainVehicles = c.Drain;
+        if (c.Drain > 0)
+        {
+            // T5: занятый сегмент - правка после опустения убираемых полос и исчезающих connector'ов (операция ShrinkLanes).
+            iw.Add(IssueCode.DrainNeeded, IssueSeverity.Warning, EntityKind.Segment, seg, sd.Generation, c.IssueX, c.IssueZ, c.Drain);
+        }
+
         for (int e = 0; e < 2; e++)
         {
             int node = e == 0 ? sd.NodeA : sd.NodeB;

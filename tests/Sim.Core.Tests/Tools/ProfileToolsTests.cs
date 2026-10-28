@@ -447,38 +447,92 @@ public sealed class ProfileToolsTests
     }
 
     [Fact]
-    public void UpgradeRoad_OccupiedSegment_BusyForLanesButNotForGeometry()
+    public void UpgradeRoad_OccupiedSegment_RelocatesWidening_DrainsNarrowing_UndoCancels()
     {
-        // Мир с движением: Cross (Line-сценарий с машинами). Правка полос занятого сегмента - Busy, состояние нетронуто; смена скорости и геометрии при тех же полосах - на месте.
+        // T5: правка полос занятого сегмента. Больше полос - машины уцелевших полос переносятся (номер полосы и S сохраняются); меньше полос - убираемые Closed | Draining,
+        // финал в фазе 1а после их опустения; команда «вернуть прежние полосы» во время дренажа - отмена операции.
         ScenarioDesc d = BigCross();
         using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions());
         sim.SetToolsConfig(ToolsFixture.Unbounded);
         sim.Step(5);
         NetworkStore n = sim.World.Net;
-        int busy = -1;
-        for (int s = 0; s < n.SegmentCount && busy < 0; s++)
+        int seg = -1;
+        for (int s = 0; s < n.SegmentCount && seg < 0; s++)
         {
-            busy = n.SegmentAlive(s) && n.Segments[s].Profile == P("arterial_4") ? s : -1;
+            seg = n.SegmentAlive(s) && n.Segments[s].Profile == P("arterial_4") ? s : -1;
         }
 
-        Assert.True(busy >= 0);
-        TestScenarios.PlaceCar(sim, n.Segments[busy].FirstLaneAB, 20f);   // машина стоит на полосе: сегмент занят
-        Assert.True(ToolOpsPhase.CountOn(sim.World, busy) > 0);
+        Assert.True(seg >= 0);
+        VehicleHandle car = TestScenarios.PlaceCar(sim, n.Segments[seg].FirstLaneAB + 1, 20f);   // стоит на полосе LaneNo 1: сегмент занят
+        Assert.True(ToolOpsPhase.CountOn(sim.World, seg) > 0);
         ulong h0 = sim.ComputeStateHash();
-        Command lanes = Upgrade(sim, busy, P("arterial_6"), false);
-        Command copy = lanes;
-        Assert.Equal(RejectReason.Busy, sim.Preview(in copy, out _, new PreviewIssue[4]));
+        Command wide = Upgrade(sim, seg, P("arterial_6"), false);
+        Command copy = wide;
+        Assert.Equal(RejectReason.None, sim.Preview(in copy, out PreviewResult pr, new PreviewIssue[8]));
         Assert.Equal(h0, sim.ComputeStateHash());
-        long applied = sim.World.Counters.CommandsApplied;
-        Assert.Equal(RejectReason.Busy, Run(sim, in lanes));
-        Assert.Equal(applied, sim.World.Counters.CommandsApplied);
+        Assert.True(pr.Mechanism is 1 or 2);
+        Assert.Equal(RejectReason.None, Run(sim, in wide));
+        WaitOps(sim, seg);
+        AssertMatchesProfile(sim, seg, P("arterial_6"), false);
+        Assert.True(sim.World.Vehicles.Pool.IsAlive(car.Index));
+        int lane = sim.World.Vehicles.Lane[car.Index];
+        Assert.Equal(seg, n.Lanes[lane].Segment);   // машина переехала с полосой (или перестроилась на соседнюю того же сегмента)
+
+        // Меньше полос: машина на убираемой полосе (LaneNo 2) - дренаж.
+        int top = n.Segments[seg].FirstLaneAB + 2;
+        VehicleHandle late = TestScenarios.PlaceCar(sim, top, 30f);
+        Command narrow = Upgrade(sim, seg, P("arterial_4"), false);
+        copy = narrow;
+        Assert.Equal(RejectReason.None, sim.Preview(in copy, out pr, new PreviewIssue[8]));
+        Assert.Equal(2, pr.Mechanism);
+        Assert.True(pr.DrainVehicles >= 1);
+        Assert.Equal(RejectReason.None, Run(sim, in narrow));
+        if (sim.World.Ops.FindShrink(seg) >= 0)
+        {
+            Assert.NotEqual(0, n.Lanes[top].Flags & LaneFlags.Draining);
+            Assert.Equal(RejectReason.Busy, Run(sim, Upgrade(sim, seg, P("street_2"), false)));   // другая правка во время дренажа
+            Assert.Equal(RejectReason.Busy, Run(sim, Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = ToolsFixture.Segment(sim, seg) }, ++_tag)));
+        }
+
+        WaitOps(sim, seg);
+        AssertMatchesProfile(sim, seg, P("arterial_4"), false);
+        Assert.True(sim.World.Vehicles.Pool.IsAlive(late.Index) || sim.World.Counters.TripsCompleted > 0);
+        AssertConsistent(sim);
+
+        // Отмена: дренаж, затем обратная команда ядра (undo) - операция снимается, полосы открыты, профиль прежний.
+        Command again = Upgrade(sim, seg, P("arterial_6"), false);
+        Assert.Equal(RejectReason.None, Run(sim, in again));
+        WaitOps(sim, seg);
+        int top2 = n.Segments[seg].FirstLaneAB + 2;
+        TestScenarios.PlaceCar(sim, top2, 30f);
+        sim.Enqueue(Upgrade(sim, seg, P("arterial_4"), false));
+        sim.Step(1);
+        Assert.True(sim.World.Ops.FindShrink(seg) >= 0, "машина на убираемой полосе: ждём дренажа");
+        Assert.Single(sim.Inverses.ToArray());
+        Command undo = sim.InverseCommands[sim.Inverses[0].First];
+        Assert.Equal(RejectReason.None, Run(sim, in undo));
+        Assert.True(sim.World.Ops.FindShrink(seg) < 0);
+        Assert.Equal(0, n.Lanes[top2].Flags & (LaneFlags.Draining | LaneFlags.Closed));
+        AssertMatchesProfile(sim, seg, P("arterial_6"), false);
 
         // Скорость на занятом сегменте - на месте.
-        Command speed = Upgrade(sim, busy, P("arterial_4"), false, speed: 8f);
+        Command speed = Upgrade(sim, seg, P("arterial_6"), false, speed: 8f);
         Assert.Equal(RejectReason.None, Run(sim, in speed));
-        Assert.Equal(8f, sim.World.Net.Segments[busy].SpeedLimit);
+        Assert.Equal(8f, sim.World.Net.Segments[seg].SpeedLimit);
         AssertConsistent(sim);
     }
+
+    // Ждать финала операции правки полос сегмента (не дольше 3 минут игрового времени).
+    private static void WaitOps(Simulation sim, int seg)
+    {
+        for (int t = 0; t < 3600 && sim.World.Ops.FindAny(seg) >= 0; t++)
+        {
+            sim.Step(1);
+        }
+
+        Assert.True(sim.World.Ops.FindAny(seg) < 0, "дренаж полос не закончился");
+    }
+
 
     [Fact]
     public void UpgradeRoad_InPlaceGeometry_KeepsLaneIndicesAndVehicles()
@@ -1026,6 +1080,12 @@ public sealed class ProfileToolsTests
 
             if (av == RejectReason.None)
             {
+                // T5: занятый сегмент ждёт опустения убираемых полос (операция ShrinkLanes) - профиль появится в её финале.
+                for (int t = 0; t < 3600 && sim.World.Ops.FindShrink(seg) >= 0; t++)
+                {
+                    sim.Step(1);
+                }
+
                 AssertMatchesProfile(sim, seg, p, mir);
             }
 

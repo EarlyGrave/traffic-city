@@ -369,6 +369,7 @@ internal static partial class CommandDispatcher
         }
 
         w.Net.Version++;
+        NetworkEdit.RefreshDerived(w, pedsChanged: false);   // слот сегмента мог поднять HighWater: граф и оверлей - по новому числу слотов (T5: ловил фаззер)
         Rejected(w, in cmd, RejectOf(bad));
         return false;
     }

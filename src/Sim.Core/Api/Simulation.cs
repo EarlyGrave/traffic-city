@@ -200,7 +200,7 @@ public sealed partial class Simulation : IDisposable
     public ReadOnlySpan<Command> InverseCommands => _disposed ? default : new ReadOnlySpan<Command>(_w.Inv.Cmds, 0, _w.Inv.CmdCount);
 
     /// <summary>Длительные операции инструментов (дренаж сноса) с прогрессом: для индикатора на дороге (player-tools.md §7.2).</summary>
-    public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views();
+    public ReadOnlySpan<ToolOpView> ToolOps => _disposed ? default : _w.Ops.Views(_w.Net);
 
     public NetworkView Network => _disposed ? default : _w.Net.GetView(_w.WorldGridOriginX, _w.WorldGridOriginZ);
 

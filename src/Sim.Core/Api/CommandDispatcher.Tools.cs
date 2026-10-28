@@ -164,9 +164,10 @@ internal static partial class CommandDispatcher
     }
 
     /// <summary>
-    /// <c>UpgradeRoad</c> (RP7, player-tools.md §4.5): скорость, тип, полосы и профиль сегмента. Ось не меняется; сегмент и его handle сохраняются. Новый блок полос (другое число полос) - перенос ссылок
-    /// <c>Relocate</c> и перестройка узлов концов, только на пустом сегменте (<c>Busy</c> иначе); те же полосы - правка геометрии на месте. После правки участки вдоль дороги пересчитываются
-    /// (<c>LotBuilder.OnRoadsChanged</c>: клетки под новой проезжей частью - <c>Lost</c>).
+    /// <c>UpgradeRoad</c> (RP7, T5; player-tools.md §4.5): скорость, тип, полосы и профиль сегмента. Ось не меняется; сегмент и его handle сохраняются. Новый блок полос (другое число полос) -
+    /// перенос ссылок <c>Relocate</c> (машины уцелевших полос переезжают с полосой) и перестройка узлов концов; те же полосы - правка геометрии на месте. Занятый сегмент, у которого убираемые
+    /// полосы или исчезающие connector'ы концов заняты, получает операцию <c>ShrinkLanes</c> (дренаж, финал - фаза 1а); скорость меняется сразу. Команда во время дренажа, возвращающая
+    /// прежние полосы, отменяет операцию (undo). После правки участки вдоль дороги пересчитываются (<c>LotBuilder.OnRoadsChanged</c>).
     /// </summary>
     private static void UpgradeRoad(World w, in Command cmd)
     {
@@ -178,34 +179,47 @@ internal static partial class CommandDispatcher
             return;
         }
 
+        int seg = chk.Seg;
+        NetworkStore n = w.Net;
+        if (chk.CancelShrink)
+        {
+            int k = w.Ops.FindShrink(seg);
+            ToolOps.UnpackReshape(w.Ops.TargetGen[k], out int tab, out int tba, out _, out _, out _);
+            w.Builder.CancelShrink(w, seg, tab, tba);
+            w.Ops.RemoveAt(k);
+            w.Builder.ReshapeSegment(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);   // None или Speed
+            NetworkEdit.RefreshDerived(w, pedsChanged: false);
+            w.Work.ToolCommandsApplied++;
+            AppliedPaid(w, in cmd, in chk);
+            return;
+        }
+
         if (chk.Reshape == ReshapeMode.None)
         {
             AppliedPaid(w, in cmd, in chk);
             return;
         }
 
-        int seg = chk.Seg;
-        NetworkStore n = w.Net;
-        NetworkStatus st = w.Builder.ReshapeSegment(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
-        if (chk.Reshape == ReshapeMode.Speed)
+        if (chk.Drain > 0)
         {
-            NetworkEdit.RefreshDerived(w, pedsChanged: false);
-        }
-        else
-        {
-            NetworkEdit.RefreshDerived(w);
-            if (w.City != null)
+            // Дренаж: скорость - сразу, полосы и тип - в финале операции.
+            n.ToolsTouched = 1;
+            if (n.Segments[seg].SpeedLimit != chk.Speed)
             {
-                int lost = w.City.LotGen.OnRoadsChanged(w, w.City);
-                if (lost > 0)
-                {
-                    w.Emit(SimEventKind.ZoneLotsLost, cmd.Tag, seg, lost);
-                }
-
-                w.City.LotGen.RestoreDerived(w);
+                w.Builder.ReshapeSegment(w, seg, ReshapeMode.Speed, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
             }
+
+            int packed = ToolOps.PackReshape(chk.LanesAB, chk.LanesBA, chk.Kind, chk.Profile, chk.Mirrored);
+            w.Ops.TryAdd(ToolOpKind.ShrinkLanes, seg, packed, 0, w.Tick, chk.Drain, out _);
+            w.Builder.BeginShrink(w, seg, chk.LanesAB, chk.LanesBA);
+            NetworkEdit.RefreshDerived(w, pedsChanged: false);
+            w.Work.ToolOpsStarted++;
+            w.Work.ToolCommandsApplied++;
+            AppliedPaid(w, in cmd, in chk);
+            return;
         }
 
+        NetworkStatus st = ReshapeEdit.Apply(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
         if (st != NetworkStatus.Ok)
         {
             Rejected(w, in cmd, RejectOf(st));   // ёмкость при перестройке узла: пробное планирование валидатора её исключает

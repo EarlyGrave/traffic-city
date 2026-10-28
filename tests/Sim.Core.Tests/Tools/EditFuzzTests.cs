@@ -97,6 +97,8 @@ public sealed class EditFuzzTests
         NetworkStore n = w.Net;
         var rng = new Random(seed);
         int applied = 0;
+        int upgrades = 0;
+        int drains = 0;
         for (int step = 0; step < commands; step++)
         {
             Command cmd = Pick(sim, rng, (uint)(step + 1));
@@ -119,6 +121,11 @@ public sealed class EditFuzzTests
 
                 Assert.True(Array.IndexOf(_allowed, r) >= 0, $"seed {seed} step {step}: {cmd.Kind} отклонена {r}");
                 applied += r == RejectReason.None ? 1 : 0;
+                if (r == RejectReason.None && cmd.Kind == CommandKind.UpgradeRoad)
+                {
+                    upgrades++;
+                    drains += w.Ops.FindShrink(cmd.UpgradeRoad.Seg.Index) >= 0 ? 1 : 0;
+                }
                 Assert.Null(w.VerifyDerived());
                 Assert.Null(NextConnMismatch(w));
             }
@@ -169,7 +176,7 @@ public sealed class EditFuzzTests
         Assert.True(n.ToolsTouched == 1);
         Assert.True(w.Work.NodeRebuilds >= 8, $"перестроек узлов {w.Work.NodeRebuilds}");
         Assert.True(w.Work.ToolCommandsApplied >= 8);
-        Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, сносов начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}");
+        Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, операций начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}; правок полос {upgrades}, из них с дренажом {drains}");
         probe?.Invoke(w);
         return sim.ComputeStateHash();
     }
@@ -262,6 +269,11 @@ public sealed class EditFuzzTests
             return Command.MakeSetLaneFlags(new SetLaneFlagsCmd { Seg = ToolsFixture.Segment(sim, seg), Dir = (byte)dir, LaneNo = (byte)rng.Next(lanes), Flags = rng.Next(2) == 0 ? bit : (byte)0, Mask = bit }, tag);
         }
 
+        if (kind < 80)
+        {
+            return PickUpgrade(sim, rng, n.NodeArms[nd.FirstArm + rng.Next(nd.ArmCount)], tag);
+        }
+
         // Врезка нового рукава в построенный узел под одним из восьми углов, без пересечения чужих сегментов.
         Vec2 p = nd.Position;
         int a0 = rng.Next(8);
@@ -280,6 +292,22 @@ public sealed class EditFuzzTests
         return default;
     }
 
+    // T5: правка полос (+/-, по направлениям) и иногда типа или скорости сегмента - на занятых сегментах это перенос машин или дренаж ShrinkLanes.
+    internal static Command PickUpgrade(Simulation sim, Random rng, int seg, uint tag)
+    {
+        ref readonly SegmentData sd = ref sim.World.Net.Segments[seg];
+        var u = new UpgradeRoadCmd
+        {
+            Seg = ToolsFixture.Segment(sim, seg),
+            SpeedLimit = rng.Next(4) == 0 ? 8f + rng.Next(9) : 0f,
+            LanesAB = sd.LanesAB == 0 ? (byte)255 : (byte)(1 + rng.Next(3)),
+            LanesBA = sd.LanesBA == 0 ? (byte)255 : (byte)(1 + rng.Next(3)),
+            Kind = sd.Kind == RoadKind.Street ? RoadKind.Arterial : RoadKind.Street,
+            Flags = rng.Next(4) == 0 ? (byte)0 : UpgradeRoadFlags.KeepKind,
+        };
+        return Command.MakeUpgradeRoad(in u, tag);
+    }
+
     // Снос случайного сегмента без остановок (или отмена идущего сноса).
     private static Command PickRoadOp(Simulation sim, Random rng, uint tag)
     {
@@ -288,6 +316,11 @@ public sealed class EditFuzzTests
         if (w.Ops.Count > 0 && rng.Next(3) == 0)
         {
             int k = rng.Next(w.Ops.Count);
+            if (w.Ops.Kind[k] != (byte)ToolOpKind.RemoveSegment)
+            {
+                return default;
+            }
+
             var undo = new BuildRoadCmd { RestoreOf = new EntityRef(w.Ops.TargetIndex[k], w.Ops.TargetGen[k]), SpeedLimit = 1f, LanesAB = 1 };
             return Command.MakeBuildRoad(in undo, tag);
         }

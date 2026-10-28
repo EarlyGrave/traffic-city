@@ -212,6 +212,14 @@ internal sealed partial class NetworkBuilder
 
             Relocate.Apply(w, map, RowRemap);
 
+            // Старые уцелевшие полосы живы до освобождения блока, но их списки выездов (LaneNext блока узла) уже принадлежат новым полосам: перестройка первого узла освободит блок,
+            // а перенос второго иначе переписал бы его дыру по устаревшему FirstNext (T5: ловил фаззер - неканоническая дыра LaneNext в сейве).
+            for (int k = 0; k < map.Count; k++)
+            {
+                n.Lanes[map.Old[k]].FirstNext = 0;
+                n.Lanes[map.Old[k]].NextCount = 0;
+            }
+
             // OutReserved переехал вместе с полосой, а список «затронутых в прошлом тике» ворот хранит старые индексы: фаза 4 не обнулила бы новую полосу. Состояние всё равно пересобирается
             // с нуля в начале следующей фазы 4 (допущенные машины), поэтому сбрасываем его целиком по списку и на новых полосах.
             GateScratch gate = w.Gate;
@@ -265,6 +273,201 @@ internal sealed partial class NetworkBuilder
         w.Gate.FullScan = true;
         w.Vehicles.MarkAllRouteDirty();
         return st;
+    }
+
+    // Индексы «нового блока» для пробного плана перестройки узлов (T5): за пределами любых настоящих полос, только сравниваются.
+    private const int FakeLaneBase = 1 << 29;
+
+    /// <summary>
+    /// Пробная перестройка узлов концов сегмента под новые полосы и тип (T5, правка занятого сегмента): сколько занятых машинами connector'ов исчезнет. Сопоставление старых connector'ов
+    /// с планом - как после переноса в <see cref="ReshapeSegment"/> (уцелевшая полоса - тот же номер в направлении, исчезающая не совпадает ни с чем), поэтому 0 здесь означает, что
+    /// <c>ReshapeSegment</c> перестроит узлы без <c>Busy</c>. <paramref name="close"/> - закрыть обречённые connector'ы для въезда (кроме выездов с убираемых полос: по ним уезжают
+    /// оставшиеся на них машины). Не-Ok - лимит рукавов/connector'ов или ёмкость арен (ждать нельзя - ответ тот же). Хранилище не меняется, кроме флагов <c>Closed</c> при <paramref name="close"/>.
+    /// </summary>
+    internal NetworkStatus PlanReshapeEnds(World w, int seg, int lanesAB, int lanesBA, RoadKind kind, bool close, out int busy)
+    {
+        busy = 0;
+        NetworkStore n = _s;
+        ref SegmentData sd = ref n.Segments[seg];
+        SegmentData saved = sd;
+        var shape = new VanishShape(saved.FirstLaneAB, saved.LanesAB, lanesAB, saved.FirstLaneBA, saved.LanesBA, lanesBA);
+        bool closed = false;
+        NetworkStatus result = NetworkStatus.Ok;
+        int lo = Math.Min(saved.NodeA, saved.NodeB);
+        int hi = Math.Max(saved.NodeA, saved.NodeB);
+        for (int e = 0; e < 2 && result == NetworkStatus.Ok; e++)
+        {
+            int node = e == 0 ? lo : hi;
+            if ((e == 1 && hi == lo) || n.Nodes[node].FirstArm < 0)
+            {
+                continue;
+            }
+
+            sd.FirstLaneAB = lanesAB > 0 ? FakeLaneBase : -1;
+            sd.FirstLaneBA = lanesBA > 0 ? FakeLaneBase + lanesAB : -1;
+            sd.LanesAB = (byte)lanesAB;
+            sd.LanesBA = (byte)lanesBA;
+            sd.Kind = kind;
+            NetworkStatus st = PlanRebuild(w, node, rejectTrap: false, out RebuildPlan rp);
+            sd = saved;
+            if (st != NetworkStatus.Ok && st != NetworkStatus.Busy)
+            {
+                result = st;
+                break;
+            }
+
+            if (!PlanFits(w, in rp))
+            {
+                result = NetworkStatus.LanesFull;
+                break;
+            }
+
+            for (int q = 0; q < rp.OConnN; q++)
+            {
+                _oldKept[q] = false;
+            }
+
+            for (int p = 0; p < rp.Plan; p++)
+            {
+                for (int q = 0; q < rp.OConnN; q++)
+                {
+                    if (!_oldKept[q] && FakeMap(in saved, lanesAB, lanesBA, _oldIn[q]) == _planIn[p] && FakeMap(in saved, lanesAB, lanesBA, _oldOut[q]) == _planOut[p])
+                    {
+                        _oldKept[q] = true;
+                        break;
+                    }
+                }
+            }
+
+            for (int q = 0; q < rp.OConnN; q++)
+            {
+                if (_oldKept[q])
+                {
+                    continue;
+                }
+
+                int c = rp.OConn + q;
+                busy += w.Occupancy.LaneCount[c] > 0 ? 1 : 0;
+                if (close && !shape.Vanishes(_oldIn[q]) && (n.Lanes[c].Flags & LaneFlags.Closed) == 0)
+                {
+                    n.Lanes[c].Flags |= LaneFlags.Closed;
+                    closed = true;
+                }
+            }
+        }
+
+        if (closed)
+        {
+            n.ToolsTouched = 1;
+            n.Version++;
+            w.Gate.FullScan = true;
+            SegmentClosure.AfterClosing(w);
+        }
+
+        return result;
+    }
+
+    // Индекс полосы так, как его увидит перестройка узла после переноса блока полос сегмента: уцелевшая - в пробный блок, исчезающая - ни с чем не совпадает.
+    private static int FakeMap(in SegmentData sd, int lanesAB, int lanesBA, int lane)
+    {
+        if (sd.LanesAB > 0 && lane >= sd.FirstLaneAB && lane < sd.FirstLaneAB + sd.LanesAB)
+        {
+            int k = lane - sd.FirstLaneAB;
+            return k < lanesAB ? FakeLaneBase + k : -2;
+        }
+
+        if (sd.LanesBA > 0 && lane >= sd.FirstLaneBA && lane < sd.FirstLaneBA + sd.LanesBA)
+        {
+            int k = lane - sd.FirstLaneBA;
+            return k < lanesBA ? FakeLaneBase + lanesAB + k : -2;
+        }
+
+        return lane;
+    }
+
+    // Те же условия ёмкости, что в начале CommitRebuild.
+    private bool PlanFits(World w, in RebuildPlan rp)
+    {
+        NetworkStore s = _s;
+        int samples = _o.ConnectorSamples;
+        return s.CanAllocBlock(s.ArmArena, rp.Arms) && s.CanAllocBlock(s.LaneArena, rp.Plan) && s.CanAllocBlock(s.LanePointArena, rp.Plan * samples) &&
+            s.CanAllocBlock(s.LaneNextArena, 2 * rp.Plan) && (rp.Plan == 0 || s.CanAllocBlock(w.Connectors.RowArena, rp.Plan));
+    }
+
+    /// <summary>Хватит ли арен на новый блок полос и точек сегмента (<see cref="ReshapeMode.Swap"/>).</summary>
+    internal bool SwapFits(int seg, int lanesAB, int lanesBA)
+    {
+        ref readonly SegmentData sd = ref _s.Segments[seg];
+        int total = lanesAB + lanesBA;
+        return _s.CanAllocBlock(_s.LaneArena, total) && _s.CanAllocBlock(_s.LanePointArena, total * sd.PointCount);
+    }
+
+    /// <summary>Машины (с ghost'ами) на полосах сегмента, которые исчезнут при новых числах полос.</summary>
+    internal int VanishingOccupancy(World w, int seg, int lanesAB, int lanesBA)
+    {
+        ref readonly SegmentData sd = ref _s.Segments[seg];
+        int count = 0;
+        for (int k = lanesAB; k < sd.LanesAB; k++)
+        {
+            count += w.Occupancy.LaneCount[sd.FirstLaneAB + k];
+        }
+
+        for (int k = lanesBA; k < sd.LanesBA; k++)
+        {
+            count += w.Occupancy.LaneCount[sd.FirstLaneBA + k];
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Начало дренажа полос (T5, <c>ShrinkLanes</c>): убираемые полосы - <c>Closed | Draining</c> (въезд запрещён, MOBIL уводит машины на оставшиеся), допуски на концах сброшены,
+    /// назначения на них заменены, маршруты через них освобождены. Пересчёт графа - у вызывающего.
+    /// </summary>
+    internal void BeginShrink(World w, int seg, int lanesAB, int lanesBA)
+    {
+        NetworkStore n = _s;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        n.ToolsTouched = 1;
+        SetDraining(n, in sd, lanesAB, lanesBA, on: true);
+        n.Version++;
+        GatePhase.ResetNode(w, sd.NodeA);
+        GatePhase.ResetNode(w, sd.NodeB);
+        w.Gate.FullScan = true;
+        var shape = new VanishShape(sd.FirstLaneAB, sd.LanesAB, lanesAB, sd.FirstLaneBA, sd.LanesBA, lanesBA);
+        RetargetVanishing(w, in shape);
+        SegmentClosure.AfterClosing(w);
+    }
+
+    /// <summary>Отмена дренажа полос: флаги убираемых полос и закрытых им connector'ов концов сняты (undo во время дренажа).</summary>
+    internal void CancelShrink(World w, int seg, int lanesAB, int lanesBA)
+    {
+        NetworkStore n = _s;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        SetDraining(n, in sd, lanesAB, lanesBA, on: false);
+        SegmentClosure.ReopenEnds(w, seg);
+    }
+
+    private static void SetDraining(NetworkStore n, in SegmentData sd, int lanesAB, int lanesBA, bool on)
+    {
+        const byte bits = LaneFlags.Closed | LaneFlags.Draining;
+        for (int dir = 0; dir < 2; dir++)
+        {
+            int first = dir == 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
+            int from = dir == 0 ? lanesAB : lanesBA;
+            int to = dir == 0 ? sd.LanesAB : sd.LanesBA;
+            for (int k = from; k < to; k++)
+            {
+                if (on)
+                {
+                    n.Lanes[first + k].Flags |= bits;
+                }
+                else
+                {
+                    n.Lanes[first + k].Flags &= unchecked((byte)~bits);
+                }
+            }
+        }
     }
 
     // Точки существующей полосы заново от оси: те же индексы, тот же параметр s; ширина и скорость.

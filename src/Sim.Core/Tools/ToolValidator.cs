@@ -43,6 +43,8 @@ internal struct ToolCheck
     public RoadKind Kind;
     public float Speed;
     public ReshapeMode Reshape;             // UpgradeRoad: что делать с сегментом
+    public int Drain;                       // UpgradeRoad занятого сегмента: машин ждать (> 0 - операция ShrinkLanes, Mechanism 2)
+    public bool CancelShrink;               // UpgradeRoad в прежние полосы во время дренажа полос: отмена операции (undo)
 
     public EntityKind IssueKind;            // объект и точка проблемы (подсветка) для отказа
     public int IssueIndex, IssueGen;
@@ -342,9 +344,9 @@ internal static partial class ToolValidator
         ref readonly SegmentData sd = ref n.Segments[seg];
         Vec2 mid = n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)];
         Mark(ref c, EntityKind.Segment, seg, sd.Generation, mid);
-        if ((sd.Flags & SegmentFlags.Closing) != 0)
+        if ((sd.Flags & SegmentFlags.Closing) != 0 || w.Ops.FindShrink(seg) >= 0)
         {
-            return RejectReason.Busy;
+            return RejectReason.Busy;   // уже сносится или в дренаже полос (T5)
         }
 
         if (w.Queue != null || HasBusStop(n, seg))
