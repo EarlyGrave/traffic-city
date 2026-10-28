@@ -4,6 +4,22 @@ set -u
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# Коммит только из документации (*.md в любом каталоге, docs/**, CLAUDE.md) — проверки не нужны.
+# Пустой список (например, merge-коммит) — проверки запускаются как обычно.
+docs_only=1
+staged_count=0
+while IFS= read -r -d '' staged_file; do
+  staged_count=$((staged_count + 1))
+  case "$staged_file" in
+    *.md | docs/* | CLAUDE.md) ;;
+    *) docs_only=0 ;;
+  esac
+done < <(git diff --cached --name-only -z --diff-filter=ACMRD)
+if [ "$staged_count" -gt 0 ] && [ "$docs_only" -eq 1 ]; then
+  echo "pre-commit: только документация, проверки пропущены"
+  exit 0
+fi
+
 fail() {
   echo "" >&2
   echo "pre-commit: ОТКАЗ — $1" >&2
