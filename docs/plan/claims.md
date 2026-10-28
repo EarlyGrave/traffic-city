@@ -5,3 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
+| RP8: *-res на профили, golden, замеры (агент L40) | локал | local/rp8-profiles | scenarios/*-res*, golden/корпус тестов, tests/**, rust golden, docs/design/road-profiles.md | 2026-10-28 |
