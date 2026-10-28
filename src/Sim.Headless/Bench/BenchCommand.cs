@@ -362,6 +362,14 @@ public static class BenchCommand
         r.BayYields = c.BayYields;
         r.BayExitWaitS = c.BayEntries > 0 ? c.BayExitWaitTicksTotal * 0.05 / c.BayEntries : null;
         r.Counters = c;
+        r.RouteDeferredWindow = c.RouteDeferred - cBefore.RouteDeferred;
+        r.PathfindQueriesWindow = c.PathfindQueries - cBefore.PathfindQueries;
+        r.PathfindWorkWindow = c.PathfindWork - cBefore.PathfindWork;
+        r.ReroutesWindow = c.Reroutes - cBefore.Reroutes;
+        r.TimedReroutesWindow = c.TimedReroutes - cBefore.TimedReroutes;
+        r.CustomizeWorkWindow = c.CustomizeWork - cBefore.CustomizeWork;
+        r.RefillLateWindow = c.RefillLate - cBefore.RefillLate;
+        r.CustomizeLagWindow = c.CustomizeLagTicks - cBefore.CustomizeLagTicks;
         r.AvgSpeedKmh = s.AvgSpeedKmh;
         r.AvgTripTimeS = s.AvgTripTimeS;
         r.TripsCompletedPerMin = s.TripsCompletedPerMin;
@@ -672,6 +680,14 @@ public static class BenchCommand
             w.WriteNumber("customize_lag_ticks", k.CustomizeLagTicks);
             w.WriteNumber("overlay_rebuilds", k.OverlayRebuilds);
             w.WriteNumber("overlay_disabled", k.OverlayDisabled);
+            w.WriteNumber("route_deferred_window", r.RouteDeferredWindow);
+            w.WriteNumber("pathfind_queries_window", r.PathfindQueriesWindow);
+            w.WriteNumber("pathfind_work_window", r.PathfindWorkWindow);
+            w.WriteNumber("reroutes_window", r.ReroutesWindow);
+            w.WriteNumber("timed_reroutes_window", r.TimedReroutesWindow);
+            w.WriteNumber("customize_work_window", r.CustomizeWorkWindow);
+            w.WriteNumber("refill_late_window", r.RefillLateWindow);
+            w.WriteNumber("customize_lag_ticks_window", r.CustomizeLagWindow);
             w.WriteEndObject();
             w.WriteEndObject();
         }
@@ -865,6 +881,7 @@ internal sealed class BenchResult
     public long BayEntries, BayFallbacks, BayYields;
     public double? BayExitWaitS;
     public SimCounters Counters;
+    public long RouteDeferredWindow, PathfindQueriesWindow, PathfindWorkWindow, RefillLateWindow, CustomizeLagWindow, ReroutesWindow, TimedReroutesWindow, CustomizeWorkWindow;   // приращения за окно замера (routing.* - накопительные с начала)
     public SimWork Work;
     public LodWindow? Lod;
     public PhaseStat[]? PhaseMs;
