@@ -127,6 +127,7 @@ public partial class SimHost : Node3D
     private const int SelectCentralSignal = -2;
     private int _selectNodeArg = -1;
     private NodeArms.NodePreset? _presetArg;
+    private TrafficCity.Tools.NodesMode? _nodesToolArg;
     private NodePicker? _nodePicker;
     private float _viewX0, _viewZ0, _viewX1, _viewZ1;
     private float _mapX0, _mapZ0, _mapX1, _mapZ1;
@@ -250,7 +251,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
-    /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash]</c> (панель узла), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
+    /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash] [--nodes-tool control|arms|bans|lanes]</c> (панель узла, инструмент «Узлы»), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
     /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов),
     /// RP10: <c>--grid</c> (сетка 8 м показана сразу), <c>--no-snap</c>, <c>--snap-demo x z</c> (превью снапа в точке + строка <c>[snap]</c> в журнале), <c>--prof-res</c> (сценарий <c>*-res</c> с профилями фикстуры; Shift+G - сетка, G - снап).
     /// S10 (ADR-0024): <c>--threads N</c> (потоки симуляции; по умолчанию min(4, max(1, ядер/2 - 2))), <c>--lockstep</c> (кадр ждёт тик симуляции; включается сам при <c>--render-stats</c> и <c>--write-movie</c>),
@@ -371,6 +372,16 @@ public partial class SimHost : Node3D
                 {
                     int.TryParse(v, NumberStyles.Integer, inv, out _selectNodeArg);
                 }
+            }
+            else if (a == "--nodes-tool" && i + 1 < args.Length)
+            {
+                _nodesToolArg = args[++i] switch
+                {
+                    "arms" => TrafficCity.Tools.NodesMode.Arms,
+                    "bans" => TrafficCity.Tools.NodesMode.Bans,
+                    "lanes" => TrafficCity.Tools.NodesMode.Lanes,
+                    _ => TrafficCity.Tools.NodesMode.Control,
+                };
             }
             else if (a == "--node-preset" && i + 1 < args.Length)
             {

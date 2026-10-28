@@ -77,6 +77,11 @@ public partial class SimHost
                 return _roadTool;
             }
 
+            if (id == "nodes")
+            {
+                return _nodesTool;
+            }
+
             return null;
         };
         _ui.UndoRequested += DoUndo;
@@ -87,6 +92,7 @@ public partial class SimHost
             _ui.Router.SetTool(_roadTool); // --ui-state build: роутер поднял заглушку раньше хоста
         }
 
+        InitNodesTool();
         GD.Print(string.Create(
             CultureInfo.InvariantCulture,
             $"[tool] roads tool ready: catalog {(catalog.FromProfiles ? "profiles" : "legacy")} x{catalog.Count}, net_version {_frame.NetworkVersion}"));
@@ -114,7 +120,7 @@ public partial class SimHost
             _ui.SetUndoRedo(_shownUndo, _shownRedo, _shownUndo > 0 ? RejectMessages.ActionLabel(nu) : string.Empty, _shownRedo > 0 ? RejectMessages.ActionLabel(nr) : string.Empty);
         }
 
-        if (!ReferenceEquals(_ui.Router.Tool, _roadTool))
+        if (ProcessNodesTool() || !ReferenceEquals(_ui.Router.Tool, _roadTool))
         {
             _roadsView.Hide();
             _toolMouse = new Vector2(-1f, -1f);
@@ -182,9 +188,9 @@ public partial class SimHost
             }
         }
 
-        if (!ReferenceEquals(_ui.Router.Tool, _roadTool))
+        if (HandleNodesInput(e) || !ReferenceEquals(_ui.Router.Tool, _roadTool))
         {
-            return false;
+            return ReferenceEquals(_ui.Router.Tool, _nodesTool) && e is InputEventMouseButton { ButtonIndex: MouseButton.Left };
         }
 
         if (e is InputEventKey { Pressed: true, Echo: false })
