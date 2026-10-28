@@ -320,6 +320,165 @@ public class SimThreadHostTests
         Assert.Equal(0, simDelta);
     }
 
+    private const HostOverlays AllOverlays = HostOverlays.LaneSignals | HostOverlays.CrossingStates | HostOverlays.BusStopWaiting | HostOverlays.SignalStates
+        | HostOverlays.NodeThroughput | HostOverlays.SignalMetrics | HostOverlays.SegmentLoads | HostOverlays.PedEdgeCounts;
+
+    [Fact]
+    public void Overlays_Subscribed_AreDirectCopies_AndHeavyOnesRefreshEveryTenTicks()
+    {
+        using SimThreadHost host = Start("s1k-peds", new SimHostOptions { InitialOverlays = AllOverlays });
+        using Simulation direct = Simulation.Create(Desc("s1k-peds"));
+        int heavySeen = 0;
+        long last = -1;
+        for (long t = 1200; t < 1240; t++)
+        {
+            SimFrame f = RunTo(host, t);
+            direct.Step((int)(t - direct.Tick));
+            Assert.Equal(direct.LaneSignals.ToArray(), f.LaneSignals.ToArray());
+            Assert.Equal(direct.CrossingStates.ToArray(), f.CrossingStates.ToArray());
+            Assert.Equal(direct.BusStopWaiting.ToArray(), f.BusStopWaiting.ToArray());
+            Assert.Equal(direct.SignalStates.Length, f.SignalStates.Length);
+            Assert.Equal(direct.NodeThroughput.ToArray(), f.NodeThroughput.ToArray());
+            Assert.NotNull(f.SignalMetrics);
+            Assert.Equal(direct.ActivePedCount, f.ActivePedCount);
+            Assert.Equal(direct.PedTarget, f.PedTarget);
+            Assert.True(f.HasPeds);
+            Assert.Equal(direct.Network.Version, f.NetworkVersion);
+            Assert.Equal(direct.Network.Lanes.Length, f.Network.View.Lanes.Length);
+            if (f.SegmentLoadsFresh)
+            {
+                heavySeen++;
+                Assert.True(last < 0 || t - last >= SimThreadHost.HeavyOverlayTicks, $"тяжёлый оверлей чаще периода: {last} -> {t}");
+                last = t;
+                Assert.Equal(direct.SegmentLoads.Length, f.SegmentLoads.Length);
+                for (int i = 0; i < f.SegmentLoads.Length; i++)
+                {
+                    Assert.Equal(direct.SegmentLoads[i].Count, f.SegmentLoads[i].Count);
+                }
+
+                Assert.True(f.PedEdgeCountsFresh);
+                Assert.Equal(direct.PedEdgeCounts.ToArray(), f.PedEdgeCounts.ToArray());
+            }
+        }
+
+        Assert.True(heavySeen >= 3 && heavySeen <= 5, "heavySeen=" + heavySeen);
+    }
+
+    [Fact]
+    public void Overlays_NotSubscribed_AreEmpty_AndNetworkSnapshotIsShared()
+    {
+        using SimThreadHost host = Start("s1k-peds");
+        SimFrame f = RunTo(host, 100);
+        Assert.Equal(0, f.LaneSignals.Length);
+        Assert.Equal(0, f.CrossingStates.Length);
+        Assert.Equal(0, f.NodeThroughput.Length);
+        Assert.False(f.SegmentLoadsFresh);
+        NetworkSnapshot net = f.Network;
+        SimFrame g = RunTo(host, 120);
+        Assert.Same(net, g.Network); // сеть не менялась: копия общая, не пересоздаётся на каждый тик
+
+        host.SetOverlays(HostOverlays.LaneSignals);
+        SimFrame h = RunTo(host, 122);
+        Assert.True(h.LaneSignals.Length > 0);
+        host.SetOverlays(HostOverlays.None);
+        SimFrame k = RunTo(host, 124);
+        Assert.Equal(0, k.LaneSignals.Length);
+    }
+
+    [Fact]
+    public void NetworkSnapshot_View_EqualsDirectNetwork()
+    {
+        using SimThreadHost host = Start("s1k-peds");
+        SimFrame f = RunTo(host, 10);
+        using Simulation direct = Simulation.Create(Desc("s1k-peds"));
+        direct.Step(10);
+        NetworkView a = direct.Network;
+        NetworkView b = f.Network.View;
+        Assert.Equal(a.Version, b.Version);
+        Assert.Equal(a.Nodes.Length, b.Nodes.Length);
+        Assert.Equal(a.Segments.Length, b.Segments.Length);
+        Assert.Equal(a.Lanes.Length, b.Lanes.Length);
+        Assert.Equal(a.LanePoints.Length, b.LanePoints.Length);
+        Assert.Equal(a.Sidewalks.Length, b.Sidewalks.Length);
+        Assert.Equal(a.Crossings.Length, b.Crossings.Length);
+        Assert.Equal(a.PedEdgePoints.Length, b.PedEdgePoints.Length);
+        Assert.Equal(a.BusStops.Length, b.BusStops.Length);
+        Assert.Equal(a.ModuleMm, b.ModuleMm);
+        for (int i = 0; i < a.LanePoints.Length; i += 37)
+        {
+            Assert.Equal(a.LanePoints[i].X, b.LanePoints[i].X);
+            Assert.Equal(a.LanePoints[i].Z, b.LanePoints[i].Z);
+        }
+
+        // копия независима от ядра: память ядра не используется
+        Assert.False(a.Nodes.Overlaps(b.Nodes));
+    }
+
+    [Fact]
+    public void SelectedPed_FrameCarriesInfo_ForNamedHandle()
+    {
+        using SimThreadHost host = Start("s1k-peds");
+        SimFrame f = RunTo(host, 1200);
+        Assert.True(f.Pedestrians.Length > 0);
+        PedestrianRenderData p = f.Pedestrians[0];
+        long id = host.TryRequestPickPedestrian(p.X, p.Z, 1f);
+        HostResponse r = default;
+        var sw = Stopwatch.StartNew();
+        while (!host.TryReadResponse(out r) && sw.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            Thread.Sleep(1);
+        }
+
+        Assert.Equal(id, r.RequestId);
+        Assert.True(r.Found);
+        host.SetSelectedPed(r.Pedestrian);
+        SimFrame g = RunTo(host, 1202);
+        Assert.Equal(r.Pedestrian, g.SelectedPed);
+        Assert.True(g.SelectedPedValid);
+
+        using Simulation direct = Simulation.Create(Desc("s1k-peds"));
+        direct.Step(1202);
+        Assert.True(direct.TryGetPedInfo(r.Pedestrian, out PedInfo info));
+        Assert.Equal(info.State, g.SelectedPedInfo.State);
+        Assert.Equal(info.Edge, g.SelectedPedInfo.Edge);
+        Assert.Equal(info.X, g.SelectedPedInfo.X);
+
+        host.SetSelectedPed(PedHandle.Null);
+        SimFrame h = RunTo(host, 1204);
+        Assert.False(h.SelectedPedValid);
+    }
+
+    [Fact]
+    public void SteadyState_WithAllOverlays_AllocatesZeroBytes_OnSimThread()
+    {
+        using SimThreadHost host = Start("s1k-peds", new SimHostOptions { InitialOverlays = AllOverlays });
+        RunTo(host, 3000);
+        long next = 3000;
+        long simDelta = -1;
+        for (int attempt = 0; attempt < 30 && simDelta != 0; attempt++)
+        {
+            int gc = GC.CollectionCount(0);
+            SimFrame f0 = RunTo(host, next += 20);
+            long sim0 = f0.SimThreadAllocatedBytes;
+            long goal = next + 200;
+            host.SetTargetTick(goal);
+            while (host.Tick < goal)
+            {
+                host.TryAcquireFrame(out _);
+            }
+
+            host.TryAcquireFrame(out _);
+            long sim1 = host.SimThreadAllocatedBytes;
+            next = goal;
+            if (GC.CollectionCount(0) == gc)
+            {
+                simDelta = sim1 - sim0;
+            }
+        }
+
+        Assert.Equal(0, simDelta);
+    }
+
     [Fact]
     public void Dispose_StopsThread_NoLeak_AndIsIdempotent()
     {
