@@ -68,7 +68,7 @@
     "day_s": 3600
   },
   "residents": {
-    "initial_fill": 0.65
+    "initial_fill": 0.07
   },
   "choice": {
     "asc_freq_s": 850
