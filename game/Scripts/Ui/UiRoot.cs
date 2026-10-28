@@ -39,6 +39,13 @@ public sealed partial class UiRoot : CanvasLayer
     private string _shotPath = string.Empty;
     private int _shotFrame = 30;
     private int _frames;
+    private UiNotifyView _notify = null!;
+    private bool _demoToasts;
+    private bool _demoList;
+    private bool _timeSet;
+
+    /// <summary>Уведомления: тосты, список «События», источник событий (<see cref="UiNotifyView.Source"/>).</summary>
+    public UiNotifyView Notify => _notify;
 
     /// <summary>Состояние и роутер событий.</summary>
     public UiRouter Router => _router;
@@ -96,6 +103,11 @@ public sealed partial class UiRoot : CanvasLayer
                 break; // info: состояние мира выставляет SimHost (Snap) и зеркалит в роутер
         }
 
+        if (_demoList)
+        {
+            _notify.SetListOpen(true);
+        }
+
         Refresh();
         LogScale();
     }
@@ -121,6 +133,14 @@ public sealed partial class UiRoot : CanvasLayer
     {
         _topBarView.Update(this);
         UpdateCapabilities();
+        _notify.Update(delta);
+        if (_host is { IsReady: true } h && !_timeSet && h.DayTicks > 0)
+        {
+            _timeSet = true;
+            int day = h.DayTicks;
+            _notify.TimeText = tick => string.Create(CultureInfo.InvariantCulture, $"день {tick / day + 1}, {tick % day * 1440L / day / 60:00}:{tick % day * 1440L / day % 60:00}");
+        }
+
         if (_shotPath.Length > 0 && ++_frames == _shotFrame)
         {
             RenderingServer.FramePostDraw += OnShotDraw;
@@ -141,7 +161,15 @@ public sealed partial class UiRoot : CanvasLayer
         // Esc живёт здесь, а не в SimHost: порядок «протяжка -> инструмент -> инспектор -> инфо -> меню» знает только роутер
         if (@event.IsActionPressed(UiActions.Cancel))
         {
-            _router.Cancel();
+            if (_notify.ListOpen)
+            {
+                _notify.SetListOpen(false); // список уведомлений закрывается первым: он поверх всего, кроме модального меню
+            }
+            else
+            {
+                _router.Cancel();
+            }
+
             GetViewport().SetInputAsHandled();
         }
         else if (@event.IsActionPressed(UiActions.InfoToggle))
@@ -225,6 +253,15 @@ public sealed partial class UiRoot : CanvasLayer
             {
                 _shotFrame = frame;
             }
+            else if (args[i] == "--ui-demo-toasts")
+            {
+                _demoToasts = true;
+            }
+            else if (args[i] == "--ui-demo-list")
+            {
+                _demoToasts = true;
+                _demoList = true;
+            }
             else if (args[i] == "--no-ui")
             {
                 Visible = false;
@@ -271,10 +308,21 @@ public sealed partial class UiRoot : CanvasLayer
         _toasts.AnchorBottom = 1f;
         _toasts.OffsetLeft = -(UiMetrics.DockWidth + UiMetrics.Margin);
         _toasts.OffsetRight = -UiMetrics.Margin;
-        _toasts.OffsetTop = -(UiMetrics.ToolbarHeight + UiMetrics.OptionsHeight + 160f);
+        _toasts.OffsetTop = -(UiMetrics.ToolbarHeight + UiMetrics.OptionsHeight + 320f);
         _toasts.OffsetBottom = -(UiMetrics.ToolbarHeight + UiMetrics.OptionsHeight + UiMetrics.Margin);
         _toasts.GrowVertical = Control.GrowDirection.Begin;
         _root.AddChild(_toasts);
+
+        _notify = new UiNotifyView(this, _toasts, _topBarView.NotesButton, _root);
+        if (_demoToasts)
+        {
+            // демо: 5 тостов сразу и без угасания (скриншоты); обычные пороги - в значениях по умолчанию UiNotifyView/UiNotifyCenter
+            _notify.Source = new UiDemoEventSource();
+            _notify.MaxVisible = 5;
+            _notify.LifeSec = 3600.0;
+            _notify.Center.ToastIntervalSec = 0.0;
+            _notify.Center.MaxPending = 20;
+        }
 
         BuildModal();
     }
