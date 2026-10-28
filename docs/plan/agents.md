@@ -222,4 +222,4 @@
 | 169 | p3-par-spec (облако, worktree) | opus | 5.2: спека параллельных запросов фазы 3 (ADR-0032) | done (routing-parallel.md, P1–P5; s100k off: фаза 3 4.76 мс, ожидание 2.0–2.3 мс, tick ~23.5–24 мс; 15 мс в off недостижимы — K1 задан для lod auto) |
 | L45 | res-congestion (локал, worktree) | opus | 5.1 разбор затора s10k-res | done, merged (причина — ёмкость: сутки = 1 час sim, пик ~8 900 car legs/мин против ~1 100–1 350; не RP8; stuck сводки = на последнем тике, не баг; варианты A–D в res-congestion.md §6) |
 | 170 | p3-p1 (облако, worktree) | sonnet | 5.2 P1: split compute/commit, scratch на воркер, chunk size (routing-parallel.md) | wip |
-| 171 | s100k-auto-probe (облако, worktree) | haiku | 5.2: замер s100k с lod auto (без коммита сценария) | wip |
+| 171 | s100k-auto-probe (облако, worktree) | haiku | 5.2: замер s100k с lod auto (без коммита сценария) | done (auto = off: контроллера L3 (S4/S5) в ядре нет, meso 0, flips 0; p95 63 мс под load 9.5 — шум; still_share_60s 0.136 % на 2000 тиков, stuck end 38 / max 39) |
