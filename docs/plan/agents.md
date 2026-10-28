@@ -219,3 +219,4 @@
 | L42 | rp8-map-test (локал, worktree) | sonnet | BuildRoad-тест парковки на профильном res-сценарии, дорога внутри карты | done, merged |
 | L43 | stage4-verify (локал, worktree) | haiku | Верификация волны этапа 4 | done (всё зелёное; s10k-peds ожидания 0.485 %; *-res без рампы; stuck сводки ≠ JSON) |
 | L44 | ci-release-gate (локал, worktree) | sonnet | CI: PR dev → main и push в main — гейт по бюджету 1 мс вместо A/B (ADR-0031, уточнение) | done, merged |
+| L45 | res-congestion (локал, worktree) | opus | 5.1 разбор затора s10k-res | done, merged (причина — ёмкость: сутки = 1 час sim, пик ~8 900 car legs/мин против ~1 100–1 350; не RP8; stuck сводки = на последнем тике, не баг; варианты A–D в res-congestion.md §6) |
