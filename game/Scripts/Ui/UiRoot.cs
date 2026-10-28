@@ -28,6 +28,7 @@ public sealed partial class UiRoot : CanvasLayer
     private Control _modal = null!;
     private Label _toolOptionsLabel = null!;
     private Label _legendTitle = null!;
+    private int _legendLayer = 1;
     private Button _infoButton = null!;
     private readonly Button[] _layerButtons = new Button[3];
     private readonly System.Collections.Generic.Dictionary<string, Button> _toolButtons = new();
@@ -58,6 +59,9 @@ public sealed partial class UiRoot : CanvasLayer
 
     /// <summary>Уведомления: тосты, список «События», источник событий (<see cref="UiNotifyView.Source"/>).</summary>
     public UiNotifyView Notify => _notify;
+
+    /// <summary>Содержимое легенды инфо-слоя (UI7): SimHost подаёт данные ~2 Гц.</summary>
+    public UiLegend Legend { get; private set; } = null!;
 
     /// <summary>Состояние и роутер событий.</summary>
     public UiRouter Router => _router;
@@ -388,6 +392,13 @@ public sealed partial class UiRoot : CanvasLayer
             {
                 _scale.SetUserPercentNoApply(pct);
             }
+            else if (args[i] == "--ui-cb" && i + 1 < args.Length
+                && int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int cb) && cb is >= 0 and <= 2)
+            {
+                // палитра для дальтоников только на этот запуск (скриншоты), в settings.cfg не пишется
+                UiPalette.SetColorblind((ColorblindMode)cb);
+                HeatPalette.SetMode((ColorblindMode)cb);
+            }
             else if (args[i] == "--ui-shot" && i + 1 < args.Length)
             {
                 _shotPath = args[++i];
@@ -614,7 +625,7 @@ public sealed partial class UiRoot : CanvasLayer
             _layerButtons[i] = b;
         }
 
-        box.AddChild(Secondary("Шкала и числа слоя (UI7)", Control.SizeFlags.ExpandFill, HorizontalAlignment.Left));
+        Legend = new UiLegend(box);
     }
 
     private void BuildInspector()
@@ -701,6 +712,13 @@ public sealed partial class UiRoot : CanvasLayer
             _layerButtons[i].SetPressedNoSignal(_router.InfoLayer == i + 1);
         }
 
+        if (_router.InfoLayer != _legendLayer)
+        {
+            _legendLayer = _router.InfoLayer;
+            Legend.SetLayer(_legendLayer);
+        }
+
+        Legend.SyncPalette();
         _legendTitle.Text = "Инфо-слой: " + (_router.InfoLayer switch
         {
             2 => "Пешеходы",
