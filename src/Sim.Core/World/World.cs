@@ -66,7 +66,9 @@ internal sealed class World : IDisposable
     public int BayYieldActive;                   // число активных уступок (0 - фаза 5 массив не читает)
     public readonly int[] BayBus;                // остановка -> слот автобуса в её кармане (InBay) или -1; производное (ADR-0029), вне хэша и сейва: после загрузки пересобирается
     public readonly Rules.Intersections.GateScanJob GateScan = new();
+    public readonly Rules.Intersections.GatePrevResetJob GatePrevReset = new();
     public readonly Rules.Intersections.GateResolveJob GateResolve = new();
+    internal readonly Rules.Intersections.SignalPhase.SignalJob SignalJob = new();
     public readonly GateScratch Gate;            // scratch фазы 4 (ворота): кандидаты, затронутые узлы/полосы, коды отказов
 
     // ---- результаты генератора города (заполняет WorldBuilder; для шагов 3 и 4) ----
@@ -176,6 +178,7 @@ internal sealed class World : IDisposable
         Behaviour = new BehaviourJob(threads);
         Integrate = new IntegrateJob(threads);
         Gate.EnsureWorkers(threads);
+        Queue?.EnsureWorkers(threads);
         Router?.EnsureWorkers(threads);   // scratch воркеров запросов маршрутов (Router в загрузчике создаётся позже - берёт число из Pool)
     }
 

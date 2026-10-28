@@ -23,6 +23,7 @@ namespace Sim.Core.Rules.Intersections;
 internal static class GatePhase
 {
     private const int MaxCandidatesPerNode = 128;
+    private const int PrevResetChunk = 1024;
 
     public static void Run(World w)
     {
@@ -109,7 +110,9 @@ internal static class GatePhase
     }
 
     /// <summary>Запуск задания по узлам: на пуле ядра либо последовательно (без пула; в тестах - в обратном порядке).</summary>
-    private static void RunJob(World w, Util.IRangeJob job, int count)
+    internal static void RunJob(World w, Util.IRangeJob job, int count) => RunJob(w, job, count, Util.WorkerPool.ChunkSize);
+
+    internal static void RunJob(World w, Util.IRangeJob job, int count, int chunkSize)
     {
         if (w.Gate.ReverseOrder)
         {
@@ -120,7 +123,7 @@ internal static class GatePhase
         }
         else if (w.Pool != null)
         {
-            w.Pool.Run(job, count);
+            w.Pool.Run(job, count, chunkSize);
         }
         else if (count > 0)
         {
@@ -526,48 +529,22 @@ internal static class GatePhase
             }
         }
 
-        // Сброс по списку прошлого тика: всё, что было кандидатом (или хранит отказ), а теперь им не стало.
-        int[] prev = g.PrevList;
-        for (int k = 0; k < g.PrevCount; k++)
+        // Сброс по списку прошлого тика: всё, что было кандидатом (или хранит отказ), а теперь им не стало. Записи независимы (по машине) - задание по
+        // элементам списка (S4c); «оставить в списке» (meso не в свой такт) - флаг элемента, перенос в NextList - последовательно, в порядке списка.
+        if (g.PrevCount > 0)
         {
-            int i = prev[k];
-            if (g.CandStamp[i] == stamp)
+            GatePrevResetJob rj = w.GatePrevReset;
+            rj.Prepare(w, stamp, mesoBeat);
+            RunJob(w, rj, g.PrevCount, PrevResetChunk);
+            int[] prev = g.PrevList;
+            byte[] keep = g.PrevKeep;
+            for (int k = 0; k < g.PrevCount; k++)
             {
-                continue;   // кандидат и в этом тике: WaitTicks уже увеличен, запись в NextList есть
+                if (keep[k] != 0)
+                {
+                    g.NextList[g.NextCount++] = prev[k];
+                }
             }
-
-            int lane = v.Lane[i];
-            if (!v.Pool.IsAlive(i) || lane < 0)
-            {
-                v.WaitTicks[i] = 0;
-                g.DenyReason[i] = (byte)GateDeny.None;
-                continue;
-            }
-
-            if (net.Lanes[lane].Kind == LaneKind.Connector)
-            {
-                v.WaitTicks[i] = 0;
-                g.DenyReason[i] = (byte)GateDeny.None;
-                continue;
-            }
-
-            if (GateRules.GateNodeOfNormal(net, lane) < 0)
-            {
-                v.WaitTicks[i] = 0;
-                v.GateState[i] = 0;
-                v.GrantConnector[i] = -1;
-                g.DenyReason[i] = (byte)GateDeny.None;
-                continue;
-            }
-
-            if (!GateRules.IsGranted(v, i) && lodBits.Length != 0 && (lodBits[i] & Lod.LodBits.Meso) != 0 && laneColor[lane] != mesoBeat)
-            {
-                g.NextList[g.NextCount++] = i;   // meso не в свой такт: WaitTicks и DenyReason не трогаем (sim-lod.md §2.4), запись остаётся в списке
-                continue;
-            }
-
-            v.WaitTicks[i] = 0;
-            g.DenyReason[i] = (byte)GateDeny.None;
         }
 
         return candidates;
