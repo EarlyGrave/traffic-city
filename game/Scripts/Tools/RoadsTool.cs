@@ -39,12 +39,21 @@ public sealed class RoadsTool : ToolBase
     /// <summary>Радиус поиска сегмента под курсором в режимах «Заменить» и «Снос», м.</summary>
     public const float SegmentPickM = 12f;
 
+    /// <summary>Сколько тиков <see cref="Tick"/> закреплённый снос ждёт превью (для подтверждения P13), прежде чем кликнуть без него.</summary>
+    public const int PinClickMaxWait = 30;
+
     private readonly IRoadsWorld _world;
     private ToolPointer _last;
     private bool _haveLast;
 
     private Command _cmd;
     private bool _hasCmd;
+
+    // закреплённый сегмент (инспектор, UI3): цель режимов «Заменить» и «Снос» без курсора, пока курсор не вернётся в мир
+    private bool _pinned;
+    private SegmentHit _pinHit;
+    private bool _pinClick;
+    private int _pinWait;
 
     public RoadsTool(ToolCommandService service, IRoadsWorld world)
         : base(service)
@@ -106,6 +115,9 @@ public sealed class RoadsTool : ToolBase
 
     public ref readonly Command WantedCommand => ref _cmd;
 
+    /// <summary>Цель задана инспектором (<see cref="PinSegment"/>), а не курсором.</summary>
+    public bool Pinned => _pinned;
+
     /// <summary>Зеркало реально применяется: включено и профиль несимметричный.</summary>
     public bool MirrorActive => Mirror && Choice.Asymmetric && Choice.Profile >= 0;
 
@@ -121,6 +133,10 @@ public sealed class RoadsTool : ToolBase
         Mode = mode;
         _hasCmd = false;
         HoverValid = false;
+        if (mode == RoadsMode.Build)
+        {
+            Unpin();
+        }
         Changed();
         Replay();
     }
@@ -157,6 +173,16 @@ public sealed class RoadsTool : ToolBase
 
     public override void OnHover(in ToolPointer at)
     {
+        if (_pinned)
+        {
+            if (!at.OnGround)
+            {
+                return; // курсор над панелями: цель остаётся закреплённой
+            }
+
+            Unpin(); // курсор вернулся в мир - дальше обычное наведение
+        }
+
         _last = at;
         _haveLast = true;
         Recompute();
@@ -222,9 +248,68 @@ public sealed class RoadsTool : ToolBase
         return was;
     }
 
+    /// <summary>
+    /// Навести «Заменить» или «Снос» на конкретный сегмент без курсора (кнопки инспектора сегмента, UI3): превью и призрак - как при наведении.
+    /// <paramref name="click"/> в режиме «Снос» - сразу «кликнуть»: <see cref="Tick"/> дождётся превью и спросит подтверждение P13, если пропадут участки или остановки.
+    /// Закрепление снимается, когда курсор вернётся в мир, при смене режима на «Построить» и при выходе из инструмента.
+    /// </summary>
+    public void PinSegment(in SegmentHit hit, bool click)
+    {
+        if (Mode == RoadsMode.Build)
+        {
+            return;
+        }
+
+        OnCancel();
+        _pinned = true;
+        _pinHit = hit;
+        _pinClick = click && Mode == RoadsMode.Remove;
+        _pinWait = 0;
+        Recompute();
+    }
+
+    /// <summary>Раз в кадр (хост): отложенный клик закреплённого сноса - когда пришло превью этой команды или после <see cref="PinClickMaxWait"/> вызовов.</summary>
+    public void Tick()
+    {
+        if (!_pinClick)
+        {
+            return;
+        }
+
+        if (_hasCmd && !Service.PreviewMatches(in _cmd) && ++_pinWait < PinClickMaxWait)
+        {
+            return;
+        }
+
+        _pinClick = false;
+        ClickRemove();
+    }
+
+    /// <summary>Снять закрепление (сегмент снесён или инспектор закрыт): призрак и превью гаснут до следующего наведения курсором.</summary>
+    public void ReleasePin()
+    {
+        if (!_pinned)
+        {
+            return;
+        }
+
+        Unpin();
+        HoverValid = false;
+        _hasCmd = false;
+        Service.ClearPreview();
+        Changed(options: false);
+    }
+
+    private void Unpin()
+    {
+        _pinned = false;
+        _pinClick = false;
+    }
+
     public override void OnExit()
     {
         base.OnExit();
+        Unpin();
         _hasCmd = false;
         HoverValid = false;
         CursorValid = false;
@@ -234,7 +319,7 @@ public sealed class RoadsTool : ToolBase
 
     private void Replay()
     {
-        if (_haveLast)
+        if (_haveLast || _pinned)
         {
             Recompute();
         }
@@ -252,6 +337,14 @@ public sealed class RoadsTool : ToolBase
     private void Recompute()
     {
         StateVersion++;
+        if (_pinned && Mode != RoadsMode.Build)
+        {
+            CursorValid = false;
+            Cursor = new Vec2((_pinHit.A.X + _pinHit.B.X) * 0.5f, (_pinHit.A.Z + _pinHit.B.Z) * 0.5f); // для масштаба призрака: курсора над миром нет
+            AimAt(in _pinHit);
+            return;
+        }
+
         if (!_last.OnGround)
         {
             CursorValid = false;
@@ -293,6 +386,12 @@ public sealed class RoadsTool : ToolBase
             return;
         }
 
+        AimAt(in hit);
+    }
+
+    /// <summary>Цель режимов «Заменить» и «Снос»: команда и превью по сегменту.</summary>
+    private void AimAt(in SegmentHit hit)
+    {
         HoverValid = true;
         Hover = hit;
         HoverSame = false;

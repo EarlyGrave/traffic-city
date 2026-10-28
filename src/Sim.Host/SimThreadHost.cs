@@ -72,6 +72,7 @@ public sealed partial class SimThreadHost : IDisposable
     private HostOverlays _lastSubs;
     private long _lastHeavyTick = -HeavyOverlayTicks;
     private long _selPedPacked;
+    private long _selVehPacked;
     private int _forceFresh;
     private NetworkSnapshot? _netSnap;
 
@@ -169,6 +170,9 @@ public sealed partial class SimThreadHost : IDisposable
 
     /// <summary>Выбранный пешеход: кадры несут его <see cref="PedInfo"/> (инспектор). <see cref="PedHandle.Null"/> - снять.</summary>
     public void SetSelectedPed(PedHandle h) => Interlocked.Exchange(ref _selPedPacked, (long)h.Packed);
+
+    /// <summary>Машина в инспекторе: кадры несут её <see cref="VehicleInfo"/> (UI3). <see cref="VehicleHandle.Null"/> - снять. Выбор маршрута в ядре (<c>SelectVehicle</c>) - отдельно, командой.</summary>
+    public void SetSelectedVehicle(VehicleHandle h) => Interlocked.Exchange(ref _selVehPacked, (long)h.Packed);
 
     private void WriteView(bool all, float x0, float z0, float x1, float z1)
     {
@@ -616,6 +620,18 @@ public sealed partial class SimThreadHost : IDisposable
         else
         {
             f.SelectedPedValid = false;
+        }
+
+        VehicleHandle veh = VehicleHandle.FromPacked((ulong)Interlocked.Read(ref _selVehPacked));
+        f.SelectedVehicle = veh;
+        if (!veh.IsNull && _sim.TryGetVehicleInfo(veh, out VehicleInfo vi))
+        {
+            f.SelectedVehicleValid = true;
+            f.SelectedVehicleInfo = vi;
+        }
+        else
+        {
+            f.SelectedVehicleValid = false;
         }
     }
 

@@ -18,6 +18,7 @@ public enum InspectKind
     Vehicle,
     Pedestrian,
     Node,
+    Segment,
 
     /// <summary>Макет без выбранного объекта (<c>--ui-state inspect</c>); закрывается Esc.</summary>
     Demo,
@@ -93,6 +94,12 @@ public sealed class UiRouter
     public InspectKind Inspected { get; private set; }
 
     public bool MenuOpen { get; private set; }
+
+    /// <summary>
+    /// Жест инспектора, который Esc отменяет раньше закрытия панели (камера «Следовать»): true - было что отменять, Esc израсходован.
+    /// Задаёт хост мира; как <see cref="IUiTool.CancelGesture"/> у инструмента.
+    /// </summary>
+    public Func<bool>? InspectorCancelGesture { get; set; }
 
     /// <summary>Главный из активных режимов (для подписей и скриншотов): стройка > инспектор > инфо > обзор.</summary>
     public UiMode Mode => Tool != null ? UiMode.Build : Inspected != InspectKind.None ? UiMode.Inspect : InfoActive ? UiMode.Info : UiMode.Overview;
@@ -198,7 +205,7 @@ public sealed class UiRouter
     }
 
     /// <summary>
-    /// Esc: меню -> отмена протяжки -> выход из инструмента -> закрыть инспектор -> выйти из инфо -> открыть меню (ui-spec.md §2).
+    /// Esc: меню -> отмена протяжки -> выход из инструмента -> жест инспектора («Следовать») -> закрыть инспектор -> выйти из инфо -> открыть меню (ui-spec.md §2).
     /// Всегда расходует событие (последний шаг - меню).
     /// </summary>
     public void Cancel()
@@ -216,7 +223,10 @@ public sealed class UiRouter
         }
         else if (Inspected != InspectKind.None)
         {
-            CloseInspector();
+            if (InspectorCancelGesture?.Invoke() != true)
+            {
+                CloseInspector();
+            }
         }
         else if (InfoActive)
         {

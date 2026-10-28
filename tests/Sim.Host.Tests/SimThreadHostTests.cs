@@ -449,6 +449,33 @@ public class SimThreadHostTests
     }
 
     [Fact]
+    public void SelectedVehicle_FrameCarriesInfo_ForNamedHandle()
+    {
+        using SimThreadHost host = Start("s1k");
+        SimFrame f = RunTo(host, 600);
+        Assert.True(f.Vehicles.Length > 0);
+        Assert.False(f.SelectedVehicleValid);
+        VehicleRenderData v = f.Vehicles[0];
+        var h = new VehicleHandle(v.Index, v.Generation);
+        host.SetSelectedVehicle(h);
+        SimFrame g = RunTo(host, 602);
+        Assert.Equal(h, g.SelectedVehicle);
+        Assert.True(g.SelectedVehicleValid);
+
+        using Simulation direct = Simulation.Create(Desc("s1k"));
+        direct.Step(602);
+        Assert.True(direct.TryGetVehicleInfo(h, out VehicleInfo info));
+        Assert.Equal(info.Lane, g.SelectedVehicleInfo.Lane);
+        Assert.Equal(info.S, g.SelectedVehicleInfo.S);
+        Assert.Equal(info.SpawnTick, g.SelectedVehicleInfo.SpawnTick);
+        Assert.Equal(info.DestZone, g.SelectedVehicleInfo.DestZone);
+
+        host.SetSelectedVehicle(VehicleHandle.Null);
+        SimFrame k = RunTo(host, 604);
+        Assert.False(k.SelectedVehicleValid);
+    }
+
+    [Fact]
     public void SteadyState_WithAllOverlays_AllocatesZeroBytes_OnSimThread()
     {
         using SimThreadHost host = Start("s1k-peds", new SimHostOptions { InitialOverlays = AllOverlays });

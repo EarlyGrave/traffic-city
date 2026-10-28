@@ -92,9 +92,6 @@ public static class UiTheme
         return t;
     }
 
-    /// <summary>Тёмный фон для старых отладочных панелей, чей текст рассчитан на тёмное (до UI3).</summary>
-    public static StyleBoxFlat DebugPanelStyle() => Flat(UiPalette.DebugPanel, UiPalette.PanelBorder, 8f);
-
     private static StyleBoxFlat Bar(Color bg, Color border, bool bottomEdge)
     {
         var sb = new StyleBoxFlat { BgColor = bg, BorderColor = border, AntiAliasing = false };

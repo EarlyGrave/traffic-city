@@ -23,12 +23,11 @@ public sealed partial class UiRoot : CanvasLayer
     private PanelContainer _toolOptions = null!;
     private VBoxContainer _rightDock = null!;
     private PanelContainer _legend = null!;
-    private PanelContainer _inspector = null!;
+    private UiInspector _inspector = null!;
     private VBoxContainer _toasts = null!;
     private Control _modal = null!;
     private Label _toolOptionsLabel = null!;
     private Label _legendTitle = null!;
-    private Label _inspectorTitle = null!;
     private Button _infoButton = null!;
     private readonly Button[] _layerButtons = new Button[3];
     private readonly System.Collections.Generic.Dictionary<string, Button> _toolButtons = new();
@@ -82,6 +81,9 @@ public sealed partial class UiRoot : CanvasLayer
 
     /// <summary>Правая док-панель 320 px под верхней полосой: сюда добавляются легенда, инспекторы, списки (контейнер, дети идут друг под другом).</summary>
     public VBoxContainer RightDock => _rightDock;
+
+    /// <summary>Инспектор в правой док-панели (UI3): наполняет SimHost по выбору в мире.</summary>
+    public UiInspector Inspector => _inspector;
 
     /// <summary>Тосты уведомлений справа снизу над тулбаром (UI6).</summary>
     public VBoxContainer Toasts => _toasts;
@@ -566,34 +568,24 @@ public sealed partial class UiRoot : CanvasLayer
 
     private void BuildInspector()
     {
-        _inspector = new PanelContainer { Name = "Inspector", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
-        _rightDock.AddChild(_inspector);
-        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _inspector.AddChild(box);
+        _inspector = new UiInspector(_rightDock);
+        _inspector.CloseRequested += _router.CloseInspector;
+    }
 
-        var head = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddChild(head);
-        _inspectorTitle = new Label { ThemeTypeVariation = UiTheme.LabelHeader, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
-        head.AddChild(_inspectorTitle);
-        Button close = MakeButton("×", toggle: false, disabled: false, 36f);
-        close.Pressed += _router.CloseInspector;
-        head.AddChild(close);
-        box.AddChild(new HSeparator());
-
-        var grid = new GridContainer { Columns = 2, MouseFilter = Control.MouseFilterEnum.Ignore };
-        grid.AddThemeConstantOverride("h_separation", 16);
-        box.AddChild(grid);
-        foreach (string key in new[] { "Скорость", "Цель", "В пути", "Состояние" })
-        {
-            grid.AddChild(Secondary(key, Control.SizeFlags.Fill, HorizontalAlignment.Left));
-            grid.AddChild(new Label { Text = "—", MouseFilter = Control.MouseFilterEnum.Ignore });
-        }
-
-        box.AddChild(new HSeparator());
-        var actions = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddChild(actions);
-        actions.AddChild(MakeButton("Маршрут", toggle: false, disabled: true));
-        actions.AddChild(MakeButton("Следовать", toggle: false, disabled: true));
+    /// <summary>Макет инспектора без выбранного объекта (<c>--ui-state inspect</c>): строки по ui-spec.md §3.3.</summary>
+    private void FillDemoInspector()
+    {
+        _inspector.SetTitle("Инспектор (макет)");
+        _inspector.SetRow(0, "Скорость", "—");
+        _inspector.SetRow(1, "Цель", "—");
+        _inspector.SetRow(2, "В пути", "—");
+        _inspector.SetRow(3, "Состояние", "—");
+        _inspector.SetRowCount(4);
+        _inspector.SetArmRows(0);
+        _inspector.SetNote("Щёлкните по машине, пешеходу, узлу или дороге");
+        _inspector.SetAction(0, "Маршрут", toggle: true, pressed: false, enabled: false, "Показать маршрут");
+        _inspector.SetAction(1, "Следовать", toggle: true, pressed: false, enabled: false, "Камера следует за объектом");
+        _inspector.SetActionCount(2);
     }
 
     private void BuildModal()
@@ -660,10 +652,13 @@ public sealed partial class UiRoot : CanvasLayer
             _ => "Трафик",
         });
 
-        // пешеход и узел показывают прежние панели (NodePanel, текст пешехода) до UI3; здесь - ТС и макет
-        bool showInspector = _router.Inspected is InspectKind.Vehicle or InspectKind.Demo;
-        _inspector.Visible = showInspector;
-        _inspectorTitle.Text = _router.Inspected == InspectKind.Demo ? "Инспектор (макет)" : "Транспорт";
+        // содержимое инспектора по объекту наполняет SimHost (UI3); здесь - видимость и макет
+        _inspector.Visible = _router.Inspected != InspectKind.None;
+        if (_router.Inspected == InspectKind.Demo)
+        {
+            FillDemoInspector();
+        }
+
         bool menu = _router.MenuOpen && !_mainMode;
         if (menu && !_menuShown)
         {

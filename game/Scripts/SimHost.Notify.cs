@@ -96,14 +96,15 @@ public partial class SimHost : IUiEventSource
 
         if (subject.Kind == NotifySubjectKind.Vehicle)
         {
-            _vehSelected = true;
-            SendCommand(Command.MakeSelectVehicle(new VehicleHandle(subject.Index, subject.Generation)));
-            DeselectNode();
-            _routeDirty = true;
+            SelectVehicle(new VehicleHandle(subject.Index, subject.Generation));
         }
         else if (subject.Kind == NotifySubjectKind.Node && subject.Index >= 0 && subject.Index < _frame.Network.View.Nodes.Length)
         {
             SelectNode(_frame.Network.View, subject.Index, false);
+        }
+        else if (subject.Kind == NotifySubjectKind.Segment)
+        {
+            SelectSegment(_frame.Network.View, subject.Index);
         }
     }
 }

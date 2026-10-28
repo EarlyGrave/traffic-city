@@ -38,11 +38,15 @@ public static class UiPalette
 
     public static readonly Color Error = Palette.Srgb("#C93A3A");
 
+    /// <summary>Сигналы светофора в таблице инспектора узла (UI3): текст на светлой панели, рядом всегда буква («З», «Ж», «К»).</summary>
+    public static readonly Color SignalGreen = Palette.Srgb("#1E7A34");
+
+    public static readonly Color SignalYellow = Palette.Srgb("#9A6200");
+
+    public static readonly Color SignalRed = Error;
+
     /// <summary>Затемнение под модальным окном.</summary>
     public static readonly Color Scrim = Palette.Srgb("#262A30") with { A = 0.35f };
-
-    /// <summary>Тёмная отладочная панель (старые панели до UI3: узел светофора), ожидают светлый текст.</summary>
-    public static readonly Color DebugPanel = Palette.Srgb("#262A30") with { A = 0.88f };
 
     public static Color PanelBg(float alpha) => PanelSolid with { A = alpha };
 }

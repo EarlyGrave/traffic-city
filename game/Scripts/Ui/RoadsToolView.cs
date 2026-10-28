@@ -83,10 +83,14 @@ public sealed class RoadsToolView
         _toolVersion = -1;
     }
 
-    /// <summary>Раз в кадр, пока инструмент активен. <paramref name="overUi"/> - курсор над панелью: призрака и метки нет.</summary>
+    /// <summary>
+    /// Раз в кадр, пока инструмент активен. <paramref name="overUi"/> - курсор над панелью: призрака и метки нет; исключение - цель, закреплённая
+    /// инспектором (<see cref="RoadsTool.Pinned"/>): её призрак виден, пока курсор над панелями (метка у курсора - нет).
+    /// </summary>
     public void Update(RoadsTool tool, ToolCommandService svc, Camera3D cam, Vector2 mouse, Vector2 viewport, bool overUi)
     {
-        bool show = !overUi && tool.CursorValid;
+        bool pinned = tool.Pinned && tool.HoverValid;
+        bool show = (!overUi && tool.CursorValid) || pinned;
         if (!show)
         {
             _ghost.Visible = false;
@@ -108,7 +112,7 @@ public sealed class RoadsToolView
         }
 
         _ghost.Visible = true;
-        bool hasText = _text.Text.Length > 0;
+        bool hasText = !overUi && _text.Text.Length > 0;
         _panel.Visible = hasText;
         if (hasText)
         {

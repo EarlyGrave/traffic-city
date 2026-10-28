@@ -227,6 +227,45 @@ public class RoadsToolTests
     }
 
     [Fact]
+    public void PinSegment_KeepsTargetOverUi_RemoveClickWaitsForPreview()
+    {
+        // кнопки инспектора сегмента (UI3): «Заменить профиль» и «Снести» наводят инструмент на сегмент без курсора
+        (SimThreadHost host, ToolCommandService svc, RoadsTool tool, FakeWorld world) = Start();
+        using (host)
+        {
+            Assert.True(world.TrySegment(0, -80, 1f, out SegmentHit hit)); // nN-n0
+            tool.OnEnter();
+            tool.SetMode(RoadsMode.Upgrade);
+            tool.SetProfile(2);
+            tool.PinSegment(in hit, click: false);
+            Assert.True(tool.Pinned);
+            Assert.True(tool.HoverValid);
+            Assert.Equal(hit.Ref.Index, tool.WantedCommand.UpgradeRoad.Seg.Index);
+
+            tool.OnHover(new ToolPointer(0f, 0f, false, ToolMods.None, ToolButton.Primary)); // курсор над панелью
+            Assert.True(tool.Pinned);
+            Assert.True(tool.HoverValid);
+            tool.OnHover(At(500, 500)); // курсор в мире, далеко от дорог
+            Assert.False(tool.Pinned);
+            Assert.False(tool.HoverValid);
+
+            tool.SetMode(RoadsMode.Remove);
+            tool.Confirm = (_, _, act) => act(); // подтверждение P13 (если снос теряет участки) - сразу «Снести»
+            tool.PinSegment(in hit, click: true);
+            Assert.Equal(CommandKind.RemoveRoad, tool.WantedCommand.Kind);
+            Assert.Equal(hit.Ref.Index, tool.WantedCommand.RemoveRoad.Seg.Index);
+            WaitPreview(svc, tool);
+            tool.Tick();
+            ToolAck ack = WaitAck(host, svc);
+            Assert.Equal(ToolActionKind.Do, ack.Kind);
+            Assert.True(ack.Applied > 0 || ack.Rejected > 0, "снос дошёл до ядра");
+            tool.ReleasePin();
+            Assert.False(tool.Pinned);
+            Assert.False(tool.HoverValid);
+        }
+    }
+
+    [Fact]
     public void Esc_FirstDropsChain_SecondReportsNothingToCancel()
     {
         (SimThreadHost host, ToolCommandService svc, RoadsTool tool, _) = Start();

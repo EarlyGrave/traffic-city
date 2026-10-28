@@ -56,6 +56,16 @@ public partial class RtsCamera : Node3D
         Apply();
     }
 
+    /// <summary>Точка на земле, вокруг которой стоит камера (цель панорамы).</summary>
+    public Vector3 Center => _targetPos;
+
+    /// <summary>Сдвинуть точку камеры, не трогая расстояние, наклон и поворот («Следовать» инспектора, UI3).</summary>
+    public void SetCenter(Vector3 center)
+    {
+        _targetPos = center;
+        Apply();
+    }
+
     /// <summary>Текущая цель позы (для сейва): точка на земле, расстояние, наклон и поворот в градусах - то, что принимает <see cref="SetPose"/>.</summary>
     public void GetPose(out Vector3 center, out float distance, out float pitchDeg, out float yawDeg)
     {
