@@ -247,3 +247,5 @@
 | L62 | ui12-settings (локал, worktree) | sonnet | UI12 настройки | done, merged (~33 вызова; масштаб, палитра для дальтоников, непрозрачность, F4, user://settings.cfg; клики и сохранение из игры не проверены; новый флейк UndoRightAfterDo_WaitsForResult) |
 | L63 | ui9-zones (локал, worktree) | sonnet | UI9 зоны кистью | done, merged (219k токенов, 68 вызовов, 30 мин; прямоугольная кисть, автослой «Зоны», оценка участков, лимит площади, 4 теста; мышью не проверено; undo не работает — нет обратной команды PaintZone в ядре) |
 | L64 | ui7-legend (локал, worktree) | sonnet | UI7 легенда инфо-слоёв | done, merged (171k токенов, 78 вызовов, 36 мин; легенда трафик/пешеходы/зоны по палитре UI12, адаптивная шкала пешеходов p95, клик в слое → инспектор сегмента; клик не проверен; нет плашки «Заброшено» — нет флага в LotRenderData) |
+| L65 | palette-cleanup (локал, worktree) | haiku | дубль цветов зон + IDE1006 в Palette | done, merged (~95k токенов, 25 вызовов, ~38 мин из-за 2 прогонов pre-commit; первый упал на флейке BackToBackExclusiveAccess) |
+| L66 | host-flakes (локал, worktree) | opus | флейки Sim.Host.Tests | в работе (1 раз завис по watchdog, продолжен) |
