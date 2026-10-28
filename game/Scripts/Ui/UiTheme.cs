@@ -34,6 +34,9 @@ public static class UiTheme
 
     public const string BarBottom = "BarBottom";
 
+    /// <summary>Узкая кнопка для верхней полосы (отступ 5 px вместо 10), чтобы деньги, время и кнопки умещались в 1366 px.</summary>
+    public const string ButtonCompact = "ButtonCompact";
+
     public static Theme Build(float panelAlpha = UiPalette.DefaultPanelAlpha)
     {
         var t = new Theme { DefaultFontSize = UiMetrics.FontBody };
@@ -67,6 +70,13 @@ public static class UiTheme
             t.SetColor("font_disabled_color", type, UiPalette.TextDisabled);
             t.SetFontSize("font_size", type, UiMetrics.FontBody);
         }
+
+        t.SetTypeVariation(ButtonCompact, "Button");
+        t.SetStylebox("normal", ButtonCompact, Flat(UiPalette.Button, UiPalette.PanelBorder, 5f));
+        t.SetStylebox("hover", ButtonCompact, Flat(UiPalette.ButtonHover, UiPalette.PanelBorder, 5f));
+        t.SetStylebox("pressed", ButtonCompact, Flat(UiPalette.Accent, UiPalette.Accent, 5f));
+        t.SetStylebox("hover_pressed", ButtonCompact, Flat(UiPalette.Accent.Lightened(0.1f), UiPalette.Accent, 5f));
+        t.SetStylebox("disabled", ButtonCompact, Flat(UiPalette.Button with { A = 0.5f }, UiPalette.PanelBorder with { A = 0.5f }, 5f));
 
         // полосы на всю ширину: контур только со стороны мира, без скругления
         t.SetTypeVariation(BarTop, "PanelContainer");
