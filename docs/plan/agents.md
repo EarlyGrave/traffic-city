@@ -244,4 +244,4 @@
 | L59 | ui5 (локал, worktree) | sonnet | UI5 undo/redo в UI | done, merged (131k токенов, 38 вызовов, 19 мин; подсказки ↶↷, тост сноса, цепочка = одна группа undo; P5 не сделан — нет ToolOps в хосте; сумма возврата не показана — нет UndoCredits в API хоста; вживую не проверено) |
 | L60 | save-envelope (локал, worktree) | sonnet | SaveEnvelope → Sim.Host, убрать дубль Sim.Headless.SaveFile | done, merged (~30 вызовов; SaveFile удалён, Headless ссылается на Sim.Host, формат не менялся, корпус сейвов зелёный) |
 | L61 | ui10-nodes (локал, worktree) | opus | UI10 узлы и светофоры | в работе |
-| L62 | ui12-settings (локал, worktree) | sonnet | UI12 настройки | в работе |
+| L62 | ui12-settings (локал, worktree) | sonnet | UI12 настройки | done, merged (~33 вызова; масштаб, палитра для дальтоников, непрозрачность, F4, user://settings.cfg; клики и сохранение из игры не проверены; новый флейк UndoRightAfterDo_WaitsForResult) |
