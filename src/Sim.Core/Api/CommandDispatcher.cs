@@ -32,6 +32,7 @@ internal static partial class CommandDispatcher
         }
 
         w.Inv.ClearRemap();
+        ToolCosts.Purge(w);   // E4: просроченные undo-кредиты не доживают до сейва
     }
 
     private static void Apply(World w, in Command cmd)
@@ -139,6 +140,13 @@ internal static partial class CommandDispatcher
         }
     }
 
+    /// <summary>Применена платная команда инструмента: проводка в казне (E4, <see cref="ToolCosts.Settle"/>), затем <c>CommandApplied</c>. Сегмент, созданный прямой <c>BuildRoad</c>, - в <c>w.Inv.BuiltSeg</c>.</summary>
+    private static void AppliedPaid(World w, in Command cmd, in ToolCheck chk)
+    {
+        ToolCosts.Settle(w, in cmd, in chk, cmd.Kind == CommandKind.BuildRoad && !chk.Reopen ? w.Inv.BuiltSeg : -1);
+        Applied(w, in cmd);
+    }
+
     private static void Applied(World w, in Command cmd)
     {
         w.Counters.CommandsApplied++;
@@ -151,6 +159,11 @@ internal static partial class CommandDispatcher
         if (reason == RejectReason.InvalidHandle)
         {
             w.Counters.InvalidHandleOps++;
+        }
+
+        if (reason == RejectReason.InsufficientFunds)
+        {
+            w.Counters.InsufficientFunds++;
         }
 
         if (reason == RejectReason.Capacity && cap != 0)
@@ -180,7 +193,7 @@ internal static partial class CommandDispatcher
 
         if (chk.Reopen)
         {
-            ReopenRoad(w, in cmd, chk.Seg);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
+            ReopenRoad(w, in cmd, in chk, chk.Seg);   // отмена сноса: живой закрывающийся сегмент переоткрывается (player-tools.md §8.2)
             return;
         }
 
@@ -277,7 +290,7 @@ internal static partial class CommandDispatcher
 
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.
@@ -414,7 +427,7 @@ internal static partial class CommandDispatcher
 
         w.Signals.ApplyPlan(nd.Signal, in resolved, w.Tick);
         w.Vehicles.MarkAllRouteDirty();
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
@@ -462,7 +475,7 @@ internal static partial class CommandDispatcher
             w.Vehicles.MarkAllRouteDirty();
         }
 
-        Applied(w, in cmd);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>

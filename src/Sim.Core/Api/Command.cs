@@ -3,7 +3,7 @@ using Sim.Core.Network;
 
 namespace Sim.Core.Api;
 
-public enum CommandKind : int
+public enum CommandKind : ushort
 {
     None = 0,
     BuildRoad = 1,
@@ -60,12 +60,23 @@ public enum BusStopKind : int
     Bay = 1,
 }
 
+/// <summary>Биты <see cref="Command.Flags"/> (city-economy.md §8.3).</summary>
+public static class CommandFlags
+{
+    /// <summary>Обратная команда (ставит <c>InverseBuilder</c>): при живой записи undo-кредита по цели - цена по кредиту (возврат 100%), иначе обычная.</summary>
+    public const ushort Inverse = 1;
+}
+
 /// <summary>Плоский tagged-union фиксированного размера 64 байта (core-api §4.1). Payload — с offset 8.</summary>
 [StructLayout(LayoutKind.Explicit, Size = 64)]
 public struct Command
 {
     [FieldOffset(0)]
     public CommandKind Kind;
+
+    /// <summary>Биты <see cref="CommandFlags"/> (старшие два байта прежнего 32-битного <c>Kind</c>; нули = как раньше, раскладка и байты журнала не меняются).</summary>
+    [FieldOffset(2)]
+    public ushort Flags;
 
     /// <summary>Произвольная метка клиента, эхо в <see cref="SimEvent.Tag"/>.</summary>
     [FieldOffset(4)]
@@ -523,7 +534,16 @@ public struct SetPedTargetCmd
 public struct PaintZoneCmd
 {
     public float X0, Z0, X1, Z1;      // углы прямоугольника, м (упорядочиваются)
-    public byte ZoneKind, Density, R0, R1;
+    public byte ZoneKind, Density;
+    public byte R0;                   // PaintZoneFlags (0 у прямой команды)
+    public byte R1;
+}
+
+/// <summary>Биты <see cref="PaintZoneCmd.R0"/>.</summary>
+public static class PaintZoneFlags
+{
+    /// <summary>Обратная запись: участкам не ставится <c>Painted</c> (прежде их зонировал не игрок).</summary>
+    public const byte RestoreUnpainted = 1;
 }
 
 /// <summary>Режим исполнения ног (<see cref="TripExecution"/>); применяется на границе суток.</summary>
