@@ -220,3 +220,4 @@
 | L43 | stage4-verify (локал, worktree) | haiku | Верификация волны этапа 4 | done (всё зелёное; s10k-peds ожидания 0.485 %; *-res без рампы; stuck сводки ≠ JSON) |
 | L44 | ci-release-gate (локал, worktree) | sonnet | CI: PR dev → main и push в main — гейт по бюджету 1 мс вместо A/B (ADR-0031, уточнение) | done, merged |
 | L45 | res-congestion (локал, worktree) | opus | 5.1 разбор затора s10k-res | done, merged (причина — ёмкость: сутки = 1 час sim, пик ~8 900 car legs/мин против ~1 100–1 350; не RP8; stuck сводки = на последнем тике, не баг; варианты A–D в res-congestion.md §6) |
+| L46 | res-calibrate (локал, worktree) | sonnet | 5.1b: перекалибровка s10k-res + стресс-тест перегрузки | done, merged (initial_fill 0.65 → 0.07, жителей ~11.2k; ожидания ≥ 60 с 33.8 % → 0 %, отмен 0, res_stuck 0; s10k-res-overload: очереди ограничены — зелёный; восстановление ночью — Skip, известный провал: пул 11 999/12 000 в 05:00) |
