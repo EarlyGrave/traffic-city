@@ -43,6 +43,7 @@ public static class UiActions
     // инструменты (UI4): R/X включают «Дороги» и «Снос», остальное работает внутри инструмента «Дороги»
     public static readonly StringName ToolRoads = "tool_roads";
     public static readonly StringName ToolBulldoze = "tool_bulldoze";
+    public static readonly StringName ToolZones = "tool_zones";
     public static readonly StringName RoadsPrevProfile = "roads_profile_prev";
     public static readonly StringName RoadsNextProfile = "roads_profile_next";
     public static readonly StringName RoadsReplace = "roads_replace";
@@ -66,7 +67,7 @@ public static class UiActions
         CamForward, CamBack, CamLeft, CamRight, CamRotateLeft, CamRotateRight, CamFast,
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
         TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
-        GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
+        GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, ToolZones, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
         QuickSave, QuickLoad, Settings, Cancel,
     };
 
@@ -102,6 +103,7 @@ public static class UiActions
 
         Add(ToolRoads, Phys(Key.R));
         Add(ToolBulldoze, Phys(Key.X));
+        Add(ToolZones, Phys(Key.Z));
         Add(RoadsPrevProfile, Phys(Key.Bracketleft));
         Add(RoadsNextProfile, Phys(Key.Bracketright));
         Add(RoadsReplace, Phys(Key.U));

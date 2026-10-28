@@ -383,6 +383,22 @@ public partial class SimHost : Node3D
                     _ => TrafficCity.Tools.NodesMode.Control,
                 };
             }
+            else if (a == "--zones-tool" && i + 1 < args.Length)
+            {
+                _zonesToolArg = args[++i];
+            }
+            else if (a == "--zones-rect" && i + 1 < args.Length)
+            {
+                string[] zr = args[++i].Split(',');
+                if (zr.Length == 4)
+                {
+                    _zonesRectArg = new float[4];
+                    for (int zi = 0; zi < 4; zi++)
+                    {
+                        float.TryParse(zr[zi], NumberStyles.Float, inv, out _zonesRectArg[zi]);
+                    }
+                }
+            }
             else if (a == "--node-preset" && i + 1 < args.Length)
             {
                 _presetArg = args[++i] switch
@@ -1113,6 +1129,7 @@ public partial class SimHost : Node3D
         _types = desc.VehicleTypes;
         _dayTicks = desc.Demand.Model == DemandModel.Residents ? desc.Town.Calendar.DayTicks : 0;
         _hasCity = desc.Demand.Model == DemandModel.Residents;
+        _zonesMaxPaintM2 = desc.Town.Zoning.MaxPaintM2;
         if (_loadPath.Length > 0)
         {
             _dayTicks = sim.CityDayTicks; // мир из сейва сам знает, есть ли в нём город; сценарий мог быть подобран по имени файла

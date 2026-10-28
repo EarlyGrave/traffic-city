@@ -316,6 +316,10 @@ public sealed partial class UiRoot : CanvasLayer
         {
             ToggleTool("bulldoze");
         }
+        else if (UiActions.Pressed(@event, UiActions.ToolZones) && (_host?.HasCity ?? false))
+        {
+            ToggleTool("zones");
+        }
         else if (@event.IsActionPressed(UiActions.InfoToggle))
         {
             _router.ToggleInfo();
