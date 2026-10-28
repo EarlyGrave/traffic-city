@@ -542,3 +542,6 @@
 - **Клиент больше не читает `ScenarioDesc` для каталога и сетки:** `NetworkView.RoadProfiles/ProfileElems/ModuleMm/GridOriginX/Z` (плоские blittable-записи, строятся один раз в `RoadProfileStore`), `LotRenderData` 28 Б с клетками. Блок города (`City.BlockSize`) во вью нет - остаётся из сценария. Хэш, сейв и golden не менялись.
 - **Проверка загрузки без дескриптора:** `--via-save` в клиенте (Save в память -> `Simulation.Load` -> дальше только вью/снапшоты); кадр побайтно совпал с прямым запуском.
 - **Godot на Windows из PowerShell:** `Godot_..._console.exe` из WinGet падает (CreateProcess 193) - запускать основной `Godot_v4.7.2-stable_mono_win64.exe`, лог - `--log-file`; `Start-Process -ArgumentList` не кавычит элементы с пробелами (путь `Early Grave`) - кавычить вручную.
+- **Ожидание через `pgrep -f <шаблон>` в `timeout bash -c '…'` ловит само себя** (шаблон есть в командной строке цикла) — ждёт до таймаута. Ждать только по PID: `while kill -0 <pid>`.
+- **Длинный `git commit` (pre-commit 15–20 мин) — отдельным процессом** (`setsid nohup git commit … &`) и ждать по PID: таймаут вызова инструмента убивает коммит на середине.
+- **CI-бенч — A/B с базой на том же раннере (ADR-0031)**, `perf/baseline-ci.json` больше не используется; облачный `bench-gate` против `perf/baseline.json` — без изменений.
