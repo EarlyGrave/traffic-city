@@ -68,6 +68,24 @@ internal sealed class PhaseTimer
         _last = Stopwatch.GetTimestamp();
     }
 
+    /// <summary>Длительности фаз одного тика окна, мс (для самого долгого тика: куда ушёл пик). Фазы пешеходов - только если они есть.</summary>
+    public double[]? TickBreakdown(int tick, bool peds)
+    {
+        if ((uint)tick >= (uint)Math.Min(_tick, _capacity))
+        {
+            return null;
+        }
+
+        int count = peds ? TotalCount : PhaseCount;
+        var r = new double[count];
+        for (int p = 0; p < count; p++)
+        {
+            r[p] = _ms[p][tick];
+        }
+
+        return r;
+    }
+
     public PhaseStat[] Summarize()
     {
         int n = Math.Min(_tick, _capacity);

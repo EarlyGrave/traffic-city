@@ -53,6 +53,9 @@ public struct SimWork
     /// <summary>Событий колеса таймеров пешеходов и жителей, обработанных фазой 4p (ped_events_per_tick = разность / тики).</summary>
     public long PedEvents;
 
+    /// <summary>Переходов в stuck у машин meso-уровня (Q-meso и кинематический meso); micro = <c>Counters.StuckEventsTotal</c> минус это (bench JSON, <c>lod.stuck_events_*</c>).</summary>
+    public long StuckEventsMeso;
+
     // ---- инструменты игрока (4.3, player-tools.md §13): вне хэша, как остальные счётчики работы ----
 
     /// <summary>Перестроек узла (<c>NodeEdit.Rebuild</c>).</summary>

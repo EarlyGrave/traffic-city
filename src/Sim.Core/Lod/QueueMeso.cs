@@ -35,6 +35,9 @@ internal sealed class QueueMeso
     /// <summary>Выбор полосы при въезде (sim-lod.md §13.5 п. 3): в желаемой полосе должно оставаться столько свободной длины, м.</summary>
     public const float EntryChoiceReserveM = 25f;
 
+    /// <summary>Стоящая машина дальше этого расстояния до стоп-линии не держит допуск (<see cref="RevokeStale"/>); в micro допущенные стоят не дальше 30 м.</summary>
+    public const float StaleGrantM = 30f;
+
     private readonly World _w;
     private readonly VehicleStore _v;
     private readonly NetworkStore _net;
@@ -286,6 +289,7 @@ internal sealed class QueueMeso
     {
         int now = Now;
         int beat = now & 3;
+        RevokeStale(beat);
         ulong[] heads = HeadMask[beat];
         for (int wi = 0; wi < heads.Length; wi++)
         {
@@ -324,6 +328,53 @@ internal sealed class QueueMeso
                 m &= m - 1UL;
                 Events++;
                 Event(i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Снятие «протухшего» допуска (S3, sim-lod.md §13.9): допущенная машина, которая стоит (<c>v &lt; CreepSpeed</c>) дальше <see cref="StaleGrantM"/> от стоп-линии,
+    /// теряет допуск вместе со всеми допущенными за ней (допущенные - префикс списка полосы). Допуск выдан у въезда на полосу на скорости <c>v_ff</c>
+    /// (дистанция решения 125 м ~ вся полоса), а затем машина встала за автобусом на остановке у обочины или за стоящим лидером и держит допуск десятки секунд:
+    /// поперечный поток получает <c>Box</c> от машины, которая в узел не въедет. В micro такой машины нет (допущенные стоят не дальше 30 м от линии, замер N3).
+    /// Полосы такта своего цвета, обход по маске полос с кинематическими членами; сброс допуска как у <c>RevokeOnRed</c>.
+    /// </summary>
+    private void RevokeStale(int beat)
+    {
+        VehicleStore v = _v;
+        ulong[] kin = KinMask;
+        for (int wi = 0; wi < kin.Length; wi++)
+        {
+            ulong m = kin[wi];
+            while (m != 0UL)
+            {
+                int lane = (wi << 6) + BitOperations.TrailingZeroCount(m);
+                m &= m - 1UL;
+                if (_laneColor[lane] != beat || _net.LaneGateNode[lane] < 0 || _net.Lanes[lane].Kind != LaneKind.Normal)
+                {
+                    continue;
+                }
+
+                float len = _net.LaneLength[lane];
+                bool revoking = false;
+                for (int x = _occ.LaneHead[lane]; x != -1 && GateRules.IsGranted(v, x);)
+                {
+                    int next = GateRules.BehindOn(v, x, lane);
+                    if (v.Lane[x] == lane)   // ghost: её допуск ведёт основная полоса
+                    {
+                        revoking |= v.Speed[x] < GateRules.CreepSpeed && len - v.S[x] > StaleGrantM;
+                        if (revoking)
+                        {
+                            v.GateState[x] = 0;
+                            v.GrantConnector[x] = -1;
+                            _w.Counters.GrantsRevoked++;
+                            _occ.MarkLinked(x);
+                            OnRevoked(x);
+                        }
+                    }
+
+                    x = next;
+                }
             }
         }
     }
@@ -1060,6 +1111,7 @@ internal sealed class QueueMeso
         VehicleStore v = _v;
         int now = Now;
         int thr = w.Rules.StuckThresholdTicks;
+        float stuckSpeed = w.Rules.StuckSpeedThreshold;
         int lanes = _net.LaneCount;
         int lo = int.MaxValue;
         int hi = -1;
@@ -1071,6 +1123,7 @@ internal sealed class QueueMeso
             }
 
             int last = LaneLastExit[lane];
+            bool movingAhead = false;   // впереди на полосе едет кинематическая машина (автобус, допущенная голова): очередь за ней продвигается, как в micro
             for (int x = _occ.LaneHead[lane]; x != -1;)
             {
                 if (v.Lane[x] != lane)
@@ -1079,10 +1132,18 @@ internal sealed class QueueMeso
                     continue;
                 }
 
-                if (IsQ(x))
+                if (!IsQ(x))
+                {
+                    movingAhead |= v.Speed[x] >= stuckSpeed || (v.Flags[x] & (byte)VehicleFlags.AtStop) != 0;   // автобус на остановке: в micro его объезжают через карман, в LOD кармана нет
+                }
+                else
                 {
                     bool want;
-                    if (IsHead(x))
+                    if (movingAhead)
+                    {
+                        want = false;
+                    }
+                    else if (IsHead(x))
                     {
                         want = now - last >= thr;
                     }
@@ -1119,6 +1180,7 @@ internal sealed class QueueMeso
                     v.Flags[i] |= (byte)VehicleFlags.Stuck;
                     StuckCount++;
                     w.Counters.StuckEventsTotal++;
+                    w.Work.StuckEventsMeso++;
                     w.Emit(SimEventKind.VehicleStuck, 0, h.Index, h.Generation);
                 }
                 else
