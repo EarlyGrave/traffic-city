@@ -56,6 +56,25 @@ public static class NodeFlags
     public const uint Quiesce = 1;
 }
 
+/// <summary>Биты <see cref="NetworkView.ArmFlags"/> (значения совпадают с внутренними битами сети; тест сверяет).</summary>
+public static class ArmFlagBits
+{
+    /// <summary>Рукав второстепенный (вычисляется).</summary>
+    public const byte Minor = 1;
+
+    /// <summary>Переопределение игрока: главный.</summary>
+    public const byte ForceMajor = 2;
+
+    /// <summary>Переопределение игрока: второстепенный (уступи).</summary>
+    public const byte ForceMinor = 4;
+
+    /// <summary>Переопределение игрока: стоп (вместе с <see cref="ForceMinor"/>).</summary>
+    public const byte Stop = 8;
+
+    /// <summary>Знак игрока в кодах <c>SetArmControl</c>: 0 авто, 1 главный, 2 уступи, 3 стоп.</summary>
+    public static int SignOf(byte flags) => (flags & Stop) != 0 ? 3 : (flags & ForceMinor) != 0 ? 2 : (flags & ForceMajor) != 0 ? 1 : 0;
+}
+
 /// <summary>Биты <see cref="SegmentData.Flags"/>.</summary>
 public static class SegmentFlags
 {
