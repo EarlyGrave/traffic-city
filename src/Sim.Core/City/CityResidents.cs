@@ -30,6 +30,16 @@ internal static class ResidentEvent
     public const byte EndActivity = 3;// конец занятия (смена, визит) -> выезд домой
     public const byte Deadline = 4;   // дедлайн состояния (WaitDepart, поиск, выселение)
     public const byte Arrive = 5;     // прибытие агрегатной ноги
+    public const byte AccessWalkDone = 6;   // конец пешего участка от двери к машине / от машины к двери (parking.md §6, K2)
+}
+
+/// <summary>Стадия машинной ноги в режиме парковки (<c>LegStage</c>, parking.md §6). Числа лежат в сейве.</summary>
+internal static class LegStages
+{
+    public const byte None = 0;
+    public const byte WalkToCar = 1;     // житель InLeg, идёт от двери к месту машины; таймер AccessWalkDone
+    public const byte Drive = 2;         // машина на дороге (CarFac = -1)
+    public const byte WalkFromCar = 3;   // машина поставлена, житель идёт к двери; таймер AccessWalkDone
 }
 
 /// <summary>Вид тура в плане дня (<c>PlanKind</c>).</summary>

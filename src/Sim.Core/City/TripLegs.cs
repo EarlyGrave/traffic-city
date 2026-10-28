@@ -17,6 +17,8 @@ internal static class TripLegs
     {
         Submitted,      // заявка принята: ждём агента, дедлайн в колесе
         Backlog,        // очередь спавна/заявок полна: повтор на следующем тике
+        NoSpot,         // парковка: у цели нет места, заявка не подана; повтор через retry_s (parking.md §5)
+        Instant,        // парковка: цель позади на том же сегменте, машина переставлена без выезда, нога уже в стадии ходьбы или в кольце прибытий
         Infeasible,     // ни один способ недоступен
     }
 
@@ -44,7 +46,7 @@ internal static class TripLegs
         long now = w.Tick;
         int stopA = -1;
         int stopB = -1;
-        if (!Resolve(w, c, lo, ld, ref mode, out stopA, out stopB))
+        if (!Resolve(w, c, r, lo, ld, ref mode, out stopA, out stopB))
         {
             return false;
         }
@@ -68,6 +70,14 @@ internal static class TripLegs
         res.AgentGen[r] = 0;
         res.State[r] = (byte)ResidentState.WaitDepart;
         res.StateTick[r] = now;
+        bool parked = c.Parking != null;
+        if (parked)
+        {
+            res.LegStage[r] = LegStages.None;
+            res.LegWaitFrom[r] = now;
+            res.LegParkWait[r] = 0;
+        }
+
         switch (mode)
         {
             case TravelMode.Car:
@@ -81,16 +91,62 @@ internal static class TripLegs
                 break;
         }
 
-        ArmRequest(w, c, r, outbound, Submit(w, c, r) == Begin.Submitted);
+        if (parked && mode == TravelMode.Car && res.CarWalkMm[r] > 0)
+        {
+            // Пешком от двери к машине (parking.md §6): таймер колеса, заявка подаётся по его окончании.
+            int ticks = Parking.ParkingOps.WalkTicks(c.Parking!, res.CarWalkMm[r]);
+            res.State[r] = (byte)ResidentState.InLeg;
+            res.LegStage[r] = LegStages.WalkToCar;
+            res.LegWalk[r] += ticks;
+            w.Counters.ParkWalkTicks += ticks;
+            CityPhase.SetEvent(w, c, r, now + ticks, ResidentEvent.AccessWalkDone);
+            return true;
+        }
+
+        ArmRequest(w, c, r, outbound, Submit(w, c, r));
         return true;
     }
 
+    /// <summary>Фаза 2r: конец пешего участка у машины. <c>WalkToCar</c> - житель ждёт выезда (<c>LegWaitFrom = Tick</c>), заявка подаётся; <c>WalkFromCar</c> - нога закончена, житель в кольцо прибытий.</summary>
+    internal static void OnAccessWalkDone(World w, CityWorld c, int r)
+    {
+        CityResidents res = c.Residents;
+        if (!res.IsAlive(r) || res.State[r] != (byte)ResidentState.InLeg)
+        {
+            return;
+        }
+
+        long now = w.Tick;
+        byte stage = res.LegStage[r];
+        res.LegStage[r] = LegStages.None;
+        if (stage == LegStages.WalkFromCar)
+        {
+            c.Arrivals.Push(r);
+        }
+        else if (stage == LegStages.WalkToCar)
+        {
+            res.State[r] = (byte)ResidentState.WaitDepart;
+            res.StateTick[r] = now;
+            res.LegWaitFrom[r] = now;
+            ArmRequest(w, c, r, res.LegDest[r] != res.Home[r], Submit(w, c, r));
+        }
+    }
+
+    /// <summary>
+    /// Машина доступна для ноги в режиме парковки: у жителя есть машина, она стоит на объекте (не в пути) и рядом со зданием, где житель (<c>CarWalkMm &gt;= 0</c>; -1 - эвакуация, §7). Нет - нога пойдёт другим способом.
+    /// </summary>
+    private static bool CarUsable(CityWorld c, int r)
+    {
+        CityResidents res = c.Residents;
+        return (res.Flags[r] & ResidentFlags.HasCar) != 0 && res.CarFac[r] >= 0 && res.CarWalkMm[r] >= 0;
+    }
+
     /// <summary>Способ ноги между участками: машина (полосы есть), автобус (пара остановок), пешком (пешеходы города, одна пешеходная компонента). false - ничего не доступно.</summary>
-    private static bool Resolve(World w, CityWorld c, int lo, int ld, ref TravelMode mode, out int stopA, out int stopB)
+    private static bool Resolve(World w, CityWorld c, int r, int lo, int ld, ref TravelMode mode, out int stopA, out int stopB)
     {
         stopA = -1;
         stopB = -1;
-        if (mode == TravelMode.Car && (c.Lots.CarLane[lo] < 0 || c.Lots.CarLane[ld] < 0 || c.Lots.RoadComp[lo] != c.Lots.RoadComp[ld]))
+        if (mode == TravelMode.Car && (c.Lots.CarLane[lo] < 0 || c.Lots.CarLane[ld] < 0 || c.Lots.RoadComp[lo] != c.Lots.RoadComp[ld] || (c.Parking != null && !CarUsable(c, r))))
         {
             mode = TravelMode.Walk;
         }
@@ -125,6 +181,11 @@ internal static class TripLegs
                 return Begin.Backlog;
             }
 
+            if (c.Parking != null)
+            {
+                return SubmitParked(w, c, r, dest, lo, ld);
+            }
+
             int type = CarType(w);
             ref readonly VehicleTypeDesc t = ref w.Types[type];
             float destS = MathF.Min(c.Lots.CarS[ld], MathF.Max(0f, w.Net.Lanes[c.Lots.CarLane[ld]].Length - t.MinGap));
@@ -148,32 +209,136 @@ internal static class TripLegs
             : Begin.Backlog;
     }
 
-    /// <summary>Событие жителя после подачи заявки: дедлайн <c>LegReq + wait_max</c> либо повтор через тик (очередь полна).</summary>
-    private static void ArmRequest(World w, CityWorld c, int r, bool outbound, bool submitted)
+    /// <summary>
+    /// Машинная заявка в режиме парковки (parking.md §5-§6): резерв места у цели до заявки (нет места - заявка не подаётся, <see cref="Begin.NoSpot"/>), поездка из места машины жителя (<c>AccessLane/AccessS</c>
+    /// по правилу горизонта ворот) к точке въезда резерва (дом: к месту дома либо к въезду участка). Резерв гостя записан в заявку (<c>ParkRef/ParkGen</c>) и переходит к машине при постановке.
+    /// </summary>
+    private static Begin SubmitParked(World w, CityWorld c, int r, int dest, int lo, int ld)
     {
         CityResidents res = c.Residents;
-        if (submitted)
+        Parking.ParkingStore p = c.Parking!;
+        if (!Parking.ParkingOps.TryReserve(w, r, dest, out int fac))
         {
-            CityPhase.SetEvent(w, c, r, res.LegReq[r] + c.Cfg.Residents.WaitMaxTicks, ResidentEvent.Deadline);
+            if (res.LegParkWait[r] == 0)
+            {
+                res.LegParkWait[r] = -1;   // «ждёт место»: отметка первого отказа на ногу; при успехе заменится на реальное ожидание
+                w.Counters.ParkNoSpotWaits++;
+            }
+
+            return Begin.NoSpot;
         }
-        else
+
+        bool guest = dest != res.Home[r];
+        if (!Parking.ParkingOps.TryAccess(w, fac, ld, out int destLane, out float destS))
         {
-            CityPhase.SetEvent(w, c, r, w.Tick + 1, outbound ? ResidentEvent.Depart : ResidentEvent.EndActivity);
+            if (guest)
+            {
+                Parking.ParkingOps.Release(w, fac);
+            }
+
+            return Begin.NoSpot;
+        }
+
+        if (!Parking.ParkingOps.TryOrigin(w, r, out int fromLane, out float fromS))
+        {
+            fromLane = c.Lots.CarLane[lo];
+            fromS = 0f;
+        }
+
+        if (Rules.RuleEnv.DirSegOf(w.Net, fromLane) == Rules.RuleEnv.DirSegOf(w.Net, destLane) && fromS > destS)
+        {
+            // Цель позади на том же направленном сегменте: маршрута «назад» нет (поиск возвращает NoPath), а ехать нужно несколько метров. Машина перемещается на место без выезда на дорогу (§6).
+            res.LegParkWait[r] = (int)Math.Min(int.MaxValue, w.Tick - res.LegWaitFrom[r]);
+            Parking.ParkingOps.Hop(w, r, guest ? fac : -1);
+            long now = w.Tick;
+            w.Counters.ResWaitDepartTicks += now - res.StateTick[r];
+            res.State[r] = (byte)ResidentState.InLeg;
+            res.StateTick[r] = now;
+            res.Agent[r] = -1;
+            res.AgentGen[r] = 0;
+            CityPhase.SetEvent(w, c, r, -1, ResidentEvent.None);
+            int walkMm = Math.Max(0, res.CarWalkMm[r]);
+            if (walkMm > 0)
+            {
+                int ticks = Parking.ParkingOps.WalkTicks(p, walkMm);
+                res.LegStage[r] = LegStages.WalkFromCar;
+                res.LegWalk[r] += ticks;
+                w.Counters.ParkWalkTicks += ticks;
+                CityPhase.SetEvent(w, c, r, now + ticks, ResidentEvent.AccessWalkDone);
+            }
+            else
+            {
+                c.Arrivals.Push(r);
+            }
+
+            return Begin.Instant;
+        }
+
+        var trip = new PendingTrip
+        {
+            FromZone = -1,
+            ToZone = -1,
+            FromLane = fromLane,
+            FromS = fromS,
+            Type = (byte)CarType(w),
+            DestLane = destLane,
+            DestS = destS,
+            Route = -1,
+            ResidentRef = r + 1,
+            ParkRef = guest ? fac + 1 : 0,
+            ParkGen = guest ? p.Pool.GenerationOf(fac) : 0,
+        };
+        if (!w.Trips.TryEnqueue(in trip))
+        {
+            if (guest)
+            {
+                Parking.ParkingOps.Release(w, fac);
+            }
+
+            return Begin.Backlog;
+        }
+
+        res.LegParkWait[r] = (int)Math.Min(int.MaxValue, w.Tick - res.LegWaitFrom[r]);
+        return Begin.Submitted;
+    }
+
+    /// <summary>Начало ожидания выезда для дедлайна <c>wait_max</c>: в режиме парковки - после пешего участка к машине (<c>LegWaitFrom</c>), иначе заявка ноги.</summary>
+    private static long WaitBase(CityWorld c, int r) => c.Parking != null ? c.Residents.LegWaitFrom[r] : c.Residents.LegReq[r];
+
+    /// <summary>Событие жителя после попытки подачи: дедлайн <c>wait_max</c> (заявка принята), повтор через <c>retry_s</c> (нет мест) либо через тик (очередь полна).</summary>
+    private static void ArmRequest(World w, CityWorld c, int r, bool outbound, Begin begin)
+    {
+        long deadline = WaitBase(c, r) + c.Cfg.Residents.WaitMaxTicks;
+        byte retry = outbound ? ResidentEvent.Depart : ResidentEvent.EndActivity;
+        switch (begin)
+        {
+            case Begin.Submitted:
+                CityPhase.SetEvent(w, c, r, deadline, ResidentEvent.Deadline);
+                break;
+            case Begin.Instant:
+                break;
+            case Begin.NoSpot:
+                long when = Math.Min(w.Tick + c.Parking!.Cfg.RetryTicks, deadline);   // повтор не позже дедлайна: он сам переключит способ
+                CityPhase.SetEvent(w, c, r, Math.Max(when, w.Tick + 1), retry);
+                break;
+            default:
+                CityPhase.SetEvent(w, c, r, w.Tick + 1, retry);
+                break;
         }
     }
 
-    /// <summary>Повтор заявки жителя в <c>WaitDepart</c> (очередь была полна) либо дедлайн, если ждёт дольше <c>wait_max</c>.</summary>
+    /// <summary>Повтор заявки жителя в <c>WaitDepart</c> (очередь была полна, нет мест) либо дедлайн, если ждёт дольше <c>wait_max</c>.</summary>
     internal static void RetryRequest(World w, CityWorld c, int r)
     {
         CityResidents res = c.Residents;
-        if (w.Tick >= res.LegReq[r] + c.Cfg.Residents.WaitMaxTicks)
+        if (w.Tick >= WaitBase(c, r) + c.Cfg.Residents.WaitMaxTicks)
         {
             OnWaitTimeout(w, c, r);
             return;
         }
 
         bool outbound = res.LegDest[r] != res.Home[r];
-        ArmRequest(w, c, r, outbound, Submit(w, c, r) == Begin.Submitted);
+        ArmRequest(w, c, r, outbound, Submit(w, c, r));
     }
 
     private static int CarType(World w)
@@ -194,10 +359,10 @@ internal static class TripLegs
     /// <summary>
     /// Ожидание агента дольше <c>wait_max_s</c> (или заявка потеряна: нет пути): другой доступный способ, иначе тур отменяется и житель остаётся дома; обратная нога ждёт дальше (<c>res_stuck++</c>).
     /// </summary>
-    internal static void OnWaitTimeout(World w, CityWorld c, int r)
+    internal static void OnWaitTimeout(World w, CityWorld c, int r, bool dropped = false)
     {
         CityResidents res = c.Residents;
-        CancelRequest(w, r);
+        bool queued = CancelRequest(w, r);
         w.Counters.ResWaitDepartTicks += w.Tick - res.StateTick[r];
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         bool outbound = res.LegDest[r] != res.Home[r];
@@ -206,14 +371,26 @@ internal static class TripLegs
         int dest = res.LegDest[r];
         int lo = c.Buildings.Lot[origin];
         int ld = c.Buildings.Lot[dest];
-        if (Alternative(w, c, mode, lo, ld, out TravelMode alt) && StartLeg(w, c, r, outbound, alt))
+        bool parkWait = c.Parking != null && mode == TravelMode.Car && !queued && !dropped;   // ждал место: заявка в очередь так и не попала
+        bool keepCar = c.Parking != null && mode == TravelMode.Car && !outbound;               // домой машина едет всегда: иначе она осталась бы стоять у цели
+        if (!keepCar && Alternative(w, c, mode, lo, ld, out TravelMode alt) && StartLeg(w, c, r, outbound, alt))
         {
+            if (parkWait)
+            {
+                w.Counters.ParkModeSwitch++;
+            }
+
             return;
         }
 
         if (outbound)
         {
             w.Counters.ResToursCancelled++;
+            if (parkWait)
+            {
+                w.Counters.ParkToursDropped++;
+            }
+
             FinishTour(w, c, r);
             return;
         }
@@ -248,7 +425,7 @@ internal static class TripLegs
     }
 
     /// <summary>Снимает необработанную заявку: машина - поездка из <see cref="PendingTrips"/> (маршрут освобождается); заявка пешехода устаревает сама (<see cref="IsLiveRequest"/>).</summary>
-    private static void CancelRequest(World w, int r)
+    private static bool CancelRequest(World w, int r)
     {
         PendingTrips trips = w.Trips;
         for (int k = 0; k < trips.Count; k++)
@@ -261,10 +438,13 @@ internal static class TripLegs
                     w.Routes.Free(new RouteHandle(t.Route, t.RouteGen));
                 }
 
+                Parking.ParkingOps.ReleaseRef(w, t.ParkRef, t.ParkGen);   // резерв места снимается вместе с заявкой (§5)
                 trips.RemoveAt(k);
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
     /// <summary>Тур закончен или отменён, житель дома: следующий тур плана либо план следующих суток.</summary>
@@ -321,7 +501,19 @@ internal static class TripLegs
         w.Vehicles.Resident[vehicle] = r;
         if (!res.IsAlive(r) || res.State[r] != (byte)ResidentState.WaitDepart || res.LegMode[r] != (byte)TravelMode.Car)
         {
+            if (c.Parking != null)
+            {
+                Parking.ParkingOps.ReleaseRef(w, w.Vehicles.ParkFac[vehicle] + 1, w.Vehicles.ParkFacGen[vehicle]);   // резерв не должен остаться на машине без жителя
+                w.Vehicles.ParkFac[vehicle] = -1;
+                w.Vehicles.ParkFacGen[vehicle] = 0;
+            }
+
             return;   // страховка: заявку сняли (дедлайн) раньше постановки; машина доедет и закроет ногу без жителя
+        }
+
+        if (c.Parking != null)
+        {
+            Parking.ParkingOps.OnDeparture(w, r);   // место освобождается в момент выезда (§6)
         }
 
         EnterLeg(w, c, r, vehicle, w.Vehicles.Pool.GenerationOf(vehicle));
@@ -344,26 +536,56 @@ internal static class TripLegs
     }
 
     /// <summary>Поездка жителя удалена из очереди без постановки (нет пути, некорректная полоса): как дедлайн, но сразу.</summary>
-    internal static void OnTripDropped(World w, int r)
+    internal static void OnTripDropped(World w, int r, in PendingTrip trip)
     {
         CityWorld c = w.City!;
         CityResidents res = c.Residents;
+        if (c.Parking != null)
+        {
+            Parking.ParkingOps.ReleaseRef(w, trip.ParkRef, trip.ParkGen);   // заявка уже убрана из очереди вызывающим: резерв снимаем здесь
+        }
+
         if (res.IsAlive(r) && res.State[r] == (byte)ResidentState.WaitDepart && res.LegMode[r] == (byte)TravelMode.Car)
         {
-            OnWaitTimeout(w, c, r);   // поездка уже убрана из очереди вызывающим: CancelRequest ничего не найдёт и безопасен
+            OnWaitTimeout(w, c, r, true);   // поездка уже убрана из очереди вызывающим: CancelRequest ничего не найдёт и безопасен
         }
     }
 
     // ------------------------------------------------------------------ прибытие
 
-    /// <summary>Фаза 8: машина жителя прибыла (до деспауна) - житель в кольцо прибытий.</summary>
+    /// <summary>
+    /// Фаза 8 и <c>QueueMeso.Arrive</c>: машина жителя прибыла (до деспауна). В режиме парковки здесь постановка (<see cref="Parking.ParkingOps.OnArrival"/>): <c>Park</c>, затем либо пеший участок
+    /// <c>WalkFromCar</c> (таймер), либо сразу кольцо прибытий.
+    /// </summary>
     internal static void OnVehicleArrived(World w, int vehicle)
     {
         int r = w.Vehicles.Resident[vehicle];
         CityWorld? c = w.City;
         if (c != null && (uint)r < (uint)c.Residents.HighWater && c.Residents.IsAlive(r) && c.Residents.State[r] == (byte)ResidentState.InLeg && c.Residents.Agent[r] == vehicle)
         {
+            if (c.Parking != null)
+            {
+                CityResidents res = c.Residents;
+                int walkMm = Parking.ParkingOps.OnArrival(w, vehicle, r);
+                res.Agent[r] = -1;   // машина сейчас исчезнет: дальше житель идёт пешком либо ждёт кольца
+                res.AgentGen[r] = 0;
+                if (walkMm > 0)
+                {
+                    int ticks = Parking.ParkingOps.WalkTicks(c.Parking, walkMm);
+                    res.LegStage[r] = LegStages.WalkFromCar;
+                    res.LegWalk[r] += ticks;
+                    w.Counters.ParkWalkTicks += ticks;
+                    CityPhase.SetEvent(w, c, r, w.Tick + ticks, ResidentEvent.AccessWalkDone);
+                    return;
+                }
+            }
+
             c.Arrivals.Push(r);
+        }
+        else if (c != null && c.Parking != null)
+        {
+            Parking.ParkingOps.ReleaseRef(w, w.Vehicles.ParkFac[vehicle] + 1, w.Vehicles.ParkFacGen[vehicle]);   // житель потерян: резерв не оставляем
+            w.Vehicles.ParkFac[vehicle] = -1;
         }
     }
 
@@ -463,6 +685,11 @@ internal static class TripLegs
 
         var mode = (TravelMode)res.LegMode[r];
         long total = w.Tick - res.LegReq[r];
+        if (c.Parking != null && mode == TravelMode.Car)
+        {
+            Parking.ParkingOps.RecordSearchTime(w, Math.Max(0, res.LegParkWait[r]));   // ожидание места и поиск этой ноги (§11)
+        }
+
         CompleteLeg(w, c, r, LegCostDs(c, mode, total, res.LegWait[r], res.LegWalk[r], res.LegRide[r]));
     }
 
@@ -523,6 +750,11 @@ internal static class TripLegs
         bool returning = res.LegDest[r] == res.Home[r];
         if (returning)
         {
+            if (c.Parking != null && res.CarWalkMm[r] < 0)
+            {
+                Parking.ParkingOps.OnReturnedHome(c, r);   // машину эвакуировали домой, пока житель был в туре: ходьба от двери до неё снова известна (§7)
+            }
+
             FinishTour(w, c, r);
             return;
         }

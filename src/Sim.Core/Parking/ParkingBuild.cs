@@ -314,8 +314,7 @@ internal static class ParkingBuild
         p.AccessLane[f] = lane;
         if (lane >= 0)
         {
-            float max = MathF.Max(0f, w.Net.LaneLength[lane] - w.Rules.MinPhysicalGap);
-            p.AccessS[f] = Math.Clamp(l.CarS[lot], 0f, max);
+            p.AccessS[f] = GateSafeS(w, lane, l.CarS[lot]);
         }
         else
         {
@@ -327,6 +326,22 @@ internal static class ParkingBuild
         p.RoadComp[f] = l.RoadComp[lot];
         p.PedComp[f] = l.PedComp[lot];
         p.WalkMm[f] = p.Kind[f] == ParkKind.Curb ? Catchment.Manhattan(x - l.X[lot], z - l.Z[lot]) : 0;
+    }
+
+    /// <summary>
+    /// Позиция въезда/выезда на полосе по правилу горизонта ворот (parking.md §6, урок Z2): не ближе <c>far</c> к концу полосы (<c>far</c> - та же оценка, что <c>farDistance</c> в <c>GatePhase.ScanActive</c>:
+    /// <c>max(30 м, MinGap + допуск метки)</c> по типам) и не ближе <c>MinPhysicalGap</c>; на короткой полосе - 0. Машина, поставленная у самого узла, роняла бы сверку активных множеств ворот (ADR-0019).
+    /// </summary>
+    internal static float GateSafeS(World w, int lane, float s)
+    {
+        float far = Sim.Core.Rules.Intersections.GateRules.MinDecisionDistance;
+        for (int k = 0; k < w.Types.Length; k++)
+        {
+            far = MathF.Max(far, w.Types[k].MinGap + Sim.Core.Rules.Intersections.GateRules.StopLineTolerance);
+        }
+
+        far = MathF.Max(far, w.Rules.MinPhysicalGap);
+        return Math.Clamp(s, 0f, MathF.Max(0f, w.Net.LaneLength[lane] - far));
     }
 
     /// <summary><c>HomeAway</c> каждого объекта: закрепивших, чья машина стоит не здесь (производное жителей; инкрементально ведут K2+).</summary>

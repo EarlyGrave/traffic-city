@@ -54,6 +54,9 @@ internal static class CityPhase
                 case ResidentEvent.Arrive:
                     TripLegs.OnAggregateArrived(w, c, r);   // нога агрегата закончена (§9.1)
                     break;
+                case ResidentEvent.AccessWalkDone:
+                    TripLegs.OnAccessWalkDone(w, c, r);   // пеший участок у машины закончен (parking.md §6)
+                    break;
                 default:
                     break;
             }
@@ -298,7 +301,7 @@ internal static class CityPhase
             alive++;
             byte state = res.State[r];
             System.Diagnostics.Debug.Assert(state <= (byte)ResidentState.InLeg, "bad resident state");
-            System.Diagnostics.Debug.Assert((state == (byte)ResidentState.InLeg) == (res.Agent[r] >= 0 || res.EvKind[r] == ResidentEvent.Arrive), "agent only in leg");
+            System.Diagnostics.Debug.Assert((state == (byte)ResidentState.InLeg) == (res.Agent[r] >= 0 || res.EvKind[r] == ResidentEvent.Arrive || res.EvKind[r] == ResidentEvent.AccessWalkDone), "agent only in leg");
             System.Diagnostics.Debug.Assert(c.Wheel.Contains(r) == (res.EvTick[r] >= 0), "wheel entry iff event");
             if (state == (byte)ResidentState.InLeg && res.Agent[r] >= 0)
             {

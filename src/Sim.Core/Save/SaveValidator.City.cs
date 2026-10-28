@@ -175,7 +175,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 6);
             }
 
-            if (r.Flags[i] > 31 || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.Arrive || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
+            if (r.Flags[i] > 31 || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.AccessWalkDone || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
             {
                 return Bad(c, i, 9);
             }
@@ -204,8 +204,15 @@ internal static partial class SaveValidator
 
             if (inLeg && r.Agent[i] < 0)
             {
-                // нога агрегата (§9.1): агента нет, прибытие - событие колеса
-                if (r.EvKind[i] != ResidentEvent.Arrive || r.EvTick[i] < w.Tick)
+                // нога агрегата (§9.1): агента нет, прибытие - событие колеса. Пеший участок у машины (parking.md §6): таймер AccessWalkDone и стадия ходьбы.
+                bool walkStage = r.EvKind[i] == ResidentEvent.AccessWalkDone && r.LegMode[i] == (byte)TravelMode.Car && city.Parking != null &&
+                                 (r.LegStage[i] == LegStages.WalkToCar || r.LegStage[i] == LegStages.WalkFromCar);
+                if (!walkStage && r.EvKind[i] != ResidentEvent.Arrive)
+                {
+                    return Bad(c, i, 27);
+                }
+
+                if (r.EvTick[i] < w.Tick)
                 {
                     return Bad(c, i, 27);
                 }

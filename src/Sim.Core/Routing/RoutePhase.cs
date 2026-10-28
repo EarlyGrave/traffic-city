@@ -433,7 +433,7 @@ internal static class RoutePhase
                 w.Counters.TripsDropped++;
                 if (t.ResidentRef != 0)
                 {
-                    City.TripLegs.OnTripDropped(w, t.ResidentRef - 1);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
+                    City.TripLegs.OnTripDropped(w, t.ResidentRef - 1, in t);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
                 }
 
                 continue;
