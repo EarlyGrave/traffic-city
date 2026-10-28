@@ -251,4 +251,4 @@
 | 179 | n2-reads (облако, worktree) | sonnet | ночь N2: ArmFlags, план светофора в NetworkView, Abandoned в LotRenderData | wip |
 | L65 | palette-cleanup (локал, worktree) | haiku | дубль цветов зон + IDE1006 в Palette | done, merged (~95k токенов, 25 вызовов, ~38 мин из-за 2 прогонов pre-commit; первый упал на флейке BackToBackExclusiveAccess) |
 | L66 | host-flakes (локал, worktree) | opus | флейки Sim.Host.Tests | в работе (1 раз завис по watchdog, продолжен) |
-| 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | wip |
+| 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | done, merged (тексты ZoneBuildingsAbandoned/ZoneNothingToPaint в game/Scripts/Tools/RejectMessages.cs; тесты 1257+503+52 зелёные) |
