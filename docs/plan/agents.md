@@ -218,3 +218,4 @@
 | L40 | rp8-profiles (локал, worktree) | sonnet | RP8: *-res на профили, корпус w10, замеры | done, merged (участков 1 781 → 4 555 на s1k-res, D=2 ≈ 34 %; ожидания ≥ 60 с s10k-res 9.57 % → 9.34 %, бюджет 0.15 %; 4 res-теста закреплены на legacy) |
 | L42 | rp8-map-test (локал, worktree) | sonnet | BuildRoad-тест парковки на профильном res-сценарии, дорога внутри карты | done, merged |
 | L43 | stage4-verify (локал, worktree) | haiku | Верификация волны этапа 4 | done (всё зелёное; s10k-peds ожидания 0.485 %; *-res без рампы; stuck сводки ≠ JSON) |
+| L44 | ci-release-gate (локал, worktree) | sonnet | CI: PR dev → main и push в main — гейт по бюджету 1 мс вместо A/B (ADR-0031, уточнение) | done, merged |
