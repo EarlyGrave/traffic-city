@@ -82,6 +82,11 @@ public partial class SimHost
                 return _nodesTool;
             }
 
+            if (id == "zones")
+            {
+                return _zonesTool;
+            }
+
             return null;
         };
         _ui.UndoRequested += DoUndo;
@@ -93,6 +98,7 @@ public partial class SimHost
         }
 
         InitNodesTool();
+        InitZonesTool();
         GD.Print(string.Create(
             CultureInfo.InvariantCulture,
             $"[tool] roads tool ready: catalog {(catalog.FromProfiles ? "profiles" : "legacy")} x{catalog.Count}, net_version {_frame.NetworkVersion}"));
@@ -120,7 +126,7 @@ public partial class SimHost
             _ui.SetUndoRedo(_shownUndo, _shownRedo, _shownUndo > 0 ? RejectMessages.ActionLabel(nu) : string.Empty, _shownRedo > 0 ? RejectMessages.ActionLabel(nr) : string.Empty);
         }
 
-        if (ProcessNodesTool() || !ReferenceEquals(_ui.Router.Tool, _roadTool))
+        if (ProcessNodesTool() || ProcessZonesTool() || !ReferenceEquals(_ui.Router.Tool, _roadTool))
         {
             _roadsView.Hide();
             _toolMouse = new Vector2(-1f, -1f);
@@ -188,9 +194,9 @@ public partial class SimHost
             }
         }
 
-        if (HandleNodesInput(e) || !ReferenceEquals(_ui.Router.Tool, _roadTool))
+        if (HandleNodesInput(e) || HandleZonesInput(e) || !ReferenceEquals(_ui.Router.Tool, _roadTool))
         {
-            return ReferenceEquals(_ui.Router.Tool, _nodesTool) && e is InputEventMouseButton { ButtonIndex: MouseButton.Left };
+            return (ReferenceEquals(_ui.Router.Tool, _nodesTool) || ReferenceEquals(_ui.Router.Tool, _zonesTool)) && e is InputEventMouseButton { ButtonIndex: MouseButton.Left };
         }
 
         if (e is InputEventKey { Pressed: true, Echo: false })

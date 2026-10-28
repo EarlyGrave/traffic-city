@@ -110,6 +110,10 @@ public static class Palette
     public static readonly Color ZoneResidential = Lin("#F2C04A");
     public static readonly Color ZoneCommercial = Lin("#4A8CF2");
     public static readonly Color ZoneIndustrial = Lin("#9A63D6");
+    /// <summary>Те же цвета зон в sRGB для интерфейса (образцы в строке опций инструмента «Зоны»).</summary>
+    public static readonly Color ZoneResidentialSrgb = Srgb("#F2C04A");
+    public static readonly Color ZoneCommercialSrgb = Srgb("#4A8CF2");
+    public static readonly Color ZoneIndustrialSrgb = Srgb("#9A63D6");
     public static readonly Color ZonePark = Lin("#52BD5A");
     public static readonly Color ZoneWater = Lin("#3F9BE6");
 
