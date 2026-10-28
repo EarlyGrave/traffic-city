@@ -198,3 +198,5 @@
 > прежняя). PaintZone: undo (обратные записи; группу применять в обратном порядке; заброшенные здания не возвращаются), превью в `PreviewResult`
 > (`ZoneLots`, `ZoneLotsChanged`, `ZoneCells`, `ZoneAbandon`, `ZoneUnavailableCells`), подсветка `Simulation.PreviewPaintMarks`. Без `city_budget` —
 > всё бесплатно и как раньше. Подробности — `player-tools.md` §8.5–8.6, `city-economy.md` §18.3, `ui-spec.md` «Ядро: UI-C1». Клиент собирается.
+
+> **2026-10-29: флейки Sim.Host закрыты (L66, opus).** `BackToBackExclusiveAccess` — баг хоста: `AcquireExclusive` сбрасывал `_resume` и мог стереть сигнал предыдущего `ReleaseExclusive` → поток симуляции спал по таймауту ~15 мс на каждый доступ; теперь `_resume` сбрасывает только поток симуляции, ожидание без таймаута. `UndoRightAfterDo` — баг теста (ack undo, разобранный тем же `Pump`, терялся). Под нагрузкой: было ~20% падений, стало 0 из 110. Палитра (L65) влита. Облако влило N1 (тесты `PaintZoneToolsTests`, `BudgetToolTests`).
