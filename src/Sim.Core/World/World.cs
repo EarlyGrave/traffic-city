@@ -176,6 +176,7 @@ internal sealed class World : IDisposable
         Behaviour = new BehaviourJob(threads);
         Integrate = new IntegrateJob(threads);
         Gate.EnsureWorkers(threads);
+        Router?.EnsureWorkers(threads);   // scratch воркеров запросов маршрутов (Router в загрузчике создаётся позже - берёт число из Pool)
     }
 
     public void Dispose()
