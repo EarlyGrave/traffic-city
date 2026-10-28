@@ -54,6 +54,9 @@ public static class UiActions
     public static readonly StringName QuickSave = "quick_save";
     public static readonly StringName QuickLoad = "quick_load";
 
+    /// <summary>F10: настройки.</summary>
+    public static readonly StringName Settings = "open_settings";
+
     /// <summary>Esc: отмена протяжки -> выход из инструмента -> закрыть инспектор -> выйти из инфо -> меню (ui-spec.md §2).</summary>
     public static readonly StringName Cancel = "game_cancel";
 
@@ -64,7 +67,7 @@ public static class UiActions
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
         TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
         GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
-        QuickSave, QuickLoad, Cancel,
+        QuickSave, QuickLoad, Settings, Cancel,
     };
 
     /// <summary>Добавить действия, которых ещё нет в <see cref="InputMap"/> (повторный вызов ничего не меняет; ремап из файла настроек не затирается).</summary>
@@ -108,6 +111,7 @@ public static class UiActions
 
         Add(QuickSave, Code(Key.F5));
         Add(QuickLoad, Code(Key.F9));
+        Add(Settings, Code(Key.F10));
 
         Add(Cancel, Code(Key.Escape));
     }

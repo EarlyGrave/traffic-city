@@ -19,6 +19,7 @@ public sealed class UiMenus
         Main,
         Pause,
         Load,
+        Settings,
         Busy,
     }
 
@@ -36,6 +37,7 @@ public sealed class UiMenus
     private Label? _pauseStatus;
     private Page _page;
     private Page _loadReturn;
+    private Page _settingsReturn;
     private double _flashLeft;
 
     public UiMenus(Control root, Control modal)
@@ -83,6 +85,9 @@ public sealed class UiMenus
 
     public event Action? ResumeRequested;
 
+    /// <summary>Настройки изменены на странице: UiRoot применяет масштаб, тему, палитру и пресет.</summary>
+    public event Action? SettingsChanged;
+
     /// <summary>Свежий список сейвов (читает каталог при каждом показе страницы).</summary>
     public Func<List<SaveInfo>>? ListSaves { get; set; }
 
@@ -99,6 +104,9 @@ public sealed class UiMenus
                 break;
             case Page.Load:
                 ShowLoad();
+                break;
+            case Page.Settings:
+                ShowSettings();
                 break;
             default:
                 break;
@@ -125,6 +133,7 @@ public sealed class UiMenus
         }
 
         _content.AddChild(Btn("Загрузить", () => ShowLoad(), saves.Count == 0));
+        _content.AddChild(Btn("Настройки", () => ShowSettings()));
         _content.AddChild(Btn("Выход", () => QuitRequested?.Invoke()));
         if (GameFlow.Notice.Length > 0)
         {
@@ -146,6 +155,7 @@ public sealed class UiMenus
         _content.AddChild(Btn("Продолжить", () => ResumeRequested?.Invoke()));
         _content.AddChild(Btn("Сохранить", () => SaveRequested?.Invoke()));
         _content.AddChild(Btn("Загрузить", () => ShowLoad())); // список может пополниться сохранением из этого же меню - кнопка всегда живая
+        _content.AddChild(Btn("Настройки", () => ShowSettings()));
         _content.AddChild(Btn("Главное меню", () => MainMenuRequested?.Invoke()));
         _content.AddChild(Btn("Выход", () => QuitRequested?.Invoke()));
         _pauseStatus = Secondary("Игра на паузе, пока открыто меню", HorizontalAlignment.Left);
@@ -186,6 +196,35 @@ public sealed class UiMenus
         _content.AddChild(Btn("Назад  Esc", Back));
     }
 
+    /// <summary>Настройки (F10, кнопка в верхней полосе, меню); назад - на ту страницу, откуда открыты.</summary>
+    public void ShowSettings()
+    {
+        if (_page is Page.Main or Page.Pause)
+        {
+            _settingsReturn = _page;
+        }
+
+        _page = Page.Settings;
+        Clear();
+        var page = new UiSettingsPage(UiSettings.Current);
+        page.Changed += () => SettingsChanged?.Invoke();
+        page.Build(_content, BackFromSettings);
+    }
+
+    public bool SettingsOpen => _page == Page.Settings;
+
+    private void BackFromSettings()
+    {
+        if (_settingsReturn is Page.Main)
+        {
+            ShowMain();
+        }
+        else
+        {
+            ShowPause();
+        }
+    }
+
     /// <summary>Заглушка на время пересоздания сцены (генерация и загрузка занимают секунды, кадры не идут).</summary>
     public void ShowBusy(string text)
     {
@@ -201,6 +240,9 @@ public sealed class UiMenus
         {
             case Page.Load:
                 Back();
+                return true;
+            case Page.Settings:
+                BackFromSettings();
                 return true;
             case Page.Main:
             case Page.Busy:

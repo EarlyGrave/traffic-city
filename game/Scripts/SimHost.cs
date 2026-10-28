@@ -68,7 +68,7 @@ public partial class SimHost : Node3D
     private VehicleTypeDesc[] _types = Array.Empty<VehicleTypeDesc>();
     private VehicleLayer? _vehicles;
     private LodConfig _lod = LodConfig.Load(string.Empty, "high");
-    private string _renderPreset = "high";
+    private string _renderPreset = TrafficCity.Ui.UiSettings.Current.RenderPreset;
     private string _contentDir = string.Empty;
     private bool _logStepAlloc;
     private RoadChunks? _roads;
@@ -810,6 +810,19 @@ public partial class SimHost : Node3D
         }
     }
 
+    /// <summary>Пресет рендера (F4, настройки): только render-часть; LOD-пороги и лимиты слоёв читаются при старте.</summary>
+    public void SetRenderPreset(string preset)
+    {
+        if (!IsReady || _lod.Preset == preset)
+        {
+            return;
+        }
+
+        _lod = LodConfig.Load(_contentDir, preset);
+        RenderPreset.Apply(GetParent(), _lod);
+        GD.Print(RenderPreset.Describe(_lod) + " (LOD/лимиты слоёв - после перезапуска)");
+    }
+
     /// <summary>Задать скорость (снимает паузу): кнопки ×1/×2/×4 и клавиши 1/2/3 вне инфо-режима.</summary>
     public void SetSpeed(float scale)
     {
@@ -912,9 +925,9 @@ public partial class SimHost : Node3D
             {
                 // Только render-часть пресета (тени, scaling_3d, MSAA, SSAO); LOD-пороги и лимиты слоёв читаются при старте -
                 // для них перезапуск с --render-preset.
-                _lod = LodConfig.Load(_contentDir, _lod.Preset == "low" ? "high" : "low");
-                RenderPreset.Apply(GetParent(), _lod);
-                GD.Print(RenderPreset.Describe(_lod) + " (F4: LOD/лимиты слоёв - после перезапуска)");
+                SetRenderPreset(_lod.Preset == "low" ? "high" : "low");
+                TrafficCity.Ui.UiSettings.Current.RenderPreset = _lod.Preset;
+                TrafficCity.Ui.UiSettings.Current.Save();
             }
             else if (@event.IsActionPressed(UiActions.PerfHud))
             {
