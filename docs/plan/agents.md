@@ -219,3 +219,4 @@
 | L42 | rp8-map-test (локал, worktree) | sonnet | BuildRoad-тест парковки на профильном res-сценарии, дорога внутри карты | done, merged |
 | L43 | stage4-verify (локал, worktree) | haiku | Верификация волны этапа 4 | done (всё зелёное; s10k-peds ожидания 0.485 %; *-res без рампы; stuck сводки ≠ JSON) |
 | L44 | ci-release-gate (локал, worktree) | sonnet | CI: PR dev → main и push в main — гейт по бюджету 1 мс вместо A/B (ADR-0031, уточнение) | done, merged |
+| 169 | p3-par-spec (облако, worktree) | opus | 5.2: спека параллельных запросов фазы 3 (ADR-0032) | wip |
