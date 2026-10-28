@@ -247,3 +247,5 @@
 | L62 | ui12-settings (локал, worktree) | sonnet | UI12 настройки | done, merged (~33 вызова; масштаб, палитра для дальтоников, непрозрачность, F4, user://settings.cfg; клики и сохранение из игры не проверены; новый флейк UndoRightAfterDo_WaitsForResult) |
 | L63 | ui9-zones (локал, worktree) | sonnet | UI9 зоны кистью | done, merged (219k токенов, 68 вызовов, 30 мин; прямоугольная кисть, автослой «Зоны», оценка участков, лимит площади, 4 теста; мышью не проверено; undo не работает — нет обратной команды PaintZone в ядре) |
 | L64 | ui7-legend (локал, worktree) | sonnet | UI7 легенда инфо-слоёв | done, merged (171k токенов, 78 вызовов, 36 мин; легенда трафик/пешеходы/зоны по палитре UI12, адаптивная шкала пешеходов p95, клик в слое → инспектор сегмента; клик не проверен; нет плашки «Заброшено» — нет флага в LotRenderData) |
+| 178 | n1-e4 (облако, worktree) | sonnet | ночь N1: E4 цены инструментов + undo/превью PaintZone | wip |
+| 179 | n2-reads (облако, worktree) | sonnet | ночь N2: ArmFlags, план светофора в NetworkView, Abandoned в LotRenderData | wip |
