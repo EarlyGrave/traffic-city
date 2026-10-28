@@ -113,6 +113,11 @@ public static class Palette
     public static readonly Color ZonePark = Lin("#52BD5A");
     public static readonly Color ZoneWater = Lin("#3F9BE6");
 
+    /// <summary>Те же цвета слоя «Зоны» в sRGB - для плашек легенды UI (UI7); держать в паре с <c>Zone*</c> выше.</summary>
+    public static readonly Color ZoneResidentialUi = Srgb("#F2C04A");
+    public static readonly Color ZoneCommercialUi = Srgb("#4A8CF2");
+    public static readonly Color ZoneIndustrialUi = Srgb("#9A63D6");
+
     // элементы профиля дороги (RP6, road-profiles.md §7); асфальт и тротуар - выше. Вершинные цвета, линейные.
     public static readonly Color Lawn = Lin("#C9D4B2");
     public static readonly Color Curb = Lin("#BDB9B0");
