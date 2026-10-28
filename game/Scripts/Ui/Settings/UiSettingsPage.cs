@@ -10,7 +10,7 @@ namespace TrafficCity.Ui;
 /// </summary>
 public sealed class UiSettingsPage
 {
-    private static readonly string[] ModeNames = { "Обычная", "Дейтеранопия / протанопия", "Тританопия" };
+    private static readonly string[] _modeNames = { "Обычная", "Дейтеранопия / протанопия", "Тританопия" };
 
     private readonly UiSettings _s;
 
@@ -32,10 +32,10 @@ public sealed class UiSettingsPage
         modes.AddThemeConstantOverride("separation", 4);
         var swatches = new HBoxContainer();
         swatches.AddThemeConstantOverride("separation", 4);
-        for (int i = 0; i < ModeNames.Length; i++)
+        for (int i = 0; i < _modeNames.Length; i++)
         {
             var mode = (ColorblindMode)i;
-            Button b = Toggle(ModeNames[i], group, _s.Colorblind == mode);
+            Button b = Toggle(_modeNames[i], group, _s.Colorblind == mode);
             b.Pressed += () =>
             {
                 _s.Colorblind = mode;

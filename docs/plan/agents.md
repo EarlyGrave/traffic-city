@@ -249,3 +249,6 @@
 | L64 | ui7-legend (локал, worktree) | sonnet | UI7 легенда инфо-слоёв | done, merged (171k токенов, 78 вызовов, 36 мин; легенда трафик/пешеходы/зоны по палитре UI12, адаптивная шкала пешеходов p95, клик в слое → инспектор сегмента; клик не проверен; нет плашки «Заброшено» — нет флага в LotRenderData) |
 | 178 | n1-e4 (облако, worktree) | sonnet | ночь N1: E4 цены инструментов + undo/превью PaintZone | wip |
 | 179 | n2-reads (облако, worktree) | sonnet | ночь N2: ArmFlags, план светофора в NetworkView, Abandoned в LotRenderData | wip |
+| L65 | palette-cleanup (локал, worktree) | haiku | дубль цветов зон + IDE1006 в Palette | done, merged (~95k токенов, 25 вызовов, ~38 мин из-за 2 прогонов pre-commit; первый упал на флейке BackToBackExclusiveAccess) |
+| L66 | host-flakes (локал, worktree) | opus | флейки Sim.Host.Tests | в работе (1 раз завис по watchdog, продолжен) |
+| 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | wip |

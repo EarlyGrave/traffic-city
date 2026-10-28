@@ -198,3 +198,10 @@
 > прежняя). PaintZone: undo (обратные записи; группу применять в обратном порядке; заброшенные здания не возвращаются), превью в `PreviewResult`
 > (`ZoneLots`, `ZoneLotsChanged`, `ZoneCells`, `ZoneAbandon`, `ZoneUnavailableCells`), подсветка `Simulation.PreviewPaintMarks`. Без `city_budget` —
 > всё бесплатно и как раньше. Подробности — `player-tools.md` §8.5–8.6, `city-economy.md` §18.3, `ui-spec.md` «Ядро: UI-C1». Клиент собирается.
+
+> **2026-10-28: N2 влит (облако, агент 179).** Для клиента (UI10/UI7): `NetworkView.NodeArms` + `ArmFlags` (биты `ArmFlagBits`: Minor, ForceMajor,
+> ForceMinor, Stop), `NetworkView.ArmSign(node, arm)` в кодах `SetArmControl`; `Simulation.TryGetSignalPlan(node, out SetSignalPlanCmd)` — режим,
+> фазы, зелёные, жёлтый, all-red, сдвиг, цикл, адаптивные параметры (`NodeGen` = 0 — брать из `NodeData.Generation`); `LotRenderFlags.Abandoned = 8`.
+> Всё валидно после Load без desc, 0 аллокаций. `core-api.md` раздел «N2».
+> **Красный тест в `dev` после N1:** `Sim.Host.Tests` `ToolAdapterTests.RejectMessages_CoverAllCodes` — у нового кода N1 нет текста в адаптере
+> `Sim.Host`. Облако чинит (агент 180, текст сообщения в адаптере) — локалу на заметку, если трогает `Sim.Host`.
