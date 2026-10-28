@@ -59,6 +59,11 @@ internal static class MetricsPhase
                 {
                     v.Flags[i] |= (byte)VehicleFlags.Stuck;
                     c.StuckEventsTotal++;
+                    if (v.Lod.Length != 0 && (v.Lod[i] & Lod.LodBits.Meso) != 0)
+                    {
+                        w.Work.StuckEventsMeso++;
+                    }
+
                     w.Emit(SimEventKind.VehicleStuck, 0, h.Index, h.Generation);
                 }
                 else

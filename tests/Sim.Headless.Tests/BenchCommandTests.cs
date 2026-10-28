@@ -394,10 +394,17 @@ public sealed class BenchCommandTests : IDisposable
             Assert.True(perf.TryGetProperty(k, out _), k);
         }
 
-        foreach (string k in new[] { "p50", "p95", "p99", "max" })
+        foreach (string k in new[] { "p50", "p95", "p99", "max", "p999", "spike_ticks_over_2p5x_p50", "max_tick_index" })
         {
             Assert.True(perf.GetProperty("tick_ms").TryGetProperty(k, out _), k);
         }
+
+        foreach (string k in new[] { "load_avg_1m_start", "load_avg_1m_end", "host_foreign_cores", "host_stolen_cores" })
+        {
+            Assert.True(root.GetProperty("environment").TryGetProperty(k, out _), k);   // null вне Linux
+        }
+
+        Assert.False(root.TryGetProperty("lod", out _), "lod section without lod");
 
         JsonElement traffic = root.GetProperty("traffic");
         foreach (string k in new[] { "avg_speed_kmh", "avg_trip_time_s", "trips_completed_per_min", "stuck_vehicles", "gridlock_flag", "bus_headway_deviation_s", "top10_intersections" })
@@ -407,6 +414,37 @@ public sealed class BenchCommandTests : IDisposable
 
         Assert.Equal(200, root.GetProperty("ticks").GetInt32());
         Assert.True(perf.GetProperty("tick_ms").GetProperty("p95").GetDouble() >= perf.GetProperty("tick_ms").GetProperty("p50").GetDouble());
+    }
+
+    /// <summary>S3 (scale.md §5): с <c>lod.mode != off</c> bench JSON несёт секцию <c>lod</c> - машины, машино-тики и stuck-события по уровням; в разбивке <c>--phases</c> есть самый долгий тик.</summary>
+    [Fact]
+    public void Bench_WithLod_WritesLodSection_AndMaxTickBreakdown()
+    {
+        string src = Path.Combine(FindScenariosDir(), "demo-grid.json");
+        string dir = Path.Combine(_dir, "lodsc");
+        Directory.CreateDirectory(dir);
+        System.Text.Json.Nodes.JsonObject root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(src))!.AsObject();
+        root["lod"] = System.Text.Json.Nodes.JsonNode.Parse("{\"mode\":\"all_meso\",\"meso_model\":\"queue\",\"cell_m\":1000,\"micro_budget\":15000}");
+        File.WriteAllText(Path.Combine(dir, "demo-grid.json"), root.ToJsonString());
+        File.Copy(Path.Combine(FindScenariosDir(), "vehicle-types.json"), Path.Combine(dir, "vehicle-types.json"));
+        string outFile = Path.Combine(_dir, "demo-lod.json");
+        var e = new StringWriter();
+        int code = BenchCommand.Run(new[] { "bench", "--scenario", "demo-grid", "--ticks", "200", "--warmup-ticks", "20", "--phases", "--out", outFile, "--scenarios-dir", dir }, new StringWriter(), e);
+        Assert.True(code == 0, e.ToString());
+        using JsonDocument d = JsonDocument.Parse(File.ReadAllText(outFile));
+        JsonElement lod = d.RootElement.GetProperty("lod");
+        Assert.Equal("all_meso", lod.GetProperty("mode").GetString());
+        Assert.Equal("queue", lod.GetProperty("meso_model").GetString());
+        foreach (string k in new[] { "micro_vehicles", "meso_vehicles", "vehicle_ticks_micro", "vehicle_ticks_meso", "avg_speed_micro_kmh", "avg_speed_meso_kmh", "stuck_events_micro", "stuck_events_meso", "lod_cell_flips", "lod_budget_skips", "meso_clamps" })
+        {
+            Assert.True(lod.TryGetProperty(k, out _), k);
+        }
+
+        Assert.Equal(0, lod.GetProperty("vehicle_ticks_micro").GetInt64());
+        Assert.Equal(0, lod.GetProperty("micro_vehicles").GetInt32());
+        JsonElement tick = d.RootElement.GetProperty("perf").GetProperty("tick_ms");
+        Assert.Equal(10, tick.GetProperty("max_tick_phase_ms").EnumerateObject().Count());
+        Assert.InRange(tick.GetProperty("max_tick_index").GetInt32(), 0, 199);
     }
 
     [Fact]
