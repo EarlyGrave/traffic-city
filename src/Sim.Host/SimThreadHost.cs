@@ -16,7 +16,7 @@ namespace Sim.Host;
 /// </para>
 /// <para>Главный поток - единственный писатель в кольца/вид/цель; вызывать публичные методы с двух потоков одновременно нельзя.</para>
 /// </summary>
-public sealed class SimThreadHost : IDisposable
+public sealed partial class SimThreadHost : IDisposable
 {
     private const int RoundTo = 1024;
 
@@ -321,6 +321,7 @@ public sealed class SimThreadHost : IDisposable
                     StepCollecting(n);
                     long micros = (Stopwatch.GetTimestamp() - t0) * 1_000_000L / Stopwatch.Frequency;
                     Volatile.Write(ref _tick, _sim.Tick);
+                    HarvestTools();
                     PublishFrame(micros, n);
                     continue;
                 }
@@ -442,6 +443,9 @@ public sealed class SimThreadHost : IDisposable
                 _commandsRejected++;
             }
         }
+
+        DrainTools(tick);
+        ServePreview();
 
         while (_requests.TryRead(out HostRequest req))
         {
