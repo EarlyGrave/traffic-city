@@ -205,3 +205,5 @@
 > Всё валидно после Load без desc, 0 аллокаций. `core-api.md` раздел «N2».
 > **Красный тест в `dev` после N1:** `Sim.Host.Tests` `ToolAdapterTests.RejectMessages_CoverAllCodes` — у нового кода N1 нет текста в адаптере
 > `Sim.Host`. Облако чинит (агент 180, текст сообщения в адаптере) — локалу на заметку, если трогает `Sim.Host`.
+> **2026-10-28: `dev` снова зелёный (агент 180).** Тексты игроку для `ZoneBuildingsAbandoned` и `ZoneNothingToPaint`. **Локалу:** правка в
+> `game/Scripts/Tools/RejectMessages.cs` (2 строки, ваш захват `game/**` — таблицу линкует `Sim.Host.Tests`), при мерже оставить.
