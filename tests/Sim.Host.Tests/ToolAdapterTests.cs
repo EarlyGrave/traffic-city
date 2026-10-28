@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Sim.Core.Api;
 using Sim.Scenarios;
@@ -26,18 +27,19 @@ public class ToolAdapterTests
     private static ToolResult Complete(SimThreadHost host, ToolCommandService svc, uint id)
     {
         Assert.NotEqual(0u, id);
-        ToolResult? got = null;
-        void On(ToolResult t)
-        {
-            if (t.Ack.ActionId == id)
-            {
-                got = t;
-            }
-        }
 
-        svc.ActionCompleted += On;
+        // один Pump может разобрать подтверждения нескольких действий (do и сразу undo под нагрузкой): копим все по сервису,
+        // иначе подтверждение второго действия уходило в обработчик первого и терялось
+        Dictionary<uint, ToolResult> acks = _results.GetValue(svc, s =>
+        {
+            var d = new Dictionary<uint, ToolResult>();
+            s.ActionCompleted += t => d[t.Ack.ActionId] = t;
+            return d;
+        });
+
         var sw = Stopwatch.StartNew();
-        while (got == null)
+        ToolResult got;
+        while (!acks.Remove(id, out got))
         {
             host.SetTargetTick(Math.Max(host.TargetTick, host.Tick + 2));
             svc.Pump();
@@ -45,9 +47,10 @@ public class ToolAdapterTests
             Thread.Sleep(1);
         }
 
-        svc.ActionCompleted -= On;
-        return got.Value;
+        return got;
     }
+
+    private static readonly ConditionalWeakTable<ToolCommandService, Dictionary<uint, ToolResult>> _results = new();
 
     private static void WaitPreview(ToolCommandService svc)
     {
