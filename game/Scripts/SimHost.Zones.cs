@@ -211,6 +211,8 @@ public partial class SimHost
             _zonesTool.DemoDrag(_zonesRectArg[0], _zonesRectArg[1], _zonesRectArg[2], _zonesRectArg[3]);
         }
 
-        GD.Print(string.Create(CultureInfo.InvariantCulture, $"[ui9] zones tool {_zonesToolArg}"));
+        GD.Print(string.Create(
+            CultureInfo.InvariantCulture,
+            $"[ui9] zones tool {_zonesToolArg}: rect {_zonesTool.X0:0},{_zonesTool.Z0:0}..{_zonesTool.X1:0},{_zonesTool.Z1:0} paint={_zonesTool.Paint} abandon={_zonesTool.Abandon} lost={_zonesTool.Lost} same={_zonesTool.Same} marks={_zonesTool.MarkCount}"));
     }
 }
