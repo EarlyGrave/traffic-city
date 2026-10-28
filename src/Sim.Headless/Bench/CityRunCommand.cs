@@ -6,6 +6,7 @@ using System.IO;
 using System.Text.Json;
 using Sim.Core.Api;
 using Sim.Headless.Scenarios;
+using Sim.Host;
 using Sim.Scenarios;
 
 namespace Sim.Headless.Bench;
@@ -171,7 +172,7 @@ public static class CityRunCommand
 
         string dir = Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? ".";
         Directory.CreateDirectory(dir);
-        File.WriteAllBytes(Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(outPath)}-day{day}.tcsave"), SaveFile.Pack(buf));
+        File.WriteAllBytes(Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(outPath)}-day{day}.tcsave"), SaveEnvelope.Pack(buf));
     }
 
     /// <summary>Точка ряда: срез города на конец суток.</summary>

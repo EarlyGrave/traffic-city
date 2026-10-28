@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../Sim.Core/Sim.Core.csproj" />
     <ProjectReference Include="../Sim.Scenarios/Sim.Scenarios.csproj" />
+    <ProjectReference Include="../Sim.Host/Sim.Host.csproj" />
   </ItemGroup>
 
 </Project>

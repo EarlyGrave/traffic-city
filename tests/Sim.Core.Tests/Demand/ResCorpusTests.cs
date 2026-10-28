@@ -4,6 +4,7 @@ using Sim.Core.Api;
 using Sim.Core.City;
 using Sim.Core.Tests.Save;
 using Sim.Headless;
+using Sim.Host;
 using Xunit.Abstractions;
 
 namespace Sim.Core.Tests.Demand;
@@ -31,7 +32,7 @@ public sealed class ResCorpusTests
     {
         string path = CorpusFile();
         Assert.True(File.Exists(path), $"нет файла корпуса {path}: TC_REGEN_CORPUS=1 dotnet test --filter FullyQualifiedName~SaveCorpusTests");
-        byte[] raw = SaveFile.ReadContainer(path);
+        byte[] raw = SaveEnvelope.ReadContainer(path);
         using Simulation sim = WorldSaveFixtures.Load(raw);
         CityWorld city = sim.World.City!;
         Assert.Equal(CorpusTicks, sim.Tick);

@@ -7,7 +7,7 @@ using System.IO.Hashing;
 namespace Sim.Host;
 
 /// <summary>
-/// (Копия Sim.Headless.SaveFile для клиента на net8: Headless - net10 и Sim.Host не видит; формат один.) Конверт файла <c>.tcsave</c> (save-format.md §7): заголовок + deflate над сырым контейнером ядра. Ядро сжатия не делает (System.IO запрещён,
+/// Конверт файла <c>.tcsave</c> (save-format.md §7): заголовок + deflate над сырым контейнером ядра. Ядро сжатия не делает (System.IO запрещён,
 /// а канонический - именно сырой контейнер: сжатые байты C# и Rust не совпадут).
 /// <code>
 ///  0 magic "TCSZ\r\n\x1a\n" (8) | 8 u16 envelope_version = 1, u16 codec (0 нет, 1 deflate, 2 zstd - резерв), u32 reserved = 0

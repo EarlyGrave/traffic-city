@@ -8,6 +8,7 @@ using Sim.Core.Api;
 using Sim.Core.Save;
 using Sim.Core.Tests.Gen;
 using Sim.Headless;
+using Sim.Host;
 using Sim.Scenarios;
 
 namespace Sim.Core.Tests.Save;
@@ -89,7 +90,7 @@ public sealed class SaveCorpusTests
     private static void CheckFile(string path)
     {
         string name = Path.GetFileName(path);
-        byte[] raw = SaveFile.ReadContainer(path);
+        byte[] raw = SaveEnvelope.ReadContainer(path);
         using JsonDocument meta = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(path, ".json")));
         JsonElement j = meta.RootElement;
         int fileVersion = j.GetProperty("world_version").GetInt32();
@@ -189,7 +190,7 @@ public sealed class SaveCorpusTests
         Assert.Equal(afterContinue, loaded.ComputeStateHash());
 
         string stem = Path.Combine(dir, c.FileStem(Simulation.CurrentWorldVersion));
-        File.WriteAllBytes(stem + ".tcsave", SaveFile.Pack(raw));
+        File.WriteAllBytes(stem + ".tcsave", SaveEnvelope.Pack(raw));
         string json =
             "{\n" +
             $"  \"world_version\": {Simulation.CurrentWorldVersion},\n" +
@@ -301,7 +302,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 2, "корпус w1 (w1-small-t600, w1-s1k-t2400) должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(1, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -323,7 +324,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 3, "корпус w2 (w2-small-t600, w2-s1k-t2400, w2-s1k-peds-t2400) должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(2, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -346,7 +347,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 4, "корпус w3 (w3-small-t600, w3-s1k-t2400, w3-s1k-peds-t2400, w3-s1k-res-t24000) должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(3, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -369,7 +370,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 7, "корпус w6 должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(6, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -393,7 +394,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 7, "корпус w7 должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(7, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -436,7 +437,7 @@ public sealed class SaveCorpusTests
         CityEconomyDesc def = CityDesc.Default().Economy;
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(8, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };
@@ -480,7 +481,7 @@ public sealed class SaveCorpusTests
         Assert.True(old.Length >= 10, "корпус w9 должен остаться в репозитории");
         foreach (string path in old)
         {
-            byte[] raw = SaveFile.ReadContainer(path);
+            byte[] raw = SaveEnvelope.ReadContainer(path);
             Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
             Assert.Equal(9, head.WorldVersion);
             var opt = new LoadOptions { StrictHash = 0 };

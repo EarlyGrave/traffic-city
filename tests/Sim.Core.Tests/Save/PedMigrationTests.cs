@@ -5,6 +5,7 @@ using Sim.Core.Api;
 using Sim.Core.Save;
 using Sim.Core.Tests.Gen;
 using Sim.Headless;
+using Sim.Host;
 
 namespace Sim.Core.Tests.Save;
 
@@ -13,7 +14,7 @@ public sealed class PedMigrationTests
 {
     private static SaveTables ReadCorpus(string name)
     {
-        byte[] raw = SaveFile.ReadContainer(Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus", name));
+        byte[] raw = SaveEnvelope.ReadContainer(Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus", name));
         Assert.Equal(LoadStatus.Ok, SaveReader.Read(raw, SaveSchema.KnownBlockIds(), out SaveTables? t, out _));
         return t!;
     }
@@ -74,7 +75,7 @@ public sealed class PedMigrationTests
     public void MigratedS1k_LoadsAsWorldWithoutPeds_AndContinuesWithSameHash()
     {
         string stem = Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus", "w1-s1k-t2400");
-        byte[] raw = SaveFile.ReadContainer(stem + ".tcsave");
+        byte[] raw = SaveEnvelope.ReadContainer(stem + ".tcsave");
         string json = File.ReadAllText(stem + ".json");
         ulong expected = ulong.Parse(System.Text.RegularExpressions.Regex.Match(json, "\"hash_after_continue\": \"([0-9a-f]+)\"").Groups[1].Value, System.Globalization.NumberStyles.HexNumber);
         var o = new LoadOptions { StrictHash = 0 };
