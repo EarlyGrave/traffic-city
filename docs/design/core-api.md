@@ -198,7 +198,7 @@ public sealed class Simulation : IDisposable
     public float CityCellM { get; }
     public int CityAmPeakStartTickOfDay { get; }                      // начало окна am_peak внутри суток (bench --window am_peak)
     public int GetBuildings(Span<BuildingRenderData> dst);           // 24 Б на слот пула; BuildingsVersion/BuildingSlotCount - перечитывать при смене версии
-    public int GetLots(Span<LotRenderData> dst);                     // 16 Б на участок; LotsVersion/LotCount
+    public int GetLots(Span<LotRenderData> dst);                     // 28 Б на участок (RP10b: + Orient/CellsF/CellsD/CellX/CellZ); LotsVersion/LotCount
     public bool TryGetResidentInfo(int index, int generation, out ResidentInfo info);   // EntityRef - с волной инструментов T1
     public bool TryGetBuildingInfo(int index, int generation, out BuildingInfo info);
     public int GetAccessibility(Span<int> perCell, AccessKind kind); // heatmap; Z1 - нули, поле считает Z3
@@ -1490,3 +1490,11 @@ src/Sim.Core/
    connector'ом, сигнал исправен»).
 4. ~~`StepPhased` для профилирования~~ — решено: зонд `OnPhaseEnd` (§3).
 5. Шум параметров водителей (стрим `Behaviour`) — этап 2; поля под него не резервируем, кроме стрима PRNG.
+
+### RP10b: каталог профилей, сетка и клетки участков в read API
+
+Read-only, без аллокаций, blittable; ядро формат сейва, хэши и golden не меняет (данные уже лежат в `RPRF`, `PARM.WorldGridOriginX/Z`, `LOTS`).
+
+- `NetworkView` получил `RoadProfiles` (`ReadOnlySpan<RoadProfileData>`, 12 Б: `FirstElem`, `WidthMm`, `ElemCount`, `Kind`, `LanesFwd/Bwd`), `ProfileElems` (`ReadOnlySpan<RoadElemData>`, 12 Б: `Kind`, `Dir`, `OffsetMm` от оси слева направо по A→B, `WidthMm`), `ModuleMm` и `GridOriginX/Z`. Верны после `Load` (каталог из `RPRF`, начало из `PARM`): клиенту дескриптор не нужен. Legacy: срезы пусты, `ModuleMm = 0`, начало (0, 0). `Simulation.Network` подставляет начало сетки мира, `NetworkStore.GetView(originX, originZ)`.
+- `LotRenderData` расширен с 16 до 28 Б (вариант «шире структура», а не отдельный `GetLotCells`: один проход `GetLots`, одна версия `LotsVersion`, участок целиком). Поля: `Orient` (бывший `R0`, байт 15; 255 - legacy), `CellsF`, `CellsD`, `CellX`, `CellZ` (int, Pack 4, размер 28 = кратно 4). Хелперы `OnGrid`, `DepthDir`, `TryGetCellBounds` повторяют `LotBuilder.CellBounds` (тест сверяет). Legacy: `Orient = 255`, клетки 0.
+- Rust-пилот: `LotRenderData` и вью в `rust/` не зеркалируются (есть только `RoadProfilesDesc` как desc), синхронизировать нечего; при порте вью - те же раскладки.

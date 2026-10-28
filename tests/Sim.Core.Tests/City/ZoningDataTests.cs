@@ -319,7 +319,7 @@ public sealed class ZoningDataTests
     public void RenderStructs_HaveFrozenSizes()
     {
         Assert.Equal(24, Unsafe.SizeOf<BuildingRenderData>());
-        Assert.Equal(16, Unsafe.SizeOf<LotRenderData>());
+        Assert.Equal(28, Unsafe.SizeOf<LotRenderData>());
         Assert.Equal(64, Unsafe.SizeOf<Command>());
     }
 

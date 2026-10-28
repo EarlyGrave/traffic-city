@@ -229,7 +229,7 @@ internal sealed partial class NetworkStore
     /// <summary>Сеть пешеходов (ADR-0020); null - секции peds нет. Производное: строится в <c>WorldBuilder</c>, пересобирается после <c>BuildRoad</c> и загрузки.</summary>
     internal Sim.Core.Peds.PedNetwork? PedNet { get; set; }
 
-    public NetworkView GetView() => new(
+    public NetworkView GetView(float gridOriginX = 0f, float gridOriginZ = 0f) => new(
         Version,
         new ReadOnlySpan<NodeData>(Nodes, 0, NodeCount),
         new ReadOnlySpan<SegmentData>(Segments, 0, SegmentCount),
@@ -245,7 +245,12 @@ internal sealed partial class NetworkStore
         PedNet != null ? PedNet.PointSpan : default,
         PedNet != null ? PedNet.CornerSpan : default,
         PedNet?.SidewalkWidthM ?? 0f,
-        PedNet?.CrosswalkWidthM ?? 0f);
+        PedNet?.CrosswalkWidthM ?? 0f,
+        Profiles != null ? Profiles.ViewProfiles : default,
+        Profiles != null ? Profiles.ViewElems : default,
+        Profiles?.ModuleMm ?? 0,
+        gridOriginX,
+        gridOriginZ);
 
     /// <summary>Раздел профилей хэша (только режим профилей, ADR-0030): каталог, <c>Segment.Profile</c> и <c>Lane.Width</c> всех слотов.</summary>
     private void AddProfileStateToHash(ref Fnv1a64 h)

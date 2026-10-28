@@ -6,7 +6,7 @@ using Sim.Core.Util;
 namespace TrafficCity;
 
 /// <summary>
-/// Сечения дорог для клиента (RP6, road-profiles.md §7): каталог профилей (<c>RoadProfilesDesc</c> сценария) в метрах, по сечению на пару
+/// Сечения дорог для клиента (RP6, road-profiles.md §7): каталог профилей (<c>NetworkView.RoadProfiles/ProfileElems</c>) в метрах, по сечению на пару
 /// (профиль, <c>Mirrored</c>) - элементы уже в системе A→B сегмента (<c>+x</c> - вправо), <c>forward</c> = A→B. Ядро отдаёт клиенту только
 /// <c>SegmentData.Profile</c> и флаг <c>Mirrored</c>; каталог клиент берёт из дескриптора сценария (<see cref="Set"/>), поэтому дорога
 /// без профиля (legacy, дорога игрока до RP7) или без каталога рисуется прежним путём. Метров в коде нет: всё из каталога.
@@ -156,27 +156,26 @@ public sealed class RoadProfileLayouts
     private readonly Layout[] _fwd;
     private readonly Layout[] _mir;
 
-    private RoadProfileLayouts(in RoadProfilesDesc d)
+    private RoadProfileLayouts(in NetworkView v)
     {
-        int n = d.Profiles.Length;
+        int n = v.RoadProfiles.Length;
         _fwd = new Layout[n];
         _mir = new Layout[n];
         for (int p = 0; p < n; p++)
         {
-            RoadProfileDesc pd = d.Profiles[p];
-            int ne = pd.Elements.Length;
+            RoadProfileData pd = v.RoadProfiles[p];
+            int ne = pd.ElemCount;
             var f = new Elem[ne];
             var m = new Elem[ne];
-            int x = -(pd.WidthMm / 2);
             for (int e = 0; e < ne; e++)
             {
-                RoadElemDesc el = pd.Elements[e];
-                bool bwd = el.Kind == RoadElemKind.Lane && el.Dir == RoadLaneDir.Backward;
-                float x0 = x * 0.001f;
-                float x1 = (x + el.WidthMm) * 0.001f;
-                f[e] = new Elem(el.Kind, bwd, x0, x1);
-                m[ne - 1 - e] = new Elem(el.Kind, el.Kind == RoadElemKind.Lane && !bwd, -x1, -x0);
-                x += el.WidthMm;
+                RoadElemData el = v.ProfileElems[pd.FirstElem + e];
+                var kind = (RoadElemKind)el.Kind;
+                bool bwd = kind == RoadElemKind.Lane && (RoadLaneDir)el.Dir == RoadLaneDir.Backward;
+                float x0 = el.OffsetMm * 0.001f;
+                float x1 = (el.OffsetMm + el.WidthMm) * 0.001f;
+                f[e] = new Elem(kind, bwd, x0, x1);
+                m[ne - 1 - e] = new Elem(kind, kind == RoadElemKind.Lane && !bwd, -x1, -x0);
             }
 
             float edge = pd.WidthMm * 0.0005f;
@@ -185,8 +184,8 @@ public sealed class RoadProfileLayouts
         }
     }
 
-    /// <summary>Задать каталог сценария (<c>desc.RoadProfiles</c>); без каталога - режим legacy.</summary>
-    public static void Set(in RoadProfilesDesc d) => Current = d.Enabled && d.Profiles.Length > 0 ? new RoadProfileLayouts(in d) : null;
+    /// <summary>Задать каталог из <c>NetworkView</c> (RP10b: верен и после Load без дескриптора); без каталога (<c>ModuleMm = 0</c>) - режим legacy.</summary>
+    public static void Set(in NetworkView v) => Current = v.ModuleMm > 0 && v.RoadProfiles.Length > 0 ? new RoadProfileLayouts(in v) : null;
 
     public int Count => _fwd.Length;
 

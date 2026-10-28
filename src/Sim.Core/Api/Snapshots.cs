@@ -112,6 +112,13 @@ public readonly ref struct NetworkView
     public readonly float SidewalkWidthM;
     public readonly float CrosswalkWidthM;
 
+    // Каталог профилей и мировая сетка (RP10b, road-profiles.md §3.1): плоские blittable-срезы, живут вместе с миром и верны после Load (каталог из блока RPRF,
+    // начало сетки из PARM). Режим legacy: RoadProfiles/ProfileElems пусты, ModuleMm = 0, начало (0, 0). Статика: читать после Create/Load и при смене Version.
+    public readonly ReadOnlySpan<RoadProfileData> RoadProfiles;
+    public readonly ReadOnlySpan<RoadElemData> ProfileElems;   // диапазоны из RoadProfileData.FirstElem/ElemCount
+    public readonly int ModuleMm;                              // module_m * 1000; 0 - legacy
+    public readonly float GridOriginX, GridOriginZ;            // начало мировой сетки, м
+
     // ---- живость и handle'ы (4.3, T2; player-tools.md §3 п. 5): Nodes/Segments/... идут до HighWater пула, мёртвые слоты (Generation чётное) клиент пропускает ----
 
     /// <summary>Узел <paramref name="i"/> существует (<c>Generation</c> нечётное). Индекс вне диапазона - false.</summary>
@@ -151,7 +158,12 @@ public readonly ref struct NetworkView
         ReadOnlySpan<Vec2> pedEdgePoints = default,
         ReadOnlySpan<Vec2> pedCorners = default,
         float sidewalkWidthM = 0f,
-        float crosswalkWidthM = 0f)
+        float crosswalkWidthM = 0f,
+        ReadOnlySpan<RoadProfileData> roadProfiles = default,
+        ReadOnlySpan<RoadElemData> profileElems = default,
+        int moduleMm = 0,
+        float gridOriginX = 0f,
+        float gridOriginZ = 0f)
     {
         Version = version;
         Nodes = nodes;
@@ -169,6 +181,11 @@ public readonly ref struct NetworkView
         PedCorners = pedCorners;
         SidewalkWidthM = sidewalkWidthM;
         CrosswalkWidthM = crosswalkWidthM;
+        RoadProfiles = roadProfiles;
+        ProfileElems = profileElems;
+        ModuleMm = moduleMm;
+        GridOriginX = gridOriginX;
+        GridOriginZ = gridOriginZ;
     }
 }
 

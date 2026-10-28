@@ -35,15 +35,15 @@ public readonly struct GridSnap
     public int BlockCells { get; }
 
     /// <summary>
-    /// Сетка по дескриптору сценария: <c>RoadProfiles.ModuleMm</c>, <c>WorldGridOriginX/Z</c>, <c>City.BlockSize</c>. В <c>NetworkView</c>/<c>Simulation</c> этих величин нет
-    /// (lessons.md RP10), поэтому после загрузки сейва без дескриптора нужен отдельный источник.
+    /// Сетка по <c>NetworkView</c> (RP10b): <c>ModuleMm</c> и начало сетки отдаёт ядро, верно и после Load без дескриптора; legacy - модуль 8 м, начало (0, 0).
+    /// Размер блока (<paramref name="blockCells"/>) во вью не входит: это параметр генератора города (<c>City.BlockSize / module</c>), берётся из сценария, если он есть.
     /// </summary>
-    public static GridSnap FromScenario(in ScenarioDesc d)
-    {
-        float module = d.RoadProfiles.ModuleMm > 0 ? d.RoadProfiles.ModuleMm / 1000f : DefaultModuleM;
-        int block = d.City.Enabled && d.City.BlockSize > 0f ? (int)MathF.Round(d.City.BlockSize / module) : DefaultBlockCells;
-        return new GridSnap(module, d.WorldGridOriginX, d.WorldGridOriginZ, block);
-    }
+    public static GridSnap FromView(in NetworkView v, int blockCells = DefaultBlockCells) =>
+        new(v.ModuleMm > 0 ? v.ModuleMm / 1000f : DefaultModuleM, v.GridOriginX, v.GridOriginZ, blockCells);
+
+    /// <summary>Клеток в блоке по размеру блока города в метрах (<c>City.BlockSize</c>); без города - <see cref="DefaultBlockCells"/>.</summary>
+    public static int BlockCellsOf(in ScenarioDesc d, float moduleM) =>
+        d.City.Enabled && d.City.BlockSize > 0f && moduleM > 0f ? (int)MathF.Round(d.City.BlockSize / moduleM) : DefaultBlockCells;
 
     /// <summary>Ближайший узел сетки (половина клетки - в сторону +).</summary>
     public Vector2 Snap(Vector2 p) => new(
@@ -111,9 +111,10 @@ public sealed class WorldGrid
         RenderingServer.GlobalShaderParameterSet("grid_color", new Vector3(Palette.ToWorld(Palette.GridLine).R, Palette.ToWorld(Palette.GridLine).G, Palette.ToWorld(Palette.GridLine).B));
     }
 
-    public void Configure(in ScenarioDesc d)
+    public void Configure(in NetworkView v, in ScenarioDesc d)
     {
-        Grid = GridSnap.FromScenario(in d);
+        float module = v.ModuleMm > 0 ? v.ModuleMm / 1000f : GridSnap.DefaultModuleM;
+        Grid = GridSnap.FromView(in v, GridSnap.BlockCellsOf(in d, module));
         _paramsSent = false;
     }
 
