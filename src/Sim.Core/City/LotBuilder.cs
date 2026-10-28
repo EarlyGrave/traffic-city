@@ -357,7 +357,7 @@ internal sealed partial class LotBuilder
         }
     }
 
-    private static float FrontOffsetM(World w, in SegmentData sd)
+    internal static float FrontOffsetM(World w, in SegmentData sd)
     {
         if (w.Net.Profiles != null && sd.Profile >= 0)
         {

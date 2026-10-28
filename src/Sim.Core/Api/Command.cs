@@ -379,19 +379,62 @@ public struct Command
     }
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
+/// <summary>
+/// Раскладка явная (56 Б): <see cref="Profile"/> лежит на младших двух байтах <see cref="Cz"/> - контрольная точка Безье нужна только при <c>BuildRoadFlags.Curve</c>
+/// (T5, пока <c>NotSupported</c>); когда кривые появятся вместе с профилями, поле придётся переложить (в payload 56 Б свободного места нет).
+/// </summary>
+[StructLayout(LayoutKind.Explicit, Size = 56)]
 public struct BuildRoadCmd
 {
-    public float Ax, Az, Bx, Bz;      // концы оси, м; концы прилипают к узлу в радиусе SnapRadius (5 м)
+    [FieldOffset(0)]
+    public float Ax;                  // концы оси, м; концы прилипают к узлу в радиусе SnapRadius (5 м)
+
+    [FieldOffset(4)]
+    public float Az;
+
+    [FieldOffset(8)]
+    public float Bx;
+
+    [FieldOffset(12)]
+    public float Bz;
+
+    [FieldOffset(16)]
     public float SpeedLimit;          // м/с
-    public byte LanesAB, LanesBA;     // полос A→B и B→A (0 допустимо для одностороннего)
+
+    [FieldOffset(20)]
+    public byte LanesAB;              // полос A→B (0 допустимо для одностороннего)
+
+    [FieldOffset(21)]
+    public byte LanesBA;              // полос B→A
+
+    [FieldOffset(22)]
     public RoadKind Kind;             // Street = 0, Arterial = 1
-    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5; пока NotSupported)
+
+    [FieldOffset(23)]
+    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5; пока NotSupported), бит3 Mirrored (RP7)
 
     // player-tools.md §2 (24 -> 56 Б). Нулевая инициализация = прежнее поведение.
-    public float Cx, Cz;              // контрольная точка квадратичной Безье (Curve), иначе 0
+    [FieldOffset(24)]
+    public float Cx;                  // контрольная точка квадратичной Безье (Curve), иначе 0
+
+    [FieldOffset(28)]
+    public float Cz;
+
+    /// <summary>
+    /// Профиль дороги (ADR-0030, RP7): индекс в каталоге + 1, 0 - без профиля (прежнее поведение). Полосы и тип обязаны совпасть с профилем (с учётом <c>Mirrored</c>), иначе <c>InvalidArgument</c>.
+    /// Делит байты с <see cref="Cz"/> (см. описание типа).
+    /// </summary>
+    [FieldOffset(28)]
+    public ushort Profile;
+
+    [FieldOffset(32)]
     public EntityRef RestoreOf;       // сегмент, который команда восстанавливает (undo); Generation == 0 - не задан
-    public EntityRef RestoreNodeA, RestoreNodeB;   // узлы концов, если их тоже пересоздать; Generation == 0 - не задан
+
+    [FieldOffset(40)]
+    public EntityRef RestoreNodeA;    // узлы концов, если их тоже пересоздать; Generation == 0 - не задан
+
+    [FieldOffset(48)]
+    public EntityRef RestoreNodeB;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

@@ -67,16 +67,17 @@
 public struct EntityRef { public int Index, Generation; }   // 8 B; Generation == 0 — без проверки (только генератор/тесты)
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public struct BuildRoadCmd                 // 24 → 56 B
+public struct BuildRoadCmd                 // 24 → 56 B (RP7: явная раскладка, см. ниже)
 {
     public float Ax, Az, Bx, Bz, SpeedLimit;
-    public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags;   // бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve
+    public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags;   // бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve, бит3 Mirrored (RP7)
     public float Cx, Cz;                   // контрольная точка квадратичной Безье (Curve), иначе 0
+    public ushort Profile;                 // RP7: индекс профиля + 1, 0 — без профиля; лежит на байтах Cz (offset 28), пока кривые не поддержаны
     public EntityRef RestoreOf;            // сегмент, который команда восстанавливает (undo), или {-1,0}
     public EntityRef RestoreNodeA, RestoreNodeB;   // узлы концов, если их тоже пересоздать
 }
 public struct RemoveRoadCmd     { public EntityRef Seg; public int Flags; }                        // бит0 KeepNodes (не удалять осиротевшие узлы)
-public struct UpgradeRoadCmd    { public EntityRef Seg; public float SpeedLimit; public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags; } // 0 / 255 / бит0 KeepKind — «не менять»
+public struct UpgradeRoadCmd    { public EntityRef Seg; public float SpeedLimit; public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags; public ushort Profile, R; } // 0 / 255 / бит0 KeepKind / Profile 0 — «не менять»; бит1 Mirrored (RP7), 16 → 20 B
 public struct SplitRoadCmd      { public EntityRef Seg; public float S; public EntityRef RestoreNode; } // S — по оси от NodeA, м
 public struct MergeAtNodeCmd    { public EntityRef Node; public EntityRef RestoreSeg; }
 public struct SetArmControlCmd  { public EntityRef Node; public byte ArmSlot; public byte Control; public ushort R; } // ArmSlot — номер рукава по часовой (intersections §1)
@@ -191,6 +192,11 @@ public struct PaintZoneCmd      { public float X0, Z0, X1, Z1; public byte ZoneK
 - **Меньше полос**: убираемые (старшие `LaneNo`) — `ShrinkLanes` (дренаж с `Draining`), финал обрезает блок (префикс сохраняется —
   индексы оставшихся не меняются), узлы концов — перестройка.
 - Обе стороны меняются в одной команде; на сегменте с активной операцией — `Busy`.
+- **Как реализовано в RP7 (агент L35; T5 в этой части не делался).** Ядро умеет `UpgradeRoad` в трёх режимах (`ReshapeMode`, `NetworkBuilder.Reshape.cs`): скорость — на месте; те же полосы, другая геометрия
+  (профиль, `Mirrored`) — точки и ширины полос переписываются в том же блоке, узлы концов перестраиваются; **другое число полос или смена типа — блок полос заменяется целиком** (`Swap`):
+  новый блок, `Relocate` уцелевших полос (номер в направлении сохраняется), перестройка узлов концов, старый блок освобождается. Дренажа нет: `Swap` требует пустого сегмента и пустых connector'ов
+  его концов (`ToolOpsPhase.CountOn == 0`), иначе `Busy` — игрок повторяет позже; `ShrinkLanes` с `Draining` остаётся в T5. Ось (`SegmentPoints`, `Length`, отступы концов) не меняется (ADR-0028: рукава соседей не
+  перестраиваются; нехватка отступа — `SetbackShort` в превью). Остановка автобуса на сегменте — `NotSupported`. Подробности и решения — `road-profiles.md` §14.
 
 ### 4.6 Пешеходы (после мержа 3.1; правка `pedestrians.md` §2 — задача T11)
 Сеть пешеходов остаётся производной, но индексы её рёбер меняются при перестройке. Правило: при закрытии — тротуары и переходы цели
@@ -231,14 +237,17 @@ public struct PaintZoneCmd      { public float X0, Z0, X1, Z1; public byte ZoneK
 |---|---|---|
 | 6 | `TooShort` | сегмент или половина разреза < `tools.min_segment_m` (20 м) |
 | 7 | `TooSharp` | угол рукавов < `min_arm_angle_deg`; кривизна Безье: радиус < `min_curve_radius_m` |
-| 8 | `Overlap` | ось пересекает существующий сегмент не в узле или идёт параллельно ближе ширины проезжей части |
+| 8 | `Overlap` | ось пересекает существующий сегмент не в узле или идёт параллельно ближе ширины проезжей части; **с RP7 — полосы `±EdgeMm` профиля налегают на соседнюю дорогу вне диска общих узлов** (`road-profiles.md` §14) |
 | 9 | `NodeLimit` | рукавов > 6, connector'ов > 64 |
 | 10 | `Busy` | цель уже в операции (снос закрывающегося, апгрейд дренируемого) |
 | 11 | `CreatesTrap` | односторонний сегмент в узел без выездов (локальная проверка O(1), §7.3) |
-| 25 | `InsufficientFunds` | экономика включена (4.2) и бюджета мало — пока не возникает |
-| 26 | `Unreachable` | `InsertBusStop`/`CreateBusRoute`: нет пути от соседней остановки (по текущему графу) |
-| 27 | `ZoneRule` | резерв ADR-0011 |
-| 28 | `OutOfBounds` | вне `tools.world_bounds` (по умолчанию — bounding box сети + 2 км) |
+| 12 | `InsufficientFunds` | экономика включена (4.2) и бюджета мало — пока не возникает |
+| 13 | `Unreachable` | `InsertBusStop`/`CreateBusRoute`: нет пути от соседней остановки (по текущему графу) |
+| 14 | `ZoneRule` | резерв ADR-0011 |
+| 15 | `OutOfBounds` | вне `tools.world_bounds` (по умолчанию — bounding box сети + 2 км) |
+| 16 | `BudgetRule` | экономика (4.2): ставки политики за пределами, выключение бюджета, политика без бюджета |
+
+Номера — как в `RejectReason` (`Api/SimEvent.cs`); прежняя таблица (25–28) была черновой и расходилась с кодом. `IssueCode` 1..99 = эти же значения.
 
 Существующие: `InvalidHandle` — индекс вне диапазона, мёртвый слот или чужое поколение; `InvalidArgument` — NaN, нули, несовместимые
 параметры; `Capacity` — пул/арена (+`CapacityExhausted`); `NotSupported` — `PaintZone` до ADR-0011.
@@ -251,7 +260,8 @@ public enum IssueSeverity : byte { Info = 0, Warning = 1, Error = 2 }
 public enum IssueCode : ushort       // 1..99 = RejectReason (ошибки), 100+ = предупреждения/сведения
 {   DeadEnd = 100, ZoneAccessLost = 101, StopAccessLost = 102, PedAccessLost = 103, DrainNeeded = 104 /* Value = машин+пешеходов */,
     RoutesAffected = 105, BusRouteShortened = 106, SignalPlanReset = 107, NodeRebuildDelayed = 108, OverlayRebuild = 109,
-    NearCapacity = 110, UndoUnavailable = 111 /* обратная запись не влезет */, ZoneLotsLost = 112 /* резерв ADR-0011 */ }
+    NearCapacity = 110, UndoUnavailable = 111 /* обратная запись не влезет */, ZoneLotsLost = 112 /* Value = число участков */,
+    SetbackShort = 113 /* RP7: Value = нехватка отступа, мм */ }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct PreviewIssue { public IssueCode Code; public IssueSeverity Severity; public byte ObjKind; public EntityRef Obj; public float X, Z; public int Value; }

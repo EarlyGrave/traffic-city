@@ -26,7 +26,7 @@ public class ToolPayloadSizesTests
         { typeof(EntityRef), 8 },
         { typeof(BuildRoadCmd), 56 },
         { typeof(RemoveRoadCmd), 12 },
-        { typeof(UpgradeRoadCmd), 16 },
+        { typeof(UpgradeRoadCmd), 20 },
         { typeof(SplitRoadCmd), 20 },
         { typeof(MergeAtNodeCmd), 16 },
         { typeof(SetArmControlCmd), 12 },
@@ -73,6 +73,7 @@ public class ToolPayloadSizesTests
         Assert.Equal(20, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.LanesAB)));
         Assert.Equal(23, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Flags)));
         Assert.Equal(24, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Cx)));
+        Assert.Equal(28, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Profile)));   // RP7: делит байты с Cz
         Assert.Equal(32, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreOf)));
         Assert.Equal(40, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeA)));
         Assert.Equal(48, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeB)));
@@ -152,13 +153,12 @@ public class ToolPayloadSizesTests
         var seg = new EntityRef(0, 1);
         Command[] cmds =
         {
-            Command.MakeUpgradeRoad(new UpgradeRoadCmd { Seg = seg }, 1),
-            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 2),
-            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 3),
-            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 4),
-            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 5),
-            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 6),
-            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 7),
+            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 1),
+            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 2),
+            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 3),
+            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 4),
+            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 5),
+            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 6),
         };
         foreach (Command c in cmds)
         {
@@ -169,7 +169,7 @@ public class ToolPayloadSizesTests
         int rejected = 0;
         foreach (SimEvent e in sim.Events)
         {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 7)
+            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 6)
             {
                 rejected++;
                 Assert.Equal((int)RejectReason.NotSupported, e.A);

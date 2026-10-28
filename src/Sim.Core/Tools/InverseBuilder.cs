@@ -65,8 +65,11 @@ internal static class InverseBuilder
             case CommandKind.SetSignalPlan:
                 BeginSignalPlan(w, in cmd, ref ctx);
                 break;
+            case CommandKind.UpgradeRoad:
+                BeginUpgradeRoad(w, in cmd, ref ctx);
+                break;
             default:
-                ctx.NoInverse = true;   // UpgradeRoad/SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
+                ctx.NoInverse = true;   // SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
                 break;
         }
 
@@ -143,7 +146,50 @@ internal static class InverseBuilder
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan;
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad;
+
+    /// <summary>
+    /// <c>UpgradeRoad</c>, у которого обратной записи не будет: сегмент без профиля получает профиль (вернуть «без профиля» командой нельзя). Зеркало <c>BeginUpgradeRoad</c> для превью.
+    /// </summary>
+    public static bool UpgradeLacksInverse(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        return ToolValidator.Check(w, in cmd, ref chk) == RejectReason.None && chk.Reshape != ReshapeMode.None && chk.Profile >= 0 && w.Net.Segments[chk.Seg].Profile < 0;
+    }
+
+    private static void BeginUpgradeRoad(World w, in Command cmd, ref InvCtx ctx)
+    {
+        var chk = default(ToolCheck);
+        if (ToolValidator.Check(w, in cmd, ref chk) != RejectReason.None)
+        {
+            return;   // команда будет отклонена
+        }
+
+        ref readonly SegmentData sd = ref w.Net.Segments[chk.Seg];
+        if (chk.Reshape == ReshapeMode.None)
+        {
+            return;
+        }
+
+        if (chk.Profile >= 0 && sd.Profile < 0)
+        {
+            ctx.NoInverse = true;
+            return;
+        }
+
+        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип. Флаги ReshapeMode.Swap на занятость не влияют: возврат проходит тот же валидатор.
+        var u = new UpgradeRoadCmd
+        {
+            Seg = new EntityRef(chk.Seg, sd.Generation),
+            SpeedLimit = sd.SpeedLimit,
+            LanesAB = sd.LanesAB,
+            LanesBA = sd.LanesBA,
+            Kind = sd.Kind,
+            Profile = (ushort)(sd.Profile + 1),
+            Flags = (byte)(sd.Profile >= 0 && (sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0),
+        };
+        Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in u));
+    }
 
     /// <summary>
     /// Верхняя граница числа обратных команд сноса сегмента (для превью, <see cref="IssueCode.UndoUnavailable"/>): сам сегмент, полосы с флагами,
@@ -242,6 +288,15 @@ internal static class InverseBuilder
             b.Flags = BuildRoadFlags.Curve;
             b.Cx = sd.Cx;
             b.Cz = sd.Cz;
+        }
+        else if (sd.Profile >= 0)
+        {
+            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля (поле делит байты с Cz - кривые и профили вместе пока не поддержаны).
+            b.Profile = (ushort)(sd.Profile + 1);
+            if ((sd.Flags & SegmentFlags.Mirrored) != 0)
+            {
+                b.Flags |= BuildRoadFlags.Mirrored;
+            }
         }
 
         Add(log, ref ctx, Command.MakeBuildRoad(in b));
