@@ -352,8 +352,14 @@ public partial class SimHost
                 }
 
                 break;
+            case InspectKind.Node when idx == 0:
+                EditNode(_selNode, NodesMode.Control);
+                break;
             case InspectKind.Node:
-                ApplyNodePreset(idx);
+                ApplyNodePreset(idx - 1);
+                break;
+            case InspectKind.Segment when idx == 2:
+                EditNode(-1, NodesMode.Lanes);
                 break;
             case InspectKind.Segment when idx == 0:
                 SegmentTool(RoadsMode.Upgrade);
@@ -372,6 +378,17 @@ public partial class SimHost
     {
         if (_frame == null || _selNode < 0 || idx > 2)
         {
+            return;
+        }
+
+        if (_frame.Network.View.Nodes[_selNode].Control != NodeControl.Signal)
+        {
+            // «Поставить светофор» у узла без светофора: режим и план одним действием (undo)
+            if (_nodesTool != null && _nodesTool.Select(_selNode))
+            {
+                _nodesTool.ApplyControl(NodeControlChoice.SignalAdaptive);
+            }
+
             return;
         }
 
@@ -644,20 +661,24 @@ public partial class SimHost
                 bool tool = _roadTool != null;
                 view.SetAction(0, "Заменить профиль", toggle: false, pressed: false, enabled: tool, tool ? "Инструмент «Дороги» в режиме «Заменить» на этой дороге" : "Нет инструмента «Дороги»");
                 view.SetAction(1, "Снести", toggle: false, pressed: false, enabled: tool, tool ? "Снести эту дорогу (спросит подтверждение, если пропадут участки или остановки)" : "Нет инструмента «Дороги»");
-                view.SetActionCount(2);
+                view.SetAction(2, "Полосы", toggle: false, pressed: false, enabled: _nodesTool != null, "Флаги полос: автобусная, запрет перестроения (инструмент «Узлы»)");
+                view.SetActionCount(3);
                 break;
             case InspectKind.Node:
                 bool signal = net.IsNodeAlive(_selNode) && net.Nodes[_selNode].Control == NodeControl.Signal;
+                bool nodes = _nodesTool != null;
+                view.SetAction(0, "Править", toggle: false, pressed: false, enabled: nodes, "Инструмент «Узлы» на этом узле: режим, светофор, знаки, запреты (J)");
                 if (signal)
                 {
-                    view.SetAction(0, "Адаптивный", toggle: false, pressed: false, enabled: true, "Светофор по спросу, со стрелками");
-                    view.SetAction(1, "24/24 с", toggle: false, pressed: false, enabled: true, "Фиксированный цикл: 24 с на каждое направление");
-                    view.SetAction(2, "Мигающий", toggle: false, pressed: false, enabled: true, "Мигающий жёлтый: перекрёсток нерегулируемый");
-                    view.SetActionCount(3);
+                    view.SetAction(1, "Адаптивный", toggle: false, pressed: false, enabled: true, "Светофор по спросу, со стрелками");
+                    view.SetAction(2, "24/24 с", toggle: false, pressed: false, enabled: true, "Фиксированный цикл: 24 с на каждое направление");
+                    view.SetAction(3, "Мигающий", toggle: false, pressed: false, enabled: true, "Мигающий жёлтый: перекрёсток нерегулируемый");
+                    view.SetActionCount(4);
                 }
                 else
                 {
-                    view.SetActionCount(0); // режимы узла без светофора - задача UI10 (ui-spec.md §5.4)
+                    view.SetAction(1, "Поставить светофор", toggle: false, pressed: false, enabled: nodes, "Адаптивный светофор на этом узле");
+                    view.SetActionCount(2);
                 }
 
                 break;

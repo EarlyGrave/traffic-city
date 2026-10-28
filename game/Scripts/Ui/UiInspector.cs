@@ -14,7 +14,7 @@ public sealed class UiInspector
 #pragma warning restore CA1001
 {
     public const int MaxRows = 8;
-    public const int MaxActions = 3;
+    public const int MaxActions = 4;
     public const int ArmColumns = 7;
     public const int MaxArmRows = 8;
 
