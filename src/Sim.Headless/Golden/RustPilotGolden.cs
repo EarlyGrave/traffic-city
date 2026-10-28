@@ -63,7 +63,7 @@ public static class RustPilotGolden
         ScenarioDesc desc;
         try
         {
-            desc = ScenarioLoader.Load(Path.Combine(root, scenarioPath));
+            desc = ScenarioLoader.LoadInfo(Path.Combine(root, scenarioPath), null, new ScenarioOverrides()).Desc;
         }
         catch (ScenarioException e)
         {
@@ -151,7 +151,7 @@ public static class RustPilotGolden
 
     private static void AppendIdm(StringBuilder sb, string root, int count, IdmDeltaMix mix)
     {
-        ScenarioDesc desc = ScenarioLoader.Load(Path.Combine(root, DemoGrid));
+        ScenarioDesc desc = ScenarioLoader.LoadInfo(Path.Combine(root, DemoGrid), null, new ScenarioOverrides()).Desc;
         VehicleTypeDesc[] types = desc.VehicleTypes;
         bool gated = mix == IdmDeltaMix.Gated;
         var r = Pcg32.Create(gated ? 0x1D17UL : 0x1D18UL, (ulong)RngStream.Behaviour);

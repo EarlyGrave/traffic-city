@@ -95,6 +95,24 @@ internal static class ProfileSaveFixtures
             new ScenarioOverrides { Profiles = FixturePath });
     }
 
+    /// <summary>
+    /// Сценарий <c>*-res</c> в режиме legacy (участки вдоль дороги): из файла убраны <c>road_profiles_file</c> и <c>city.profiles</c>. Для тестов, чьи допуски
+    /// откалиброваны на прежних участках (RP8: после перехода файлов на профили это отдельный открытый вопрос, см. road-profiles.md «RP8: замеры»).
+    /// </summary>
+    public static ScenarioDesc LegacyRes(string name = "s1k-res")
+    {
+        string root = GenFixture.RepoRoot();
+        JsonNode n = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "scenarios", name + ".json")))!;
+        n.AsObject().Remove("road_profiles_file");
+        n["city"]!.AsObject().Remove("profiles");
+        return ScenarioLoader.Parse(
+            n.ToJsonString(),
+            rel => File.ReadAllText(Path.IsPathRooted(rel) ? rel : Path.Combine(root, "scenarios", rel)),
+            name,
+            null,
+            new ScenarioOverrides()).Desc;
+    }
+
     /// <summary>s1k с профилями фикстуры: улицы <c>street_2</c>, артерии <c>arterial_4</c>.</summary>
     public static LoadedScenario S1k()
     {

@@ -4,6 +4,7 @@
   "seed": 20261024,
   "duration_s": 3600,
   "vehicle_types_file": "vehicle-types.json",
+  "road_profiles_file": "road-profiles.json",
   "city": {
     "enabled": true,
     "size_m": [
@@ -22,7 +23,8 @@
     "removed_street_share": 0.15,
     "connector_samples": 8,
     "signals": "arterial_x_arterial",
-    "minor_control": "yield"
+    "minor_control": "yield",
+    "profiles": { "street": "street_2", "arterial": "arterial_4" }
   },
   "vehicles": {
     "count": 10000,
@@ -118,9 +120,9 @@
     "max_peds": 15600,
     "max_residents": 1,
     "max_ped_path_steps": 64,
-    "max_lots": 16000,
-    "max_buildings": 12000,
-    "max_city_residents": 80000,
+    "max_lots": 24000,
+    "max_buildings": 18000,
+    "max_city_residents": 160000,
     "skim_obs_capacity": 16384
   }
 }
