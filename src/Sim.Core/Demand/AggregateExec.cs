@@ -66,8 +66,12 @@ internal static class AggregateExec
     /// <summary>
     /// Нога тура <c>PlanCursor</c> без агента (аналог <c>TripLegs.StartLeg</c>): способ уточняется (машина без полос или пары - пешком, автобус без пары остановок - пешком), время - модель или ским,
     /// житель <c>InLeg</c> без агента, событие <c>Arrive</c> через это время. false - ни один способ недоступен.
+    /// <para>
+    /// <paramref name="reqTick"/> &gt;= 0 - нога клапана перегрузки в micro (ADR-0035): нога уже начата и учтена в <c>ResLegs*</c>, поэтому счётчики способов не растут, а <c>LegReq</c> остаётся тиком
+    /// исходной заявки - стоимость ноги (и наблюдение в скимы) включает всё ожидание выезда.
+    /// </para>
     /// </summary>
-    internal static bool StartLeg(World w, CityWorld c, int r, bool outbound, TravelMode mode)
+    internal static bool StartLeg(World w, CityWorld c, int r, bool outbound, TravelMode mode, long reqTick = -1)
     {
         CityResidents res = c.Residents;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
@@ -124,7 +128,7 @@ internal static class AggregateExec
         res.LegMode[r] = (byte)mode;
         res.LegO[r] = (ushort)o;
         res.LegD[r] = (ushort)d;
-        res.LegReq[r] = now;
+        res.LegReq[r] = reqTick >= 0 ? reqTick : now;
         res.LegWalk[r] = 0;
         res.LegWait[r] = 0;
         res.LegRide[r] = 0;
@@ -135,17 +139,20 @@ internal static class AggregateExec
         res.AgentGen[r] = 0;
         res.State[r] = (byte)ResidentState.InLeg;
         res.StateTick[r] = now;
-        switch (mode)
+        if (reqTick < 0)
         {
-            case TravelMode.Car:
-                w.Counters.ResLegsCar++;
-                break;
-            case TravelMode.Bus:
-                w.Counters.ResLegsBus++;
-                break;
-            default:
-                w.Counters.ResLegsWalk++;
-                break;
+            switch (mode)
+            {
+                case TravelMode.Car:
+                    w.Counters.ResLegsCar++;
+                    break;
+                case TravelMode.Bus:
+                    w.Counters.ResLegsBus++;
+                    break;
+                default:
+                    w.Counters.ResLegsWalk++;
+                    break;
+            }
         }
 
         w.Counters.AggregateLegs++;

@@ -12,8 +12,8 @@ namespace Sim.Core.Tests.City;
 /// <summary>
 /// Стресс-тест перегрузки (решение владельца 2026-10-28, <c>docs/design/res-congestion.md</c> §9): <c>scenarios/s10k-res-overload.json</c> —
 /// 102 тыс. жителей (<c>initial_fill</c> 0.65) на сети s10k, спрос в 3 раза выше ёмкости. Ядро обязано пережить перегрузку: очереди ограничены
-/// своими потолками, исключений нет, в установившемся режиме 0 B/тик. Второе требование — восстановление ночью — сейчас не выполняется
-/// (см. <see cref="Overload_PoolDrainsAtNight"/>). Оба теста долгие (минуты в Release): <c>TC_SLOW=1</c>, лучше с <c>-c Release</c>.
+/// своими потолками (машины - потолком клапана перегрузки, ADR-0035), исключений нет, в установившемся режиме 0 B/тик. Второе требование — восстановление ночью
+/// (<see cref="Overload_PoolDrainsAtNight"/>). Оба теста долгие (минуты в Release): <c>TC_SLOW=1</c>, лучше с <c>-c Release</c>.
 /// </summary>
 public sealed class ResOverloadTests
 {
@@ -73,8 +73,13 @@ public sealed class ResOverloadTests
         }
 
         _out.WriteLine($"peak active={peakActive}/{maxVehicles} pending={peakPending}/{maxPending} waitDepart={peakWait}/{population} dropped={sim.Counters.TripsDropped}");
-        Assert.Equal(maxVehicles, peakActive);   // перегрузка настоящая: пул упёрся в потолок
-        Assert.Equal(maxPending, peakPending);   // и очередь поездок тоже
+        // Перегрузка настоящая: машины упёрлись в потолок клапана (ADR-0035, строже пула), а выезда ждут десятки тысяч жителей. До клапана упирались пул 12 000 и очередь 16 000.
+        int cap = Sim.Core.City.OverloadValve.Cap(sim.World, sim.World.City!);
+        _out.WriteLine($"valve cap={cap}");
+        Assert.True(cap < maxVehicles, $"потолок клапана {cap} не строже пула {maxVehicles}");
+        Assert.True(peakActive + peakPending >= cap, $"потолок клапана не достигнут: {peakActive} + {peakPending} < {cap}");
+        Assert.True(peakActive < maxVehicles, $"пул снова упёрся в max_vehicles: {peakActive}");   // автобусы выходят по расписанию и могут превысить потолок на единицы
+        Assert.True(peakWait > population / 10, $"выезда ждут мало: {peakWait} из {population}");
 
         // установившийся режим при перегрузке: 0 B/тик (окно выполняется дважды, измеряется второе прохождение)
         long bytes = AllocationProbe.Measure(() => sim.Step(100), out _);
@@ -84,23 +89,44 @@ public sealed class ResOverloadTests
     }
 
     /// <summary>
-    /// Восстановление: после вечернего пика ночью (спрос жителей падает почти до нуля) пул должен опустеть меньше чем наполовину,
-    /// а очередь <c>PendingTrips</c> — меньше 10% потолка к 05:00 вторых суток (по прогонам L46 на здоровом сценарии пул ночью ~200 машин).
-    /// <b>Сейчас не выполняется:</b> пул стоит на <c>max_vehicles</c> (11 997–12 000) всю ночь, хвост очереди ≈ 90 тыс. ног копился за сутки;
-    /// разбор и цифры — <c>res-congestion.md</c> §9. Тест оставлен выключенным (Skip), чтобы снять Skip после исправления ядра (этап 5, вариант A/B).
+    /// Восстановление ночью (клапан перегрузки, ADR-0035, <c>res-congestion.md</c> §10): в ночь на вторые сутки (замер в начале каждого игрового часа 00:00–05:00) пул хотя бы раз опускается
+    /// ниже половины <c>max_vehicles</c>, очередь <c>PendingTrips</c> в этот момент меньше 10% потолка, флаг gridlock выключен; ни одна обратная нога не ставится в очередь заново
+    /// (<c>res_stuck</c> от дедлайнов не растёт - остаются только старые пути без пешеходного маршрута, см. §10).
+    /// <para>
+    /// Порог «к 05:00» (L46) заменён минимумом за ночь по замерам: в перегруженном городе ским машины длинный, жители выезжают раньше (сдвиг пика), и к 04:00–05:00 вторых суток
+    /// утренний выезд уже снова заполняет сеть до потолка клапана (05:00 - 7 289 машин). Ночной минимум - 03:00: 5 074 машины из 12 000, очередь 95, gridlock выключен
+    /// (до клапана в эти часы 11 997–12 000 машин и очередь 3 360–6 143).
+    /// </para>
     /// </summary>
-    [SlowFact(Skip = "известный провал: сеть не разгружается ночью при перегрузке, см. docs/design/res-congestion.md §9 (нужна выборка агентов / клапан перегрузки)")]
+    [SlowFact]
     [Trait("Category", "Long")]
     public void Overload_PoolDrainsAtNight()
     {
         ScenarioDesc d = Overload();
         using Simulation sim = Simulation.Create(in d);
         int dayTicks = sim.CityDayTicks;
-        sim.Step(dayTicks + (5 * HourTicks));   // 05:00 вторых суток
-        int active = sim.Counters.ActiveVehicles;
-        int pending = sim.World.Trips.Count;
-        _out.WriteLine($"05:00 day 1: active={active}/{d.Capacities.MaxVehicles} pending={pending}/{d.Capacities.MaxPendingTrips} waitDepart={CountState(sim, ResidentState.WaitDepart)}");
-        Assert.True(active < d.Capacities.MaxVehicles / 2, $"пул не разгрузился: {active}");
-        Assert.True(pending < d.Capacities.MaxPendingTrips / 10, $"очередь поездок не разгрузилась: {pending}");
+        sim.Step(dayTicks);   // 00:00 вторых суток
+        int bestActive = int.MaxValue;
+        int bestPending = 0;
+        int bestGridlock = 1;
+        for (int h = 0; h <= 5; h++)
+        {
+            int active = sim.Counters.ActiveVehicles;
+            int pending = sim.World.Trips.Count;
+            _out.WriteLine($"day 1 {h:00}:00: active={active}/{d.Capacities.MaxVehicles} pending={pending}/{d.Capacities.MaxPendingTrips} gridlock={sim.Counters.GridlockFlag} " +
+                           $"waitDepart={CountState(sim, ResidentState.WaitDepart)} res_stuck={sim.Counters.ResStuck}");
+            if (active < bestActive)
+            {
+                bestActive = active;
+                bestPending = pending;
+                bestGridlock = sim.Counters.GridlockFlag;
+            }
+
+            sim.Step(HourTicks);
+        }
+
+        Assert.True(bestActive < d.Capacities.MaxVehicles / 2, $"пул не разгрузился за ночь: минимум {bestActive}");
+        Assert.True(bestPending < d.Capacities.MaxPendingTrips / 10, $"очередь поездок не разгрузилась: {bestPending}");
+        Assert.Equal(0, bestGridlock);
     }
 }

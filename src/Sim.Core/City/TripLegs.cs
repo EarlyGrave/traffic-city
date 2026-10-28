@@ -176,9 +176,9 @@ internal static class TripLegs
         var mode = (TravelMode)res.LegMode[r];
         if (mode == TravelMode.Car)
         {
-            if (w.Trips.IsFull)
+            if (w.Trips.IsFull || OverloadValve.Saturated(w, c))
             {
-                return Begin.Backlog;
+                return Begin.Backlog;   // очередь полна либо сеть упёрлась в потолок плотности клапана (ADR-0035): повтор на следующем тике
             }
 
             if (c.Parking != null)
@@ -337,6 +337,13 @@ internal static class TripLegs
             return;
         }
 
+        if (res.LegMode[r] == (byte)TravelMode.Car && OverloadValve.Stale(w, c, WaitBase(c, r)))
+        {
+            c.Valve.StaleLegs++;   // сеть насыщена, а заявка не вошла в очередь дольше порога: безнадёжна (ADR-0035)
+            OnWaitTimeout(w, c, r);
+            return;
+        }
+
         bool outbound = res.LegDest[r] != res.Home[r];
         ArmRequest(w, c, r, outbound, Submit(w, c, r));
     }
@@ -357,7 +364,8 @@ internal static class TripLegs
     // ------------------------------------------------------------------ дедлайн WaitDepart
 
     /// <summary>
-    /// Ожидание агента дольше <c>wait_max_s</c> (или заявка потеряна: нет пути): другой доступный способ, иначе тур отменяется и житель остаётся дома; обратная нога ждёт дальше (<c>res_stuck++</c>).
+    /// Ожидание агента дольше <c>wait_max_s</c> (или заявка потеряна: нет пути): другой доступный способ, иначе тур отменяется и житель остаётся дома; обратная нога идёт домой агрегатом
+    /// (клапан перегрузки, ADR-0035; <c>res_stuck++</c> - только если домой не попасть ни одним способом).
     /// </summary>
     internal static void OnWaitTimeout(World w, CityWorld c, int r, bool dropped = false)
     {
@@ -395,11 +403,33 @@ internal static class TripLegs
             return;
         }
 
-        w.Counters.ResStuck++;   // обратная нога без агента дольше дедлайна: ждём дальше (норма 0)
-        if (!StartLeg(w, c, r, false, mode))
+        // Клапан перегрузки (ADR-0035): обратная нога без агента дольше дедлайна не ставится в очередь заново, а исполняется агрегатом; стоимость - от исходной заявки, с ожиданием.
+        if (!ValveHome(w, c, r, mode))
         {
             ArriveWithoutLeg(w, c, r);
         }
+    }
+
+    /// <summary>
+    /// Клапан обратной ноги (ADR-0035): житель едет домой агрегатом (время - модель BPR либо ским), <c>LegReq</c> прежний - вся задержка входит в стоимость ноги и в скимы. В режиме парковки машина
+    /// переставляется домой без выезда (<see cref="Parking.ParkingOps.Hop"/>), как если бы доехала. false - домой не попасть ни одним способом.
+    /// </summary>
+    private static bool ValveHome(World w, CityWorld c, int r, TravelMode mode)
+    {
+        CityResidents res = c.Residents;
+        long req = res.LegReq[r];
+        if (c.Parking != null && mode == TravelMode.Car && res.CarFac[r] >= 0)
+        {
+            Parking.ParkingOps.Hop(w, r, -1);
+        }
+
+        if (!Demand.AggregateExec.StartLeg(w, c, r, false, mode, req))
+        {
+            return false;
+        }
+
+        c.Valve.HomeLegs++;
+        return true;
     }
 
     private static bool Alternative(World w, CityWorld c, TravelMode mode, int lo, int ld, out TravelMode alt)
