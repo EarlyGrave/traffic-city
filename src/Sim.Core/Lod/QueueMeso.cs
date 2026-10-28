@@ -1134,7 +1134,7 @@ internal sealed class QueueMeso
 
                 if (!IsQ(x))
                 {
-                    movingAhead |= v.Speed[x] >= stuckSpeed;
+                    movingAhead |= v.Speed[x] >= stuckSpeed || (v.Flags[x] & (byte)VehicleFlags.AtStop) != 0;   // автобус на остановке: в micro его объезжают через карман, в LOD кармана нет
                 }
                 else
                 {

@@ -240,6 +240,47 @@ public class QueueMesoTests
         Assert.Equal(sim.Counters.StuckEventsTotal, sim.Work.StuckEventsMeso);   // all_meso: все stuck-события - события meso-уровня
     }
 
+    /// <summary>
+    /// S3 (N3): очередь за автобусом, стоящим на остановке, не stuck (в micro его объезжают через карман, в LOD кармана нет): ни одна машина очереди не помечена
+    /// stuck, пока голова её полосы - стоящий автобус с флагом <c>AtStop</c>.
+    /// </summary>
+    [Fact]
+    public void City_QueueBehindBusAtStop_IsNotStuck()
+    {
+        ScenarioDesc d = City();
+        using Simulation sim = Simulation.Create(in d);
+        World w = sim.World;
+        VehicleStore v = w.Vehicles;
+        long behindBus = 0;
+        long stuckBehindBus = 0;
+        for (int t = 0; t < 24000; t += 20)
+        {
+            sim.Step(20);
+            for (int i = 0; i < v.HighWater; i++)
+            {
+                if (!v.Pool.IsAlive(i) || v.Lane[i] < 0 || (v.Flags[i] & (byte)VehicleFlags.IsBus) != 0)
+                {
+                    continue;
+                }
+
+                int h = i;
+                for (int hop = 0; hop < 1000 && v.Ahead[h] >= 0; hop++)
+                {
+                    h = v.Ahead[h];
+                }
+
+                if (h != i && (v.Flags[h] & (byte)VehicleFlags.AtStop) != 0 && v.Lane[h] == v.Lane[i])
+                {
+                    behindBus++;
+                    stuckBehindBus += (v.Flags[i] & (byte)VehicleFlags.Stuck) != 0 ? 1 : 0;
+                }
+            }
+        }
+
+        _out.WriteLine($"samples behind a bus at stop {behindBus}, stuck among them {stuckBehindBus}");
+        Assert.Equal(0, stuckBehindBus);
+    }
+
     [Fact]
     public void City_Step_Allocates_ZeroBytes_InSteadyState()
     {
