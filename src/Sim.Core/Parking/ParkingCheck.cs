@@ -6,7 +6,7 @@ namespace Sim.Core.Parking;
 
 /// <summary>
 /// Проверка инвариантов парковки (parking.md §1, §13, <c>ValidateParking</c>): структура объектов, ссылки жителей, машин и заявок живы с верным поколением, PK2 (<c>Assigned</c>, <c>Occupied</c>,
-/// <c>Reserved</c> равны пересчёту по жителям, машинам и заявкам), PK4 в части K1 (машина жителя - на объекте либо в пути/заявке; строгая «ровно в одном месте» после K2), PK6 (у жителя с машиной
+/// <c>Reserved</c> равны пересчёту по жителям, машинам и заявкам), PK4 строго с K2 (код 9: машина жителя ровно в одном месте - на объекте либо на дороге), PK6 (у жителя с машиной
 /// есть домашнее место либо машина на <c>Overflow</c>). Зовут <c>SaveValidator.ValidateParking</c> (после загрузки), Debug-проверка раз в 100 тиков (K2) и тесты. Выделяет память (рабочие массивы) -
 /// только вне горячего цикла.
 /// </summary>
@@ -79,6 +79,16 @@ internal static class ParkingCheck
         var occupied = new int[high];
         var reserved = new int[high];
         CityResidents r = c.Residents;
+        var flying = new byte[r.HighWater];   // машин жителя на дороге
+        for (int i = 0; i < w.Vehicles.HighWater; i++)
+        {
+            int owner = w.Vehicles.Resident[i];
+            if (w.Vehicles.Pool.IsAlive(i) && (uint)owner < (uint)r.HighWater && flying[owner] < 255)
+            {
+                flying[owner]++;
+            }
+        }
+
         for (int i = 0; i < r.HighWater; i++)
         {
             if (!r.Pool.IsAlive(i))
@@ -110,9 +120,20 @@ internal static class ParkingCheck
                 return 6;   // нет машины - нет и места
             }
 
-            if (hasCar && hf == -1 && cf != 0)
+            if (hasCar && hf == -1 && cf > 0)
             {
-                return 6;   // PK6: домашнее место либо Overflow у дома
+                return 6;   // PK6: домашнее место либо Overflow у дома (машина в пути, cf = -1, едет к месту по резерву или домой)
+            }
+
+            // PK4 (строго, K2): машина жителя ровно в одном месте - на объекте (CarFac >= 0, на дороге её нет) либо на дороге (CarFac = -1, ровно одна машина жителя).
+            if (hasCar && (cf >= 0 ? flying[i] != 0 : flying[i] != 1))
+            {
+                return 9;
+            }
+
+            if (!hasCar && flying[i] != 0)
+            {
+                return 9;
             }
 
             if (hf > 0)
