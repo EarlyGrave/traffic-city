@@ -41,7 +41,8 @@ internal sealed class OverlaySearcher
     private readonly int[] _ubuf = new int[UnpackCap];
     private uint _searchId;
 
-    public OverlaySearcher(NetworkStore net, RouteGraph graph, Overlay? overlay)
+    /// <param name="planBuffers">false: без буферов <see cref="ExpandPlan"/>/<see cref="Route"/> (-12 Б/DirSeg; для воркеров запросов, где они не нужны).</param>
+    public OverlaySearcher(NetworkStore net, RouteGraph graph, Overlay? overlay, bool planBuffers = true)
     {
         _net = net;
         _g = graph;
@@ -53,9 +54,9 @@ internal sealed class OverlaySearcher
         _seen = new uint[n];
         _closed = new uint[n];
         _heap = new IndexedHeap4(n);
-        _plan = new int[n + 8];
-        _path = new int[n + 8];
-        _stack = new int[n + (UnpackCap * Overlay.MaxLevels) + 16];
+        _plan = new int[planBuffers ? n + 8 : 0];
+        _path = new int[planBuffers ? n + 8 : 0];
+        _stack = new int[planBuffers ? n + (UnpackCap * Overlay.MaxLevels) + 16 : 0];
         WorkCap = Math.Max(1, 4 * n);
     }
 

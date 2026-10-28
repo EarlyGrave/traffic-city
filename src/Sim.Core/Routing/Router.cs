@@ -15,8 +15,10 @@ internal enum BuildStatus : byte
 
 /// <summary>
 /// Построение и обслуживание маршрутов (routing.md 9.4-9.7, ADR-0009): запрос <see cref="OverlaySearcher"/> -> план-стек + первое окно полосовых
-/// шагов в <see cref="RouteStore"/>; дозаполнение окна ленивым развёртыванием плана; остаток стоимости для проверки дрейфа. Все буферы
-/// выделены в конструкторе, методы не аллоцируют. Метрики пишутся прямо в <c>World.Counters</c> (запросы идут и из фаз 2b/8b - автобусы).
+/// шагов в <see cref="RouteStore"/>; дозаполнение окна ленивым развёртыванием плана; остаток стоимости для проверки дрейфа. Построение разделено
+/// на чистый счёт (<see cref="RouteCompute.Run"/>, без <c>World</c>, в <see cref="RouteScratch"/>) и последовательную фиксацию
+/// (<see cref="Commit"/>: счётчики, слот, окно) - routing-parallel.md 3.1, ADR-0032. Все буферы выделены заранее, методы не аллоцируют.
+/// Метрики пишутся прямо в <c>World.Counters</c> (запросы идут и из фаз 2b/8b - автобусы).
 /// </summary>
 internal sealed class Router
 {
@@ -27,14 +29,10 @@ internal sealed class Router
     private readonly NetworkStore _net;
     private readonly RouteStore _store;
     private readonly int _maxDirs;
-    private readonly int[] _plan;
-    private readonly int[] _stk;
-    private readonly int[] _dirs;
-    private readonly int[] _ubuf = new int[OverlaySearcher.UnpackCap];
-    private readonly RouteStep[] _steps;
+    private readonly RouteScratch _s0;
     private readonly RouteStep[] _newWin;
-    private int _sp;
-    private int _nd;
+    private readonly Overlay? _overlay;
+    private readonly int _queryWorkCap;
 
     public Router(World w, RouteGraph graph, Overlay? overlay, int queryWorkCap)
     {
@@ -42,27 +40,47 @@ internal sealed class Router
         _net = w.Net;
         _store = w.Routes;
         Graph = graph;
-        Searcher = new OverlaySearcher(_net, graph, overlay);
-        if (queryWorkCap > 0)
-        {
-            Searcher.WorkCap = queryWorkCap;
-        }
-
-        int n = graph.DirSegCapacity;
-        _maxDirs = Math.Max(1, (_store.WindowSteps + 1) / 2);
-        _plan = new int[n + 8];
-        _stk = new int[n + (OverlaySearcher.UnpackCap * Overlay.MaxLevels) + 16];
-        _dirs = new int[_maxDirs + 2];
-        _steps = new RouteStep[(2 * _maxDirs) + 2];
+        _overlay = overlay;
+        _queryWorkCap = queryWorkCap;
+        _s0 = new RouteScratch(_net, graph, overlay, _store.WindowSteps, queryWorkCap, planArena: false);
+        Scratch = [_s0];
+        _maxDirs = _s0.MaxDirs;
         _newWin = new RouteStep[_store.WindowSteps + 2];
+        EnsureWorkers(w.Pool?.Workers ?? 1);
     }
 
     public RouteGraph Graph { get; }
 
-    public OverlaySearcher Searcher { get; }
+    /// <summary>Поисковик главного потока (scratch 0).</summary>
+    public OverlaySearcher Searcher => _s0.Searcher;
+
+    /// <summary>Рабочая память воркеров запросов; [0] - главный поток (<see cref="Build"/>, <see cref="Refill"/>).</summary>
+    public RouteScratch[] Scratch { get; private set; }
 
     /// <summary>Работа запросов и развёртываний с начала бюджетного отсчёта (релаксации); сбрасывает фаза 3 после дозаполнений.</summary>
     public int WorkThisTick { get; set; }
+
+    /// <summary>
+    /// Доводит число scratch до <paramref name="workers"/> (при создании и из <c>World.StartWorkers</c>, вне горячего пути);
+    /// существующие остаются, [0] - буферы главного потока.
+    /// </summary>
+    public void EnsureWorkers(int workers)
+    {
+        int have = Scratch.Length;
+        if (workers <= have)
+        {
+            return;
+        }
+
+        var all = new RouteScratch[workers];
+        Array.Copy(Scratch, all, have);
+        for (int k = have; k < workers; k++)
+        {
+            all[k] = new RouteScratch(_net, Graph, _overlay, _store.WindowSteps, _queryWorkCap, planArena: true);
+        }
+
+        Scratch = all;
+    }
 
     /// <summary>Приводит граф к текущей версии сети (после <c>BuildRoad</c> вне оверлея); веса возвращаются к загрузке.</summary>
     public void SyncGraph()
@@ -77,8 +95,28 @@ internal sealed class Router
     /// <summary>
     /// Строит маршрут от <paramref name="startLane"/>/<paramref name="startS"/> до <paramref name="destLane"/>/<paramref name="destS"/>:
     /// запрос, развёртывание первых DirSeg, раскладка на полосы -> окно слота; остаток плана - стек. Ok: <paramref name="handle"/> валиден.
+    /// Счёт на scratch 0 + <see cref="Commit"/>.
     /// </summary>
     public BuildStatus Build(int startLane, float startS, int destLane, float destS, long tick, out RouteHandle handle)
+    {
+        handle = RouteHandle.Null;
+        SyncGraph();
+        if (_store.Pool.AliveCount >= _store.Pool.Capacity)
+        {
+            return BuildStatus.Deferred;   // как раньше: пул полон - запрос не считается и счётчики не растут
+        }
+
+        var q = new RouteQuery(startLane, startS, destLane, destS);
+        var r = default(QueryResult);
+        RouteCompute.Run(in q, _net, Graph, _overlay, _s0, ref r);
+        return Commit(in q, in r, _s0, tick, out handle);
+    }
+
+    /// <summary>
+    /// Последовательная фиксация результата <see cref="RouteCompute.Run"/> (routing-parallel.md 3.1): счётчики и бюджет, слот <see cref="RouteStore"/>,
+    /// план, окно. <paramref name="src"/> - scratch, на котором шёл счёт (шаги и стек плана ещё не перезаписаны).
+    /// </summary>
+    public BuildStatus Commit(in RouteQuery q, in QueryResult r, RouteScratch src, long tick, out RouteHandle handle)
     {
         handle = RouteHandle.Null;
         SyncGraph();
@@ -88,35 +126,13 @@ internal sealed class Router
         }
 
         ref SimCounters c = ref _w.Counters;
-        SearchStatus st = Searcher.Query(startLane, startS, destLane, destS, _plan, out int pl);
         c.PathfindQueries++;
-        c.PathfindWork += Searcher.LastWork;
-        c.PathfindExpandedNodes += Searcher.LastExpanded;
-        WorkThisTick += Searcher.LastWork;
-        if (st != SearchStatus.Found)
-        {
-            c.RouteFailed++;
-            return BuildStatus.NoPath;
-        }
-
-        float cost = Searcher.PlanCost;
-        _dirs[0] = _plan[0] & OverlaySearcher.SegMask;
-        _nd = 1;
-        _sp = 0;
-        for (int i = pl - 1; i >= 1; i--)
-        {
-            _stk[_sp++] = _plan[i];
-        }
-
-        if (Materialize(_maxDirs) != SearchStatus.Found)
-        {
-            c.RouteFailed++;
-            return BuildStatus.NoPath;
-        }
-
-        int layoutDest = _sp == 0 ? destLane : FirstLane(_dirs[_nd - 1]);
-        int n = RouteLayout.LayoutLanes(_net, Graph, new ReadOnlySpan<int>(_dirs, 0, _nd), _nd, startLane, layoutDest, _steps);
-        if (n < 0)
+        c.PathfindWork += r.QueryWork;
+        c.PathfindExpandedNodes += r.Expanded;
+        c.PlanUnpacks += r.Unpacks;
+        c.UnpackWork += r.UnpackWork;
+        WorkThisTick += r.QueryWork + r.UnpackWork;
+        if (r.Stage != QueryStage.Found)
         {
             c.RouteFailed++;
             return BuildStatus.NoPath;
@@ -128,16 +144,16 @@ internal sealed class Router
         }
 
         int slot = handle.Index;
-        if (!_store.SetPlan(slot, new ReadOnlySpan<int>(_stk, 0, _sp)))
+        if (!_store.SetPlan(slot, new ReadOnlySpan<int>(src.Stk, 0, r.StackLen)))
         {
             _store.Free(handle);
             handle = RouteHandle.Null;
             return BuildStatus.Deferred;
         }
 
-        Array.Copy(_steps, 0, _store.Window, slot * _store.WindowSteps, n);
-        _store.WinCount[slot] = (byte)n;
-        _store.PlanCost[slot] = cost;
+        Array.Copy(src.Steps, 0, _store.Window, slot * _store.WindowSteps, r.StepCount);
+        _store.WinCount[slot] = (byte)r.StepCount;
+        _store.PlanCost[slot] = r.Cost;
         _store.PlanTick[slot] = tick;
         return BuildStatus.Ok;
     }
@@ -151,6 +167,7 @@ internal sealed class Router
     public bool Refill(int i)
     {
         VehicleStore v = _w.Vehicles;
+        RouteScratch s = _s0;
         int r = v.Route[i];
         if (r < 0 || !_store.Pool.IsAlive(r, v.RouteGen[i]))
         {
@@ -209,32 +226,38 @@ internal sealed class Router
             return false;
         }
 
-        _nd = 0;
-        for (int k = first; k < wc && _nd < _maxDirs; k += 2)
+        s.Nd = 0;
+        for (int k = first; k < wc && s.Nd < _maxDirs; k += 2)
         {
-            _dirs[_nd++] = RouteGraph.DirSegOfLane(_net, win[b + k].Lane);
+            s.Dirs[s.Nd++] = RouteGraph.DirSegOfLane(_net, win[b + k].Lane);
         }
 
-        if (_nd == 0)
+        if (s.Nd == 0)
         {
             return false;
         }
 
         int capDirs = (width - prefix + 1) / 2;
-        if (_nd >= capDirs)
+        if (s.Nd >= capDirs)
         {
             return true; // окно уже полное
         }
 
-        _sp = pc;
-        Array.Copy(_store.PlanArena, _store.PlanFirst[r], _stk, 0, pc);
-        if (Materialize(capDirs) != SearchStatus.Found)
+        s.Sp = pc;
+        Array.Copy(_store.PlanArena, _store.PlanFirst[r], s.Stk, 0, pc);
+        int unpacks = 0;
+        int unpackWork = 0;
+        SearchStatus mst = RouteCompute.Materialize(s, capDirs, ref unpacks, ref unpackWork);
+        _w.Counters.PlanUnpacks += unpacks;
+        _w.Counters.UnpackWork += unpackWork;
+        WorkThisTick += unpackWork;
+        if (mst != SearchStatus.Found)
         {
             return false;
         }
 
-        int layoutDest = _sp == 0 ? v.DestLane[i] : FirstLane(_dirs[_nd - 1]);
-        int n = RouteLayout.LayoutLanes(_net, Graph, new ReadOnlySpan<int>(_dirs, 0, _nd), _nd, tieLane, layoutDest, _steps);
+        int layoutDest = s.Sp == 0 ? v.DestLane[i] : RouteCompute.FirstLane(_net, s.Dirs[s.Nd - 1]);
+        int n = RouteLayout.LayoutLanes(_net, Graph, new ReadOnlySpan<int>(s.Dirs, 0, s.Nd), s.Nd, tieLane, layoutDest, s.Steps);
         if (n < 0 || prefix + n > width)
         {
             return false;
@@ -245,8 +268,8 @@ internal sealed class Router
             _newWin[k] = win[b + cur + k];
         }
 
-        Array.Copy(_steps, 0, _newWin, prefix, n);
-        if (!_store.SetPlan(r, new ReadOnlySpan<int>(_stk, 0, _sp)))
+        Array.Copy(s.Steps, 0, _newWin, prefix, n);
+        if (!_store.SetPlan(r, new ReadOnlySpan<int>(s.Stk, 0, s.Sp)))
         {
             return false;
         }
@@ -320,45 +343,4 @@ internal sealed class Router
         return arc >= 0 ? Graph.ArcCost[arc] : 0f;
     }
 
-    private int FirstLane(int dirSeg) =>
-        (dirSeg & 1) == 0 ? _net.Segments[dirSeg >> 1].FirstLaneAB : _net.Segments[dirSeg >> 1].FirstLaneBA;
-
-    // Снимает элементы стека _stk[0.._sp) в _dirs, пока там меньше target DirSeg: уровень 0 - сразу, выше - ленивое развёртывание
-    // (routing.md 9.5: глубина <= Levels, одно развёртывание <= UnpackCap элементов).
-    private SearchStatus Materialize(int target)
-    {
-        ref SimCounters c = ref _w.Counters;
-        while (_nd < target && _sp > 0)
-        {
-            int e = _stk[--_sp];
-            int u = e & OverlaySearcher.SegMask;
-            int q = e >> OverlaySearcher.LevelShift;
-            if (q == 0)
-            {
-                _dirs[_nd++] = u;
-                continue;
-            }
-
-            SearchStatus st = Searcher.Unpack(_dirs[_nd - 1], u, q, _ubuf, out int ul);
-            c.PlanUnpacks++;
-            c.UnpackWork += Searcher.LastUnpackWork;
-            WorkThisTick += Searcher.LastUnpackWork;
-            if (st != SearchStatus.Found)
-            {
-                return SearchStatus.NoPath;
-            }
-
-            if (_sp + ul > _stk.Length)
-            {
-                return SearchStatus.PathTooLong;
-            }
-
-            for (int k = ul - 1; k >= 0; k--)
-            {
-                _stk[_sp++] = _ubuf[k];
-            }
-        }
-
-        return SearchStatus.Found;
-    }
 }
