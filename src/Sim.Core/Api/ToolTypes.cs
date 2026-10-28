@@ -51,8 +51,11 @@ public static class BuildRoadFlags
     /// <summary>Квадратичная Безье: контрольная точка <c>Cx, Cz</c>.</summary>
     public const byte Curve = 4;
 
+    /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030, RP7): <see cref="BuildRoadCmd.Profile"/> обязателен.</summary>
+    public const byte Mirrored = 8;
+
     /// <summary>Биты, которые ядро понимает сейчас (T1: остальные дают <see cref="RejectReason.NotSupported"/>).</summary>
-    public const byte Supported = NoConnectors;
+    public const byte Supported = NoConnectors | Mirrored;
 }
 
 /// <summary>Бит0 <see cref="RemoveRoadCmd.Flags"/>: не удалять осиротевшие узлы.</summary>
@@ -68,7 +71,22 @@ public struct RemoveRoadCmd
     public int Flags;
 }
 
-/// <summary>«Не менять»: <c>SpeedLimit == 0</c>, <c>LanesAB/BA == 255</c>, <c>Flags</c> бит0 KeepKind.</summary>
+/// <summary>Биты <see cref="UpgradeRoadCmd.Flags"/>.</summary>
+public static class UpgradeRoadFlags
+{
+    /// <summary>Тип дороги не менять (<see cref="UpgradeRoadCmd.Kind"/> игнорируется).</summary>
+    public const byte KeepKind = 1;
+
+    /// <summary>Новый профиль применяется «против» направления рисования (ADR-0030, RP7); только вместе с <see cref="UpgradeRoadCmd.Profile"/> != 0.</summary>
+    public const byte Mirrored = 2;
+
+    public const byte Supported = KeepKind | Mirrored;
+}
+
+/// <summary>
+/// «Не менять»: <c>SpeedLimit == 0</c>, <c>LanesAB/BA == 255</c>, <c>Flags</c> бит0 KeepKind, <c>Profile == 0</c>. Профиль (RP7): индекс в каталоге + 1; полосы и тип тогда выводятся из профиля
+/// (заданные явно обязаны совпасть); сегмент с профилем меняет полосы и тип только профилем.
+/// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct UpgradeRoadCmd
 {
@@ -77,6 +95,8 @@ public struct UpgradeRoadCmd
     public byte LanesAB, LanesBA;
     public RoadKind Kind;
     public byte Flags;
+    public ushort Profile;
+    public ushort R;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -175,6 +195,7 @@ public enum IssueCode : ushort
     NearCapacity = 110,
     UndoUnavailable = 111,        // обратная запись не влезет
     ZoneLotsLost = 112,           // резерв ADR-0011
+    SetbackShort = 113,           // RP7: отступ соседнего рукава меньше h + corner_radius нового профиля (ADR-0028: рукава не перестраиваются); Value = нехватка, мм
 }
 
 [Flags]

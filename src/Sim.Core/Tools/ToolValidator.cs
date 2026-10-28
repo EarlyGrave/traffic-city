@@ -35,6 +35,14 @@ internal struct ToolCheck
     public bool Reopen;                     // BuildRoad(RestoreOf) = отмена сноса
     public long Cost;                       // > 0 трата, < 0 возврат
 
+    // Профили (RP7): итоговые значения команды после разбора (-1 - без профиля).
+    public int Profile;
+    public bool Mirrored;
+    public byte LanesAB, LanesBA;
+    public RoadKind Kind;
+    public float Speed;
+    public ReshapeMode Reshape;             // UpgradeRoad: что делать с сегментом
+
     public EntityKind IssueKind;            // объект и точка проблемы (подсветка) для отказа
     public int IssueIndex, IssueGen;
     public float IssueX, IssueZ;
@@ -45,11 +53,11 @@ internal struct ToolCheck
 /// <c>TurnBan</c> узла на время планирования перестройки, значение возвращается до выхода). Ошибки только локальные и детерминированные; глобальные предупреждения
 /// (связность) считает только превью (<see cref="ToolPreview"/>). Без аллокаций.
 /// </summary>
-internal static class ToolValidator
+internal static partial class ToolValidator
 {
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan;
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad;
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -58,9 +66,11 @@ internal static class ToolValidator
         c.NodeB = -1;
         c.Seg = -1;
         c.Node = -1;
+        c.Profile = -1;
         c.Reason = cmd.Kind switch
         {
             CommandKind.BuildRoad => CheckBuildRoad(w, in cmd, ref c),
+            CommandKind.UpgradeRoad => CheckUpgradeRoad(w, in cmd, ref c),
             CommandKind.RemoveRoad => CheckRemoveRoad(w, in cmd, ref c),
             CommandKind.SetArmControl => CheckSetArmControl(w, in cmd, ref c),
             CommandKind.SetTurnBan => CheckSetTurnBan(w, in cmd, ref c),
@@ -101,6 +111,12 @@ internal static class ToolValidator
             b.LanesAB > NetworkBuilder.MaxLanesPerDirection || b.LanesBA > NetworkBuilder.MaxLanesPerDirection)
         {
             return RejectReason.InvalidArgument;
+        }
+
+        RejectReason prof = CheckBuildProfile(w, in b, ref c);
+        if (prof != RejectReason.None)
+        {
+            return prof;
         }
 
         var a = new Vec2(b.Ax, b.Az);
@@ -177,6 +193,24 @@ internal static class ToolValidator
         if (w.Queue != null && ((na >= 0 && n.Nodes[na].FirstArm >= 0) || (nb >= 0 && n.Nodes[nb].FirstArm >= 0)))
         {
             return RejectReason.NotSupported;
+        }
+
+        // Дорога по профилю (RP7): полосы ±край профиля не должны накладываться на соседние дороги вне дисков общих узлов.
+        if (c.Profile >= 0)
+        {
+            Vec2 dir = new Vec2(pb.X - pa.X, pb.Z - pa.Z) * (1f / len);
+            float sa = na >= 0 ? bld.IncrementalSetback(na, pb, 0f) : o.NodeSetback;
+            float sb = nb >= 0 ? bld.IncrementalSetback(nb, pa, 0f) : o.NodeSetback;
+            sa = MathF.Min(sa, len * 0.5f);
+            sb = MathF.Min(sb, len * 0.5f);
+            Span<Vec2> axis = stackalloc Vec2[2];
+            axis[0] = pa + (dir * sa);
+            axis[1] = pb - (dir * sb);
+            RejectReason ov = CheckFootprint(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, -1, ref c);
+            if (ov != RejectReason.None)
+            {
+                return ov;
+            }
         }
 
         // Рукава: каждый конец добавляет один.

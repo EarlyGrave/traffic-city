@@ -93,7 +93,8 @@ internal static class ToolPreview
         {
             // Обратная запись для undo: нет вовсе или не влезет в запись (> InverseLog.MaxPerRecord команд) - предупреждаем заранее (player-tools.md §8.1).
             if (!InverseBuilder.HasInverse(cmd.Kind) ||
-                (cmd.Kind == CommandKind.RemoveRoad && c.Seg >= 0 && InverseBuilder.MaxRemoveRoadInverse(w, c.Seg) > InverseLog.MaxPerRecord))
+                (cmd.Kind == CommandKind.RemoveRoad && c.Seg >= 0 && InverseBuilder.MaxRemoveRoadInverse(w, c.Seg) > InverseLog.MaxPerRecord) ||
+                (cmd.Kind == CommandKind.UpgradeRoad && InverseBuilder.UpgradeLacksInverse(w, in cmd)))
             {
                 iw.Add(IssueCode.UndoUnavailable, IssueSeverity.Warning, EntityKind.None, -1, 0, c.AX, c.AZ);
             }
@@ -105,6 +106,9 @@ internal static class ToolPreview
                     break;
                 case CommandKind.RemoveRoad:
                     RemoveRoadWarnings(w, in c, flags, ref r, ref iw);
+                    break;
+                case CommandKind.UpgradeRoad:
+                    UpgradeRoadWarnings(w, in c, ref r, ref iw);
                     break;
                 case CommandKind.SetTurnBan:
                 case CommandKind.SetNodeControl:
@@ -132,6 +136,11 @@ internal static class ToolPreview
         r.NewNodes = c.NewNodes;
         NearCapacity(n.NodePool.AliveCount + c.NewNodes, n.NodePool.Capacity, ref iw);
         NearCapacity(n.SegmentPool.AliveCount + 1, n.SegmentPool.Capacity, ref iw);
+
+        if (c.Profile >= 0)
+        {
+            ProfileBuildWarnings(w, in c, ref iw);
+        }
 
         Connectivity cn = ConnOf(w);
         cn.EnsureBase();
@@ -161,6 +170,149 @@ internal static class ToolPreview
                 iw.Add(IssueCode.DeadEnd, origin ? IssueSeverity.Warning : IssueSeverity.Info, EntityKind.None, -1, 0, x, z);
             }
         }
+    }
+
+    // ---------------------------------------------------------------- профили (RP7)
+
+    // Дорога по профилю: отступы соседних рукавов в существующих узлах концов (SetbackShort) и участки, которые она накроет (ZoneLotsLost).
+    private static void ProfileBuildWarnings(World w, in ToolCheck c, ref IssueWriter iw)
+    {
+        NetworkStore n = w.Net;
+        float half = n.Profiles!.HalfRoadM(c.Profile);
+        var pa = new Vec2(c.AX, c.AZ);
+        var pb = new Vec2(c.BX, c.BZ);
+        for (int e = 0; e < 2; e++)
+        {
+            int node = e == 0 ? c.NodeA : c.NodeB;
+            if (node >= 0 && n.Nodes[node].FirstArm >= 0)
+            {
+                SetbackWarnings(w, node, e == 0 ? Unit(pa, pb) : Unit(pb, pa), half, -1, 1, ref iw);
+            }
+        }
+
+        Span<Vec2> axis = stackalloc Vec2[2];
+        axis[0] = pa;
+        axis[1] = pb;
+        LostLotsWarning(w, axis, n.Profiles.EdgeMm[c.Profile] * 0.001f, -1, 0, c.AX, c.AZ, ref iw);
+    }
+
+    // ADR-0028: рукава уже стоящих в узле дорог не перестраиваются. Если дорога с полушириной newHalf пересекает рукав и его отступ меньше newHalf + corner_radius, стоп-линия рукава
+    // попадёт на скругление: SetbackShort, Value - нехватка, мм. skipSeg - сам правимый сегмент; extraArms - сколько рукавов добавит команда (1 у BuildRoad).
+    private static void SetbackWarnings(World w, int node, Vec2 newDir, float newHalf, int skipSeg, int extraArms, ref IssueWriter iw)
+    {
+        NetworkStore n = w.Net;
+        float cr = w.Builder.Options.CornerRadius;
+        if (!(cr > 0f))
+        {
+            return;
+        }
+
+        int degree = extraArms;
+        for (int code = n.IncHead[node]; code >= 0; code = n.IncNext[code])
+        {
+            degree++;
+        }
+
+        if (degree < 3)
+        {
+            return;
+        }
+
+        Vec2 np = n.Nodes[node].Position;
+        for (int code = n.IncHead[node]; code >= 0; code = n.IncNext[code])
+        {
+            int seg = code >> 1;
+            if (seg == skipSeg)
+            {
+                continue;
+            }
+
+            ref readonly SegmentData sd = ref n.Segments[seg];
+            int p0 = sd.FirstPoint;
+            Vec2 first = (code & 1) == 0 ? n.SegmentPoints[p0] : n.SegmentPoints[p0 + sd.PointCount - 1];
+            Vec2 arm = Unit(np, first);
+            if (((newDir.X * arm.X) + (newDir.Z * arm.Z)) <= -NetworkBuilder.StraightCos)
+            {
+                continue;   // продолжение «прямо»: поперечной дороги для этого рукава нет
+            }
+
+            float have = Dist(np, first);
+            float need = newHalf + cr;
+            if (have < need - 0.01f)
+            {
+                iw.Add(IssueCode.SetbackShort, IssueSeverity.Warning, EntityKind.Segment, seg, sd.Generation, first.X, first.Z, (int)MathF.Ceiling((need - have) * 1000f));
+            }
+        }
+    }
+
+    // Участки на сетке, которые накроет дорога: Value - число участков.
+    private static void LostLotsWarning(World w, scoped ReadOnlySpan<Vec2> axis, float edgeM, int seg, int gen, float x, float z, ref IssueWriter iw)
+    {
+        if (w.City == null || !w.City.LotGen.GridMode)
+        {
+            return;
+        }
+
+        int lost = w.City.LotGen.PreviewLost(w, w.City, axis, edgeM, out _);
+        if (lost > 0)
+        {
+            iw.Add(IssueCode.ZoneLotsLost, IssueSeverity.Warning, seg >= 0 ? EntityKind.Segment : EntityKind.None, seg, gen, x, z, lost);
+        }
+    }
+
+    private static void UpgradeRoadWarnings(World w, in ToolCheck c, ref PreviewResult r, ref IssueWriter iw)
+    {
+        if (c.Reshape == ReshapeMode.None || c.Reshape == ReshapeMode.Speed)
+        {
+            return;
+        }
+
+        NetworkStore n = w.Net;
+        int seg = c.Seg;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        r.NewLanes = c.Reshape == ReshapeMode.Swap ? c.LanesAB + c.LanesBA : 0;
+        for (int e = 0; e < 2; e++)
+        {
+            int node = e == 0 ? sd.NodeA : sd.NodeB;
+            ref readonly NodeData nd = ref n.Nodes[node];
+            if (nd.Signal >= 0)
+            {
+                iw.Add(IssueCode.SignalPlanReset, IssueSeverity.Info, EntityKind.Node, node, nd.Generation, nd.Position.X, nd.Position.Z);
+            }
+
+            if (c.Profile >= 0 && nd.FirstArm >= 0)
+            {
+                Vec2 toward = n.SegmentPoints[e == 0 ? sd.FirstPoint : sd.FirstPoint + sd.PointCount - 1];
+                SetbackWarnings(w, node, Unit(nd.Position, toward), n.Profiles!.HalfRoadM(c.Profile), seg, 0, ref iw);
+            }
+        }
+
+        if (c.Profile >= 0)
+        {
+            Span<Vec2> axis = stackalloc Vec2[NetworkBuilder.MaxVia + 2];
+            axis = axis[..sd.PointCount];
+            for (int i = 0; i < axis.Length; i++)
+            {
+                axis[i] = n.SegmentPoints[sd.FirstPoint + i];
+            }
+
+            LostLotsWarning(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, seg, sd.Generation, c.IssueX, c.IssueZ, ref iw);
+        }
+    }
+
+    private static Vec2 Unit(Vec2 from, Vec2 to)
+    {
+        float dx = to.X - from.X;
+        float dz = to.Z - from.Z;
+        float len = MathF.Sqrt((dx * dx) + (dz * dz));
+        return len > 0f ? new Vec2(dx / len, dz / len) : default;
+    }
+
+    private static float Dist(Vec2 a, Vec2 b)
+    {
+        float dx = b.X - a.X;
+        float dz = b.Z - a.Z;
+        return MathF.Sqrt((dx * dx) + (dz * dz));
     }
 
     // ---------------------------------------------------------------- RemoveRoad

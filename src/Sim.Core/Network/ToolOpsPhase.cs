@@ -301,7 +301,7 @@ internal static class ToolOpsPhase
         }
     }
 
-    private static int NearestOpenLane(NetworkStore n, Util.Vec2 center, int excludeSeg)
+    internal static int NearestOpenLane(NetworkStore n, Util.Vec2 center, int excludeSeg)
     {
         int best = -1;
         float bestD = float.MaxValue;

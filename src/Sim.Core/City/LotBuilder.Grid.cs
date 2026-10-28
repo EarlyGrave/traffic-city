@@ -622,6 +622,60 @@ internal sealed partial class LotBuilder
         return Math.Clamp(RoundMm(bestS), 0, lengthMm);
     }
 
+    private ushort[]? _previewPts;
+
+    /// <summary>
+    /// Превью (RP7): сколько живых участков на сетке станут <c>Lost</c>, если ось <paramref name="axis"/> с краем <paramref name="edgeM"/> (половина ширины профиля, м) добавить к маске дороги;
+    /// <paramref name="buildings"/> - сколько из них со зданием. Оценка по маске без дисков узлов; мир не меняется (рабочая копия маски выделяется при первом вызове). В legacy - 0.
+    /// </summary>
+    public int PreviewLost(World w, CityWorld c, ReadOnlySpan<Vec2> axis, float edgeM, out int buildings)
+    {
+        buildings = 0;
+        if (!_grid)
+        {
+            return 0;
+        }
+
+        ushort[] src = _pts!;
+        ushort[] pts = _previewPts ??= new ushort[src.Length];
+        Array.Copy(src, pts, src.Length);
+        long e = RoundMm(edgeM);
+        for (int i = 0; i + 1 < axis.Length; i++)
+        {
+            MarkPiece(pts, RoundMm(axis[i].X), RoundMm(axis[i].Z), RoundMm(axis[i + 1].X), RoundMm(axis[i + 1].Z), e);
+        }
+
+        int minFree = ((CellMinSharePct * PointsPerCell) + 99) / 100;
+        LotStore l = c.Lots;
+        int lost = 0;
+        for (int lot = 0; lot < l.Count; lot++)
+        {
+            if (l.Orient[lot] == LotOrient.Legacy || IsDead(w, c, lot))
+            {
+                continue;
+            }
+
+            CellBounds(l, lot, out int x0, out int z0, out int x1, out int z1);
+            bool any = false;
+            for (int cz = z0; cz <= z1 && !any; cz++)
+            {
+                for (int cx = x0; cx <= x1 && !any; cx++)
+                {
+                    int idx = Idx(cx, cz);
+                    any = idx < 0 || (PointsPerCell - System.Numerics.BitOperations.PopCount(pts[idx])) < minFree;
+                }
+            }
+
+            if (any)
+            {
+                lost++;
+                buildings += l.Building[lot] >= 0 ? 1 : 0;
+            }
+        }
+
+        return lost;
+    }
+
     /// <summary>
     /// Пересчёт после правки дорог (RP7 вызывает после <c>BuildRoad</c>/<c>UpgradeRoad</c>; <see cref="OnRoadBuilt"/> - сам): маска дороги и занятость заново, живые участки на сетке,
     /// у которых хотя бы одна клетка стала дорогой, получают <c>Lost</c> (здание в <c>Abandoned</c>). Возвращает число потерянных участков. В legacy - 0.
