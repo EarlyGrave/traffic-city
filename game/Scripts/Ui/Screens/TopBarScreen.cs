@@ -2,9 +2,12 @@ using Godot;
 
 namespace TrafficCity.Ui;
 
-/// <summary>Верхняя полоса 40 px (UI2): деньги, население, время, «События», настройки; вне инфо-режима клавиши 1/2/3 - скорость ×1/×2/×4.</summary>
+/// <summary>Верхняя полоса 52 px (UI2): деньги, население, время, «События», настройки; вне инфо-режима клавиши 1/2/3 - скорость ×1/×2/×4.</summary>
 public sealed class TopBarScreen : UiScreen
 {
+    /// <summary>Высота полосы: кнопки кита 40 px + поля + контур (40 px из UiMetrics не хватало).</summary>
+    public const float Height = 52f;
+
     private PanelContainer _bar = null!;
 
     /// <summary>Содержимое полосы.</summary>
@@ -16,7 +19,7 @@ public sealed class TopBarScreen : UiScreen
 
     protected override void Build(Control parent)
     {
-        _bar = Bar(parent, "TopBar", UiTheme.BarTop, top: true, UiMetrics.TopBarHeight, 0f);
+        _bar = Bar(parent, "TopBar", UiTheme.BarTop, top: true, Height, 0f);
         View = new UiTopBar(_bar);
     }
 

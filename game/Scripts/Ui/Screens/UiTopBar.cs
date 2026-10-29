@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -25,17 +26,18 @@ public sealed class UiTopBar
 {
     private static readonly string[] _weekdays = { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
     private static readonly float[] _speeds = { 1f, 2f, 4f };
+    private const float TimeButtonSize = 40f;
 
     private readonly HBoxContainer _money = new() { MouseFilter = Control.MouseFilterEnum.Pass };
-    private readonly Label _balance = Value();
-    private readonly Label _flow = Value();
+    private readonly Label _balance = Value(big: true);
+    private readonly UiBadge _flow = new();
     private readonly HBoxContainer _people = new() { MouseFilter = Control.MouseFilterEnum.Pass };
-    private readonly Label _population = Value();
+    private readonly Label _population = Value(big: true);
     private readonly VSeparator _sepLeft = new();
-    private readonly Button _pause = TimeButton("II", 34f);
-    private readonly Button[] _speedButtons = new Button[3];
-    private readonly Label _speedLabel = Value();
-    private readonly Label _clock = Value();
+    private readonly UiButton _pause = TimeIcon("pause", "Пауза", "Space", toggle: true);
+    private readonly UiButton[] _speedButtons = new UiButton[3];
+    private readonly UiBadge _speedLabel = new();
+    private readonly Label _clock = Value(big: true);
 
     private SimHost? _host;
     private long _shownMinute = -1;
@@ -79,17 +81,17 @@ public sealed class UiTopBar
         var center = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         center.AddThemeConstantOverride("separation", 4);
         row.AddChild(center);
-        _pause.ToggleMode = true;
-        _pause.TooltipText = "Пауза (Пробел)";
         _pause.Toggled += on => _host?.SetPaused(on);
         center.AddChild(_pause);
         string[] keys = { "1", "2", "3" };
         for (int i = 0; i < _speeds.Length; i++)
         {
             float s = _speeds[i];
-            Button b = TimeButton("×" + s.ToString("0", CultureInfo.InvariantCulture), 38f);
-            b.ToggleMode = true;
-            b.TooltipText = "Скорость ×" + s.ToString("0", CultureInfo.InvariantCulture) + " (" + keys[i] + " вне инфо-режима; +/− меняют скорость вдвое)";
+            UiButton b = new UiButton("×" + s.ToString("0", CultureInfo.InvariantCulture), UiButtonKind.Toggle)
+            {
+                FocusMode = Control.FocusModeEnum.None,
+                CustomMinimumSize = new Vector2(TimeButtonSize, TimeButtonSize),
+            }.WithTooltip("Скорость ×" + s.ToString("0", CultureInfo.InvariantCulture) + " (вне инфо-режима; +/− меняют скорость вдвое)", keys[i]);
             b.Pressed += () => _host?.SetSpeed(s);
             center.AddChild(b);
             _speedButtons[i] = b;
@@ -97,6 +99,7 @@ public sealed class UiTopBar
 
         _speedLabel.TooltipText = "Скорость вне ×1/×2/×4 (клавиши +/−)";
         _speedLabel.Visible = false;
+        _speedLabel.Set(string.Empty, UiTone.Info);
         center.AddChild(_speedLabel);
         _clock.CustomMinimumSize = new Vector2(140f, 0f);
         _clock.HorizontalAlignment = HorizontalAlignment.Center;
@@ -106,12 +109,14 @@ public sealed class UiTopBar
         var right = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter, Alignment = BoxContainer.AlignmentMode.End };
         right.AddThemeConstantOverride("separation", 4);
         row.AddChild(right);
-        Button notes = TimeButton("События", 0f);
-        notes.TooltipText = "Список последних уведомлений";
+        var notes = new UiButton("События")
+        {
+            FocusMode = Control.FocusModeEnum.None,
+            CustomMinimumSize = new Vector2(0f, TimeButtonSize),
+        }.WithTooltip("Список последних уведомлений");
         right.AddChild(notes);
         NotesButton = notes;
-        Button settings = TimeButton("⚙", 30f);
-        settings.TooltipText = "Настройки (F10)";
+        UiButton settings = TimeIcon("settings", "Настройки", "F10");
         SettingsButton = settings;
         right.AddChild(settings);
 
@@ -154,7 +159,7 @@ public sealed class UiTopBar
             // кнопки ×1/×2/×4 и «пауза» подсвечены сами; число нужно только для нестандартной скорости (клавиши +/-)
             bool preset = Array.IndexOf(_speeds, scale) >= 0;
             _speedLabel.Visible = !preset;
-            _speedLabel.Text = "×" + scale.ToString("0.###", CultureInfo.InvariantCulture);
+            _speedLabel.Set("×" + scale.ToString("0.###", CultureInfo.InvariantCulture), UiTone.Info);
         }
 
         long tick = h.SimTick;
@@ -203,8 +208,7 @@ public sealed class UiTopBar
             _shownInsolvent = d.Insolvent;
             _balance.Text = "$\u00A0" + Group(d.Balance);
             string sign = d.FlowPerDay >= 0 ? "+" : "−";
-            _flow.Text = (d.FlowPerDay >= 0 ? "▲ " : "▼ ") + sign + Short(Math.Abs(d.FlowPerDay)) + "/д";
-            _flow.AddThemeColorOverride("font_color", d.FlowPerDay >= 0 ? UiPalette.TextSecondary : UiPalette.Error);
+            _flow.Set((d.FlowPerDay >= 0 ? "▲ " : "▼ ") + sign + Short(Math.Abs(d.FlowPerDay)) + "/д", d.FlowPerDay >= 0 ? UiTone.Neutral : UiTone.Danger);
             _balance.AddThemeColorOverride("font_color", d.Balance < 0 || d.Insolvent ? UiPalette.Error : UiPalette.Text);
             _balance.TooltipText = d.Insolvent ? "Казна за кредитным лимитом" : string.Empty;
         }
@@ -248,18 +252,20 @@ public sealed class UiTopBar
         _ => v.ToString(CultureInfo.InvariantCulture),
     };
 
-    private static Label Value() => new()
+    private static Label Value(bool big = false) => new()
     {
+        ThemeTypeVariation = big ? ThemeBuilder.LabelValue : string.Empty,
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         MouseFilter = Control.MouseFilterEnum.Pass,
     };
 
-    private static Button TimeButton(string text, float minWidth) => new()
+    /// <summary>Квадратная кнопка-пиктограмма верхней полосы (меньше инструментов тулбара). Space/Enter не должны её «нажимать»: действия времени приходят из InputMap.</summary>
+    private static UiButton TimeIcon(string glyph, string tooltip, string hint, bool toggle = false)
     {
-        Text = text,
-        ThemeTypeVariation = UiTheme.ButtonCompact,
-        FocusMode = Control.FocusModeEnum.None, // Space/Enter не должны «нажимать» кнопку: действия времени приходят из InputMap
-        CustomMinimumSize = new Vector2(minWidth, 28f),
-    };
+        UiButton b = UiButton.ForIcon(glyph, tooltip, hint, toggle);
+        b.FocusMode = Control.FocusModeEnum.None;
+        b.CustomMinimumSize = new Vector2(TimeButtonSize, TimeButtonSize);
+        return b;
+    }
 }
 #pragma warning restore CA1001
