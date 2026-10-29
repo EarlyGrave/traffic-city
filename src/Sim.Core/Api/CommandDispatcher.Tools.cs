@@ -297,6 +297,149 @@ internal static partial class CommandDispatcher
         AppliedPaid(w, in cmd, in chk);
     }
 
+    // ---------------------------------------------------------------- автобусные линии (T9, player-tools.md §8.7)
+
+    /// <summary><c>CreateBusRoute</c>: новая линия без остановок (выпуск начнётся, когда появится первая остановка); <c>RestoreOf</c> - пересоздание снятой линии (undo).</summary>
+    private static void CreateBusRoute(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        CreateBusRouteCmd b = cmd.CreateBusRoute;
+        int r = Transit.BusEdit.CreateRoute(w, b.HeadwayTicks, b.VehicleType, (b.Flags & BusRouteFlags.Suspend) != 0, cmd.Tag);
+        if (r < 0)
+        {
+            RejectTool(w, in cmd, RejectReason.Capacity, CapacityKind.BusRoutes);
+            return;
+        }
+
+        BusRemap(w, in cmd, EntityKind.BusRoute, in b.RestoreOf, new EntityRef(r, w.Net.BusRoutes[r].Generation));
+        w.Inv.BuiltRoute = r;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>
+    /// <c>InsertBusStop</c> / <c>AppendBusStop</c>: новая остановка на позиции линии (полоса и S по ходу полосы); проверка <c>Unreachable</c> - от соседних остановок по текущей сети.
+    /// <c>RestoreOf</c> мёртв - пересоздание (<c>BusStopRemapped</c>), жив и уже на линии - ничего (повтор обратной записи).
+    /// </summary>
+    private static void InsertBusStop(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        if (chk.Noop)
+        {
+            w.Inv.BuiltStop = chk.Stop;
+            Applied(w, in cmd);
+            return;
+        }
+
+        BusStopKind kind = cmd.Kind == CommandKind.AppendBusStop ? cmd.AppendBusStop.Kind : (BusStopKind)cmd.InsertBusStop.Kind;
+        int si = Transit.BusEdit.InsertStop(w, chk.Route, chk.Pos, chk.Lane, chk.StopS, kind, cmd.Tag);
+        if (si < 0)
+        {
+            RejectTool(w, in cmd, RejectReason.Capacity, CapacityKind.BusStops);
+            return;
+        }
+
+        if (cmd.Kind == CommandKind.InsertBusStop)
+        {
+            BusRemap(w, in cmd, EntityKind.BusStop, in cmd.InsertBusStop.RestoreOf, new EntityRef(si, w.Net.BusStops[si].Generation));
+        }
+
+        BusStopsChanged(w);
+        w.Inv.BuiltStop = si;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary><c>RemoveBusStop</c>: остановка уходит с линии, слот освобождается; автобусы, ехавшие к ней, - к следующей достижимой.</summary>
+    private static void RemoveBusStop(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        Transit.BusEdit.RemoveStop(w, chk.Stop, cmd.Tag);
+        BusStopsChanged(w);
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary><c>RemoveBusRoute</c>: линия и её остановки освобождаются; автобусы доезжают до своей цели и завершают рейс.</summary>
+    private static void RemoveBusRoute(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        bool hadStops = w.Net.BusRoutes[chk.Route].StopCount > 0;
+        Transit.BusEdit.RemoveRoute(w, chk.Route, cmd.Tag);
+        if (hadStops)
+        {
+            BusStopsChanged(w);
+        }
+
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary><c>SetBusRouteParams</c> (на месте): интервал, тип ТС, приостановка/возобновление.</summary>
+    private static void SetBusRouteParams(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        SetBusRouteParamsCmd b = cmd.SetBusRouteParams;
+        Transit.BusEdit.SetParams(w, chk.Route, b.HeadwayTicks, b.VehicleType, b.Flags);
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    // Сеть пешеходов - производное от остановок (переходы на перегоне у остановок, pedestrians.md §2): после правки остановок - пересборка со сбросом агентов, как после правки дорог.
+    private static void BusStopsChanged(World w)
+    {
+        if (w.Peds != null && w.Net.PedNet != null && w.Net.PedNet.MidCap > 0)
+        {
+            w.Peds.OnNetworkGrown(w);
+        }
+    }
+
+    private static void BusRemap(World w, in Command cmd, EntityKind kind, in EntityRef old, in EntityRef now)
+    {
+        if (old.Generation == 0)
+        {
+            return;
+        }
+
+        w.Inv.AddRemap(kind, in old, in now);
+        w.Emit(kind == EntityKind.BusStop ? SimEventKind.BusStopRemapped : SimEventKind.BusRouteRemapped, cmd.Tag, old.Index, now.Index);
+    }
+
     // Пересоздание по Restore*: событие *Remapped и запись scratch-таблицы old -> new (player-tools.md §8.2).
     private static void RestoreRemap(World w, in Command cmd, EntityKind kind, in EntityRef old, in EntityRef now)
     {

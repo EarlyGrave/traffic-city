@@ -27,6 +27,11 @@ internal sealed class InverseLog
 
     public float BuiltS;
 
+    /// <summary>Линия / остановка, созданная последней <c>CreateBusRoute</c> / <c>InsertBusStop</c> (-1 - нет; T9): обратная и undo-кредит знают индекс только после применения.</summary>
+    public int BuiltRoute = -1;
+
+    public int BuiltStop = -1;
+
     /// <summary>Половины, слитые последней <c>MergeAtNode</c> (до слияния): обратная <c>SplitRoad</c> восстанавливает их handle'ы (T5).</summary>
     public EntityRef MergedA, MergedB;
 

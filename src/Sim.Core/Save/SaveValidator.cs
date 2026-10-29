@@ -519,7 +519,7 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > n.BusRouteStopCount || r.HeadwayTicks < 0 || r.ActiveBuses < 0 ||
+            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > n.BusRouteStopCount || r.HeadwayTicks == int.MinValue || r.ActiveBuses < 0 ||   // < 0 - линия приостановлена (T9)
                 (uint)r.VehicleType >= (uint)w.Types.Length)
             {
                 return Bad(c, i, 16);

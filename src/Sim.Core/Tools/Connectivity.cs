@@ -84,6 +84,89 @@ internal sealed class Connectivity
         RefAlt = PickReference(CompAlt, count, seg);
     }
 
+    /// <summary>
+    /// Достижимость (T9, <c>Unreachable</c> автобусных линий): можно ли доехать от точки <paramref name="fromS"/> полосы <paramref name="fromLane"/> (обычной или connector'а) до точки
+    /// <paramref name="toS"/> обычной полосы <paramref name="toLane"/> по текущей сети (закрывающиеся сегменты - нет). Тот же DirSeg и цель впереди - да; иначе одна компонента
+    /// сильной связности - да; иначе обход в ширину по графу DirSeg (scratch Tarjan). Без аллокаций после первого вызова.
+    /// </summary>
+    public bool Reaches(int fromLane, float fromS, int toLane, float toS)
+    {
+        NetworkStore n = _n;
+        if ((uint)fromLane >= (uint)n.LaneCount)
+        {
+            return false;
+        }
+
+        if (n.Lanes[fromLane].Kind == LaneKind.Connector)
+        {
+            fromLane = n.Lanes[fromLane].ToLane;
+            fromS = 0f;
+        }
+
+        int u = DirSegOf(fromLane);
+        int t = DirSegOf(toLane);
+        if (u < 0 || t < 0)
+        {
+            return false;
+        }
+
+        EnsureBase();
+        if (_ok[u] == 0 || _ok[t] == 0)
+        {
+            return false;
+        }
+
+        if (u == t && toS >= fromS)
+        {
+            return true;
+        }
+
+        if (u != t && CompBase[u] >= 0 && CompBase[u] == CompBase[t])
+        {
+            return true;
+        }
+
+        // Обход в ширину от преемников u (u == t: цель позади - нужен круг обратно на тот же DirSeg).
+        int vcount = n.SegmentCount * 2;
+        for (int k = 0; k < vcount; k++)
+        {
+            _idx[k] = -1;
+        }
+
+        int head = 0;
+        int tail = 0;
+        for (int e = _arcFirst[u]; e < _arcFirst[u + 1]; e++)
+        {
+            int v = _arcTo[e];
+            if (_ok[v] != 0 && _idx[v] < 0)
+            {
+                _idx[v] = 0;
+                _stack[tail++] = v;
+            }
+        }
+
+        while (head < tail)
+        {
+            int v = _stack[head++];
+            if (v == t)
+            {
+                return true;
+            }
+
+            for (int e = _arcFirst[v]; e < _arcFirst[v + 1]; e++)
+            {
+                int x = _arcTo[e];
+                if (_ok[x] != 0 && _idx[x] < 0)
+                {
+                    _idx[x] = 0;
+                    _stack[tail++] = x;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>DirSeg полосы или -1 (не обычная полоса).</summary>
     public int DirSegOf(int lane)
     {

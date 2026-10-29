@@ -92,10 +92,23 @@ internal static partial class CommandDispatcher
                 SetNodeControl(w, in cmd);
                 break;
             case CommandKind.CreateBusRoute:
+                CreateBusRoute(w, in cmd);
+                break;
             case CommandKind.AppendBusStop:
+            case CommandKind.InsertBusStop:
+                InsertBusStop(w, in cmd);
+                break;
+            case CommandKind.RemoveBusStop:
+                RemoveBusStop(w, in cmd);
+                break;
+            case CommandKind.RemoveBusRoute:
+                RemoveBusRoute(w, in cmd);
+                break;
+            case CommandKind.SetBusRouteParams:
+                SetBusRouteParams(w, in cmd);
+                break;
             case CommandKind.SpawnBus:
-                // TODO(step 4): транспорт.
-                Rejected(w, in cmd, RejectReason.NotSupported);
+                Rejected(w, in cmd, RejectReason.NotSupported);   // выпуск - по интервалу линии (BusDispatch)
                 break;
             case CommandKind.SetArmControl:
                 SetArmControl(w, in cmd);
@@ -117,13 +130,6 @@ internal static partial class CommandDispatcher
                 break;
             case CommandKind.MergeAtNode:
                 MergeAtNode(w, in cmd);
-                break;
-            case CommandKind.InsertBusStop:
-            case CommandKind.RemoveBusStop:
-            case CommandKind.RemoveBusRoute:
-            case CommandKind.SetBusRouteParams:
-                // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
-                Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
@@ -147,7 +153,25 @@ internal static partial class CommandDispatcher
     /// <summary>Применена платная команда инструмента: проводка в казне (E4, <see cref="ToolCosts.Settle"/>), затем <c>CommandApplied</c>. Сегмент, созданный прямой <c>BuildRoad</c>, - в <c>w.Inv.BuiltSeg</c>.</summary>
     private static void AppliedPaid(World w, in Command cmd, in ToolCheck chk)
     {
-        ToolCosts.Settle(w, in cmd, in chk, cmd.Kind == CommandKind.BuildRoad && !chk.Reopen ? w.Inv.BuiltSeg : -1);
+        int ti = -1;
+        int tg = 0;
+        if (cmd.Kind == CommandKind.BuildRoad && !chk.Reopen && w.Inv.BuiltSeg >= 0)
+        {
+            ti = w.Inv.BuiltSeg;
+            tg = w.Net.Segments[ti].Generation;
+        }
+        else if (cmd.Kind == CommandKind.CreateBusRoute && w.Inv.BuiltRoute >= 0)
+        {
+            ti = ToolCosts.RouteTarget(w.Inv.BuiltRoute);
+            tg = w.Net.BusRoutes[w.Inv.BuiltRoute].Generation;
+        }
+        else if (cmd.Kind is CommandKind.InsertBusStop or CommandKind.AppendBusStop && w.Inv.BuiltStop >= 0)
+        {
+            ti = ToolCosts.StopTarget(w.Inv.BuiltStop);
+            tg = w.Net.BusStops[w.Inv.BuiltStop].Generation;
+        }
+
+        ToolCosts.Settle(w, in cmd, in chk, ti, tg);
         Applied(w, in cmd);
     }
 

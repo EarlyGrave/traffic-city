@@ -35,7 +35,7 @@ public class ToolPayloadSizesTests
         { typeof(InsertBusStopCmd), 36 },
         { typeof(RemoveBusStopCmd), 8 },
         { typeof(RemoveBusRouteCmd), 8 },
-        { typeof(SetBusRouteParamsCmd), 16 },
+        { typeof(SetBusRouteParamsCmd), 20 },   // T9: + Flags (приостановка / возобновление)
         { typeof(SetSignalPlanCmd), 50 },
         { typeof(SetNodeControlCmd), 12 },
         { typeof(CreateBusRouteCmd), 20 },
@@ -147,11 +147,11 @@ public class ToolPayloadSizesTests
     }
 
     [Fact]
-    public void NotYetImplementedToolCommands_AreNotSupported_AndStateIsUntouched()
+    public void BusToolCommands_WithDeadHandles_AreRejected_AndStateIsUntouched()
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());
         sim.Step(5);
-        var seg = new EntityRef(0, 1);
+        var seg = new EntityRef(0, 12345);   // T9: команды реализованы; мёртвый handle - InvalidHandle без эффекта
         Command[] cmds =
         {
             Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 1),
@@ -171,7 +171,7 @@ public class ToolPayloadSizesTests
             if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= cmds.Length)
             {
                 rejected++;
-                Assert.Equal((int)RejectReason.NotSupported, e.A);
+                Assert.Equal((int)RejectReason.InvalidHandle, e.A);
                 Assert.Equal((int)cmds[e.Tag - 1].Kind, e.B);
             }
         }
@@ -182,7 +182,7 @@ public class ToolPayloadSizesTests
         twin.Step(5);
         for (int i = 0; i < cmds.Length; i++)
         {
-            Assert.True(twin.Enqueue(new Command { Kind = (CommandKind)99, Tag = (uint)(i + 1) }));   // тот же счёт отказов, но заведомо без эффекта
+            Assert.True(twin.Enqueue(Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = seg }, (uint)(i + 1))));   // тот же счёт отказов (InvalidHandle), но заведомо без эффекта
         }
 
         twin.Step(1);

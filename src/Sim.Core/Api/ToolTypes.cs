@@ -170,13 +170,30 @@ public struct RemoveBusRouteCmd
     public EntityRef Route;
 }
 
-/// <summary>«Не менять»: <c>HeadwayTicks == 0</c>, <c>VehicleType == -1</c>.</summary>
+/// <summary>
+/// «Не менять»: <c>HeadwayTicks == 0</c>, <c>VehicleType == -1</c>, <c>Flags == 0</c>. T9: <see cref="BusRouteFlags"/> в <c>Flags</c> - приостановить / возобновить линию (16 -> 20 Б).
+/// Число автобусов на линии задаётся интервалом: выпуск раз в <c>HeadwayTicks</c> с первой остановки (содержание казны считает <c>ceil(цикл / интервал)</c>, city-economy.md §6.1).
+/// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SetBusRouteParamsCmd
 {
     public EntityRef Route;
     public int HeadwayTicks;
     public int VehicleType;
+    public int Flags;
+}
+
+/// <summary>
+/// Биты <c>CreateBusRouteCmd.Flags</c> и <c>SetBusRouteParamsCmd.Flags</c> (T9). Приостановленная линия (<c>Suspended</c>) хранит интервал со знаком минус
+/// (<c>BusRouteData.HeadwayTicks &lt; 0</c>, модуль - интервал для возобновления): новых автобусов не выпускает, автобусы на линии доезжают рейс, пешеходы её не выбирают.
+/// </summary>
+public static class BusRouteFlags
+{
+    /// <summary>Создать приостановленной / приостановить.</summary>
+    public const int Suspend = 1;
+
+    /// <summary>Возобновить (только <c>SetBusRouteParams</c>; вместе с <see cref="Suspend"/> - <c>InvalidArgument</c>).</summary>
+    public const int Resume = 2;
 }
 
 // ---------------------------------------------------------------- превью (§7.1)

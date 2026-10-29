@@ -228,3 +228,10 @@
 > `CopyKpiHours(Span<KpiHour>)` (до 24 ч), `CopyKpiDays(Span<long>)` (баланс на конец суток, до 32), `GetProgression`/`GetMilestone`,
 > `IsFeatureUnlocked`/`IsProfileUnlocked`; `RejectReason.Locked = 17` (текст в RejectMessages есть); события 59–62 объявлены. Сейв **w11**
 > (CKPI всегда в режиме жителей, PROG — при включённой прогрессии); корпус сейвов — бюджет поднят 25 → 32 МБ (сейчас 29.7). Вех и замков ещё нет (PG3).
+
+> **2026-10-29: N6 влит (облако, агент 184, opus) — T9 автобусные инструменты.** Для UI11: `CreateBusRoute` (4), `AppendBusStop` (5),
+> `InsertBusStop` (31: Route, Position −1 = в конец, Seg+Dir+LaneNo, Kind 0 обочина / 1 карман, S), `RemoveBusStop` (32), `RemoveBusRoute` (33),
+> `SetBusRouteParams` (34; payload 16 → 20 Б, `Flags` bit0 Suspend / bit1 Resume). Приостановка — `BusRouteData.HeadwayTicks < 0`. Остановки линии —
+> `BusRouteStops[FirstStop + k]` больше не подряд после правок. Отказ `Unreachable` (13) с точкой в превью; событие `BusRouteRemoved` = 66.
+> Все 6 команд с undo, цены `tools.costs.bus_route/bus_stop`. **Не сделано:** правка полос / разрез / слияние сегмента с остановкой — сначала убрать
+> остановку. Подробно — `player-tools.md` §8.7. Полный прогон после мержа: 1327 + 503 + 52, 0 падений.
