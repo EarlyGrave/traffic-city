@@ -419,7 +419,7 @@ public sealed class BudgetFlowsTests
         StepChecked(sim, 5 * Day);
         CityBudget b = c.Budget!;
         Assert.True(b.IncomeEwma > 0);
-        Assert.Equal(60 * b.IncomeEwma, b.CreditLimit(in c.Cfg.Economy));
+        Assert.Equal(60 * b.IncomeEwma, b.CreditLimit(in c.Cfg.Economy, 0));
         long y = c.Ledger.FlowYesterday[(int)FlowKind.Tax] + c.Ledger.FlowYesterday[(int)FlowKind.Rent] + c.Ledger.FlowYesterday[(int)FlowKind.Fare];
         Assert.InRange(b.IncomeEwma, y / 4, y * 4);
         Assert.Equal(0, b.Insolvent);
@@ -620,7 +620,7 @@ public sealed class BudgetFlowsTests
 
             long[] y = lg.FlowYesterday;
             _out.WriteLine($"d{day}: city={lg.City} income={y[(int)FlowKind.Tax] + y[(int)FlowKind.Rent] + y[(int)FlowKind.Fare]} (tax {y[(int)FlowKind.Tax]}, rent {y[(int)FlowKind.Rent]}, fare {y[(int)FlowKind.Fare]}) " +
-                            $"maint={y[(int)FlowKind.Maintenance]} interest={y[(int)FlowKind.Interest]} incomeEwma={c.Budget!.IncomeEwma} limit={c.Budget.CreditLimit(c.Cfg.Economy)} " +
+                            $"maint={y[(int)FlowKind.Maintenance]} interest={y[(int)FlowKind.Interest]} incomeEwma={c.Budget!.IncomeEwma} limit={c.Budget.CreditLimit(c.Cfg.Economy, 0)} " +
                             $"pop={c.Residents.AliveCount} resAvg={residents / Math.Max(1, c.Residents.AliveCount)} firmAvg={firms / Math.Max(1, firmCount)} wage={y[(int)FlowKind.Wage]} div={y[(int)FlowKind.Dividend]} leak={y[(int)FlowKind.Leakage]} closures={sim.World.Counters.FirmClosures}");
             Assert.Equal(0, c.Budget.Insolvent);
             Assert.True(lg.City > 0, $"казна ушла в минус на сутках {day}");

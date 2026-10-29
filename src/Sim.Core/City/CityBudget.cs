@@ -42,7 +42,7 @@ internal sealed class CityBudget
     /// <summary>1 - казна за кредитным лимитом сейчас (обновляет E2 на границе суток).</summary>
     public byte Insolvent;
 
-    /// <summary>Уровень предупреждения о лимите (progression.md §5, PG5): 0 нет, 1/2 - выдан <c>BudgetWarning</c> этого уровня. Сейв CBGT 31 (w11); в хэш войдёт с PG5.</summary>
+    /// <summary>Уровень предупреждения о лимите (progression.md §5, PG5): 0 нет, 1/2 - выдан <c>BudgetWarning</c> этого уровня. Сейв CBGT 31 (w11), хэш - раздел казны (PG5).</summary>
     public byte WarnLevel;
 
     /// <summary>Кольцо undo-кредитов (§8.3); мёртвые записи - нули.</summary>
@@ -79,8 +79,8 @@ internal sealed class CityBudget
         Flags = BudgetPolicyFlags.Enable,
     };
 
-    /// <summary>Кредитный лимит (§6.3): <c>credit_days * IncomeEwma</c>.</summary>
-    public long CreditLimit(in CityEconomyDesc e) => e.CreditDays * IncomeEwma;
+    /// <summary>Кредитный лимит (§6.3): <c>(credit_days + бонус вех) * IncomeEwma</c>; бонус - <see cref="Progression.CreditDaysBonus"/> (PG3, progression.md §4.4), без прогрессии 0.</summary>
+    public long CreditLimit(in CityEconomyDesc e, int bonusDays) => (e.CreditDays + (long)bonusDays) * IncomeEwma;
 
     /// <summary>Производные значения по параметрам (после <c>Create</c> и <c>Load</c>). Содержание (<c>MaintRoadDay</c>, <c>MaintBusDay</c>) пересчитывает E2.</summary>
     public void RecomputeDerived(CityWorld c)

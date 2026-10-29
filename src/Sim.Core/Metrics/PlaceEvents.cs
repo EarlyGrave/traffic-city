@@ -183,7 +183,7 @@ internal sealed class PlaceEvents
     }
 
     // Сегмент машины: полоса - её сегмент; connector - сегмент полосы, из которой он ведёт (очередь у узла); иначе -1.
-    private static int SegmentOfLane(NetworkStore net, int lane)
+    internal static int SegmentOfLane(NetworkStore net, int lane)
     {
         if ((uint)lane >= (uint)net.LaneCount)
         {

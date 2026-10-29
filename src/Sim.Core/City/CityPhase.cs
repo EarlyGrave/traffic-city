@@ -90,6 +90,7 @@ internal static class CityPhase
             w.Counters.CityDays++;
             BudgetFlows.OnDayBoundary(w, c);   // казна (city-economy.md §6.2): применение ожидающей политики; E2 - цена земли, содержание, проценты, лимит
             c.Kpi.OnDayEnd(c.Ledger.City);   // суточное кольцо баланса (K5)
+            Progression.CheckMilestone(w, c);   // вехи на границе суток - после роста и казны (PG3, progression.md §3.3)
             c.Ledger.RollDay();
             c.Loads.ClearDay(c.Day);   // «сегодня» новых суток: позавчерашние числа L больше не нужны
             c.DayStage = DayStages.Buildings;
@@ -261,7 +262,7 @@ internal static class CityPhase
         {
             c.Valve.LateTours++;   // сеть насыщена, а тур опаздывает больше порога: сорван, не переносится в ночь (ADR-0035)
             w.Counters.ResToursCancelled++;
-            c.Kpi.Cur[0].IncTourCancelled++;
+            c.Kpi.OnTourCancelled(c, r);
             TripLegs.FinishTour(w, c, r);
             return;
         }

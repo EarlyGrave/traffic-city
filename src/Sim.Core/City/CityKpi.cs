@@ -1,5 +1,6 @@
 using System;
 using Sim.Core.Api;
+using Sim.Core.Metrics;
 using Sim.Core.Util;
 
 namespace Sim.Core.City;
@@ -39,6 +40,9 @@ internal sealed class CityKpi
     public int DayHead;
     public int DaysFilled;
 
+    /// <summary>Жалобы жителей (PG4, progression.md §6.2): накопитель часа и кольцо выпуска. Вне хэша и сейва.</summary>
+    public readonly Complaints Complaints;
+
     // производные календаря (не сохраняются): пороги случаев в тиках/дс
     private readonly int _dayTicks;
     private readonly int _longCommuteDs;
@@ -49,6 +53,7 @@ internal sealed class CityKpi
         _dayTicks = Math.Max(1, dayTicks);
         _longCommuteDs = (int)((long)_dayTicks * LongCommuteGameMin / (24 * 60 * 2));   // игровые минуты -> тики (сутки = 1440 мин) -> дс (2 тика)
         _longStopWaitTicks = (long)_dayTicks * LongStopWaitGameMin / (24 * 60);
+        Complaints = new Complaints(_dayTicks);
     }
 
     /// <summary>Игровой час суток тика (0..23); границы часов совпадают с границами суток при любом <c>DayTicks</c>.</summary>
@@ -69,7 +74,7 @@ internal sealed class CityKpi
     // ------------------------------------------------------------------ хуки (однопоточные фазы)
 
     /// <summary>Закрытая нога жителя (<c>TripLegs.CompleteLeg</c>): длительность от заявки до прибытия, дс; <paramref name="toWork"/> - нога к работе.</summary>
-    public void OnLeg(TravelMode mode, int durDs, bool toWork, int skimDs)
+    public void OnLeg(TravelMode mode, int durDs, bool toWork, int skimDs, int home = -1, int homeGen = 0)
     {
         ref KpiHour h = ref Cur[0];
         switch (mode)
@@ -96,17 +101,41 @@ internal sealed class CityKpi
             if (durDs >= limit)
             {
                 h.IncLongCommute++;
+                Complaints.Add(ComplaintKind.LongCommute, home, homeGen);   // жалоба - у дома жителя
             }
         }
     }
 
     /// <summary>Посадка после ожидания <paramref name="waitTicks"/> на остановке (только агенты-пешеходы).</summary>
-    public void OnBoarded(long waitTicks)
+    public void OnBoarded(long waitTicks, int stop = -1, int stopGen = 0)
     {
         if (waitTicks >= _longStopWaitTicks)
         {
             Cur[0].IncLongStopWait++;
+            Complaints.Add(ComplaintKind.LongStopWait, stop, stopGen);   // жалоба - у остановки посадки
         }
+    }
+
+    /// <summary>Тур снят (дедлайн выезда, сорванный тур клапана): случай <c>TourCancelled</c>, жалоба - у дома жителя <paramref name="r"/>.</summary>
+    public void OnTourCancelled(CityWorld c, int r)
+    {
+        Cur[0].IncTourCancelled++;
+        int home = c.Residents.Home[r];
+        Complaints.Add(ComplaintKind.TourCancelled, home, home >= 0 ? c.Buildings.Pool.GenerationOf(home) : 0);
+    }
+
+    /// <summary>Первый отказ места на ногу: случай <c>NoParking</c>, жалоба - у здания-цели.</summary>
+    public void OnNoParking(CityWorld c, int building)
+    {
+        Cur[0].IncNoParking++;
+        Complaints.Add(ComplaintKind.NoParking, building, building >= 0 ? c.Buildings.Pool.GenerationOf(building) : 0);
+    }
+
+    /// <summary>Эпизод стояния машины >= 60 с (<c>QualityMetrics.Sample</c>): случай <c>LongWait</c>, жалоба - у сегмента полосы машины (-1 - не на сети).</summary>
+    public void OnLongWait(int segment, int segmentGen)
+    {
+        Cur[0].IncLongWait++;
+        Complaints.Add(ComplaintKind.LongWait, segment, segmentGen);
     }
 
     // ------------------------------------------------------------------ фаза 9r
@@ -132,6 +161,8 @@ internal sealed class CityKpi
         VehAtHourStart = w.Counters.VehicleTicksTotal;
         MovingAtHourStart = w.Counters.MovingVehicleTicksTotal;
         cur = default;
+        Progression.CheckMilestone(w, w.City!);   // вехи (PG3, progression.md §3.3): после сдвига кольца; без прогрессии - выход первой строкой
+        Complaints.EmitHour(w, w.City!);   // жалобы часа (PG4, §6.2)
     }
 
     /// <summary>Граница суток (после казны): баланс в суточное кольцо.</summary>
@@ -193,7 +224,7 @@ internal sealed class CityKpi
     /// <summary>
     /// Дней до кредитного лимита (progression.md §2.1 K5): <c>ceil((City + CreditLimit) / (ExpenseEwma - IncomeEwma))</c> при отрицательном тренде; 0 - лимит уже пройден; -1 - тренд &gt;= 0 или казны нет.
     /// </summary>
-    public static int DaysToLimit(CityWorld c)
+    public static int DaysToLimit(CityWorld c, int bonusDays)
     {
         CityBudget? b = c.Budget;
         if (b == null)
@@ -207,7 +238,7 @@ internal sealed class CityKpi
             return -1;
         }
 
-        long room = c.Ledger.City + b.CreditLimit(in c.Cfg.Economy);
+        long room = c.Ledger.City + b.CreditLimit(in c.Cfg.Economy, bonusDays);
         if (room <= 0)
         {
             return 0;

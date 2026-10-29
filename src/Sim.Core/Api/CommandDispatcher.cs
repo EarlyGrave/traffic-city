@@ -77,13 +77,13 @@ internal static partial class CommandDispatcher
 
                 break;
             case CommandKind.PaintZone:
-                Result(w, in cmd, City.Zoning.Apply(w, in cmd));
+                Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.Zoning.Apply(w, in cmd));
                 break;
             case CommandKind.SetTripExecution:
                 Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
                 break;
             case CommandKind.SetBudgetPolicy:
-                Result(w, in cmd, City.BudgetFlows.SetPolicy(w, in cmd));
+                Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.BudgetFlows.SetPolicy(w, in cmd));
                 break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
@@ -135,6 +135,25 @@ internal static partial class CommandDispatcher
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Замок прогрессии (PG3, progression.md §4.3) для команд вне валидатора инструментов (<c>PaintZone</c>, <c>SetBudgetPolicy</c>): структурная проверка зонирования - та же, что в превью
+    /// (<see cref="Tools.ToolPreview"/>), замок - до мутации. Без прогрессии - false сразу.
+    /// </summary>
+    private static bool Locked(World w, in Command cmd)
+    {
+        if (w.Progression == null)
+        {
+            return false;
+        }
+
+        if (cmd.Kind == CommandKind.PaintZone && City.Zoning.Check(w, in cmd.PaintZone, out _) is RejectReason.InvalidArgument or RejectReason.NotSupported)
+        {
+            return false;   // структурный отказ выдаст сам обработчик
+        }
+
+        return City.Progression.Check(w, in cmd, out _) == RejectReason.Locked;
     }
 
     /// <summary>Итог обработчика города: <see cref="RejectReason.None"/> - применена, иначе отклонена с причиной.</summary>
@@ -204,6 +223,11 @@ internal static partial class CommandDispatcher
 
     private static void Rejected(World w, in Command cmd, RejectReason reason)
     {
+        if (reason == RejectReason.Locked)
+        {
+            w.Counters.LockedRejects++;
+        }
+
         w.Counters.CommandsRejected++;
         w.Emit(SimEventKind.CommandRejected, cmd.Tag, (int)reason, (int)cmd.Kind);
     }

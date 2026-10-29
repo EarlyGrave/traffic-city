@@ -62,7 +62,8 @@ internal static class QualityMetrics
                     c.StillEpisodes60++;
                     if (kpi != null)
                     {
-                        kpi.Cur[0].IncLongWait++;
+                        int seg = PlaceEvents.SegmentOfLane(net, v.Lane[i]);
+                        kpi.OnLongWait(seg, seg >= 0 ? net.Segments[seg].Generation : 0);   // случай и жалоба у сегмента (progression.md §6.1)
                     }
                 }
 
