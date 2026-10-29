@@ -249,6 +249,7 @@ public sealed partial class UiRoot : CanvasLayer
         _menus.Update(delta);
         UpdateCapabilities();
         _notify.Update(delta);
+        UpdateCity();
         if (_host is { IsReady: true } h && !_timeSet && h.DayTicks > 0)
         {
             _timeSet = true;
@@ -284,6 +285,10 @@ public sealed partial class UiRoot : CanvasLayer
             {
                 // страница меню израсходовала Esc (назад со списка / главное меню)
             }
+            else if (!_router.MenuOpen && CloseCity())
+            {
+                // панель «Город» закрывается раньше списка уведомлений и роутера
+            }
             else if (!_router.MenuOpen && _notify.ListOpen)
             {
                 _notify.SetListOpen(false); // список уведомлений закрывается первым: он поверх всего, кроме модального меню
@@ -311,6 +316,10 @@ public sealed partial class UiRoot : CanvasLayer
         else if (_mainMode || _router.MenuOpen)
         {
             // под меню (главным или Esc) горячие клавиши времени и инфо-режима молчат
+        }
+        else if (UiActions.Pressed(@event, UiActions.CityPanel) && (_host?.HasCity ?? false))
+        {
+            ToggleCity();
         }
         else if (UiActions.Pressed(@event, UiActions.ToolRoads))
         {
@@ -463,6 +472,7 @@ public sealed partial class UiRoot : CanvasLayer
         _root.AddChild(_rightDock);
         BuildLegend();
         BuildInspector();
+        BuildCity();
 
         _toasts = new VBoxContainer { Name = "Toasts", MouseFilter = Control.MouseFilterEnum.Ignore };
         _toasts.AnchorLeft = 1f;
