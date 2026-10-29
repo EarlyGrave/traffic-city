@@ -258,4 +258,4 @@
 | 181 | n3-t5 (облако, worktree) | opus | ночь N3: T5 полный UpgradeRoad + SplitRoad | wip |
 | 182 | n4-ev1 (облако, worktree) | opus | ночь N4: EV1 события с местом | wip |
 | 183 | n5-pg12 (облако, worktree) | opus | ночь N5: PG1+PG2 прогрессия — поверхность, сейв v11, кольцо KPI | wip |
-| 184 | n6-t9 (облако, worktree) | sonnet | ночь N6: T9 автобусные инструменты | wip |
+| 184 | n6-t9 (облако, worktree) | opus | ночь N6: T9 автобусные инструменты (opus — риск: автобусы на ходу) | wip |
