@@ -16,8 +16,8 @@ public enum StartKind
 /// </summary>
 public static class GameFlow
 {
-    /// <summary>Сценарий «Новой игры»: готовый сгенерированный город с жителями и казной (<c>scenarios/game-city.json</c> пока нет).</summary>
-    public const string NewGameScenario = "s1k-res-econ";
+    /// <summary>Сценарий «Новой игры»: готовый сгенерированный город с жителями и казной (<c>scenarios/game-city.json</c>), мир готовит ReadyCity в фоне (SimHost.ReadyCity).</summary>
+    public const string NewGameScenario = "game-city";
 
     public static StartKind Pending { get; private set; }
 

@@ -131,6 +131,33 @@ public sealed class RoadsOptionsStrip
         }
     }
 
+    /// <summary>
+    /// Замки профилей (UI16, progression.md §4.2): закрытые профили в списке серые с пометкой; выбрать их нельзя (ядро всё равно отклонит с <c>Locked</c>).
+    /// Вызывается при новой версии данных прогрессии (1 Гц), не в кадре; текст пункта меняется только при смене замка.
+    /// </summary>
+    public void ApplyLocks(CityPanelData d)
+    {
+        RoadCatalog cat = _tool.Catalog;
+        if (!cat.FromProfiles)
+        {
+            return;
+        }
+
+        for (int i = 0; i < cat.Count && i < _profile.ItemCount; i++)
+        {
+            int prof = cat[i].Profile;
+            bool locked = (uint)prof < (uint)d.ProfileOpen.Length && !d.ProfileOpen[prof];
+            if (_profile.IsItemDisabled(i) == locked)
+            {
+                continue;
+            }
+
+            _profile.SetItemDisabled(i, locked);
+            _profile.SetItemText(i, locked ? cat[i].Name + "  — закрыт" : cat[i].Name);
+            _profile.SetItemTooltip(i, locked ? "Профиль откроется на одной из следующих вех (панель «Город», C)" : string.Empty);
+        }
+    }
+
     private static Label Secondary(string text) => new()
     {
         Text = text,
