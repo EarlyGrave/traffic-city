@@ -194,16 +194,18 @@ def main():
     ap.add_argument("--out-json")
     ap.add_argument("--river", help="JSON-файл с массивом точек реки [[x,z],...] относительно якоря")
     ap.add_argument("--fit-radius", type=float, default=0.0, help="подбор якоря по реке в пределах R м (0 = без подбора)")
+    ap.add_argument("--shift-east", type=float, default=0.0, help="явный сдвиг якоря на восток, м (без подбора; повтор привязки другого окна)")
+    ap.add_argument("--shift-south", type=float, default=0.0, help="явный сдвиг якоря на юг, м")
     a = ap.parse_args()
 
     mpp = 156543.03392 * math.cos(math.radians(a.lat)) / (1 << Z)
     cx, cy = lonlat_to_px(a.lat, a.lon)
-    margin = (a.size_m / 2 + a.fit_radius) / mpp + 4
+    margin = (a.size_m / 2 + a.fit_radius + math.hypot(a.shift_east, a.shift_south)) / mpp + 4
     tx0, tx1 = int((cx - margin) // 256), int((cx + margin) // 256)
     ty0, ty1 = int((cy - margin) // 256), int((cy + margin) // 256)
     m = Mosaic(tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1, a.cache)
     m.smooth3()
-    dx = dz = 0.0
+    dx, dz = a.shift_east, a.shift_south
     fit = None
     if a.river and a.fit_radius > 0:
         fit = fit_anchor(m, a.lat, a.lon, a.size_m, a.cell_m, json.load(open(a.river)), a.fit_radius)
