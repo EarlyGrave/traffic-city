@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -83,17 +84,17 @@ public sealed partial class UiMiniChart : Control
     public override void _Draw()
     {
         Vector2 size = Size;
-        DrawRect(new Rect2(Vector2.Zero, size), UiPalette.PanelBorder, false, 1f);
+        DrawRect(new Rect2(Vector2.Zero, size), Tokens.Ink, false, 1f);
         if (_min < 0 && _max > 0)
         {
             float y0 = Y(0, size.Y);
-            DrawLine(new Vector2(0, y0), new Vector2(size.X, y0), UiPalette.TextDisabled, 1f);
+            DrawLine(new Vector2(0, y0), new Vector2(size.X, y0), Tokens.InkSecondary, 1f);
         }
 
         if (!double.IsNaN(_ref))
         {
             float yr = Y(_ref, size.Y);
-            DrawDashedLine(new Vector2(0, yr), new Vector2(size.X, yr), UiPalette.Warning, 1f, 4f);
+            DrawDashedLine(new Vector2(0, yr), new Vector2(size.X, yr), Tokens.Danger.Darkened(0.35f), 2f, 5f);
         }
 
         // точки прижаты вправо: последняя - у правого края
@@ -119,14 +120,15 @@ public sealed partial class UiMiniChart : Control
     {
         if (n == 1)
         {
-            DrawCircle(_seg[0], 2f, UiPalette.Accent);
+            DrawCircle(_seg[0], 3.5f, Tokens.Ink);
+            DrawCircle(_seg[0], 2f, Tokens.Accent);
         }
         else if (n > 1)
         {
             // DrawPolyline берёт массив целиком: рисуем отрезками, чтобы не копировать хвост
             for (int k = 1; k < n; k++)
             {
-                DrawLine(_seg[k - 1], _seg[k], UiPalette.Accent, 2f, true);
+                DrawLine(_seg[k - 1], _seg[k], Tokens.Ink, 2.5f, true);
             }
         }
     }

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Godot;
 using Sim.Core.Api;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -20,24 +21,28 @@ public sealed class UiCityPanel
         "автобусные маршруты", "выделенные полосы", "зонирование", "налоги", "плата за парковку",
     };
 
-    private static readonly (KpiKind Kind, string Title, string Unit)[] _series =
+    private static readonly (KpiKind Kind, string Title, string Unit, string Short)[] _series =
     {
-        (KpiKind.TravelMin, "Время в пути", "мин"), (KpiKind.IdlePct, "Простой машин", "%"), (KpiKind.SatisfactionPct, "Довольство", "%"), (KpiKind.BusSharePct, "Доля автобуса", "%"),
+        (KpiKind.TravelMin, "Время в пути", "мин", "Путь"), (KpiKind.IdlePct, "Простой машин", "%", "Стоят"), (KpiKind.SatisfactionPct, "Довольство", "%", "Оценка"), (KpiKind.BusSharePct, "Доля автобуса", "%", "Бус"),
     };
 
-    private readonly PanelContainer _panel;
+    private readonly UiPanel _panel;
     private readonly ScrollContainer _scroll;
     private readonly Label _status;
-    private readonly Label[] _tileValue = new Label[6];
+    private readonly UiTile[] _tiles = new UiTile[6];
     private readonly Label[] _tileSub = new Label[6];
-    private readonly OptionButton _seriesPick;
+    private readonly UiSegmented _seriesPick;
     private readonly UiMiniChart _hourChart = new();
     private readonly Label _hourCaption;
     private readonly UiMiniChart _dayChart = new();
+    private readonly UiCard _dayCard;
     private readonly Label _dayCaption;
     private readonly Label _nextTitle;
     private readonly Label _nextBody;
+    private readonly UiBadge[] _rowBadge = new UiBadge[CityPanelData.MaxMilestones];
     private readonly Label[] _rows = new Label[CityPanelData.MaxMilestones];
+    private readonly Control[] _rowBox = new Control[CityPanelData.MaxMilestones];
+    private readonly UiCard _nextCard;
     private readonly Label _noMilestones;
     private readonly StringBuilder _sb = new(256);
     private int _shownVersion = -1;
@@ -48,23 +53,24 @@ public sealed class UiCityPanel
 
     public UiCityPanel(Control dock)
     {
-        _panel = new PanelContainer { Name = "CityPanel", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false, SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        _panel = new UiPanel { Name = "CityPanel", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false, SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         dock.AddChild(_panel);
-        var outer = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        outer.AddThemeConstantOverride("separation", 6);
-        _panel.AddChild(outer);
+        VBoxContainer outer = _panel.Body;
+        outer.AddThemeConstantOverride("separation", Tokens.Space2);
 
         var head = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         outer.AddChild(head);
         head.AddChild(new Label { Text = "Город", ThemeTypeVariation = UiTheme.LabelHeader, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
-        var close = new Button { Text = "×", ThemeTypeVariation = UiTheme.ButtonCompact, FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(28f, 28f), TooltipText = "Закрыть (C или Esc)" };
+        var close = new UiButton("×", UiButtonKind.Ghost).WithTooltip("Закрыть", "C");
+        close.FocusMode = Control.FocusModeEnum.None;
+        close.CustomMinimumSize = new Vector2(32f, 32f);
         close.Pressed += () => CloseRequested?.Invoke();
         head.AddChild(close);
 
         var scroll = _scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         outer.AddChild(scroll);
         var box = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddThemeConstantOverride("separation", 8);
+        box.AddThemeConstantOverride("separation", Tokens.Space2);
         scroll.AddChild(box);
 
         _status = Secondary(string.Empty);
@@ -86,59 +92,70 @@ public sealed class UiCityPanel
         };
         for (int i = 0; i < tiles.Length; i++)
         {
-            var tile = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = tiles[i].Tip };
-            tile.AddThemeConstantOverride("separation", 0);
-            tile.AddChild(Secondary(tiles[i].Title));
-            _tileValue[i] = new Label { Text = "—", ThemeTypeVariation = UiTheme.LabelHeader, MouseFilter = Control.MouseFilterEnum.Ignore };
-            tile.AddChild(_tileValue[i]);
+            var cell = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = tiles[i].Tip };
+            cell.AddThemeConstantOverride("separation", 2);
+            _tiles[i] = new UiTile(tiles[i].Title, "—") { CustomMinimumSize = new Vector2(0f, 0f), MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = tiles[i].Tip };
+            cell.AddChild(_tiles[i]);
             _tileSub[i] = Secondary(string.Empty);
-            tile.AddChild(_tileSub[i]);
-            grid.AddChild(tile);
+            _tileSub[i].AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            cell.AddChild(_tileSub[i]);
+            grid.AddChild(cell);
         }
 
-        box.AddChild(new HSeparator());
         var seriesRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         seriesRow.AddThemeConstantOverride("separation", 8);
         box.AddChild(seriesRow);
-        seriesRow.AddChild(Secondary("График за 24 ч:"));
-        _seriesPick = new OptionButton { FocusMode = Control.FocusModeEnum.None, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, TooltipText = "Какой показатель показать по часам; пунктир - порог следующей вехи" };
-        for (int i = 0; i < _series.Length; i++)
+        
+        string[] names = new string[_series.Length];
+        for (int i = 0; i < names.Length; i++)
         {
-            _seriesPick.AddItem(_series[i].Title, i);
+            names[i] = _series[i].Short;
         }
 
-        _seriesPick.ItemSelected += idx => SelectSeries((int)idx);
+        _seriesPick = new UiSegmented(names) { TooltipText = "Какой показатель показать по часам; пунктир - порог следующей вехи" };
+        _seriesPick.OnChanged(SelectSeries);
         seriesRow.AddChild(_seriesPick);
+        var hourCard = new UiCard();
+        box.AddChild(hourCard);
         _hourChart.CustomMinimumSize = new Vector2(0f, 64f);
         _hourChart.MouseFilter = Control.MouseFilterEnum.Ignore;
-        box.AddChild(_hourChart);
+        hourCard.Add(_hourChart);
         _hourCaption = Secondary(string.Empty);
         _hourCaption.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        box.AddChild(_hourCaption);
+        hourCard.Add(_hourCaption);
 
         _dayChart.CustomMinimumSize = new Vector2(0f, 56f);
         _dayChart.MouseFilter = Control.MouseFilterEnum.Ignore;
-        box.AddChild(_dayChart);
+        _dayCard = new UiCard();
+        box.AddChild(_dayCard);
+        _dayCard.Add(_dayChart);
         _dayCaption = Secondary(string.Empty);
         _dayCaption.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        box.AddChild(_dayCaption);
+        _dayCard.Add(_dayCaption);
 
-        box.AddChild(new HSeparator());
-        _nextTitle = new Label { Text = "Следующая веха", MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddChild(_nextTitle);
-        _nextBody = Secondary(string.Empty);
-        _nextBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        box.AddChild(_nextBody);
+        _nextCard = new UiCard();
+        box.AddChild(_nextCard);
+        _nextTitle = new Label { Text = "Следующая веха", ThemeTypeVariation = UiTheme.LabelHeader, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _nextCard.Add(_nextTitle);
+        _nextBody = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _nextCard.Add(_nextBody);
 
-        box.AddChild(new HSeparator());
-        box.AddChild(new Label { Text = "Вехи", MouseFilter = Control.MouseFilterEnum.Ignore });
+        box.AddChild(new Label { Text = "Вехи", ThemeTypeVariation = UiTheme.LabelHeader, MouseFilter = Control.MouseFilterEnum.Ignore });
         _noMilestones = Secondary("В этом сценарии вех нет: всё открыто с начала.");
         _noMilestones.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         box.AddChild(_noMilestones);
         for (int i = 0; i < _rows.Length; i++)
         {
-            _rows[i] = new Label { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-            box.AddChild(_rows[i]);
+            var line = new UiCard { Visible = false };
+            var rowH = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            rowH.AddThemeConstantOverride("separation", Tokens.Space2);
+            _rowBadge[i] = new UiBadge { SizeFlagsVertical = Control.SizeFlags.ShrinkBegin };
+            rowH.AddChild(_rowBadge[i]);
+            _rows[i] = new Label { MouseFilter = Control.MouseFilterEnum.Ignore, AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            rowH.AddChild(_rows[i]);
+            line.Add(rowH);
+            _rowBox[i] = line;
+            box.AddChild(line);
         }
     }
 
@@ -187,8 +204,8 @@ public sealed class UiCityPanel
 
         Set(0, MinText(k.TravelMinX10), k.WorkMinX10 >= 0 ? "до работы " + MinText(k.WorkMinX10) : "до работы —");
         Set(1, PctText(k.BusSharePermille), "пешком " + PctText(k.WalkSharePermille));
-        Set(2, PctText(k.IdlePermille), k.Gridlock != 0 ? "КЛИН! застряло " + k.StuckNow.ToString(CultureInfo.InvariantCulture) : "застряло " + k.StuckNow.ToString(CultureInfo.InvariantCulture));
-        _tileValue[2].AddThemeColorOverride("font_color", k.Gridlock != 0 ? UiPalette.Error : UiPalette.Text);
+        string stuck = "застряло " + k.StuckNow.ToString(CultureInfo.InvariantCulture);
+        Set(2, PctText(k.IdlePermille), stuck, k.Gridlock != 0 ? "КЛИН" : string.Empty, UiTone.Danger);
         int inc = k.IncLongWait + k.IncNoParking + k.IncLongCommute + k.IncTourCancelled + k.IncLongStopWait;
         Set(3, PctText(k.SatisfactionPermille), "происшествий " + inc.ToString(CultureInfo.InvariantCulture));
         _tileSub[3].TooltipText = string.Create(CultureInfo.InvariantCulture, $"Долгое ожидание: {k.IncLongWait}\nНет парковки: {k.IncNoParking}\nДолгая дорога на работу: {k.IncLongCommute}\nОтменённые поездки: {k.IncTourCancelled}\nДолгое ожидание автобуса: {k.IncLongStopWait}");
@@ -196,8 +213,7 @@ public sealed class UiCityPanel
         if (k.HasBudget != 0)
         {
             string trend = (k.TrendPerDay >= 0 ? "+" : "−") + UiTopBar.Short(Math.Abs(k.TrendPerDay)) + "/д";
-            Set(4, "$\u00A0" + UiTopBar.Group(k.Balance), k.DaysToLimit >= 0 ? trend + ", до лимита " + k.DaysToLimit.ToString(CultureInfo.InvariantCulture) + " д" : trend);
-            _tileValue[4].AddThemeColorOverride("font_color", k.Balance < 0 ? UiPalette.Error : UiPalette.Text);
+            Set(4, "$\u00A0" + UiTopBar.Group(k.Balance), k.DaysToLimit >= 0 ? trend + ", до лимита " + k.DaysToLimit.ToString(CultureInfo.InvariantCulture) + " д" : trend, k.Balance < 0 ? "МИНУС" : string.Empty, UiTone.Danger);
             _tileSub[4].AddThemeColorOverride("font_color", k.DaysToLimit >= 0 ? UiPalette.Error : UiPalette.TextSecondary);
         }
         else
@@ -208,15 +224,15 @@ public sealed class UiCityPanel
         Set(5, UiTopBar.Group(k.Population), "поездок " + UiTopBar.Group(k.LegsAll));
     }
 
-    private void Set(int i, string value, string sub)
+    private void Set(int i, string value, string sub, string badge = "", UiTone tone = UiTone.Neutral)
     {
-        _tileValue[i].Text = value;
+        _tiles[i].Set(value, badge, tone);
         _tileSub[i].Text = sub;
     }
 
     private void FillHourChart(CityPanelData d, int dayTicks)
     {
-        (KpiKind kind, string title, string unit) = _series[_seriesIndex];
+        (KpiKind kind, string title, string unit, _) = _series[_seriesIndex];
         _hourChart.Begin(CityPanelData.MaxHours);
         int last = -1;
         for (int i = 0; i < d.HourCount; i++)
@@ -250,8 +266,7 @@ public sealed class UiCityPanel
     private void FillDayChart(CityPanelData d)
     {
         bool budget = d.HasKpi && d.Kpi.HasBudget != 0;
-        _dayChart.Visible = budget;
-        _dayCaption.Visible = budget;
+        _dayCard.Visible = budget;
         if (!budget)
         {
             return;
@@ -273,11 +288,10 @@ public sealed class UiCityPanel
     {
         bool any = d.HasProgression && d.MilestoneCount > 0;
         _noMilestones.Visible = !any;
-        _nextTitle.Visible = any;
-        _nextBody.Visible = any;
+        _nextCard.Visible = any;
         for (int i = 0; i < _rows.Length; i++)
         {
-            _rows[i].Visible = any && i < d.MilestoneCount;
+            _rowBox[i].Visible = any && i < d.MilestoneCount;
         }
 
         if (!any)
@@ -317,10 +331,11 @@ public sealed class UiCityPanel
             bool done = mi.ReachedTick >= 0;
             bool next = i == p.Reached;
             _sb.Clear();
-            _sb.Append(done ? "✓ " : next ? "▶ " : "○ ").Append(UiMilestones.Name(i)).Append(" — ").Append(UiTopBar.Group(mi.Desc.Population)).Append(" жит.: ");
+            _sb.Append(UiMilestones.Name(i)).Append(" — ").Append(UiTopBar.Group(mi.Desc.Population)).Append(" жит.: ");
             AppendUnlocks(in mi.Desc);
             _rows[i].Text = _sb.ToString();
-            _rows[i].AddThemeColorOverride("font_color", done ? UiPalette.TextSecondary : next ? UiPalette.Text : UiPalette.TextSecondary);
+            _rowBadge[i].Set(done ? "Взята" : next ? "Далее" : "Закрыта", done ? UiTone.Info : next ? UiTone.Accent : UiTone.Neutral);
+            _rows[i].AddThemeColorOverride("font_color", next ? UiPalette.Text : UiPalette.TextSecondary);
         }
     }
 

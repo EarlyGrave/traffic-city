@@ -1,4 +1,5 @@
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -9,7 +10,7 @@ namespace TrafficCity.Ui;
 public sealed class CityScreen : UiScreen
 {
     private UiCityPanel _panel = null!;
-    private Button _button = null!;
+    private UiButton _button = null!;
     private int _bottomFrames;   // --ui-city-bottom: через несколько кадров прокрутить к вехам
     private bool _atStart;       // --ui-city: открыть панель, как только город готов (скриншоты)
 
@@ -27,8 +28,9 @@ public sealed class CityScreen : UiScreen
         _panel.CloseRequested += Close;
         _atStart = HasArg("--ui-city");
         _bottomFrames = HasArg("--ui-city-bottom") ? 20 : 0;
-        _button = MakeButton("Город  C", toggle: true, disabled: true, 96f);
-        _button.TooltipText = "Показатели города и вехи (C): нужно: сценарий с жителями (residents)";
+        _button = new UiButton("Город", UiButtonKind.Toggle).WithTooltip("Показатели города и вехи: нужен сценарий с жителями (residents)", "C").Disable();
+        _button.FocusMode = Control.FocusModeEnum.None;
+        _button.CustomMinimumSize = new Vector2(96f, 36f);
         _button.Toggled += SetOpen;
     }
 
@@ -54,7 +56,7 @@ public sealed class CityScreen : UiScreen
         if (_button.Disabled)
         {
             _button.Disabled = false;
-            _button.TooltipText = "Показатели города и вехи (C)";
+            _button.WithTooltip("Показатели города и вехи", "C");
         }
 
         if (_atStart)
