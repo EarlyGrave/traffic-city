@@ -183,6 +183,9 @@ internal static class WorldLoader
             case "PROG":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Progression.Enabled;
                 break;
+            case "OUTS":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Outside.Count > 0;
+                break;
             case "TERR":
                 expected = c.Desc.Terrain.Enabled;
                 break;

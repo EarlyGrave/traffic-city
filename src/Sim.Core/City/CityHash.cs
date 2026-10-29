@@ -91,6 +91,22 @@ internal static class CityHash
             c.Kpi.AddToHash(ref h);
             h.Add(w.Counters.LockedRejects);
         }
+
+        if (c.Outside != null)
+        {
+            // раздел внешних подключений (ADR-0037): только при секции outside, хэш прочих миров не меняется
+            OutsideState o = c.Outside;
+            for (int k = 0; k < o.Count; k++)
+            {
+                h.Add(o.Jobs[k]);
+                h.Add(o.Taken[k]);
+                h.Add(o.ArrivalsDay[k]);
+                h.Add(o.ArrivalsHour[k]);
+            }
+
+            h.Add(o.Arrivals);
+            h.Add(o.ArrivalTimeouts);
+        }
     }
 
     /// <summary>

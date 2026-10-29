@@ -160,8 +160,11 @@ internal sealed class Market
         }
 
         Ensure(c);
-        return TotalVac <= 0;
+        return TotalVac <= 0 && OutsideVac(c) <= 0;
     }
+
+    /// <summary>Свободные места внешних фирм (0 без подключений).</summary>
+    private static long OutsideVac(CityWorld c) => c.Outside?.TotalVac() ?? 0;
 
     private void Ensure(CityWorld c)
     {
@@ -286,6 +289,16 @@ internal sealed class Market
         Ensure(c);
         BuildingStore b = c.Buildings;
         CityResidents res = c.Residents;
+        if (OutsideRef.Is(firm))
+        {
+            res.Work[r] = firm;   // внешняя фирма (ADR-0037): без списка работников, только счётчик занятых
+            res.NextWork[r] = -1;
+            c.Outside!.Taken[OutsideRef.Conn(firm)]++;
+            res.SeekDays[r] = 0;
+            w.Counters.ResHired++;
+            return;
+        }
+
         int before = VacOf(c, firm);
         res.Work[r] = firm;
         res.NextWork[r] = b.HeadWork[firm];
@@ -301,6 +314,13 @@ internal sealed class Market
     {
         CityResidents res = c.Residents;
         int firm = res.Work[r];
+        if (OutsideRef.Is(firm))
+        {
+            c.Outside!.Taken[OutsideRef.Conn(firm)]--;
+            res.Work[r] = -1;
+            return;
+        }
+
         if (firm < 0)
         {
             return;
@@ -513,7 +533,8 @@ internal sealed class Market
     {
         cost = NoCost;
         Ensure(c);
-        if (TotalVac <= 0)
+        OutsideState? outside = c.Outside;
+        if (TotalVac <= 0 && OutsideVac(c) <= 0)
         {
             return -1;
         }
@@ -533,22 +554,44 @@ internal sealed class Market
             cmin = Math.Min(cmin, v);
         }
 
-        if (cmin == NoCost)
+        bool local = cmin != NoCost && TotalVac > 0;
+        if (!local && outside == null)
         {
             return -1;
         }
 
-        for (int d = 0; d < _cells; d++)
+        for (int d = 0; d < _cells && local; d++)
         {
             _weight[d] = _cost[d] == NoCost ? 0L : (long)CellVac[d] * (DetLogit.Weight((long)_cost[d] - cmin, ch.ThetaDest64) >> 14);
         }
 
-        Span<int> candF = stackalloc int[Candidates];
-        Span<int> candC = stackalloc int[Candidates];
-        for (int k = 0; k < Candidates; k++)
+        // Кандидаты: K ячеек своих фирм и внешние фирмы с вакансией (ADR-0037: стоимость - нога до узла подключения плюс job_cost).
+        Span<int> candF = stackalloc int[Candidates + CityOutsideDesc.Max];
+        Span<int> candC = stackalloc int[Candidates + CityOutsideDesc.Max];
+        candF.Fill(-1);
+        candC.Fill(NoCost);
+        if (outside != null)
         {
-            candF[k] = -1;
-            candC[k] = NoCost;
+            int period = c.PeriodOf(c.TickOfSlot(0, OutsideState.ShiftStartSlot));
+            for (int k = 0; k < outside.Count; k++)
+            {
+                int f = OutsideRef.Of(k);
+                if (f == exclude || outside.Vac(k) <= 0)
+                {
+                    continue;
+                }
+
+                int v = LotCost(c, hasCar, homeLot, c.LotOf(f), period);
+                if (v != NoCost)
+                {
+                    candF[Candidates + k] = f;
+                    candC[Candidates + k] = v + outside.JobCostDs[k];
+                }
+            }
+        }
+
+        for (int k = 0; k < Candidates && local; k++)
+        {
             int cell = DetLogit.ChooseWeighted(ref w.RngDemand, _weight);
             if (cell < 0)
             {
@@ -599,7 +642,7 @@ internal sealed class Market
         }
 
         Ensure(c);
-        if (TotalVac <= 0)
+        if (TotalVac <= 0 && OutsideVac(c) <= 0)
         {
             return;
         }
@@ -619,13 +662,13 @@ internal sealed class Market
             }
 
             res.Flags[r] = (byte)(res.Flags[r] & ~ResidentFlags.InSeekQueue);
-            if (res.Work[r] >= 0 || (res.Flags[r] & ResidentFlags.Labour) == 0)
+            if (res.Work[r] != -1 || (res.Flags[r] & (ResidentFlags.Labour | ResidentFlags.Arriving)) != ResidentFlags.Labour)
             {
                 continue;
             }
 
             int firm = PickFirm(w, c, r, -1, out _);
-            if (firm >= 0)
+            if (firm != -1)
             {
                 Employ(w, c, r, firm);
             }
@@ -655,7 +698,7 @@ internal sealed class Market
         CityResidents res = c.Residents;
         BuildingStore b = c.Buildings;
         bool hasCar = HasCar(c, r);
-        int workCell = res.Work[r] >= 0 ? c.Lots.Cell[b.Lot[res.Work[r]]] : -1;
+        int workCell = res.Work[r] != -1 ? c.Lots.Cell[c.LotOf(res.Work[r])] : -1;
         int cmin = NoCost;
         for (int d = 0; d < _cells; d++)
         {
@@ -861,15 +904,60 @@ internal sealed class Market
             res.State[r] = (byte)ResidentState.AtHome;
             res.StateTick[r] = w.Tick;
             c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(r), c.Cfg.Economy.InitialResidentBalance, FlowKind.Endowment);
+            w.Counters.Immigrants++;
+            done++;
+            if (c.Outside is { ByCar: true } o)
+            {
+                StartArrival(w, c, o, r);   // дом занят с момента выбора, житель едет от края карты (ADR-0037)
+                continue;
+            }
+
             int slot = rd.PlanSlot + (res.Seq[r] % 13);
             long when = c.TickOfSlot(Calendar.DayOf(c, w.Tick), slot);
             CityPhase.SetEvent(w, c, r, when > w.Tick ? when : Calendar.NextPlanTick(c, r, w.Tick), ResidentEvent.Plan);
             StartSeeking(c, r);
-            w.Counters.Immigrants++;
-            done++;
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Въезд машиной (new-game-scratch.md §2.3): житель «на занятии» у узла подключения (тур из одной ноги <c>подключение -&gt; дом</c>, способ - машина независимо от <c>car_ownership</c>),
+    /// флаг <see cref="ResidentFlags.Arriving"/>; конец занятия на следующем тике запускает обратную ногу обычным кодом (micro - машина от узла, aggregate - нога без агента).
+    /// Доехал - <see cref="OnArrived"/>: флаг снят, поиск работы, план дня.
+    /// </summary>
+    private static void StartArrival(World w, CityWorld c, OutsideState o, int r)
+    {
+        CityResidents res = c.Residents;
+        int k = o.PickArrival(w);
+        int t = r * CityResidents.MaxTours;
+        res.ClearPlan(r);
+        res.PlanCount[r] = 1;
+        res.PlanCursor[r] = 0;
+        res.PlanKind[t] = TourKind.None;
+        res.PlanMode[t] = (byte)TravelMode.Car;
+        res.PlanDest[t] = OutsideRef.Of(k);
+        res.Flags[r] |= ResidentFlags.Arriving;
+        res.State[r] = (byte)ResidentState.AtShop;
+        CityPhase.SetEvent(w, c, r, w.Tick + 1, ResidentEvent.EndActivity);
+    }
+
+    /// <summary>Переселенец доехал домой (или домой его довёл клапан): счётчики въезда подключения, флаг снят, поиск работы. План дня ставит <c>FinishTour</c>.</summary>
+    public static void OnArrived(CityWorld c, int r)
+    {
+        CityResidents res = c.Residents;
+        res.Flags[r] = (byte)(res.Flags[r] & ~ResidentFlags.Arriving);
+        OutsideState? o = c.Outside;
+        int place = res.PlanDest[r * CityResidents.MaxTours];
+        if (o != null && OutsideRef.Is(place) && OutsideRef.Conn(place) < o.Count)
+        {
+            int k = OutsideRef.Conn(place);
+            o.ArrivalsDay[k]++;
+            o.ArrivalsHour[k]++;
+            o.Arrivals++;
+        }
+
+        StartSeeking(c, r);
     }
 
     // ------------------------------------------------------------------ дневной проход жителя
@@ -884,12 +972,17 @@ internal sealed class Market
         CityResidentsDesc rd = c.Cfg.Residents;
         int shift = c.Cfg.Economy.EwmaShift;
         bool home = res.State[r] == (byte)ResidentState.AtHome;
-        if (res.Work[r] < 0)
+        if (res.Work[r] == -1)
         {
             res.IncomeEwma[r] -= res.IncomeEwma[r] >> shift;
         }
 
-        if ((res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] < 0)
+        if ((res.Flags[r] & ResidentFlags.Arriving) != 0)
+        {
+            return;   // переселенец в пути от края карты (ADR-0037): ни поиска, ни переезда до приезда
+        }
+
+        if ((res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] == -1)
         {
             if (res.SeekDays[r] < short.MaxValue)
             {
@@ -924,7 +1017,7 @@ internal sealed class Market
 
         if ((res.Flags[r] & ResidentFlags.Leaving) != 0)
         {
-            bool seekOver = res.Work[r] < 0 && res.SeekDays[r] > rd.SeekMaxDays + 2;
+            bool seekOver = res.Work[r] == -1 && res.SeekDays[r] > rd.SeekMaxDays + 2;
             bool evictOver = (res.Flags[r] & ResidentFlags.Evicted) != 0 && res.EvictDays[r] > rd.EvictMaxDays + 2;
             if (seekOver || evictOver)
             {
@@ -944,7 +1037,7 @@ internal sealed class Market
             return;
         }
 
-        if (res.Work[r] >= 0 && rd.MaxJobSwitchPerDayQ16 > 0)
+        if (res.Work[r] != -1 && rd.MaxJobSwitchPerDayQ16 > 0)
         {
             TrySwitchJob(w, c, r);
         }
@@ -971,8 +1064,13 @@ internal sealed class Market
         }
 
         int firm = res.Work[r];
-        int period = c.PeriodOf(c.TickOfSlot(0, c.Types.Rows[b.Type[firm]].ShiftStartSlot));
-        int cur = LotCost(c, hasCar, homeLot, b.Lot[firm], period);
+        bool outsideJob = OutsideRef.Is(firm);
+        int period = c.PeriodOf(c.TickOfSlot(0, outsideJob ? OutsideState.ShiftStartSlot : c.Types.Rows[b.Type[firm]].ShiftStartSlot));
+        int cur = LotCost(c, hasCar, homeLot, c.LotOf(firm), period);
+        if (cur != NoCost && outsideJob)
+        {
+            cur += c.Outside!.JobCostDs[OutsideRef.Conn(firm)];
+        }
         if (cur == NoCost || (long)cur * 256 <= (long)c.Cfg.Residents.SwitchRatioQ8 * Math.Max(ls, 1))
         {
             return;
@@ -984,7 +1082,7 @@ internal sealed class Market
         }
 
         int to = PickFirm(w, c, r, firm, out int cost);
-        if (to < 0 || cost >= cur)
+        if (to == -1 || cost >= cur)
         {
             return;
         }

@@ -223,7 +223,7 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if ((nd.Flags & ~NodeFlags.Quiesce) != 0 || (n.ToolsTouched == 0 && (nd.Flags != 0 || nd.TurnBan != 0)))
+            if ((nd.Flags & ~(NodeFlags.Quiesce | NodeFlags.Outside)) != 0 || (n.ToolsTouched == 0 && ((nd.Flags & ~NodeFlags.Outside) != 0 || nd.TurnBan != 0)))
             {
                 return Bad(c, i, 1);
             }

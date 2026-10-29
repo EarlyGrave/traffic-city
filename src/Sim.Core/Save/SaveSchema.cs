@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 13;
+    public const int WorldVersion = 14;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 4;
@@ -31,7 +31,7 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
@@ -70,6 +70,7 @@ internal static partial class SaveSchema
         Extend(LotsBlock(), LotGridColumns()),
         Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
         Extend(ResidentsCityBlock(), ParkingResidentColumns()),
+        OutsideBlock(),
         SkimsBlock(),
         LedgerBlock(),
         Extend(BudgetBlock(), ProgressionBudgetColumns()),

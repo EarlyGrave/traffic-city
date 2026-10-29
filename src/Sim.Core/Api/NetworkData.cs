@@ -54,6 +54,9 @@ public static class NodeFlags
 {
     /// <summary>Тишина узла: connector'ы закрыты, ждём опустения (слияние, перестройка).</summary>
     public const uint Quiesce = 1;
+
+    /// <summary>Внешнее подключение у края карты (<c>outside</c>, ADR-0037): узел нельзя снести, слить или удалить сегмент от него (<c>RejectReason.Protected</c>).</summary>
+    public const uint Outside = 2;
 }
 
 /// <summary>Биты <see cref="NetworkView.ArmFlags"/> (значения совпадают с внутренними битами сети; тест сверяет).</summary>

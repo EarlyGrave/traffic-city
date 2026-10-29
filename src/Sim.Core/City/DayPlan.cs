@@ -31,6 +31,13 @@ internal static class DayPlanner
             int desired = t.ShiftStartSlot + ((seq % 7) - 3);
             AddTour(w, c, r, day, TourKind.Work, work, desired < 0 ? 0 : desired, t.ShiftSlots, ref n, ref cursor);
         }
+        else if ((res.Flags[r] & ResidentFlags.Labour) != 0 && OutsideRef.Is(res.Work[r]))
+        {
+            // Внешняя работа (ADR-0037): тур дом -> узел подключения -> дом, смена 08:00-17:00 со сдвигом жителя.
+            worker = true;
+            int desired = OutsideState.ShiftStartSlot + ((seq % 7) - 3);
+            AddTour(w, c, r, day, TourKind.Work, res.Work[r], desired, OutsideState.ShiftSlots, ref n, ref cursor);
+        }
 
         int k = Choice.ChooseFrequency(w, r);
         if (k > c.Cfg.Choice.FreqMax)
@@ -70,7 +77,7 @@ internal static class DayPlanner
     {
         CityResidents res = c.Residents;
         int homeLot = c.Buildings.Lot[res.Home[r]];
-        int destLot = c.Buildings.Lot[dest];
+        int destLot = c.LotOf(dest);
         int baseSlot = desiredBase < CityWorld.SlotsPerDay ? desiredBase : CityWorld.SlotsPerDay - 1;
         int period = c.PeriodOf(c.TickOfSlot(day, baseSlot));
         if (!Choice.TryChooseMode(w, r, dest, period, out TravelMode mode))

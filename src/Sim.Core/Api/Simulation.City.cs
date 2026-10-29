@@ -120,7 +120,7 @@ public sealed partial class Simulation
             if ((r.Flags[i] & ResidentFlags.Labour) != 0)
             {
                 stats.Labour++;
-                if (r.Work[i] >= 0)
+                if (r.Work[i] != -1)
                 {
                     stats.Employed++;
                 }
@@ -405,7 +405,7 @@ public sealed partial class Simulation
         {
             Home = r.Home[index],
             Work = r.Work[index],
-            State = (ResidentState)r.State[index],
+            State = (r.Flags[index] & ResidentFlags.Arriving) != 0 ? ResidentState.Arriving : (ResidentState)r.State[index],
             Flags = r.Flags[index],
             Mode = r.LegMode[index],
             Agent = r.Agent[index],

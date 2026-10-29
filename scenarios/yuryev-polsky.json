@@ -528,9 +528,42 @@
   },
   "demand": {
     "zone_m": 200,
-    "model": "uniform",
+    "model": "residents",
     "external_share": 0,
     "min_trip_m": 0
+  },
+  "lod": {
+    "cell_m": 1016
+  },
+  "calendar": {
+    "day_s": 3600,
+    "start_hour": 6
+  },
+  "zoning": {
+    "auto": false,
+    "growth": true,
+    "growth_step": "hour"
+  },
+  "residents": {
+    "initial_fill": 0,
+    "min_immigrants_per_day": 120
+  },
+  "economy": {
+    "city_budget": true,
+    "initial_city_balance": 150000
+  },
+  "outside": {
+    "outside_jobs_decay": 0.1,
+    "arrival_by_car": true,
+    "connections": [
+      {
+        "id": "moscow",
+        "node": 0,
+        "jobs": 2000,
+        "job_cost_s": 1800,
+        "immigrant_share": 1.0
+      }
+    ]
   },
   "routing": {
     "levels": 1,
@@ -549,7 +582,10 @@
     "max_routes": 1024,
     "max_plan_steps": 32768,
     "max_pending_trips": 1024,
-    "max_signalized_nodes": 16
+    "max_signalized_nodes": 16,
+    "max_lots": 4000,
+    "max_buildings": 3000,
+    "max_city_residents": 20000
   },
   "terrain": {
     "enabled": true,

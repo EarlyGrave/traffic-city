@@ -524,6 +524,11 @@ internal static partial class ToolValidator
         ref readonly SegmentData sd = ref n.Segments[seg];
         Vec2 mid = n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)];
         Mark(ref c, EntityKind.Segment, seg, sd.Generation, mid);
+        if (((n.Nodes[sd.NodeA].Flags | n.Nodes[sd.NodeB].Flags) & NodeFlags.Outside) != 0)
+        {
+            return RejectReason.Protected;   // сегмент от внешнего подключения: апгрейд можно, снос нет (ADR-0037)
+        }
+
         if ((sd.Flags & SegmentFlags.Closing) != 0 || w.Ops.FindShrink(seg) >= 0)
         {
             return RejectReason.Busy;   // уже сносится или в дренаже полос (T5)
