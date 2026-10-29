@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| FR-спека (правка zoning-demand.md, fr-zones) | локал | local/fr-spec | docs/design/zoning-demand.md, docs/design/freight.md, docs/adr/0043-* | 2026-10-30 |
+| RA-спека (age-groups.md) | локал | local/ra-spec | docs/design/age-groups.md, docs/design/zoning-demand.md (§2.4, §3, §6 пометки) | 2026-10-30 |
