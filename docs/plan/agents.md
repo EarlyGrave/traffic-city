@@ -261,4 +261,4 @@
 | 184 | n6-t9 (облако, worktree) | opus | ночь N6: T9 автобусные инструменты (opus — риск: автобусы на ходу) | wip |
 | 185 | n7-pg345 (облако, worktree) | opus | ночь N7: PG3 вехи/замки, PG4 жалобы, PG5 банкротство | wip |
 | 186 | n8-pg6 (облако, worktree) | sonnet | ночь N8: game-city.json + калибровка (PG6 + E7) | wip |
-| 187 | tr0-terrain-spec (облако, worktree) | opus | TR0: спека рельефа и воды (terrain.md + ADR), пример Юрьев-Польский | wip |
+| 187 | tr0-terrain-spec (облако, worktree) | opus | TR0: спека рельефа и воды (terrain.md + ADR), пример Юрьев-Польский | остановлен владельцем через ~5 мин (пауза) |
