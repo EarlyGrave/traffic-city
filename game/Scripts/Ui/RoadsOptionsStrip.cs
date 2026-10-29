@@ -94,6 +94,7 @@ public sealed class RoadsOptionsStrip
         _hint = Secondary(string.Empty);
         _hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _hint.ClipText = true;
+        _hint.CustomMinimumSize = new Vector2(160f, 0f);
         _row.AddChild(_hint);
         Sync();
     }
@@ -121,9 +122,9 @@ public sealed class RoadsOptionsStrip
 
         string hint = _tool.Mode switch
         {
-            RoadsMode.Build => _tool.HasAnchor ? "Клик - дальше; Esc - закончить" : "Клик - начало дороги",
-            RoadsMode.Upgrade => "Клик по дороге - заменить",
-            _ => "Клик по дороге - снести",
+            RoadsMode.Build => _tool.HasAnchor ? "Клик - дальше, Esc - конец" : "Клик - начало",
+            RoadsMode.Upgrade => "Клик - заменить",
+            _ => "Клик - снести",
         };
         if (hint != _hintShown)
         {

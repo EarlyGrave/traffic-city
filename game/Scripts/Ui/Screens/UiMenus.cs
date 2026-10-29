@@ -226,7 +226,20 @@ public sealed class UiMenus
         Clear();
         var page = new UiSettingsPage(UiSettings.Current);
         page.Changed += () => SettingsChanged?.Invoke();
-        page.Build(_content, BackFromSettings);
+
+        // страница выше экрана 900 px: содержимое в прокрутке, высота по вьюпорту
+        float maxH = Math.Clamp(_panel.GetViewportRect().Size.Y - 120f, 240f, 720f);
+        var scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            CustomMinimumSize = new Vector2(0f, maxH),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        _content.AddChild(scroll);
+        var inner = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        inner.AddThemeConstantOverride("separation", 10);
+        scroll.AddChild(inner);
+        page.Build(inner, BackFromSettings);
     }
 
     public bool SettingsOpen => _page == Page.Settings;

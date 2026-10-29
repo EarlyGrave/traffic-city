@@ -5,9 +5,9 @@ namespace TrafficCity.Ui;
 /// <summary>Размеры каркаса в логических пикселях (до масштаба UI; ui-spec.md §3, §11).</summary>
 public static class UiMetrics
 {
-    public const float TopBarHeight = 40f;
-    public const float ToolbarHeight = 56f;
-    public const float OptionsHeight = 40f;
+    public const float TopBarHeight = 52f;
+    public const float ToolbarHeight = 76f;
+    public const float OptionsHeight = 52f;
     public const float DockWidth = 320f;
     public const float Margin = 8f;
     public const float Radius = Kit.Tokens.RadiusButton;

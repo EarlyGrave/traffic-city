@@ -15,7 +15,7 @@ namespace TrafficCity.Ui;
 public sealed class ToolbarScreen : UiScreen
 {
     /// <summary>Высота зоны тулбара: кнопка 52 px + поля панели + твёрдая тень.</summary>
-    public const float Height = 76f;
+    public const float Height = UiMetrics.ToolbarHeight;
 
     private const int IdxInfo = 5;
     private const int IdxCity = 6;

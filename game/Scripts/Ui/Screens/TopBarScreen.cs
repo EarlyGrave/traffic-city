@@ -6,7 +6,7 @@ namespace TrafficCity.Ui;
 public sealed class TopBarScreen : UiScreen
 {
     /// <summary>Высота полосы: кнопки кита 40 px + поля + контур (40 px из UiMetrics не хватало).</summary>
-    public const float Height = 52f;
+    public const float Height = UiMetrics.TopBarHeight;
 
     private PanelContainer _bar = null!;
 

@@ -8,7 +8,7 @@ namespace TrafficCity.Ui;
 public sealed class ToolOptionsScreen : UiScreen
 {
     /// <summary>Высота строки опций: кнопки и списки кита ~40 px + поля.</summary>
-    public const float Height = 52f;
+    public const float Height = UiMetrics.OptionsHeight;
 
     private readonly Dictionary<IUiTool, Control> _strips = new();
     private PanelContainer _bar = null!;
