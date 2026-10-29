@@ -52,6 +52,9 @@ public enum SimEventKind : int
     JamAt = 63,                  // A = застрявших машин на сегменте, B = всего застрявших в сети; Place = сегмент (середина оси)
     BusLineProblem = 64,         // A = (int)BusLineIssue, B = величина (см. BusLineIssue), C = индекс остановки или -1; Place = маршрут, X/Z - точка проблемы
     ParkingFull = 65,            // A = отказов в месте за окно, B = индекс участка цели; Place = здание цели (центр участка)
+
+    // Автобусные инструменты (T9, player-tools.md §8.7). BusRouteCreated (5): A = индекс маршрута, B = поколение; BusStopCreated/Removed (48/49) - для остановок.
+    BusRouteRemoved = 66,        // A = индекс маршрута, B = поколение снятого (автобусы линии доезжают до своей ближайшей остановки и завершают рейс)
 }
 
 /// <summary>Проблема автобусной линии: <c>SimEvent.A</c> для <see cref="SimEventKind.BusLineProblem"/>.</summary>

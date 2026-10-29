@@ -37,6 +37,7 @@ internal sealed partial class PedWorld
     private int[] _stopComp = Array.Empty<int>();
     private float[] _stopCum = Array.Empty<float>();
     private long _stopStamp = -1;
+    private int _stopVersion = -1;
 
     /// <summary>Источник поездок - жители города.</summary>
     public bool CitySource => Cfg.Source == PedSource.City;
@@ -146,10 +147,22 @@ internal sealed partial class PedWorld
             }
 
             int route = net.BusStops[a].Route;
-            ref readonly BusRouteData br = ref net.BusRoutes[route];
-            int last = br.FirstStop + br.StopCount;
-            for (int b = a + 1; b < last; b++)
+            if (!net.BusRouteAlive(route))
             {
+                continue;
+            }
+
+            ref readonly BusRouteData br = ref net.BusRoutes[route];
+            if (br.HeadwayTicks <= 0)
+            {
+                continue;   // T9: линия приостановлена (Suspended) - автобусов не будет
+            }
+
+            // Остановки после a по ходу линии (T9: порядок - список маршрута; у сети генератора это a+1.. по индексу).
+            int ka = net.StopPos(a);
+            for (int k = ka < 0 ? br.StopCount : ka + 1; k < br.StopCount; k++)
+            {
+                int b = net.BusRouteStops[br.FirstStop + k];
                 if (_stopComp[b] != compF || net.BusStops[b].Route != route)
                 {
                     continue;
@@ -185,10 +198,12 @@ internal sealed partial class PedWorld
     {
         NetworkStore net = w.Net;
         long stamp = ((long)w.Counters.PedNetResets << 32) | (uint)net.BusStopCount;
-        if (stamp == _stopStamp)
+        if (stamp == _stopStamp && net.Version == _stopVersion)
         {
             return;
         }
+
+        _stopVersion = net.Version;   // T9: правка линий меняет остановки без смены их числа
 
         int ns = net.BusStopCount;
         if (_stopX.Length < ns)
@@ -216,8 +231,8 @@ internal sealed partial class PedWorld
             ref readonly BusRouteData br = ref net.BusRoutes[r];
             for (int k = 1; k < br.StopCount; k++)
             {
-                int a = br.FirstStop + k - 1;
-                int b = br.FirstStop + k;
+                int a = net.BusRouteStops[br.FirstStop + k - 1];
+                int b = net.BusRouteStops[br.FirstStop + k];
                 _stopCum[b] = _stopCum[a] + Dist(_stopX[a], _stopZ[a], _stopX[b], _stopZ[b]);
             }
         }

@@ -395,7 +395,7 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 - Буфер: `InverseLog` (`Tools/InverseLog.cs`), `tools.inverse_capacity` (по умолчанию 4096 команд, записей - `CommandQueueCapacity`); вне хэша и сейва. Запись фиксируется только для применённой команды; `Tag` записи = `Tag` прямой команды.
 - Обратные строит `InverseBuilder` (`Begin` до мутации, `End` после - индекс нового сегмента `BuildRoad` известен только тогда). Сейчас: `BuildRoad` -> `RemoveRoad(новый сегмент)` + `SetNodeControl(прежний режим)` для существующих построенных концов; переоткрытие -> `RemoveRoad`;
   `RemoveRoad` -> `BuildRoad(RestoreOf, RestoreNodeA/B для осиротевших)` + `SetLaneFlags` + режим/план узлов концов + знак и запреты рукава у выживающего узла; `SetArmControl` -> прежний знак + режим узла;
-  `SetTurnBan`, `SetLaneFlags`, `SetNodeControl`, `SetSignalPlan` - прежнее значение. Автобусные (T9) при применении дают запись `NoInverse`; `UpgradeRoad/SplitRoad/MergeAtNode` - с T5 (§4.4a, §4.5).
+  `SetTurnBan`, `SetLaneFlags`, `SetNodeControl`, `SetSignalPlan` - прежнее значение. Автобусные — с T9 (§8.7); `UpgradeRoad/SplitRoad/MergeAtNode` - с T5 (§4.4a, §4.5).
 - Известное ограничение T8 (вскрыл фаззер T5 на новых последовательностях, сид 2 `UndoFuzz_WithSplitMerge`): обратная `BuildRoad` ставит `SetNodeControl(прежний)` на узел, ещё ждущий дренажа сноса
   (рукавов на один больше), и режим нормализуется (`Yield` → `RightHandRule`), после финала дренажа он не возвращается. В фаззере `UndoFuzz_Equivalent` разрез и слияние выключены (`Pick(chain: false)`,
   последовательности прежние), отдельный `UndoFuzz_WithSplitMerge_Equivalent` идёт без сида 2.
@@ -513,7 +513,7 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 | T6 | Оверлей и граф под правки: дыры `+∞` для удалённых DirSeg, пакетная пересборка в 1c, асинхронная полная перестройка (раскладка синхронно + волна, плоский A* до конца), `AStar` с запрещённым сегментом; `routing.md` §9.3/§9.6 | `Routing/Overlay*.cs`, `Routing/AStar.cs`, `Routing/RoutePhase.cs` | H-T1…H-T3 оверлея после правок (матрицы = эталон после волны), 0 Б на волну | T5 |
 | T7 | Валидатор и превью: `ToolValidator` (общий с применением), `Preview`, стоимость из `tools.costs` (загрузчик + `scenario-format.md`), `axis`, кэш компонент (Tarjan), объезд, предупреждения; FFI-запись в `core-api.md` §12 | `src/Sim.Core/Tools/*`, `Api/Simulation.Tools.cs`, `src/Sim.Scenarios/ScenarioLoader.cs` | `Preview_DoesNotMutate`, `Connectivity_Preview` | T6 |
 | T8 | Обратные записи (`InverseBuilder`), `RestoreOf` и scratch-перенумерация в фазе 1, `*Remapped`; хост `UndoStack` (группы, глубина 100, remap) | `src/Sim.Core/Tools/InverseBuilder.cs`, `Api/*`, `src/Sim.Scenarios/Tools/UndoStack.cs` | `UndoFuzz_Equivalent` | T7 |
-| T9 | Автобусные инструменты: реализовать `CreateBusRoute/AppendBusStop`, `InsertBusStop`, `RemoveBusStop`, `RemoveBusRoute`, `SetBusRouteParams`, `Unreachable`, `Suspended`, поколения остановок/маршрутов | `Transit/*`, `Api/CommandDispatcher.cs`, `Network/NetworkStore.cs` | тесты маршрутов: вставка/удаление на ходу, автобус на удалённой остановке не застревает, TL2 | T8 |
+| T9 | Автобусные инструменты: реализовать `CreateBusRoute/AppendBusStop`, `InsertBusStop`, `RemoveBusStop`, `RemoveBusRoute`, `SetBusRouteParams`, `Unreachable`, `Suspended`, поколения остановок/маршрутов | `Transit/*`, `Api/CommandDispatcher.cs`, `Network/NetworkStore.cs` | тесты маршрутов: вставка/удаление на ходу, автобус на удалённой остановке не застревает, TL2 | T8 — **сделано (ночь N6, агент 184), см. §8.7** |
 | T10 | Журнал и реплей: `ReplayLog` (`RPLH`/`CMDL`), `Sim.Headless replay` (контрольные хэши, поиск расхождения), `bugreport` | `src/Sim.Scenarios/Tools/ReplayLog.cs`, `src/Sim.Headless/*` | `Replay_Golden`; ручной прогон `replay` на s1k с 50 командами (вывод — в отчёт) | T1 (**можно параллельно** с T2–T9: только хост) |
 | T11 | Пешеходы под правки (§4.6): закрытие тротуаров/переходов, условие финала, локальная перестройка сети и таблица `oldEdge → newEdge`, `PedAccessLost`; правка `pedestrians.md` §2 | `src/Sim.Core/Peds/*` | PD1–PD8 с правками, `EditFuzz` с `s1k-peds` | T4 (+3.1) |
 | T12 | Фаззер и сводные тесты: `EditFuzz_*` полный (все команды), `Tools_ZeroAlloc`, корпус `w4-small-edited-t600` (T2: дыры; расширить дренажом) | `tests/Sim.Core.Tests/Tools/*`, `tests/SaveCorpus/` | TL4, TL5, TL9 | T9, T11 |
@@ -539,3 +539,35 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 
 ## 8.6 Превью `PaintZone` — `ui-spec.md` §5.2 и §13 (UI-C1)
 Тот же `Simulation.Preview(in Command, out PreviewResult, issues)`; поля `Zone*` результата и `Simulation.PreviewPaintMarks` — см. `ui-spec.md` §5.2 «Ядро: UI-C1».
+
+## 8.7 Автобусные инструменты (T9, агент 184, ночь N6)
+
+**Команды** (номера прежние, §1; проверки — `Tools/ToolValidator.Bus.cs`, правки — `Transit/BusEdit.cs`, общий валидатор превью и применения):
+
+| Kind | Команда | Payload | Что делает | Обратная |
+|---|---|---|---|---|
+| 4 | `CreateBusRoute` | `HeadwayTicks` (> 0, ≤ сутки), `VehicleType`, `Flags` (бит0 `BusRouteFlags.Suspend` — создать приостановленной), `RestoreOf` | новая линия без остановок; событие `BusRouteCreated (A = индекс, B = поколение)`; цена `tools.costs.bus_route` | `RemoveBusRoute(новая)` |
+| 5 | `AppendBusStop` | `Route` (индекс), `Lane` (сырой индекс полосы), `S`, `Kind` | как `InsertBusStop` в конец (генератор, тесты) | `RemoveBusStop(новая)` |
+| 31 | `InsertBusStop` | `Route`, `Position` (−1 — в конец, иначе 0..StopCount), `Seg` + `Dir` + `LaneNo`, `Kind` (0 `Curb`, 1 `Bay`), `S` — м **вдоль полосы по ходу движения**, `RestoreOf` | новая остановка; `BusStopCreated (A, B = поколение)`; цена `bus_stop` | `RemoveBusStop(новая)` |
+| 32 | `RemoveBusStop` | `Stop` | остановка уходит с линии, слот освобождается (поколение +1); `BusStopRemoved` | `InsertBusStop(та же позиция, RestoreOf)` |
+| 33 | `RemoveBusRoute` | `Route` | линия и все её остановки освобождаются; `BusStopRemoved`×k, `BusRouteRemoved` (**66**: A = индекс, B = поколение снятой) | `CreateBusRoute(RestoreOf)` + `InsertBusStop(RestoreOf)`×k |
+| 34 | `SetBusRouteParams` | `Route`, `HeadwayTicks` (0 — не менять), `VehicleType` (−1 — не менять), **`Flags`** (новое поле, 16 → 20 Б): бит0 `Suspend`, бит1 `Resume` (оба — `InvalidArgument`) | на месте; идущие автобусы не трогаются | `SetBusRouteParams(прежние, Suspend/Resume)` |
+
+`SpawnBus` (6) по-прежнему `NotSupported`: автобусы выпускает линия по интервалу. Число автобусов на линии задаётся интервалом (≈ `ceil(цикл / интервал)`, та же формула — в содержании казны, `city-economy.md` §6.1); отдельного параметра «число автобусов» нет.
+
+**Состояния линии для клиента** (`NetworkView.BusRoutes`): `HeadwayTicks < 0` — **приостановлена** (`BusRouteData.Suspended`; модуль — интервал для возобновления): новых автобусов нет, идущие доезжают рейс, пешеходы её не выбирают, содержание автобусов не начисляется (остановки — да). Остановки линии — `BusRouteStops[FirstStop + k]` (**с T9 это не обязательно `FirstStop + k`**: у сети генератора список — тождество, после правок — нет; в ядре — `NetworkStore.RouteStop/StopPos`).
+
+**Коды отказа**: `InvalidHandle` (мёртвый/чужой handle линии, остановки, сегмента; `RestoreOf` жив), `InvalidArgument` (интервал, тип ТС, `Dir/LaneNo`, `S` вне полосы, `Kind`, `Position`, флаги), `Busy` (сегмент сносится, полоса закрыта/дренируется), `Capacity` (`max_bus_routes`, `max_bus_stops`, `max_bus_stops_per_route`, арена списков; событие `CapacityExhausted` с `BusRoutes`/`BusStops`), **`Unreachable` (13)** — нет пути от предыдущей остановки линии до новой или от новой до следующей (`Tools/Connectivity.Reaches`: тот же DirSeg впереди, одна компонента сильной связности или обход в ширину по DirSeg без закрывающихся сегментов), `InsufficientFunds`. Превью отдаёт тот же вердикт и точку (полоса и `S` остановки).
+
+**Правки на ходу** (без деспауна по ходу движения):
+- Вставка: автобусы линии сохраняют цель (позиция цели сдвигается); новая остановка обслуживается следующими рейсами.
+- Удаление: автобус, ехавший к удалённой (или стоявший на ней), получает следующую **достижимую** остановку линии (маршрут освобождается, новый строит перемаршрутизация фазы 3). Достижимых нет (удалили конечную) — доезжает до прежней цели (`DestLane/DestS`) и завершает рейс там (`BusStopPhase`: автобус без целевой остановки исчезает в точке цели). Автобус в **кармане** удалённой остановки снимается сразу (как при сносе кармана, BB2).
+- Снятие линии: автобусы на остановках (и в карманах) завершают рейс сразу; идущие отвязываются (`BusRoute = -1`, пассажиры выходят на точке доступа своей целевой остановки), доезжают до цели и исчезают. Ожидающие пешеходы уходят (нога завершается, как пешая).
+- Пешеходы (`agents`): житель, чья остановка посадки исчезла, завершает ногу пешком (`Stops.OnArrive`); пассажир, чьей остановки высадки больше нет на линии, выходит на ближайшей достигнутой (сравнение — по позиции на линии, `StopPos`). Если у сети пешеходов есть переходы у остановок (`peds.midblock_at_stops`, по умолчанию да), правка остановок пересобирает сеть пешеходов со сбросом агентов — как правка дорог.
+
+**Undo** (`InverseBuilder`): записи для всех шести команд. `CreateBusRoute(RestoreOf = мёртвый)` и `InsertBusStop(RestoreOf = мёртвый)` пересоздают в новом слоте и выдают `BusRouteRemapped/BusStopRemapped (A = старый, B = новый)` + запись scratch-таблицы фазы 1 — следующие `InsertBusStop` той же обратной записи переводятся на новую линию (хост ставит запись одним `Step`, `UndoStack` уже знает оба вида). `InsertBusStop(RestoreOf = живой и уже на этой линии)` — ничего не делает (повтор). Цены (E4): прямые `CreateBusRoute`/`InsertBusStop` пишут undo-кредит (цель — линия/остановка с тегом вида в старших битах индекса, чтобы не путать с сегментами того же индекса и поколения), обратные `RemoveBusRoute/RemoveBusStop` с флагом `Inverse` возвращают 100% в окне `undo_refund_s`. Снятие и удаление бесплатны; их обратные (пересоздание) стоят по таблице.
+
+**Сейв**: формат не менялся (`world_version` 11). Приостановка — знак `HeadwayTicks` (валидатор загрузки теперь допускает `< 0`, кроме `int.MinValue`); автобус без линии — `BusRoute = -1` (было допустимо); списки — та же арена `BusRouteStops` (по лестнице после первой правки). Хэш состояния — прежние разделы (раскладка арены и поколения — при `ToolsTouched`).
+
+**Остаток**: снос/апгрейд полос/разрез/слияние дороги с остановкой — по-прежнему `NotSupported` (§4.4a, §4.5, T4 п. 5); перенос остановки — удалить + вставить; `BusRouteShortened` в превью сноса не считается; правка остановок при `midblock_at_stops` сбрасывает пешеходов города (как правка дорог).
+

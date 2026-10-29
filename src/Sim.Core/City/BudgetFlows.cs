@@ -413,7 +413,7 @@ internal static class BudgetFlows
         Vec2 prev = default;
         for (int k = 0; k < br.StopCount; k++)
         {
-            ref readonly BusStopData s = ref net.BusStops[br.FirstStop + k];
+            ref readonly BusStopData s = ref net.BusStops[net.BusRouteStops[br.FirstStop + k]];
             LaneGeometry.Evaluate(net, s.Lane, s.S, ref hint, out Vec2 pos, out _);
             if (k > 0)
             {

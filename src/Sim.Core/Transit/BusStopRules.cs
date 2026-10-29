@@ -100,7 +100,7 @@ internal static class BusStopRules
 
         ref readonly BusRouteData br = ref net.BusRoutes[r];
         int k = v.BusNextStop[i];
-        return (uint)k < (uint)br.StopCount ? br.FirstStop + k : -1;
+        return (uint)k < (uint)br.StopCount ? net.BusRouteStops[br.FirstStop + k] : -1;
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ internal struct InvCtx
 
 /// <summary>
 /// Обратные записи ядра (player-tools.md §8.1): строятся из фактического состояния до мутации (<see cref="Begin"/>), для <c>BuildRoad</c> дополняются после неё (<see cref="End"/>,
-/// индекс нового сегмента известен только тогда). Запись фиксируется, только если команда применена. Автобусные команды (T9) обратных пока не имеют.
+/// индекс нового сегмента известен только тогда). Запись фиксируется, только если команда применена. Автобусные (T9): создание - снятие созданного, снятие - пересоздание с <c>RestoreOf</c>, параметры - прежние.
 /// </summary>
 internal static class InverseBuilder
 {
@@ -39,6 +39,8 @@ internal static class InverseBuilder
         var ctx = new InvCtx { Start = log.CmdCount, NodeA = -1, NodeB = -1 };
         log.BuiltSeg = -1;
         log.BuiltNode = -1;
+        log.BuiltRoute = -1;
+        log.BuiltStop = -1;
         if (!IsTool(cmd.Kind))
         {
             ctx.Inactive = true;
@@ -84,12 +86,115 @@ internal static class InverseBuilder
                     ? new EntityRef(cmd.MergeAtNode.Node.Index, w.Net.Nodes[cmd.MergeAtNode.Node.Index].Generation)
                     : EntityRef.None;
                 break;
+            case CommandKind.RemoveBusStop:
+                BeginRemoveBusStop(w, in cmd, ref ctx);
+                break;
+            case CommandKind.RemoveBusRoute:
+                BeginRemoveBusRoute(w, in cmd, ref ctx);
+                break;
+            case CommandKind.SetBusRouteParams:
+                BeginBusRouteParams(w, in cmd, ref ctx);
+                break;
+            case CommandKind.CreateBusRoute:
+            case CommandKind.AppendBusStop:
+            case CommandKind.InsertBusStop:
+                break;   // T9: обратная (снять созданное) - в End, индекс известен после применения
             default:
-                ctx.NoInverse = true;   // автобусные (T9): обратных пока нет
+                ctx.NoInverse = true;
                 break;
         }
 
         return ctx;
+    }
+
+    /// <summary>Остановка <paramref name="si"/> как команда вставки на позицию <paramref name="pos"/> (-1 - в конец) линии <paramref name="route"/> с восстановлением handle'а (T9).</summary>
+    private static Command RestoreStop(NetworkStore n, int si, EntityRef route, int pos)
+    {
+        ref readonly BusStopData st = ref n.BusStops[si];
+        ref readonly LaneData ld = ref n.Lanes[st.Lane];
+        var ins = new InsertBusStopCmd
+        {
+            Route = route,
+            Position = pos,
+            Seg = new EntityRef(ld.Segment, n.Segments[ld.Segment].Generation),
+            Dir = ld.Direction,
+            LaneNo = ld.LaneNo,
+            Kind = (byte)st.Kind,
+            S = st.S,
+            RestoreOf = new EntityRef(si, st.Generation),
+        };
+        return Command.MakeInsertBusStop(in ins);
+    }
+
+    private static void BeginRemoveBusStop(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        RemoveBusStopCmd b = cmd.RemoveBusStop;
+        if (!n.ResolveBusStop(in b.Stop) || (uint)n.BusStops[b.Stop.Index].Lane >= (uint)n.LaneCount)
+        {
+            return;   // будет отклонена
+        }
+
+        int r = n.BusStops[b.Stop.Index].Route;
+        int pos = n.StopPos(b.Stop.Index);
+        if (pos < 0)
+        {
+            ctx.NoInverse = true;   // остановка вне линии (не создаётся инструментами)
+            return;
+        }
+
+        Add(w.Inv, ref ctx, RestoreStop(n, b.Stop.Index, new EntityRef(r, n.BusRoutes[r].Generation), pos));
+    }
+
+    private static void BeginRemoveBusRoute(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        RemoveBusRouteCmd b = cmd.RemoveBusRoute;
+        if (!n.ResolveBusRoute(in b.Route))
+        {
+            return;
+        }
+
+        int r = b.Route.Index;
+        ref readonly BusRouteData br = ref n.BusRoutes[r];
+        var route = new EntityRef(r, br.Generation);
+        var create = new CreateBusRouteCmd
+        {
+            HeadwayTicks = br.HeadwayTicks < 0 ? -br.HeadwayTicks : br.HeadwayTicks,
+            VehicleType = br.VehicleType,
+            Flags = br.HeadwayTicks < 0 ? BusRouteFlags.Suspend : 0,
+            RestoreOf = route,
+        };
+        InverseLog log = w.Inv;
+        Add(log, ref ctx, Command.MakeCreateBusRoute(in create));
+        for (int k = 0; k < br.StopCount; k++)
+        {
+            int si = n.BusRouteStops[br.FirstStop + k];
+            if ((uint)n.BusStops[si].Lane < (uint)n.LaneCount)
+            {
+                Add(log, ref ctx, RestoreStop(n, si, route, -1));   // ссылка на линию переводится на пересозданную (BusRouteRemapped, та же фаза 1)
+            }
+        }
+    }
+
+    private static void BeginBusRouteParams(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        SetBusRouteParamsCmd b = cmd.SetBusRouteParams;
+        if (!n.ResolveBusRoute(in b.Route))
+        {
+            return;
+        }
+
+        ref readonly BusRouteData br = ref n.BusRoutes[b.Route.Index];
+        var prev = new SetBusRouteParamsCmd
+        {
+            Route = new EntityRef(b.Route.Index, br.Generation),
+            HeadwayTicks = br.HeadwayTicks < 0 ? -br.HeadwayTicks : br.HeadwayTicks,
+            VehicleType = br.VehicleType,
+            Flags = br.HeadwayTicks < 0 ? BusRouteFlags.Suspend : BusRouteFlags.Resume,
+        };
+        Add(w.Inv, ref ctx, Command.MakeSetBusRouteParams(in prev));
     }
 
     /// <summary>Фиксирует запись, если команда применена; иначе отбрасывает построенное.</summary>
@@ -115,6 +220,15 @@ internal static class InverseBuilder
             {
                 Add(log, ref ctx, Command.MakeSetNodeControl(new SetNodeControlCmd { Node = ctx.NodeB, Control = ctx.CtlB, NodeGen = ctx.GenB }));
             }
+        }
+
+        if (cmd.Kind == CommandKind.CreateBusRoute && log.BuiltRoute >= 0)
+        {
+            Add(log, ref ctx, Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = new EntityRef(log.BuiltRoute, w.Net.BusRoutes[log.BuiltRoute].Generation) }));
+        }
+        else if (cmd.Kind is CommandKind.InsertBusStop or CommandKind.AppendBusStop && log.BuiltStop >= 0)
+        {
+            Add(log, ref ctx, Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = new EntityRef(log.BuiltStop, w.Net.BusStops[log.BuiltStop].Generation) }));
         }
 
         if (cmd.Kind == CommandKind.SplitRoad && log.BuiltNode >= 0)
@@ -184,7 +298,8 @@ internal static class InverseBuilder
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
         or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
-        or CommandKind.SplitRoad or CommandKind.MergeAtNode;
+        or CommandKind.SplitRoad or CommandKind.MergeAtNode or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop
+        or CommandKind.RemoveBusStop or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams;
 
     /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.

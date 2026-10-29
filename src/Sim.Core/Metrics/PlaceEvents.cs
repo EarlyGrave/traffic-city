@@ -303,7 +303,7 @@ internal sealed class PlaceEvents
             }
 
             ref readonly BusRouteData br = ref net.BusRoutes[r];
-            if (br.StopCount < 1 || br.HeadwayTicks <= 0 || (uint)br.FirstStop >= (uint)net.BusStopCount)
+            if (br.StopCount < 1 || br.HeadwayTicks <= 0 || (uint)net.BusRouteStops[br.FirstStop] >= (uint)net.BusStopCount)
             {
                 continue;
             }
@@ -313,8 +313,9 @@ internal sealed class PlaceEvents
             long late = now - due;
             if (br.ActiveBuses == 0 && late >= NoBusGraceTicks && Ready(r, BusLineIssue.NoBuses, now))
             {
-                EventPlace p = StopPoint(net, r, in br, br.FirstStop);
-                w.EmitAt(SimEventKind.BusLineProblem, 0, (int)BusLineIssue.NoBuses, late > int.MaxValue ? int.MaxValue : (int)late, in p, br.FirstStop);
+                int first = net.BusRouteStops[br.FirstStop];
+                EventPlace p = StopPoint(net, r, in br, first);
+                w.EmitAt(SimEventKind.BusLineProblem, 0, (int)BusLineIssue.NoBuses, late > int.MaxValue ? int.MaxValue : (int)late, in p, first);
             }
 
             if (scanned && _routeStuck[r] > 0 && Ready(r, BusLineIssue.BusesStuck, now))
@@ -339,7 +340,7 @@ internal sealed class PlaceEvents
             int waiting = 0;
             for (int k = 0; k < br.StopCount; k++)
             {
-                int si = br.FirstStop + k;
+                int si = net.BusRouteStops[br.FirstStop + k];
                 if ((uint)si < (uint)net.BusStopCount && net.BusStops[si].Waiting > waiting)
                 {
                     waiting = net.BusStops[si].Waiting;

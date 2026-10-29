@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -55,8 +56,19 @@ internal static class BusStopPhase
             {
                 // Сеть изменилась под автобусом в кармане: остановку снесли, полосу закрыли/дренируют, полоса стала короче точки остановки или остановка попала в горизонт ворот.
                 // Вставлять некуда - автобус снимается (пассажиры выходят), уступка пересобирается.
-                Remove(w, i, v.BusRoute[i], ref w.Net.BusRoutes[v.BusRoute[i]]);
+                Remove(w, i);
                 RebuildBay(w);
+                continue;
+            }
+
+            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) == 0 && BusStopRules.TargetStop(w.Net, v, i) < 0)
+            {
+                // T9: целевой остановки нет (линию сняли, конечную убрали, дальше не доехать) - автобус доезжает до прежней цели (DestLane/DestS) и завершает рейс там.
+                if (v.Lane[i] >= 0 && (v.Lane[i] == v.DestLane[i] || v.DestLane[i] < 0) && v.S[i] >= v.DestS[i] - BusStopRules.ArriveDistance)
+                {
+                    Remove(w, i);
+                }
+
                 continue;
             }
 
@@ -97,7 +109,7 @@ internal static class BusStopPhase
 
         for (int s = 0; s < n; s++)
         {
-            if ((w.Tick + ((long)s * 7)) % period == 0 && net.BusStops[s].Waiting < MaxWaiting)
+            if ((w.Tick + ((long)s * 7)) % period == 0 && net.BusStops[s].Waiting < MaxWaiting && net.BusStopAlive(s))   // мёртвый слот (T9) - канонические нули
             {
                 net.BusStops[s].Waiting++;
             }
@@ -123,7 +135,7 @@ internal static class BusStopPhase
             {
                 if (++v.DwellTicks[i] >= GiveUpTicks)
                 {
-                    Advance(w, i, v.BusRoute[i], ref net.BusRoutes[v.BusRoute[i]], v.Lane[i], v.S[i]);
+                    Advance(w, i, v.Lane[i], v.S[i]);
                 }
             }
             else
@@ -185,7 +197,7 @@ internal static class BusStopPhase
         rs.Arrivals++;
         if (stop.LastArrivalTick >= 0)
         {
-            long dev = w.Tick - stop.LastArrivalTick - br.HeadwayTicks;
+            long dev = w.Tick - stop.LastArrivalTick - Math.Abs(br.HeadwayTicks);   // < 0 - линия приостановлена (T9), интервал - модуль
             if (dev < 0)
             {
                 dev = -dev;
@@ -249,7 +261,7 @@ internal static class BusStopPhase
         ref BusRouteData br = ref net.BusRoutes[r];
         if (stop.Lane < 0)
         {
-            Remove(w, i, r, ref br);   // остановку снесли инструментом, пока автобус стоял в кармане: вставлять некуда (полное сопровождение правок сети - BB2)
+            Remove(w, i);   // остановку снесли инструментом, пока автобус стоял в кармане: вставлять некуда (полное сопровождение правок сети - BB2)
             return;
         }
 
@@ -273,7 +285,7 @@ internal static class BusStopPhase
 
         int lane = stop.Lane;
         long waited = w.Tick - stop.BayExitFrom;
-        if (Advance(w, i, r, ref br, lane, stop.S) != AdvanceResult.Advanced)
+        if (Advance(w, i, lane, stop.S) != AdvanceResult.Advanced)
         {
             return;   // отложено (повтор на следующем тике) либо автобус исчез вместе с карманом (ReleaseBay в Remove)
         }
@@ -366,7 +378,7 @@ internal static class BusStopPhase
             return 0;
         }
 
-        long earliest = stop.LastDepartTick + DetMath.ToLongSat(cfg.HoldAlpha * br.HeadwayTicks);
+        long earliest = stop.LastDepartTick + DetMath.ToLongSat(cfg.HoldAlpha * Math.Abs(br.HeadwayTicks));
         long extra = earliest - departAt;
         if (extra <= 0)
         {
@@ -390,9 +402,7 @@ internal static class BusStopPhase
             return;
         }
 
-        int r = v.BusRoute[i];
-        ref BusRouteData br = ref w.Net.BusRoutes[r];
-        Advance(w, i, r, ref br, v.Lane[i], v.S[i]);
+        Advance(w, i, v.Lane[i], v.S[i]);
     }
 
     private enum AdvanceResult
@@ -406,13 +416,21 @@ internal static class BusStopPhase
     /// Едет к следующей остановке после целевой (Build от точки <paramref name="lane"/>/<paramref name="s"/>: полоса и позиция автобуса или, для кармана, его остановки);
     /// без пути остановки пропускаются; дальше нет - деспаун.
     /// </summary>
-    private static AdvanceResult Advance(World w, int i, int r, ref BusRouteData br, int lane, float s)
+    private static AdvanceResult Advance(World w, int i, int lane, float s)
     {
         VehicleStore v = w.Vehicles;
         NetworkStore net = w.Net;
+        int r = v.BusRoute[i];
+        if (!net.BusRouteAlive(r))
+        {
+            Remove(w, i);   // T9: линию сняли, пока автобус стоял на остановке
+            return AdvanceResult.Removed;
+        }
+
+        ref BusRouteData br = ref net.BusRoutes[r];
         for (int k = v.BusNextStop[i] + 1; k < br.StopCount; k++)
         {
-            ref readonly BusStopData next = ref net.BusStops[br.FirstStop + k];
+            ref readonly BusStopData next = ref net.BusStops[net.BusRouteStops[br.FirstStop + k]];
             BuildStatus st = w.Router.Build(lane, s, next.Lane, next.S, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
@@ -436,9 +454,10 @@ internal static class BusStopPhase
             v.NextConn[i] = -1;
             v.DestLane[i] = next.Lane;
             v.DestS[i] = next.S;
-            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0)
+            int cur = v.BusNextStop[i];
+            if ((v.Flags[i] & (byte)VehicleFlags.AtStop) != 0 && (uint)cur < (uint)br.StopCount)
             {
-                net.BusStops[br.FirstStop + v.BusNextStop[i]].LastDepartTick = w.Tick;
+                net.BusStops[net.BusRouteStops[br.FirstStop + cur]].LastDepartTick = w.Tick;
             }
 
             v.BusNextStop[i] = k;
@@ -447,26 +466,41 @@ internal static class BusStopPhase
             return AdvanceResult.Advanced;
         }
 
-        Remove(w, i, r, ref br);
+        Remove(w, i);
         return AdvanceResult.Removed;
     }
 
-    /// <summary>Остановка, на которой высаживаются оставшиеся пассажиры исчезающего автобуса: целевая (или последняя маршрута).</summary>
-    private static int TargetStopOrLast(World w, int i, in BusRouteData br)
+    /// <summary>Остановка, на которой высаживаются оставшиеся пассажиры исчезающего автобуса: целевая (или последняя маршрута); -1 - маршрута нет.</summary>
+    private static int TargetStopOrLast(World w, int i)
     {
+        NetworkStore net = w.Net;
+        int r = w.Vehicles.BusRoute[i];
+        if (!net.BusRouteAlive(r) || net.BusRoutes[r].StopCount < 1)
+        {
+            return -1;
+        }
+
+        ref readonly BusRouteData br = ref net.BusRoutes[r];
         int k = w.Vehicles.BusNextStop[i];
         k = (uint)k < (uint)br.StopCount ? k : br.StopCount - 1;
-        return br.FirstStop + k;
+        return net.BusRouteStops[br.FirstStop + k];
     }
 
-    private static void Remove(World w, int i, int r, ref BusRouteData br)
+    /// <summary>Автобус завершает рейс: пассажиры выходят, карман освобождается, автобус снимается (счётчик <c>ActiveBuses</c> живого маршрута уменьшается).</summary>
+    internal static void Remove(World w, int i)
     {
         VehicleStore v = w.Vehicles;
-        br.ActiveBuses--;
-        w.BusRouteStats[r].ActiveBuses = br.ActiveBuses;
+        int r = v.BusRoute[i];
+        if (w.Net.BusRouteAlive(r))
+        {
+            ref BusRouteData br = ref w.Net.BusRoutes[r];
+            br.ActiveBuses--;
+            w.BusRouteStats[r].ActiveBuses = br.ActiveBuses;
+        }
+
         if (w.Peds != null && w.Peds.PaxHead[i] >= 0)
         {
-            Stops.DropAll(w, i, TargetStopOrLast(w, i, in br));
+            Stops.DropAll(w, i, TargetStopOrLast(w, i));
         }
 
         if ((v.Flags[i] & (byte)VehicleFlags.InBay) != 0)

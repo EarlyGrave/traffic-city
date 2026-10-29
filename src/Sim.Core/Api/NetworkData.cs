@@ -200,12 +200,17 @@ public struct BusStopData
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct BusRouteData
 {
-    public int FirstStop, StopCount;
+    public int FirstStop, StopCount;    // диапазон в BusRouteStops: k-я остановка - BusRouteStops[FirstStop + k] (T9: не обязательно FirstStop + k)
+
+    /// <summary>Интервал выпуска, тики; &lt; 0 - линия приостановлена (<see cref="Suspended"/>, T9), модуль - интервал для возобновления.</summary>
     public int HeadwayTicks;
     public int VehicleType;
     public int ActiveBuses;
     public long LastDispatchTick;
     public int Generation;
+
+    /// <summary>Линия приостановлена игроком (T9): новых автобусов нет, идущие доезжают рейс.</summary>
+    public readonly bool Suspended => HeadwayTicks < 0;
 }
 
 /// <summary>Вид ребра графа пешеходов (pedestrians.md §2.1).</summary>
