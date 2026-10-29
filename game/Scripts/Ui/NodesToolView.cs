@@ -50,22 +50,9 @@ public sealed class NodesToolView
             _arrowColor[i] = -1;
         }
 
-        var style = new StyleBoxFlat
-        {
-            BgColor = UiPalette.PanelBg(UiPalette.DefaultPanelAlpha),
-            BorderColor = UiPalette.PanelBorder,
-            ContentMarginLeft = 8f,
-            ContentMarginRight = 8f,
-            ContentMarginTop = 4f,
-            ContentMarginBottom = 4f,
-        };
-        style.SetBorderWidthAll(1);
-        style.SetCornerRadiusAll((int)UiMetrics.Radius);
-        _panel = new PanelContainer { Name = "NodesLabel", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        _panel.AddThemeStyleboxOverride("panel", style);
-        _text = new Label { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _panel.AddChild(_text);
-        cursorLayer.AddChild(_panel);
+        var tag = new CursorTag("NodesLabel", cursorLayer);
+        _panel = tag.Panel;
+        _text = tag.Text;
     }
 
     /// <summary>Видимая метка у курсора (журнал и проверки).</summary>

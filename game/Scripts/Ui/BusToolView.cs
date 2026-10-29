@@ -33,8 +33,7 @@ public sealed class BusToolView
     private readonly StandardMaterial3D _legMaterial;
     private readonly PanelContainer _panel;
     private readonly Label _text;
-    private readonly StyleBoxFlat _normal;
-    private readonly StyleBoxFlat _error;
+    private readonly CursorTag _tag;
     private readonly StringBuilder _sb = new();
     private int _version = -1;
     private long _previewId = -1;
@@ -61,13 +60,9 @@ public sealed class BusToolView
         _legs = new MeshInstance3D { Name = "BusLegs", Mesh = _legMesh, MaterialOverride = _legMaterial, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         parent3d.AddChild(_legs);
 
-        _normal = Style(UiPalette.PanelBorder, 1);
-        _error = Style(UiPalette.Error, 2);
-        _panel = new PanelContainer { Name = "BusLabel", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        _panel.AddThemeStyleboxOverride("panel", _normal);
-        _text = new Label { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _panel.AddChild(_text);
-        cursorLayer.AddChild(_panel);
+        _tag = new CursorTag("BusLabel", cursorLayer);
+        _panel = _tag.Panel;
+        _text = _tag.Text;
     }
 
     public string LabelText => _panel.Visible ? _text.Text : string.Empty;
@@ -113,7 +108,7 @@ public sealed class BusToolView
         Vector2 size = _panel.GetCombinedMinimumSize();
         var pos = new Vector2(mouse.X + 22f, mouse.Y + 26f);
         pos.X = Math.Clamp(pos.X, 4f, Math.Max(4f, viewport.X - size.X - 4f));
-        if (pos.Y + size.Y > viewport.Y - UiMetrics.ToolbarHeight - UiMetrics.OptionsHeight - 4f)
+        if (pos.Y + size.Y > viewport.Y - ToolbarScreen.Height - ToolOptionsScreen.Height - 4f)
         {
             pos.Y = mouse.Y - size.Y - 12f;
         }
@@ -215,8 +210,7 @@ public sealed class BusToolView
         if (err != _shownError)
         {
             _shownError = err;
-            _panel.AddThemeStyleboxOverride("panel", err ? _error : _normal);
-            _text.AddThemeColorOverride("font_color", err ? UiPalette.Error : UiPalette.Text);
+            _tag.SetSeverity(err ? 2 : 0);
         }
     }
 
@@ -301,19 +295,4 @@ public sealed class BusToolView
         RenderPriority = 4,
     };
 
-    private static StyleBoxFlat Style(Color border, int width)
-    {
-        var s = new StyleBoxFlat
-        {
-            BgColor = UiPalette.PanelBg(UiPalette.DefaultPanelAlpha),
-            BorderColor = border,
-            ContentMarginLeft = 8f,
-            ContentMarginRight = 8f,
-            ContentMarginTop = 4f,
-            ContentMarginBottom = 4f,
-        };
-        s.SetBorderWidthAll(width);
-        s.SetCornerRadiusAll((int)UiMetrics.Radius);
-        return s;
-    }
 }

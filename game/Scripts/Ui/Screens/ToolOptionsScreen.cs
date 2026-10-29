@@ -3,10 +3,13 @@ using Godot;
 
 namespace TrafficCity.Ui;
 
-/// <summary>Строка опций инструмента 40 px над тулбаром (UI4): полоса настоящего инструмента или подпись-заглушка, пока инструмент активен.</summary>
+/// <summary>Строка опций инструмента 52 px над тулбаром (UI4): полоса настоящего инструмента или подпись-заглушка, пока инструмент активен.</summary>
 #pragma warning disable CA1001 // узлы Godot принадлежат дереву сцены
 public sealed class ToolOptionsScreen : UiScreen
 {
+    /// <summary>Высота строки опций: кнопки и списки кита ~40 px + поля.</summary>
+    public const float Height = 52f;
+
     private readonly Dictionary<IUiTool, Control> _strips = new();
     private PanelContainer _bar = null!;
     private Label _label = null!;
@@ -17,7 +20,7 @@ public sealed class ToolOptionsScreen : UiScreen
 
     protected override void Build(Control parent)
     {
-        _bar = Bar(parent, "ToolOptions", UiTheme.BarBottom, top: false, UiMetrics.OptionsHeight, UiMetrics.ToolbarHeight);
+        _bar = Bar(parent, "ToolOptions", UiTheme.BarBottom, top: false, Height, ToolbarScreen.Height);
         _label = new Label
         {
             ThemeTypeVariation = UiTheme.LabelSecondary,

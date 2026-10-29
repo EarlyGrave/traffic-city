@@ -1,5 +1,6 @@
 using Godot;
 using TrafficCity.Tools;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -109,12 +110,9 @@ public sealed class ZonesOptionsStrip
         MouseFilter = Control.MouseFilterEnum.Ignore,
     };
 
-    private static Button Btn(string text, bool toggle) => new()
+    private static UiButton Btn(string text, bool toggle) => new UiButton(text, toggle ? UiButtonKind.Toggle : UiButtonKind.Secondary)
     {
-        Text = text,
-        ToggleMode = toggle,
         FocusMode = Control.FocusModeEnum.None,
-        CustomMinimumSize = new Vector2(0f, 32f),
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
     };
 }

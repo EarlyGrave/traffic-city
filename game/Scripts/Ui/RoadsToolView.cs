@@ -20,8 +20,7 @@ public sealed class RoadsToolView
     private readonly ImmediateMesh _mesh = new();
     private readonly PanelContainer _panel;
     private readonly Label _text;
-    private readonly StyleBoxFlat[] _styles = new StyleBoxFlat[3];
-    private readonly Color[] _textColors = { UiPalette.Text, UiPalette.Warning, UiPalette.Error };
+    private readonly CursorTag _tag;
     private int _toolVersion = -1;
     private long _previewId = -1;
     private bool _wasMatch;
@@ -48,27 +47,9 @@ public sealed class RoadsToolView
         };
         parent3d.AddChild(_ghost);
 
-        for (int i = 0; i < 3; i++)
-        {
-            Color border = i == 0 ? UiPalette.PanelBorder : _textColors[i];
-            _styles[i] = new StyleBoxFlat
-            {
-                BgColor = UiPalette.PanelBg(UiPalette.DefaultPanelAlpha),
-                BorderColor = border,
-                ContentMarginLeft = 8f,
-                ContentMarginRight = 8f,
-                ContentMarginTop = 4f,
-                ContentMarginBottom = 4f,
-            };
-            _styles[i].SetBorderWidthAll(i == 0 ? 1 : 2);
-            _styles[i].SetCornerRadiusAll((int)UiMetrics.Radius);
-        }
-
-        _panel = new PanelContainer { Name = "ToolLabel", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        _panel.AddThemeStyleboxOverride("panel", _styles[0]);
-        _text = new Label { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _panel.AddChild(_text);
-        cursorLayer.AddChild(_panel);
+        _tag = new CursorTag("ToolLabel", cursorLayer);
+        _panel = _tag.Panel;
+        _text = _tag.Text;
     }
 
     /// <summary>Видимая метка у курсора (для проверок и журнала).</summary>
@@ -119,7 +100,7 @@ public sealed class RoadsToolView
             Vector2 size = _panel.GetCombinedMinimumSize();
             var pos = new Vector2(mouse.X + 22f, mouse.Y + 26f);
             pos.X = Math.Clamp(pos.X, 4f, Math.Max(4f, viewport.X - size.X - 4f));
-            if (pos.Y + size.Y > viewport.Y - UiMetrics.ToolbarHeight - UiMetrics.OptionsHeight - 4f)
+            if (pos.Y + size.Y > viewport.Y - ToolbarScreen.Height - ToolOptionsScreen.Height - 4f)
             {
                 pos.Y = mouse.Y - size.Y - 12f; // не лезем под тулбар: метка уходит выше курсора
             }
@@ -132,8 +113,7 @@ public sealed class RoadsToolView
     {
         LabelContent label = RoadsLabel.Compose(tool, svc);
         _text.Text = label.Text;
-        _panel.AddThemeStyleboxOverride("panel", _styles[(int)label.Severity]);
-        _text.AddThemeColorOverride("font_color", _textColors[(int)label.Severity]);
+        _tag.SetSeverity((int)label.Severity);
 
         _mesh.ClearSurfaces();
         var cursor = new Vector3(tool.Cursor.X, 0f, tool.Cursor.Z);

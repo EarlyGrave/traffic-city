@@ -2,6 +2,7 @@ using System.Globalization;
 using Godot;
 using Sim.Core.Network;
 using TrafficCity.Tools;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -21,13 +22,11 @@ public sealed class NodesOptionsStrip
     private readonly Button[] _mode = new Button[4];
     private readonly Button[] _control = new Button[4];
     private readonly Button[] _preset = new Button[3];
-    private readonly HSlider _cycle;
-    private readonly Label _cycleText;
+    private readonly UiSlider _cycle;
     private readonly Control _controlBox;
     private readonly Control _signalBox;
     private readonly Label _hint;
     private string _hintShown = string.Empty;
-    private int _cycleShown = -1;
     private bool _dragging;
     private bool _syncing;
 
@@ -85,24 +84,19 @@ public sealed class NodesOptionsStrip
         }
 
         sig.AddChild(Secondary("Цикл"));
-        _cycle = new HSlider
+        _cycle = new UiSlider(string.Empty, NodesTool.MinCycleS, NodesTool.MaxCycleS, 2, NodesTool.DefaultCycleS, "{0:0} с")
         {
-            MinValue = NodesTool.MinCycleS,
-            MaxValue = NodesTool.MaxCycleS,
-            Step = 2,
-            Value = NodesTool.DefaultCycleS,
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(140f, 24f),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             TooltipText = "Длительность цикла фиксированного светофора",
         };
-        _cycle.DragStarted += () => _dragging = true;
-        _cycle.DragEnded += _ =>
+        _cycle.Slider.FocusMode = Control.FocusModeEnum.None;
+        _cycle.Slider.CustomMinimumSize = new Vector2(140f, 24f);
+        _cycle.Slider.DragStarted += () => _dragging = true;
+        _cycle.Slider.DragEnded += _ =>
         {
             _dragging = false;
             _tool.EndCycleDrag();
         };
-        _cycle.ValueChanged += v =>
+        _cycle.Slider.ValueChanged += v =>
         {
             if (!_syncing)
             {
@@ -110,9 +104,6 @@ public sealed class NodesOptionsStrip
             }
         };
         sig.AddChild(_cycle);
-        _cycleText = Secondary(string.Empty);
-        _cycleText.CustomMinimumSize = new Vector2(48f, 0f);
-        sig.AddChild(_cycleText);
         _signalBox = sig;
         _row.AddChild(sig);
 
@@ -158,16 +149,11 @@ public sealed class NodesOptionsStrip
         }
 
         bool fixedPlan = _tool.Preset != SignalPresetChoice.Adaptive;
-        _cycle.Editable = fixedPlan;
+        _cycle.Disable(!fixedPlan);
+        _cycle.Slider.FocusMode = Control.FocusModeEnum.None;
         if (!_dragging && (int)_cycle.Value != _tool.CycleS)
         {
-            _cycle.SetValueNoSignal(_tool.CycleS);
-        }
-
-        if (_cycleShown != _tool.CycleS)
-        {
-            _cycleShown = _tool.CycleS;
-            _cycleText.Text = _tool.CycleS.ToString(CultureInfo.InvariantCulture) + " с";
+            _cycle.Slider.Value = _tool.CycleS; // сигнал обновит и подпись кита; свои обработчики глушит _syncing
         }
 
         string hint = _tool.Mode switch
@@ -196,12 +182,9 @@ public sealed class NodesOptionsStrip
         MouseFilter = Control.MouseFilterEnum.Ignore,
     };
 
-    private static Button Btn(string text, bool toggle) => new()
+    private static UiButton Btn(string text, bool toggle) => new UiButton(text, toggle ? UiButtonKind.Toggle : UiButtonKind.Secondary)
     {
-        Text = text,
-        ToggleMode = toggle,
         FocusMode = Control.FocusModeEnum.None,
-        CustomMinimumSize = new Vector2(0f, 32f),
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
     };
 }

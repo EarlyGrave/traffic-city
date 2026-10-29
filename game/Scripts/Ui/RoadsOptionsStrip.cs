@@ -1,5 +1,6 @@
 using Godot;
 using TrafficCity.Tools;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -14,7 +15,7 @@ public sealed class RoadsOptionsStrip
     private readonly RoadsTool _tool;
     private readonly WorldGrid _grid;
     private readonly HBoxContainer _row;
-    private readonly OptionButton _profile;
+    private readonly UiDropdown _profile;
     private readonly Button[] _mode = new Button[3];
     private readonly Button _mirror;
     private readonly Button _snap;
@@ -30,10 +31,10 @@ public sealed class RoadsOptionsStrip
         _row.AddThemeConstantOverride("separation", 8);
         _row.AddChild(Secondary("Профиль:"));
 
-        _profile = new OptionButton
+        _profile = new UiDropdown
         {
             FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(250f, 32f),
+            CustomMinimumSize = new Vector2(250f, 0f),
             TooltipText = "Профиль дороги из каталога ядра ([ и ] листают)",
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
@@ -166,12 +167,9 @@ public sealed class RoadsOptionsStrip
         MouseFilter = Control.MouseFilterEnum.Ignore,
     };
 
-    private static Button Btn(string text, bool toggle) => new()
+    private static UiButton Btn(string text, bool toggle) => new UiButton(text, toggle ? UiButtonKind.Toggle : UiButtonKind.Secondary)
     {
-        Text = text,
-        ToggleMode = toggle,
         FocusMode = Control.FocusModeEnum.None,
-        CustomMinimumSize = new Vector2(0f, 32f),
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
     };
 }

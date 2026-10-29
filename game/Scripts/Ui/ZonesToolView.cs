@@ -22,8 +22,7 @@ public sealed class ZonesToolView
     private readonly MultiMesh _multi;
     private readonly PanelContainer _panel;
     private readonly Label _text;
-    private readonly StyleBoxFlat _normal;
-    private readonly StyleBoxFlat _error;
+    private readonly CursorTag _tag;
     private int _version = -1;
     private bool _shownError;
 
@@ -47,13 +46,9 @@ public sealed class ZonesToolView
         _marks = new MultiMeshInstance3D { Name = "ZonesMarks", Multimesh = _multi, MaterialOverride = marksMaterial, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         parent3d.AddChild(_marks);
 
-        _normal = Style(UiPalette.PanelBorder, 1);
-        _error = Style(UiPalette.Error, 2);
-        _panel = new PanelContainer { Name = "ZonesLabel", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        _panel.AddThemeStyleboxOverride("panel", _normal);
-        _text = new Label { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _panel.AddChild(_text);
-        cursorLayer.AddChild(_panel);
+        _tag = new CursorTag("ZonesLabel", cursorLayer);
+        _panel = _tag.Panel;
+        _text = _tag.Text;
     }
 
     /// <summary>Видимая метка у курсора (журнал и проверки).</summary>
@@ -124,8 +119,7 @@ public sealed class ZonesToolView
         if (err != _shownError)
         {
             _shownError = err;
-            _panel.AddThemeStyleboxOverride("panel", err ? _error : _normal);
-            _text.AddThemeColorOverride("font_color", err ? UiPalette.Error : UiPalette.Text);
+            _tag.SetSeverity(err ? 2 : 0);
         }
     }
 
@@ -191,19 +185,4 @@ public sealed class ZonesToolView
         RenderPriority = 4,
     };
 
-    private static StyleBoxFlat Style(Color border, int width)
-    {
-        var s = new StyleBoxFlat
-        {
-            BgColor = UiPalette.PanelBg(UiPalette.DefaultPanelAlpha),
-            BorderColor = border,
-            ContentMarginLeft = 8f,
-            ContentMarginRight = 8f,
-            ContentMarginTop = 4f,
-            ContentMarginBottom = 4f,
-        };
-        s.SetBorderWidthAll(width);
-        s.SetCornerRadiusAll((int)UiMetrics.Radius);
-        return s;
-    }
 }

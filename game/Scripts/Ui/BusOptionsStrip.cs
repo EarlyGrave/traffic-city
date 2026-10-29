@@ -6,6 +6,7 @@ using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Host;
 using TrafficCity.Tools;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -22,7 +23,7 @@ public sealed class BusOptionsStrip
     private readonly HBoxContainer _row;
     private readonly Button _new;
     private readonly Button _done;
-    private readonly OptionButton _list;
+    private readonly UiDropdown _list;
     private readonly Label _stats;
     private readonly Button _slower;
     private readonly Button _faster;
@@ -50,7 +51,7 @@ public sealed class BusOptionsStrip
         _row.AddChild(new VSeparator());
 
         _row.AddChild(Secondary("Линия:"));
-        _list = new OptionButton { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(150f, 32f), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _list = new UiDropdown { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(150f, 0f), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         _list.TooltipText = "Выбрать линию для правки";
         _list.ItemSelected += OnPick;
         _row.AddChild(_list);
@@ -69,7 +70,7 @@ public sealed class BusOptionsStrip
         _suspend = Btn("Приостановить");
         _suspend.Pressed += _tool.ToggleSuspend;
         _row.AddChild(_suspend);
-        _remove = Btn("Удалить линию");
+        _remove = Btn("Удалить линию", UiButtonKind.Danger);
         _remove.Pressed += _tool.RemoveRoute;
         _row.AddChild(_remove);
 
@@ -197,11 +198,9 @@ public sealed class BusOptionsStrip
         MouseFilter = Control.MouseFilterEnum.Ignore,
     };
 
-    private static Button Btn(string text) => new()
+    private static UiButton Btn(string text, UiButtonKind kind = UiButtonKind.Secondary) => new UiButton(text, kind)
     {
-        Text = text,
         FocusMode = Control.FocusModeEnum.None,
-        CustomMinimumSize = new Vector2(0f, 32f),
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
     };
 }
