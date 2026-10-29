@@ -93,7 +93,8 @@ public sealed class BasePackageGoldenTests : IDisposable
     public static IEnumerable<object[]> V2Scenarios() =>
         Directory.GetFiles(Path.Combine(Root(), "scenarios"), "*.json")
             .Select(Path.GetFileName)
-            .Where(n => n != "vehicle-types.json" && n != "road-profiles.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
+            // yuryev-polsky.json читает бинарный .r16 (heightmap.file); v3-загрузка в тесте без бинарного ридера, сценарий покрыт YuryevPolskyScenarioTests
+            .Where(n => n != "vehicle-types.json" && n != "road-profiles.json" && n != "yuryev-polsky.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
             .OrderBy(n => n, StringComparer.Ordinal)
             .Select(n => new object[] { n! });
 
