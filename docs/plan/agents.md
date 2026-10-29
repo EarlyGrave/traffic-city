@@ -256,3 +256,4 @@
 | L67 | reject-texts (локал, worktree) | sonnet | тексты IssueCode 114–115 (после N1 облака) | done, merged (74k токенов, 6 вызовов, 7 мин) |
 | 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | done, merged (тексты ZoneBuildingsAbandoned/ZoneNothingToPaint в game/Scripts/Tools/RejectMessages.cs; тесты 1257+503+52 зелёные) |
 | 181 | n3-t5 (облако, worktree) | opus | ночь N3: T5 полный UpgradeRoad + SplitRoad | wip |
+| 182 | n4-ev1 (облако, worktree) | opus | ночь N4: EV1 события с местом | wip |
