@@ -230,6 +230,7 @@ internal sealed class World : IDisposable
             ? new NetworkBuilder(Net, desc.City.LaneWidth, desc.City.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.City.CornerRadius))
             : new NetworkBuilder(Net, NetworkOptions.Default.LaneWidth, NetworkOptions.Default.ConnectorSamples, NetworkOptions.CornerRadiusFromDesc(desc.Network.CornerRadius));
         Vehicles = new VehicleStore(c.MaxVehicles, LodCfg.Mode != LodMode.Off);
+        Vehicles.TypeAccess = TypeAccess;
         Occupancy = new LaneOccupancy(Vehicles, c.MaxLanes);
         Trips = new PendingTrips(c.MaxPendingTrips);
         Routes = new RouteStore(c.MaxRoutes, c.MaxPlanSteps, routing.WindowSteps, routing.Levels);

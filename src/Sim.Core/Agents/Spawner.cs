@@ -213,7 +213,7 @@ internal static class Spawner
             DestLane = -1,
             Route = -1,
         };
-        if (!Routing.Destinations.Pick(net, to, ref w.RngSpawn, out trip.DestLane, out trip.DestS))
+        if (!Routing.Destinations.Pick(net, to, ref w.RngSpawn, out trip.DestLane, out trip.DestS, w.TypeAccess[trip.Type]))
         {
             return false;
         }

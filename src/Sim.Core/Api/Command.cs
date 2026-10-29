@@ -37,6 +37,9 @@ public enum CommandKind : ushort
 
     // Экономика города (4.2, city-economy.md §11, E1). Номер 25 из спеки занят инструментами (T1) - взят следующий свободный.
     SetBudgetPolicy = 36,   // политика бюджета: ожидающая, действует с границы суток; без режима city_budget - см. BudgetFlows.SetPolicy
+
+    // Классы ТС (vehicle-classes.md §2.2, ADR-0039, VC2).
+    SetStreetAccess = 37,   // запрет улицы по классам (SegmentData.Deny), на месте; обратная - прежняя маска
 }
 
 public enum SignalMode : int
@@ -135,6 +138,9 @@ public struct Command
 
     [FieldOffset(8)]
     public SetLaneFlagsCmd SetLaneFlags;
+
+    [FieldOffset(8)]
+    public SetStreetAccessCmd SetStreetAccess;
 
     [FieldOffset(8)]
     public InsertBusStopCmd InsertBusStop;
@@ -322,6 +328,15 @@ public struct Command
         c.Kind = CommandKind.SetLaneFlags;
         c.Tag = tag;
         c.SetLaneFlags = payload;
+        return c;
+    }
+
+    public static Command MakeSetStreetAccess(in SetStreetAccessCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetStreetAccess;
+        c.Tag = tag;
+        c.SetStreetAccess = payload;
         return c;
     }
 

@@ -96,6 +96,8 @@ internal static class Progression
             case CommandKind.PaintZone:
                 feature = (int)Feature.Zoning;
                 break;
+            case CommandKind.SetStreetAccess:
+                break;   // запрет улицы открыт с начала игры (vehicle-classes.md §9.3), пока FR не решит, с какой вехи появляются фуры
             case CommandKind.SetBudgetPolicy:
                 {
                     CityBudget? b = w.City?.Budget;

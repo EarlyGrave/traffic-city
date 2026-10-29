@@ -431,7 +431,7 @@ internal static class BusStopPhase
         for (int k = v.BusNextStop[i] + 1; k < br.StopCount; k++)
         {
             ref readonly BusStopData next = ref net.BusStops[net.BusRouteStops[br.FirstStop + k]];
-            BuildStatus st = w.Router.Build(lane, s, next.Lane, next.S, w.Tick, out RouteHandle h);
+            BuildStatus st = w.Router.Build(lane, s, next.Lane, next.S, w.Tick, out RouteHandle h, v.Access(i));
             if (st == BuildStatus.Deferred)
             {
                 return AdvanceResult.Deferred; // стоим и повторяем на следующем тике (DwellTicks уже 0)

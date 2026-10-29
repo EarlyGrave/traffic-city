@@ -268,7 +268,7 @@ internal static class RoutePhase
 
             RouteHandle h = RouteHandle.Null;
             BuildStatus st = lane >= 0
-                ? rt.BuildBatched(lane, s, v.DestLane[i], v.DestS[i], w.Tick, out h)
+                ? rt.BuildBatched(lane, s, v.DestLane[i], v.DestS[i], v.Access(i), w.Tick, out h)
                 : BuildStatus.NoPath;
             if (st == BuildStatus.Deferred)
             {
@@ -353,7 +353,7 @@ internal static class RoutePhase
         }
 
         float oldCost = rt.RemainingCost(i);
-        BuildStatus st = rt.BuildBatched(lane, v.S[i], v.DestLane[i], v.DestS[i], w.Tick, out RouteHandle h);
+        BuildStatus st = rt.BuildBatched(lane, v.S[i], v.DestLane[i], v.DestS[i], v.Access(i), w.Tick, out RouteHandle h);
         if (st != BuildStatus.Ok)
         {
             return st;
@@ -398,7 +398,8 @@ internal static class RoutePhase
             }
 
             seen++;
-            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref w.RngRouting, out t.DestLane, out t.DestS))
+            byte access = w.TypeAccess[t.Type];
+            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref w.RngRouting, out t.DestLane, out t.DestS, access))
             {
                 k++; // у зоны назначения нет полос: поездка ждёт (как зона без полос спавна), бюджет не тратим
                 continue;
@@ -424,7 +425,7 @@ internal static class RoutePhase
                 return;
             }
 
-            BuildStatus st = rt.BuildBatched(t.FromLane, t.FromS, t.DestLane, t.DestS, w.Tick, out RouteHandle h);
+            BuildStatus st = rt.BuildBatched(t.FromLane, t.FromS, t.DestLane, t.DestS, access, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
                 trips.Set(k, in t);

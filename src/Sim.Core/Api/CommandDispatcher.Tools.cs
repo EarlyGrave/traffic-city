@@ -151,13 +151,57 @@ internal static partial class CommandDispatcher
         ref readonly SegmentData sd = ref n.Segments[c.Seg.Index];
         int lane = (c.Dir == 0 ? sd.FirstLaneAB : sd.FirstLaneBA) + c.LaneNo;
         byte old = n.Lanes[lane].Flags;
-        var want = (byte)((old & ~c.Mask) | (c.Flags & c.Mask));
-        if (want != old)
+        const byte plain = unchecked((byte)~LaneFlags.BusOnly);   // BusOnly - зеркало Deny, пишет только SetLaneDeny (vehicle-classes.md §2.2)
+        byte m = (byte)(c.Mask & plain);
+        var want = (byte)((old & ~m) | (c.Flags & m));
+        byte deny = n.Lanes[lane].Deny;
+        if ((c.Mask & LaneFlags.BusOnly) != 0)
+        {
+            deny = (c.Flags & LaneFlags.BusOnly) != 0 ? LaneDeny.BusLane : (byte)0;
+        }
+
+        bool denyChanged = deny != n.Lanes[lane].Deny;
+        if (want != old || denyChanged)
         {
             n.ToolsTouched = 1;
             n.Lanes[lane].Flags = want;
+            n.SetLaneDeny(lane, deny);
             n.Version++;
             w.Work.ToolCommandsApplied++;
+            if (denyChanged)
+            {
+                Routing.AccessMasks.Refresh(w);
+            }
+        }
+
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>
+    /// <c>SetStreetAccess</c> (на месте; vehicle-classes.md §2.2, ADR-0039): биты <c>Deny</c> сегмента по маске <c>Mask</c> (оба направления). Действует на новые запросы и
+    /// перемаршрутизацию; спланированные маршруты не трогаются. Производные маршрутизации (<c>DirSegDeny</c>, <c>CellDeny</c>) пересчитываются сразу.
+    /// </summary>
+    private static void SetStreetAccess(World w, in Command cmd)
+    {
+        SetStreetAccessCmd c = cmd.SetStreetAccess;
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        NetworkStore n = w.Net;
+        ref SegmentData sd = ref n.Segments[c.Seg.Index];
+        var want = (byte)((sd.Deny & ~c.Mask) | (c.Deny & c.Mask));
+        if (want != sd.Deny)
+        {
+            n.ToolsTouched = 1;
+            sd.Deny = want;
+            n.Version++;
+            w.Work.ToolCommandsApplied++;
+            Routing.AccessMasks.Refresh(w);
         }
 
         AppliedPaid(w, in cmd, in chk);

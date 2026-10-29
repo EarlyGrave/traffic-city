@@ -120,6 +120,9 @@ internal static partial class CommandDispatcher
             case CommandKind.SetLaneFlags:
                 SetLaneFlags(w, in cmd);
                 break;
+            case CommandKind.SetStreetAccess:
+                SetStreetAccess(w, in cmd);
+                break;
             case CommandKind.RemoveRoad:
                 RemoveRoad(w, in cmd);
                 break;

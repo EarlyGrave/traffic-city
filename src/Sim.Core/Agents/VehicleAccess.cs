@@ -26,11 +26,17 @@ internal static class VehicleAccess
         _ => 0,
     };
 
-    /// <summary>Таблица <c>TypeAccess</c> по набору типов.</summary>
+    /// <summary>Права «без ограничений» для запросов без машины (тесты, инструменты): проходят любую маску запрета.</summary>
+    public const byte All = 0xFF;
+
+    /// <summary>Разрешена ли полоса или улица с маской <paramref name="deny"/> правам <paramref name="access"/>: хватает одного неразрешённого запретом бита.</summary>
+    public static bool Allowed(byte access, byte deny) => (access & ~deny) != 0;
+
+    /// <summary>Таблица <c>TypeAccess</c> по набору типов: 256 элементов (номер типа - байт), за набором - 0.</summary>
     public static byte[] ForTypes(VehicleTypeDesc[] types)
     {
-        var a = new byte[types.Length];
-        for (int i = 0; i < a.Length; i++)
+        var a = new byte[256];
+        for (int i = 0; i < types.Length && i < a.Length; i++)
         {
             a[i] = OfCategory(types[i].Category);
         }

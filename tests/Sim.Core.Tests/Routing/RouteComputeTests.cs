@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Routing;
@@ -28,7 +29,7 @@ public class RouteComputeTests
         {
             int a = NormalLane(w, ref rng);
             int b = NormalLane(w, ref rng);
-            list[k] = new RouteQuery(a, rng.NextFloat01() * 3f, b, rng.NextFloat01() * 3f);
+            list[k] = new RouteQuery(a, rng.NextFloat01() * 3f, b, rng.NextFloat01() * 3f, VehicleAccess.All);
         }
 
         return list;

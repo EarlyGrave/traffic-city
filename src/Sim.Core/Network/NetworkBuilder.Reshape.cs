@@ -160,7 +160,8 @@ internal sealed partial class NetworkBuilder
                     int prev = dir == 0 ? (k < oldAB ? sd.FirstLaneAB + k : -1) : (k < oldBA ? sd.FirstLaneBA + k : -1);
                     if (prev >= 0)
                     {
-                        n.Lanes[lane].Flags = (byte)(n.Lanes[prev].Flags & (LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut));
+                        n.Lanes[lane].Flags = (byte)(n.Lanes[prev].Flags & LaneFlags.NoLaneChangeOut);
+                        n.SetLaneDeny(lane, n.Lanes[prev].Deny);
                     }
                 }
             }
@@ -546,7 +547,7 @@ internal sealed partial class NetworkBuilder
                 for (int t = 0; t < cnt && dest < 0; t++)
                 {
                     int lane = n.OpenZoneLane(zone, (i + t) % cnt);
-                    int opp = Destinations.OppositeLane(n, lane);
+                    int opp = Destinations.OppositeLane(n, lane, v.Access(i));
                     dest = shape.Vanishes(opp) ? lane : opp;
                 }
             }

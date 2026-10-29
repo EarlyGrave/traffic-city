@@ -50,9 +50,9 @@ public class VehicleClassesTests
     {
         ScenarioDesc d = WithAllClasses();
         using Simulation sim = Simulation.Create(in d);
-        Assert.Equal(
-            new byte[] { VehicleAccess.Car, VehicleAccess.Bus, VehicleAccess.Van, VehicleAccess.Truck, VehicleAccess.Special },
-            sim.World.TypeAccess);
+        var want = new byte[256];   // VC2: таблица на все 256 номеров типа (индекс - byte Type, без проверки границ); незаданные - 0
+        new byte[] { VehicleAccess.Car, VehicleAccess.Bus, VehicleAccess.Van, VehicleAccess.Truck, VehicleAccess.Special }.CopyTo(want, 0);
+        Assert.Equal(want, sim.World.TypeAccess);
     }
 
     [Fact]

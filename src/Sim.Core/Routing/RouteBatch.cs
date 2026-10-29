@@ -190,7 +190,7 @@ internal sealed class RouteBatch : IRangeJob
 
         Inline++;
         int w0 = _rt.WorkThisTick;
-        BuildStatus st = _rt.Build(q.StartLane, q.StartS, q.DestLane, q.DestS, tick, out handle);
+        BuildStatus st = _rt.Build(q.StartLane, q.StartS, q.DestLane, q.DestS, tick, out handle, q.Access);
         InlineWork += _rt.WorkThisTick - w0;
         return st;
     }
@@ -242,7 +242,7 @@ internal sealed class RouteBatch : IRangeJob
     }
 
     private static bool SameKey(in RouteQuery a, in RouteQuery b) =>
-        a.StartLane == b.StartLane && a.DestLane == b.DestLane &&
+        a.StartLane == b.StartLane && a.DestLane == b.DestLane && a.Access == b.Access &&
         BitConverter.SingleToInt32Bits(a.StartS) == BitConverter.SingleToInt32Bits(b.StartS) &&
         BitConverter.SingleToInt32Bits(a.DestS) == BitConverter.SingleToInt32Bits(b.DestS);
 
@@ -267,7 +267,7 @@ internal sealed class RouteBatch : IRangeJob
         return k;
     }
 
-    private bool Add(int lane, float s, int destLane, float destS)
+    private bool Add(int lane, float s, int destLane, float destS, byte access)
     {
         if (_count >= Math.Min(_maxCandidates, Capacity))
         {
@@ -275,7 +275,7 @@ internal sealed class RouteBatch : IRangeJob
             return false;
         }
 
-        _keys[_count] = new RouteQuery(lane, s, destLane, destS);
+        _keys[_count] = new RouteQuery(lane, s, destLane, destS, access);
         _count++;
         return true;
     }
@@ -335,7 +335,7 @@ internal sealed class RouteBatch : IRangeJob
                     continue;
                 }
 
-                if (_count >= limit || !Add(lane, v.S[i], v.DestLane[i], v.DestS[i]))
+                if (_count >= limit || !Add(lane, v.S[i], v.DestLane[i], v.DestS[i], v.Access(i)))
                 {
                     _truncated = true;
                     return;
@@ -364,7 +364,7 @@ internal sealed class RouteBatch : IRangeJob
                 continue;
             }
 
-            if (_count >= limit || !Add(ml, ms, v.DestLane[i], v.DestS[i]))
+            if (_count >= limit || !Add(ml, ms, v.DestLane[i], v.DestS[i], v.Access(i)))
             {
                 _truncated = true;
                 return;
@@ -394,7 +394,8 @@ internal sealed class RouteBatch : IRangeJob
             }
 
             seen++;
-            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref rng, out t.DestLane, out t.DestS))
+            byte access = w.TypeAccess[t.Type];
+            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref rng, out t.DestLane, out t.DestS, access))
             {
                 continue;
             }
@@ -410,7 +411,7 @@ internal sealed class RouteBatch : IRangeJob
                 t.FromLane = net.OpenZoneLane(fromZone, (int)((w.Tick + t.ToZone) % net.OpenZoneLaneCount(fromZone)));
             }
 
-            if (_count >= limit || !Add(t.FromLane, t.FromS, t.DestLane, t.DestS))
+            if (_count >= limit || !Add(t.FromLane, t.FromS, t.DestLane, t.DestS, access))
             {
                 _truncated = true;
                 return;

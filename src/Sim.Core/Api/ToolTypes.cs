@@ -149,6 +149,17 @@ public struct SetLaneFlagsCmd
     public byte Dir, LaneNo, Flags, Mask;
 }
 
+/// <summary>
+/// Запрет улицы по классам (vehicle-classes.md §2.2, ADR-0039): биты <see cref="Deny"/> по маске <see cref="Mask"/> пишутся в <c>SegmentData.Deny</c> (оба направления).
+/// Допустимы только биты <see cref="LaneDeny.StreetWritable"/> (car, bus, van, truck); special и Emergency - <c>InvalidArgument</c>.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetStreetAccessCmd
+{
+    public EntityRef Seg;
+    public byte Deny, Mask, R0, R1;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct InsertBusStopCmd
 {
@@ -393,6 +404,9 @@ public static class CommandRefs
                 break;
             case CommandKind.SetLaneFlags:
                 Fix(ref cmd.SetLaneFlags.Seg, EntityKind.Segment, t);
+                break;
+            case CommandKind.SetStreetAccess:
+                Fix(ref cmd.SetStreetAccess.Seg, EntityKind.Segment, t);
                 break;
             case CommandKind.InsertBusStop:
                 Fix(ref cmd.InsertBusStop.Route, EntityKind.BusRoute, t);

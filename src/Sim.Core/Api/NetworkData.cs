@@ -97,6 +97,7 @@ public static class SegmentFlags
 /// <summary>Биты <see cref="LaneData.Flags"/>.</summary>
 public static class LaneFlags
 {
+    /// <summary>Автобусная полоса: производное зеркало <c>LaneData.Deny == LaneDeny.BusLane</c> (пишет только <c>NetworkStore.SetLaneDeny</c>).</summary>
     public const byte BusOnly = 1;
     public const byte NoLaneChangeOut = 2;
 
@@ -105,6 +106,19 @@ public static class LaneFlags
 
     /// <summary>MOBIL уводит машины с полосы (убираемая полоса).</summary>
     public const byte Draining = 8;
+}
+
+/// <summary>Маски запрета полос и улиц (биты доступа класса ТС, vehicle-classes.md §2.1-2.2, ADR-0039).</summary>
+public static class LaneDeny
+{
+    /// <summary>Предустановка «автобусная полоса»: car | van | truck | special - въезжают автобусы и спецмашины на вызове.</summary>
+    public const byte BusLane = 0x1D;
+
+    /// <summary>Все биты доступа (5 классов + Emergency).</summary>
+    public const byte Known = 0x3F;
+
+    /// <summary>Биты, которые игрок может поставить улице (<c>SetStreetAccess</c>): car | bus | van | truck. Бит special не ставится (подъезд служб гарантирован), Emergency - запрещён.</summary>
+    public const byte StreetWritable = 0x0F;
 }
 
 /// <summary>Биты <see cref="BusStopData.BayFlags"/> (ADR-0029).</summary>
@@ -142,6 +156,9 @@ public struct SegmentData
 
     /// <summary>Индекс профиля в <c>RoadProfileStore</c> (ADR-0030) или -1: режим legacy / сегмент без профиля. В хэш входит только в режиме профилей.</summary>
     public int Profile;
+
+    /// <summary>Классы, которым улица закрыта (биты <c>VehicleAccess</c>, оба направления; vehicle-classes.md §2.2, ADR-0039); 0 - всем можно. Пишет <c>SetStreetAccess</c>.</summary>
+    public byte Deny;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -164,6 +181,12 @@ public struct LaneData
 
     /// <summary>Ширина полосы, м (ADR-0030; пишется при эмиссии Normal-полосы: из профиля или <c>NetworkOptions.LaneWidth</c>); у connector'ов 0. В хэш входит только в режиме профилей.</summary>
     public float Width;
+
+    /// <summary>
+    /// Классы, которым полоса закрыта (биты <c>VehicleAccess</c>; vehicle-classes.md §2.2, ADR-0039); 0 - всем можно. Въезд и смена полосы разрешены при
+    /// <c>(access &amp; ~Deny) != 0</c>. Пишет только <c>NetworkStore.SetLaneDeny</c>: он же держит зеркало <see cref="LaneFlags.BusOnly"/> = (<c>Deny == 0x1D</c>).
+    /// </summary>
+    public byte Deny;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

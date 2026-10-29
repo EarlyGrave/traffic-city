@@ -110,7 +110,8 @@ internal sealed class Router
     /// запрос, развёртывание первых DirSeg, раскладка на полосы -> окно слота; остаток плана - стек. Ok: <paramref name="handle"/> валиден.
     /// Счёт на scratch 0 + <see cref="Commit"/>.
     /// </summary>
-    public BuildStatus Build(int startLane, float startS, int destLane, float destS, long tick, out RouteHandle handle)
+    /// <param name="access">Права машины (vehicle-classes.md §2.3); без машины (тесты) - <see cref="VehicleAccess.All"/>.</param>
+    public BuildStatus Build(int startLane, float startS, int destLane, float destS, long tick, out RouteHandle handle, byte access = VehicleAccess.All)
     {
         handle = RouteHandle.Null;
         SyncGraph();
@@ -119,7 +120,7 @@ internal sealed class Router
             return BuildStatus.Deferred;   // как раньше: пул полон - запрос не считается и счётчики не растут
         }
 
-        var q = new RouteQuery(startLane, startS, destLane, destS);
+        var q = new RouteQuery(startLane, startS, destLane, destS, access);
         var r = default(QueryResult);
         RouteCompute.Run(in q, _net, Graph, _overlay, _s0, ref r);
         return Commit(in q, in r, _s0, tick, out handle);
@@ -179,12 +180,12 @@ internal sealed class Router
     /// <see cref="Build"/> фазы 3: при активном пакете берёт готовый результат кандидата с тем же ключом (<see cref="RouteBatch.Take"/>), иначе считает
     /// сам. Результат и состояние после вызова те же, что у <see cref="Build"/>.
     /// </summary>
-    public BuildStatus BuildBatched(int startLane, float startS, int destLane, float destS, long tick, out RouteHandle handle)
+    public BuildStatus BuildBatched(int startLane, float startS, int destLane, float destS, byte access, long tick, out RouteHandle handle)
     {
         int w0 = WorkThisTick;
         BuildStatus st = Batch.Active
-            ? Batch.Take(new RouteQuery(startLane, startS, destLane, destS), tick, out handle)
-            : Build(startLane, startS, destLane, destS, tick, out handle);
+            ? Batch.Take(new RouteQuery(startLane, startS, destLane, destS, access), tick, out handle)
+            : Build(startLane, startS, destLane, destS, tick, out handle, access);
         Batch.NoteWork(WorkThisTick - w0);
         return st;
     }
@@ -287,8 +288,9 @@ internal sealed class Router
             return false;
         }
 
-        int layoutDest = s.Sp == 0 ? v.DestLane[i] : RouteCompute.FirstLane(_net, s.Dirs[s.Nd - 1]);
-        int n = RouteLayout.LayoutLanes(_net, Graph, new ReadOnlySpan<int>(s.Dirs, 0, s.Nd), s.Nd, tieLane, layoutDest, s.Steps);
+        byte access = v.Access(i);
+        int layoutDest = s.Sp == 0 ? v.DestLane[i] : RouteCompute.FirstLane(_net, s.Dirs[s.Nd - 1], access);
+        int n = RouteLayout.LayoutLanes(_net, Graph, new ReadOnlySpan<int>(s.Dirs, 0, s.Nd), s.Nd, tieLane, layoutDest, s.Steps, access, lastIsDest: s.Sp == 0);
         if (n < 0 || prefix + n > width)
         {
             return false;

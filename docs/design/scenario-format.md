@@ -446,7 +446,7 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 - `cmd.kind` - snake_case имя `CommandKind` (`build_road`, `spawn_trip`, `set_signal_plan`, `create_bus_route`, `append_bus_stop`, `spawn_bus`,
   `select_vehicle`, `clear_selection`, `set_target_vehicle_count`, `set_ped_target`, `set_node_control`, `paint_zone`, `set_trip_execution`,
   `remove_road`, `upgrade_road`, `split_road`, `set_arm_control`, `set_turn_ban`, `set_lane_flags`, `insert_bus_stop`, `remove_bus_stop`,
-  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
+  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`, `set_street_access`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
   неизвестный ключ - ошибка с путём (`$.timeline[3].cmd.bogus: unknown key`). Единицы - как в ядре (метры, м/с `speed_mps`, тики `*_ticks`); точки `[x, z]`.
   Ссылка на сущность - `{ "index": i, "generation": g }` (`generation` 0 = без проверки). Тип дороги: `road_kind` (`street`/`arterial`), потому что `kind` занят видом команды.
 - `build_road.road` (только v3) разворачивается хостом в вид/полосы/скорость каталога; явные поля команды перекрывают. `vehicle_type` - имя типа (v2) или id (v3).

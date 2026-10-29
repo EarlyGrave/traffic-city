@@ -277,6 +277,7 @@ public class TimelineTests
             "{ \"kind\": \"remove_bus_route\", \"route\": { \"index\": 0 } }",
             "{ \"kind\": \"set_bus_route_params\", \"route\": { \"index\": 0 }, \"headway_ticks\": 300 }",
             "{ \"kind\": \"merge_at_node\", \"node\": { \"index\": 0 } }",
+            "{ \"kind\": \"set_street_access\", \"seg\": { \"index\": 0 }, \"deny\": 8 }",
         ];
         string items = string.Join(", ", cmds.Select((c, i) => "{ \"tick\": " + (i * 10) + ", \"cmd\": " + c + " }"));
         LoadedScenario sc = Parse(Doc("\"api_version\": 1, \"timeline\": [ " + items + " ]"));
@@ -289,6 +290,8 @@ public class TimelineTests
         // JSON-форма -> payload, а не просто «разобралось»: ссылки на сущности
         Assert.Equal(RemoveRoadFlags.KeepNodes, sc.Timeline[9].Cmd.RemoveRoad.Flags);
         Assert.Equal(0, sc.Timeline[9].Cmd.RemoveRoad.Seg.Index);
+        Assert.Equal(8, sc.Timeline[cmds.Length - 1].Cmd.SetStreetAccess.Deny);   // VC2: маска по умолчанию - car | bus | van | truck
+        Assert.Equal(LaneDeny.StreetWritable, sc.Timeline[cmds.Length - 1].Cmd.SetStreetAccess.Mask);
     }
 
     [Fact]

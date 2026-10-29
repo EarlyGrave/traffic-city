@@ -109,10 +109,10 @@ internal static class Mobil
         }
 
         ref readonly LaneData tl = ref e.Net.Lanes[target];
-        if (tl.Kind != LaneKind.Normal || ((tl.Flags & 1) != 0 && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0) ||
+        if (tl.Kind != LaneKind.Normal || (v.Access(i) & ~tl.Deny) == 0 ||
             ((tl.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0 && (ld.Flags & (LaneFlags.Closed | LaneFlags.Draining)) == 0))
         {
-            return Infeasible;   // BusOnly для не-автобуса; в закрытую и убираемую полосы (4.3, T4) с открытой не перестраиваются (между закрытыми полосами одного сегмента - можно)
+            return Infeasible;   // маска запрета полосы (vehicle-classes.md §2.2: автобусная - только автобусам и спецмашинам на вызове); в закрытую и убираемую полосы (4.3, T4) с открытой не перестраиваются (между закрытыми полосами одного сегмента - можно)
         }
 
         ref readonly VehicleTypeDesc t = ref types[v.Type[i]];

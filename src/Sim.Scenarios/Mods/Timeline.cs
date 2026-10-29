@@ -162,6 +162,12 @@ public static class Timeline
                 Flags = B(r, "flags"),
                 Mask = B(r, "mask", 255),
             }, tag),
+            "set_street_access" => Command.MakeSetStreetAccess(new SetStreetAccessCmd
+            {
+                Seg = Ref(r, "seg", required: true),
+                Deny = B(r, "deny"),
+                Mask = B(r, "mask", LaneDeny.StreetWritable),
+            }, tag),
             "insert_bus_stop" => Command.MakeInsertBusStop(new InsertBusStopCmd
             {
                 Route = Ref(r, "route", required: true),

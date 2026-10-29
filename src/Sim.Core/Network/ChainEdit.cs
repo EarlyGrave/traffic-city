@@ -298,9 +298,11 @@ internal static class ChainEdit
             ? b.AddProfileSegment(a, z, via, like.Profile, mirrored, like.SpeedLimit, setA, setB, out seg)
             : b.AddSegment(a, z, via, like.LanesAB, like.LanesBA, like.SpeedLimit, like.Kind, setA, setB, out seg);
 
-    // Флаги полос игрока (BusOnly, NoLaneChangeOut) старого сегмента - новому по направлению цепочки и номеру полосы.
+    // Флаги полос игрока (NoLaneChangeOut) и маски запрета (Deny с зеркалом BusOnly) старого сегмента - новому по направлению цепочки и номеру полосы;
+    // запрет улицы (SegmentData.Deny) - OR (у нового сегмента 0; vehicle-classes.md §2.2).
     private static void CopyLaneFlags(NetworkStore n, int from, int to, bool fromForward, bool toForward)
     {
+        n.Segments[to].Deny |= n.Segments[from].Deny;
         ref readonly SegmentData f = ref n.Segments[from];
         ref readonly SegmentData t = ref n.Segments[to];
         for (int d = 0; d < 2; d++)
@@ -310,7 +312,8 @@ internal static class ChainEdit
             int tl = toForward == (d == 0) ? t.FirstLaneAB : t.FirstLaneBA;
             for (int k = 0; k < cnt; k++)
             {
-                n.Lanes[tl + k].Flags = (byte)(n.Lanes[fl + k].Flags & (LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut));
+                n.Lanes[tl + k].Flags = (byte)(n.Lanes[fl + k].Flags & LaneFlags.NoLaneChangeOut);
+                n.SetLaneDeny(tl + k, n.Lanes[fl + k].Deny);
             }
         }
     }
@@ -363,6 +366,7 @@ internal static class ChainEdit
         }
 
         CopyLaneFlags(n, s1, merged, fw1, true);
+        n.Segments[merged].Deny |= d2.Deny;   // запрет улицы второго сегмента тоже (полосы - по первому, как раньше)
         if ((d1.Flags & d2.Flags & SegmentFlags.Bridge) != 0)
         {
             n.Segments[merged].Flags |= SegmentFlags.Bridge;   // TR3: слияние двух мостов (мост с дорогой валидатор отклоняет)

@@ -399,6 +399,49 @@ internal sealed partial class NetworkStore
             AddProfileStateToHash(ref h);
         }
 
+        if (HasCustomDeny())
+        {
+            AddAccessStateToHash(ref h);
+        }
+
         return h.Value;
+    }
+
+    // Есть ли маска запрета, не видимая через Flags (vehicle-classes.md §5): у полосы - не 0 и не автобусная (её видно по зеркалу BusOnly), у улицы - не 0.
+    private bool HasCustomDeny()
+    {
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            if (Segments[i].Deny != 0)
+            {
+                return true;
+            }
+        }
+
+        for (int i = 0; i < LaneCount; i++)
+        {
+            byte d = Lanes[i].Deny;
+            if (d != 0 && d != LaneDeny.BusLane)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Раздел масок доступа (VC2): <c>Segment.Deny</c> и <c>Lane.Deny</c> всех слотов; только при масках, отличных от 0 и автобусной, - иначе хэш прежний.</summary>
+    private void AddAccessStateToHash(ref Fnv1a64 h)
+    {
+        h.Add(0x59_4E_45_44);   // метка раздела "DENY"
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            h.Add(Segments[i].Deny);
+        }
+
+        for (int i = 0; i < LaneCount; i++)
+        {
+            h.Add(Lanes[i].Deny);
+        }
     }
 }

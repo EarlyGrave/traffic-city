@@ -75,8 +75,8 @@ internal static partial class ToolValidator
 {
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode
-        || IsBusKind(k);
+        or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad
+        or CommandKind.MergeAtNode || IsBusKind(k);
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -99,6 +99,7 @@ internal static partial class ToolValidator
             CommandKind.SetArmControl => CheckSetArmControl(w, in cmd, ref c),
             CommandKind.SetTurnBan => CheckSetTurnBan(w, in cmd, ref c),
             CommandKind.SetLaneFlags => CheckSetLaneFlags(w, in cmd, ref c),
+            CommandKind.SetStreetAccess => CheckSetStreetAccess(w, in cmd, ref c),
             CommandKind.SetNodeControl => CheckSetNodeControl(w, in cmd, ref c),
             CommandKind.SetSignalPlan => CheckSetSignalPlan(w, in cmd, ref c),
             CommandKind.SplitRoad => CheckSplitRoad(w, in cmd, ref c),
@@ -655,6 +656,27 @@ internal static partial class ToolValidator
         int lanes = f.Dir == 0 ? sd.LanesAB : f.Dir == 1 ? sd.LanesBA : 0;
         const byte writable = LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut;
         if (f.Dir > 1 || f.LaneNo >= lanes || (f.Mask & ~writable) != 0 || (f.Flags & ~f.Mask) != 0)
+        {
+            return RejectReason.InvalidArgument;
+        }
+
+        return RejectReason.None;
+    }
+
+    // SetStreetAccess (vehicle-classes.md §2.2): живой сегмент; в маске только car | bus | van | truck (special - подъезд служб гарантирован, Emergency - запрещён). Цена - как у SetLaneFlags (0).
+    private static RejectReason CheckSetStreetAccess(World w, in Command cmd, ref ToolCheck c)
+    {
+        SetStreetAccessCmd a = cmd.SetStreetAccess;
+        NetworkStore n = w.Net;
+        if (!n.ResolveSegment(in a.Seg))
+        {
+            return RejectReason.InvalidHandle;
+        }
+
+        c.Seg = a.Seg.Index;
+        ref readonly SegmentData sd = ref n.Segments[a.Seg.Index];
+        Mark(ref c, EntityKind.Segment, a.Seg.Index, sd.Generation, n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)]);
+        if ((a.Mask & ~LaneDeny.StreetWritable) != 0 || (a.Deny & ~a.Mask) != 0 || a.R0 != 0 || a.R1 != 0)
         {
             return RejectReason.InvalidArgument;
         }

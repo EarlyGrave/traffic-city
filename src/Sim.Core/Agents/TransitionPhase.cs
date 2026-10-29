@@ -184,9 +184,9 @@ internal static class TransitionPhase
         }
 
         ref readonly LaneData tl = ref e.Net.Lanes[target];
-        if (tl.Kind != LaneKind.Normal || ((tl.Flags & 1) != 0 && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0))
+        if (tl.Kind != LaneKind.Normal || (v.Access(i) & ~tl.Deny) == 0)
         {
-            return false;
+            return false;   // маска запрета полосы (vehicle-classes.md §2.2): автобусная и т. п.
         }
 
         if (GateRules.IsGranted(v, i))
@@ -339,7 +339,7 @@ internal static class TransitionPhase
 
         ref readonly LaneData ld = ref e.Net.Lanes[lane];
         ref readonly LaneData dl = ref e.Net.Lanes[desired];
-        if (dl.Kind != LaneKind.Normal || dl.Segment != ld.Segment || dl.Direction != ld.Direction || (dl.Flags & 1) != 0)
+        if (dl.Kind != LaneKind.Normal || dl.Segment != ld.Segment || dl.Direction != ld.Direction || (v.Access(i) & ~dl.Deny) == 0)
         {
             return;
         }

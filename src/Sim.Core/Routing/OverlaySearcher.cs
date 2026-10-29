@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Util;
@@ -40,6 +41,11 @@ internal sealed class OverlaySearcher
     private readonly int[] _stack;
     private readonly int[] _ubuf = new int[UnpackCap];
     private uint _searchId;
+
+    // Права текущего запроса (vehicle-classes.md §2.3): _filt = у прав нет бита вне DenyUnion сети, только тогда поиск смотрит CellDeny/DirSegDeny.
+    private byte _acc = VehicleAccess.All;
+    private bool _filt;
+    private int _goal = -1;
 
     /// <param name="planBuffers">false: без буферов <see cref="ExpandPlan"/>/<see cref="Route"/> (-12 Б/DirSeg; для воркеров запросов, где они не нужны).</param>
     public OverlaySearcher(NetworkStore net, RouteGraph graph, Overlay? overlay, bool planBuffers = true)
@@ -87,6 +93,9 @@ internal sealed class OverlaySearcher
 
     public long UnpackWork { get; private set; }
 
+    /// <summary>Раскрытий вершины уровнем ниже из-за запрета класса в ячейке (<c>DenyDescends</c>, vehicle-classes.md §3; в счётчики мира - VC3).</summary>
+    public long DenyDescends { get; private set; }
+
     /// <summary>Оверлей запросов (null = плоский поиск).</summary>
     public Overlay? Overlay => _ov;
 
@@ -96,7 +105,8 @@ internal sealed class OverlaySearcher
     /// Запрос от <paramref name="startLane"/>/<paramref name="startS"/> до <paramref name="destLane"/>/<paramref name="destS"/> (как
     /// <see cref="Router.Build"/>). Граф должен быть актуален. Возвращает <see cref="SearchStatus.Found"/> и план в <paramref name="plan"/>.
     /// </summary>
-    public SearchStatus Query(int startLane, float startS, int destLane, float destS, Span<int> plan, out int planLen)
+    /// <param name="access">Права машины (биты <c>VehicleAccess</c>); <see cref="VehicleAccess.All"/> - без ограничений. Первый и последний сегмент разрешены любым правам.</param>
+    public SearchStatus Query(int startLane, float startS, int destLane, float destS, Span<int> plan, out int planLen, byte access = VehicleAccess.All)
     {
         planLen = 0;
         PlanCost = 0f;
@@ -131,14 +141,17 @@ internal sealed class OverlaySearcher
             return SearchStatus.Found;
         }
 
-        return Search(u0, c0 * (1f - frac), goal, plan, out planLen);
+        return Search(u0, c0 * (1f - frac), goal, plan, out planLen, access);
     }
 
     /// <summary>
     /// Поиск от DirSeg <paramref name="u0"/> (начальная стоимость <paramref name="startG"/>) до DirSeg <paramref name="goal"/>.
     /// </summary>
-    public SearchStatus Search(int u0, float startG, int goal, Span<int> plan, out int planLen)
+    public SearchStatus Search(int u0, float startG, int goal, Span<int> plan, out int planLen, byte access = VehicleAccess.All)
     {
+        _acc = access;
+        _filt = (access & ~_g.DenyUnion) == 0;   // права без запретов в сети (s1k, легковые без «транзитных» улиц) - прежний код без проверок
+        _goal = goal;
         planLen = 0;
         PlanCost = 0f;
         LastExpanded = 0;
@@ -353,10 +366,10 @@ internal sealed class OverlaySearcher
     }
 
     /// <summary>Запрос + полное развёртывание + раскладка на полосы (<see cref="RouteLayout.LayoutLanes"/>).</summary>
-    public SearchStatus Route(int startLane, float startS, int destLane, float destS, Span<RouteStep> steps, out int stepCount)
+    public SearchStatus Route(int startLane, float startS, int destLane, float destS, Span<RouteStep> steps, out int stepCount, byte access = VehicleAccess.All)
     {
         stepCount = 0;
-        SearchStatus st = Query(startLane, startS, destLane, destS, _plan, out int pl);
+        SearchStatus st = Query(startLane, startS, destLane, destS, _plan, out int pl, access);
         if (st != SearchStatus.Found)
         {
             return st;
@@ -368,7 +381,7 @@ internal sealed class OverlaySearcher
             return st;
         }
 
-        int count = RouteLayout.LayoutLanes(_net, _g, new ReadOnlySpan<int>(_path, 0, len), len, startLane, destLane, steps);
+        int count = RouteLayout.LayoutLanes(_net, _g, new ReadOnlySpan<int>(_path, 0, len), len, startLane, destLane, steps, access, lastIsDest: true);
         if (count < 0)
         {
             return SearchStatus.NoPath;
@@ -381,6 +394,7 @@ internal sealed class OverlaySearcher
     // ---- ядро ----
 
     // Уровень раскрытия вершины (routing.md 9.4): старший ℓ <= CutLevel(v), при котором ячейка конца v не содержит старт и цель; 0 - дуги графа.
+    // С запретами класса (_filt, vehicle-classes.md §2.3) ячейка ещё должна быть чистой для прав: (acc & ~CellDeny) != 0, иначе - уровнем ниже.
     private int LevelOf(int v, int levels)
     {
         if (levels == 0)
@@ -395,6 +409,11 @@ internal sealed class OverlaySearcher
         }
 
         int e = _g.EndNode[v];
+        if (_filt)
+        {
+            return LevelOfDeny(e, top);
+        }
+
         for (int l = top; l >= 1; l--)
         {
             int cell = _ov.CellOfNode(l, e);
@@ -407,10 +426,46 @@ internal sealed class OverlaySearcher
         return 0;
     }
 
+    private int LevelOfDeny(int e, int top)
+    {
+        Overlay ov = _ov!;
+        for (int l = top; l >= 1; l--)
+        {
+            int cell = ov.CellOfNode(l, e);
+            if (cell != _sCell[l] && cell != _tCell[l])
+            {
+                if ((_acc & ~ov.CellDeny[cell]) != 0)
+                {
+                    return l;
+                }
+
+                DenyDescends++;
+            }
+        }
+
+        return 0;
+    }
+
     private int ExpandArcs(int v, float gv, uint id, Vec2 goalPos, float invV)
     {
         int first = _g.ArcFirst[v];
         int end = _g.ArcFirst[v + 1];
+        if (_filt)
+        {
+            // Уровень 0 с запретами: дуга в DirSeg, закрытый правам, пропускается; цель (последний сегмент поездки) разрешена всегда.
+            byte[] deny = _g.DirSegDeny;
+            for (int k = first; k < end; k++)
+            {
+                int w = _g.ArcTo[k];
+                if ((_acc & ~deny[w]) != 0 || w == _goal)
+                {
+                    Relax(w, gv + _g.ArcCost[k] + _g.SegCost[w], v, 0, id, goalPos, invV);
+                }
+            }
+
+            return end - first;
+        }
+
         for (int k = first; k < end; k++)
         {
             int w = _g.ArcTo[k];
