@@ -289,3 +289,4 @@
 - L82 (opus, Y2 спека старта с нуля): new-game-scratch.md, ADR-0037; влит c944c93.
 - L83 (sonnet, Y4 нули старта): 5 ключей, world_version 13; тесты 1392+591+57, s1k p95 0.256 мс локально; влит.
 - L84 (opus, YS спека сценариев): scenarios-mode.md, ADR-0038; влит 8a470ad.
+- L86 (sonnet, YS3 рельеф 10 км): yuryev-10k-32m.r16, yuryev-10k-terrain.json, река продлена до краёв, 1 автомост; влит.
