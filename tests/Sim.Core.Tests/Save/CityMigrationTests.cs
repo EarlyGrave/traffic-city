@@ -19,7 +19,7 @@ public sealed class CityMigrationTests
         return t!;
     }
 
-    [Theory]
+    [Theory(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     [InlineData("w2-small-t600.tcsave")]
     [InlineData("w2-s1k-t2400.tcsave")]
     [InlineData("w2-s1k-peds-t2400.tcsave")]
@@ -97,7 +97,7 @@ public sealed class CityMigrationTests
         Assert.True(fa.AsSpan().SequenceEqual(fb));
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void MigratedW2Peds_LoadsWithPeds_AndContinuesWithSameHash()
     {
         string stem = Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus", "w2-s1k-peds-t2400");

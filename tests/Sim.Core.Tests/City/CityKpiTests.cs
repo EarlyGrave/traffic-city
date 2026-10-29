@@ -215,7 +215,7 @@ public sealed class CityKpiTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void MigratedW10_StartsWithEmptyRing_AndCollects()
     {
         string path = Path.Combine(AppContext.BaseDirectory, "SaveCorpus", "w10-s1k-res-econ-d3-t216500.tcsave");

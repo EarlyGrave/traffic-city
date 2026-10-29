@@ -758,6 +758,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 275 | CityOutside3Jobs | i32 | 1 | 0 |
 | `PARM` | 276 | CityOutside3JobCostTicks | i32 | 1 | 0 |
 | `PARM` | 277 | CityOutside3ShareQ16 | i32 | 1 | 0 |
+| `PARM` | 278 | RulesEmergencyRedSpeed | f32 | 1 | 4.17 |
+| `PARM` | 279 | DemandSpecialOnCall | u8 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -994,6 +996,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 171 | ParkSearching | i64 | 1 | 0 |
 | `CNTR` | 172 | ParkWalkTicks | i64 | 1 | 0 |
 | `CNTR` | 173 | LockedRejects | i64 | 1 | 0 |
+| `CNTR` | 174 | OnCallRedGrants | i64 | 1 | 0 |
+| `CNTR` | 175 | DenyDescends | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |

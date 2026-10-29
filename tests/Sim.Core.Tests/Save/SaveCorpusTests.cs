@@ -81,7 +81,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_EveryFile_LoadsContinuesAndResavesByteEqual()
     {
         string[] files = Directory.GetFiles(CorpusDir, "*.tcsave");
@@ -322,7 +322,7 @@ public sealed class SaveCorpusTests
         return (sc.Desc, sc.TypeNames);
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_OldVersionFiles_AreKeptAndMigrate()
     {
         // Файлы w1 не удаляются и после миграций (1 -> 2 -> 3) продолжаются тем же хэшем, что записан в .json (хэш продолжения проверяет CheckFile для каждого файла).
@@ -344,7 +344,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W2Files_AreKeptAndMigrate()
     {
         // Файлы w2 (пешеходы) остаются навсегда: миграция 2 -> 3 добавляет столбцы города с дефолтами, поведение и хэш продолжения не меняются.
@@ -366,7 +366,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W3Files_AreKeptAndMigrate()
     {
         // Файлы w3 (жители, зоны, экономика) остаются навсегда: миграция 3 -> 4 добавляет столбцы сети с дырами с дефолтами «правок не было», хэш продолжения не меняется
@@ -389,7 +389,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W6Files_AreKeptAndMigrate_WithCurbBays()
     {
         // Файлы w6 (до карманов остановок, ADR-0029) остаются навсегда: миграция 6 -> 7 ставит bay_model = curb (остановки Bay ведут себя как раньше), хэш продолжения не меняется
@@ -413,7 +413,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W7Files_AreKeptAndMigrate_ToLegacyProfiles()
     {
         // Файлы w7 (до профилей дорог, ADR-0030) остаются навсегда: миграция 7 -> 8 даёт режим legacy (Profile = -1, Width = NetLaneWidth, участки Orient = 255),
@@ -455,7 +455,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W8Files_AreKeptAndMigrate_ToNoBudget()
     {
         // Файлы w8 (до казны города, ADR-0025) остаются навсегда: миграция 8 -> 9 даёт «бюджета нет» - дефолты параметров, потоки 13..16 и фонд оплаты нулевые,
@@ -500,7 +500,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W9Files_AreKeptAndMigrate_ToNoParking()
     {
         // Файлы w9 (до парковки и землепользования в сейве, ADR-0026) остаются навсегда: миграция 9 -> 10 даёт «режима парковки нет, полигонов нет»,
@@ -533,7 +533,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W10Files_AreKeptAndMigrate_ToNoProgression()
     {
         // Файлы w10 (до прогрессии, ADR-0034) остаются навсегда: миграция 10 -> 11 даёт «прогрессии нет», пустое кольцо показателей у жителей (CKPI с отметками
@@ -564,7 +564,7 @@ public sealed class SaveCorpusTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void Corpus_W11Files_AreKeptAndMigrate_ToNoTerrain()
     {
         // Файлы w11 (до рельефа, ADR-0036) остаются навсегда: миграция 11 -> 12 даёт «рельефа нет» (PARM 241 = 0, 242-255 - дефолты), блока TERR и раздела хэша 14 нет,

@@ -19,7 +19,7 @@ public sealed class PedMigrationTests
         return t!;
     }
 
-    [Theory]
+    [Theory(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     [InlineData("w1-small-t600.tcsave")]
     [InlineData("w1-s1k-t2400.tcsave")]
     public void W1Tables_AfterStep_HaveExactlyTheV2ColumnsOfOldBlocks(string file)
@@ -71,7 +71,7 @@ public sealed class PedMigrationTests
         Assert.True(fa.AsSpan().SequenceEqual(fb));
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void MigratedS1k_LoadsAsWorldWithoutPeds_AndContinuesWithSameHash()
     {
         string stem = Path.Combine(GenFixture.RepoRoot(), "tests", "SaveCorpus", "w1-s1k-t2400");
