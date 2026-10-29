@@ -27,6 +27,14 @@ fail() {
   exit 1
 }
 
+# Режим прототипа (CLAUDE.md, «Режим прототипа»): только сборка, без format и тестов.
+if [ -f .claude/prototype-mode ]; then
+  echo "pre-commit: dotnet build -warnaserror"
+  dotnet build traffic-city.sln -warnaserror --nologo -v q || fail "сборка упала или есть предупреждения"
+  echo "pre-commit: режим прототипа — только сборка"
+  exit 0
+fi
+
 echo "pre-commit: dotnet format --verify-no-changes"
 dotnet format traffic-city.sln --verify-no-changes || fail "форматирование не соответствует .editorconfig (запусти: dotnet format traffic-city.sln)"
 
