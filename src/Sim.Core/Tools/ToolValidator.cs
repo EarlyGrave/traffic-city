@@ -45,6 +45,8 @@ internal struct ToolCheck
     public ReshapeMode Reshape;             // UpgradeRoad: что делать с сегментом
     public int Drain;                       // UpgradeRoad занятого сегмента: машин ждать (> 0 - операция ShrinkLanes, Mechanism 2)
     public bool CancelShrink;               // UpgradeRoad в прежние полосы во время дренажа полос: отмена операции (undo)
+    public int SplitSegA, SplitSegB;        // BuildRoad с AutoSplit: разрезаемый сегмент у конца A/B или -1 (T5)
+    public float SplitSA, SplitSB;          // точка разреза по полной оси сегмента, м от его узла A
 
     public EntityKind IssueKind;            // объект и точка проблемы (подсветка) для отказа
     public int IssueIndex, IssueGen;
@@ -70,6 +72,8 @@ internal static partial class ToolValidator
         c.Seg = -1;
         c.Node = -1;
         c.Profile = -1;
+        c.SplitSegA = -1;
+        c.SplitSegB = -1;
         c.Reason = cmd.Kind switch
         {
             CommandKind.BuildRoad => CheckBuildRoad(w, in cmd, ref c),
@@ -112,7 +116,7 @@ internal static partial class ToolValidator
 
         if ((b.Flags & ~BuildRoadFlags.Supported) != 0)
         {
-            return RejectReason.NotSupported;   // AutoSplit / Curve (T5)
+            return RejectReason.NotSupported;   // Curve (T5: кривые ещё не сделаны)
         }
 
         if (b.RestoreOf.Generation != 0 && n.ResolveSegment(in b.RestoreOf))
@@ -145,6 +149,22 @@ internal static partial class ToolValidator
         NetworkOptions o = bld.Options;
         int na = bld.FindNode(a);
         int nb = bld.FindNode(z);
+        if ((b.Flags & BuildRoadFlags.AutoSplit) != 0)
+        {
+            // T5: конец без узла рядом, но на оси сегмента (в SnapRadius) - разрез этого сегмента, конец - новый узел разреза.
+            RejectReason sa = na < 0 ? FindSplit(w, ref a, ref c, out c.SplitSegA, out c.SplitSA) : RejectReason.None;
+            RejectReason sb = sa == RejectReason.None && nb < 0 ? FindSplit(w, ref z, ref c, out c.SplitSegB, out c.SplitSB) : RejectReason.None;
+            if (sa != RejectReason.None || sb != RejectReason.None)
+            {
+                return sa != RejectReason.None ? sa : sb;
+            }
+
+            if (c.SplitSegA >= 0 && c.SplitSegA == c.SplitSegB)
+            {
+                return RejectReason.InvalidArgument;   // оба конца на одном сегменте - дорога вдоль него
+            }
+        }
+
         float r2 = o.SnapRadius * o.SnapRadius;
         if (na >= 0 && na == nb)
         {
@@ -180,8 +200,8 @@ internal static partial class ToolValidator
 
         c.NodeA = na;
         c.NodeB = nb;
-        c.SnapKindA = na >= 0 ? SnapKind.ExistingNode : SnapKind.NewNode;
-        c.SnapKindB = nb >= 0 ? SnapKind.ExistingNode : SnapKind.NewNode;
+        c.SnapKindA = na >= 0 ? SnapKind.ExistingNode : c.SplitSegA >= 0 ? SnapKind.SplitSegment : SnapKind.NewNode;
+        c.SnapKindB = nb >= 0 ? SnapKind.ExistingNode : c.SplitSegB >= 0 ? SnapKind.SplitSegment : SnapKind.NewNode;
         Vec2 pa = na >= 0 ? n.Nodes[na].Position : a;
         Vec2 pb = nb >= 0 ? n.Nodes[nb].Position : z;
         c.AX = pa.X;
@@ -220,7 +240,7 @@ internal static partial class ToolValidator
             Span<Vec2> axis = stackalloc Vec2[2];
             axis[0] = pa + (dir * sa);
             axis[1] = pb - (dir * sb);
-            RejectReason ov = CheckFootprint(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, -1, ref c);
+            RejectReason ov = CheckFootprint(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, c.SplitSegA >= 0 ? c.SplitSegA : c.SplitSegB, ref c);
             if (ov != RejectReason.None)
             {
                 return ov;
@@ -258,10 +278,24 @@ internal static partial class ToolValidator
             return RejectReason.Capacity;
         }
 
-        if (n.SegmentPool.PeekIndex() < 0)
+        if (n.SegmentPool.PeekIndex() < 0 || ((c.SplitSegA >= 0 || c.SplitSegB >= 0) && n.SegmentPool.Capacity - n.SegmentPool.AliveCount < 5))
         {
             c.CapKind = CapacityKind.Segments;
             return RejectReason.Capacity;
+        }
+
+        for (int e = 0; e < 2; e++)
+        {
+            int ss = e == 0 ? c.SplitSegA : c.SplitSegB;
+            if (ss >= 0)
+            {
+                int tl = n.Segments[ss].LanesAB + n.Segments[ss].LanesBA;
+                if (ChainCapacity(w, 1, 2, 2 * tl, (2 * n.Segments[ss].PointCount) + 2, tl) != RejectReason.None)
+                {
+                    c.CapKind = CapacityKind.Lanes;
+                    return RejectReason.Capacity;
+                }
+            }
         }
 
         if (!n.CanAllocBlock(n.LaneArena, laneTotal))

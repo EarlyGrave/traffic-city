@@ -205,6 +205,11 @@ internal static partial class CommandDispatcher
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
         var a = new Vec2(b.Ax, b.Az);
         var z = new Vec2(b.Bx, b.Bz);
+        if (!SplitEnds(w, in cmd, in chk, ref a, ref z))
+        {
+            return;
+        }
+
         if (!noConnectors)
         {
             // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла.
@@ -295,6 +300,37 @@ internal static partial class CommandDispatcher
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    // AutoSplit (T5): концы на оси сегментов - сначала разрезы (узлы разреза - концы новой дороги; индексы второго сегмента первый разрез не трогает).
+    private static bool SplitEnds(World w, in Command cmd, in ToolCheck chk, ref Vec2 a, ref Vec2 z)
+    {
+        for (int e = 0; e < 2; e++)
+        {
+            int seg = e == 0 ? chk.SplitSegA : chk.SplitSegB;
+            if (seg < 0)
+            {
+                continue;
+            }
+
+            NetworkStatus st = ChainEdit.Split(w, seg, e == 0 ? chk.SplitSA : chk.SplitSB, cmd.Tag, out int node, out _, out _);
+            if (st != NetworkStatus.Ok)
+            {
+                RejectNetwork(w, in cmd, st);
+                return false;
+            }
+
+            if (e == 0)
+            {
+                a = w.Net.Nodes[node].Position;
+            }
+            else
+            {
+                z = w.Net.Nodes[node].Position;
+            }
+        }
+
+        return true;
     }
 
     // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.

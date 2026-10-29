@@ -285,4 +285,65 @@ public sealed class SplitMergeTests
         long bytes = AllocationProbe.Measure(() => sim.Step(200));
         Assert.Equal(0, bytes);
     }
+
+    [Fact]
+    public void BuildRoad_AutoSplit_TeeIntoSegmentMiddle_BusyWhenBoxOccupied()
+    {
+        ScenarioDesc d = ToolsFixture.SmallDesc(buses: false);
+        d.Demand.TargetVehicles = 0;
+        using Simulation sim = Simulation.Create(d, new SimRuntimeOptions());
+        sim.SetToolsConfig(ToolsFixture.Unbounded);
+        sim.Step(20);
+        World w = sim.World;
+        NetworkStore n = w.Net;
+        int seg = BusiestSegment(sim, 120f);
+        Assert.True(seg >= 0);
+        SegmentData sd = n.Segments[seg];
+        Vec2 pa = n.Nodes[sd.NodeA].Position;
+        Vec2 pb = n.Nodes[sd.NodeB].Position;
+        var mid = new Vec2((pa.X + pb.X) * 0.5f, (pa.Z + pb.Z) * 0.5f);
+        float len = Dist(pa, pb);
+        var perp = new Vec2(-(pb.Z - pa.Z) / len, (pb.X - pa.X) / len);
+        var far = new Vec2(mid.X + (perp.X * 75f), mid.Z + (perp.Z * 75f));
+        var near = new Vec2(mid.X + (perp.X * 2f), mid.Z + (perp.Z * 2f));   // в SnapRadius от оси
+
+        // Машина в «коробке» будущего узла: разрез ждёт (Busy), мир не тронут.
+        int lane = sd.FirstLaneAB >= 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
+        Worlds.TestScenarios.PlaceCar(sim, lane, sd.Length * 0.5f);
+        BuildRoadCmd road = ToolsFixture.Road(far, near, 1);
+        road.Flags = BuildRoadFlags.AutoSplit;
+        Command cmd = Command.MakeBuildRoad(in road, 11);
+        Command copy = cmd;
+        ulong h0 = sim.ComputeStateHash();
+        Assert.Equal(RejectReason.Busy, sim.Preview(in copy, out _, new PreviewIssue[8]));
+        Assert.Equal(h0, sim.ComputeStateHash());
+
+        // Машину отвести к началу сегмента - врезка проходит: сегмент разрезан, новый узел с тремя рукавами в точке оси, машина перенесена на первую половину.
+        for (int i = 0; i < w.Vehicles.HighWater; i++)
+        {
+            if (w.Vehicles.Pool.IsAlive(i) && w.Vehicles.Lane[i] == lane)
+            {
+                w.Occupancy.Unlink(i);
+                w.Vehicles.S[i] = 1f;
+                w.Occupancy.InsertSorted(lane, i);
+            }
+        }
+
+        int segs0 = n.AliveSegments;
+        int nodes0 = n.AliveNodes;
+        copy = cmd;
+        Assert.Equal(RejectReason.None, sim.Preview(in copy, out PreviewResult pr, new PreviewIssue[8]));
+        Assert.Equal(2, pr.SnapKindB);
+        Assert.Equal(seg, pr.SnapB.Index);
+        Assert.Equal(RejectReason.None, ToolsFixture.Run(sim, in cmd));
+        Assert.False(n.SegmentAlive(seg) && n.Segments[seg].Generation == sd.Generation);
+        Assert.Equal(segs0 + 2, n.AliveSegments);
+        Assert.Equal(nodes0 + 2, n.AliveNodes);
+        int tee = w.Builder.FindNode(mid);
+        Assert.True(tee >= 0);
+        Assert.Equal(3, n.Nodes[tee].ArmCount);
+        Assert.Null(w.VerifyDerived());
+        sim.Step(50);
+        using Simulation twin = ToolsFixture.RoundTrip(sim);
+    }
 }

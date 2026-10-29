@@ -189,8 +189,7 @@ public class ToolPayloadSizesTests
     }
 
     [Theory]
-    [InlineData(BuildRoadFlags.AutoSplit)]
-    [InlineData(BuildRoadFlags.Curve)]
+    [InlineData(BuildRoadFlags.Curve)]   // T5: AutoSplit реализован (SplitMergeTests), кривые - ещё нет
     public void BuildRoad_NewFlags_AreNotSupported(byte flags)
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());

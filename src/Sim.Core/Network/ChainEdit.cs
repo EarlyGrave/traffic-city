@@ -63,6 +63,71 @@ internal static class ChainEdit
         return n.Nodes[sd.NodeB].Position;
     }
 
+    /// <summary>Ближайшая к <paramref name="p"/> точка полной оси сегмента: расстояние, точка <paramref name="q"/> и её расстояние от узла A по оси <paramref name="s"/>.</summary>
+    public static float Project(NetworkStore n, in SegmentData sd, Vec2 p, out float s, out Vec2 q)
+    {
+        Vec2 prev = n.Nodes[sd.NodeA].Position;
+        float acc = 0f;
+        float best = float.MaxValue;
+        s = 0f;
+        q = prev;
+        int m = sd.PointCount;
+        for (int i = 0; i <= m; i++)
+        {
+            Vec2 next = i < m ? n.SegmentPoints[sd.FirstPoint + i] : n.Nodes[sd.NodeB].Position;
+            float dx = next.X - prev.X;
+            float dz = next.Z - prev.Z;
+            float len2 = (dx * dx) + (dz * dz);
+            if (len2 > 0f)
+            {
+                float t = Math.Clamp((((p.X - prev.X) * dx) + ((p.Z - prev.Z) * dz)) / len2, 0f, 1f);
+                var c = new Vec2(prev.X + (dx * t), prev.Z + (dz * t));
+                float d = Dist(p, c);
+                if (d < best)
+                {
+                    best = d;
+                    s = acc + (t * MathF.Sqrt(len2));
+                    q = c;
+                }
+
+                acc += MathF.Sqrt(len2);
+            }
+
+            prev = next;
+        }
+
+        return best;
+    }
+
+    /// <summary>Есть ли машины в «коробке» будущего узла разреза (±отступ узла и длина машины от точки <paramref name="s"/> полной оси): врезка AutoSplit тогда ждёт (<c>Busy</c>).</summary>
+    public static bool BoxOccupied(World w, int seg, float s)
+    {
+        NetworkStore n = w.Net;
+        VehicleStore v = w.Vehicles;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        float sa = SetbackA(n, in sd);
+        float reach = w.Builder.Options.NodeSetback + 8f;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            for (int r = 0; r < 2; r++)
+            {
+                int lane = r == 0 ? v.Lane[i] : v.GhostLane[i];
+                if (!v.Pool.IsAlive(i) || lane < 0 || n.Lanes[lane].Kind != LaneKind.Normal || n.Lanes[lane].Segment != seg)
+                {
+                    continue;
+                }
+
+                float u = sa + (n.Lanes[lane].Direction == 0 ? v.S[i] : sd.Length - v.S[i]);
+                if (MathF.Abs(u - s) <= reach)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Сегмент разреза: длина полной оси половин не меньше минимума построителя, остающиеся полосы не короче <c>MinLaneLength</c>.</summary>
     public static bool SplitFits(NetworkStore n, NetworkOptions o, int seg, float s)
     {

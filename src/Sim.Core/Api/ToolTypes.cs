@@ -54,8 +54,8 @@ public static class BuildRoadFlags
     /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030, RP7): <see cref="BuildRoadCmd.Profile"/> обязателен.</summary>
     public const byte Mirrored = 8;
 
-    /// <summary>Биты, которые ядро понимает сейчас (T1: остальные дают <see cref="RejectReason.NotSupported"/>).</summary>
-    public const byte Supported = NoConnectors | Mirrored;
+    /// <summary>Биты, которые ядро понимает сейчас (остальные дают <see cref="RejectReason.NotSupported"/>; T5: AutoSplit есть, Curve - нет).</summary>
+    public const byte Supported = NoConnectors | AutoSplit | Mirrored;
 }
 
 /// <summary>Бит0 <see cref="RemoveRoadCmd.Flags"/>: не удалять осиротевшие узлы.</summary>

@@ -65,6 +65,15 @@ internal static class ToolPreview
         r.SnapKindB = c.SnapKindB;
         r.SnapA = c.NodeA >= 0 ? new EntityRef(c.NodeA, w.Net.Nodes[c.NodeA].Generation) : EntityRef.None;
         r.SnapB = c.NodeB >= 0 ? new EntityRef(c.NodeB, w.Net.Nodes[c.NodeB].Generation) : EntityRef.None;
+        if (c.SplitSegA >= 0)
+        {
+            r.SnapA = new EntityRef(c.SplitSegA, w.Net.Segments[c.SplitSegA].Generation);   // T5: разрезаемый сегмент (SnapKind 2)
+        }
+
+        if (c.SplitSegB >= 0)
+        {
+            r.SnapB = new EntityRef(c.SplitSegB, w.Net.Segments[c.SplitSegB].Generation);
+        }
         r.Cost = c.Cost;
         r.AX = c.AX;
         r.AZ = c.AZ;

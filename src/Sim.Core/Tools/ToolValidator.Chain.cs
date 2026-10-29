@@ -186,6 +186,72 @@ internal static partial class ToolValidator
         return RejectReason.None;
     }
 
+    /// <summary>
+    /// <c>BuildRoad</c> + <c>AutoSplit</c>: ближайший (ничья - меньший индекс) живой сегмент, ось которого проходит в <c>SnapRadius</c> от <paramref name="p"/>. Найден - точка
+    /// <paramref name="p"/> переносится на ось; разрез обязан пройти проверки <c>SplitRoad</c>, а «коробка» узла - быть пустой (иначе <c>Busy</c>: перестройка нового узла под третий рукав
+    /// не должна ждать). Не найден - <paramref name="seg"/> = -1 (обычный новый узел).
+    /// </summary>
+    private static RejectReason FindSplit(World w, ref Vec2 p, ref ToolCheck c, out int seg, out float s)
+    {
+        NetworkStore n = w.Net;
+        NetworkBuilder bld = w.Builder;
+        seg = -1;
+        s = 0f;
+        float best = bld.Options.SnapRadius;
+        Vec2 at = p;
+        for (int i = 0; i < n.SegmentCount; i++)
+        {
+            if (!n.SegmentAlive(i))
+            {
+                continue;
+            }
+
+            float d = ChainEdit.Project(n, in n.Segments[i], p, out float si, out Vec2 qi);
+            if (d <= best && (d < best || seg < 0))
+            {
+                best = d;
+                seg = i;
+                s = si;
+                at = qi;
+            }
+        }
+
+        if (seg < 0)
+        {
+            return RejectReason.None;
+        }
+
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        Mark(ref c, EntityKind.Segment, seg, sd.Generation, at);
+        if ((sd.Flags & SegmentFlags.Closing) != 0 || w.Ops.FindAny(seg) >= 0)
+        {
+            return RejectReason.Busy;
+        }
+
+        if (w.Queue != null || HasBusStop(n, seg))
+        {
+            return RejectReason.NotSupported;
+        }
+
+        if (!ChainEdit.SplitFits(n, bld.Options, seg, s))
+        {
+            return RejectReason.TooShort;
+        }
+
+        if (bld.FindNode(at) >= 0)
+        {
+            return RejectReason.InvalidArgument;
+        }
+
+        if (ChainEdit.BoxOccupied(w, seg, s))
+        {
+            return RejectReason.Busy;
+        }
+
+        p = at;
+        return RejectReason.None;
+    }
+
     // Ёмкость правки цепочки (с запасом: блоки проверяются по отдельности, как у BuildRoad).
     private static RejectReason ChainCapacity(World w, int nodes, int segments, int lanes, int axisPoints, int connectors)
     {
