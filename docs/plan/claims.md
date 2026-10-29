@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| SR-спека (services.md) | локал | local/sr-spec | docs/design/services.md, docs/adr/0041-* | 2026-10-30 |
+| LP-спека (lots-polygons.md) | локал | local/lp-spec | docs/design/lots-polygons.md, docs/adr/0042-* | 2026-10-30 |
