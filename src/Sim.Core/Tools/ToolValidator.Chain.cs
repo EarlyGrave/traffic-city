@@ -103,6 +103,11 @@ internal static partial class ToolValidator
         c.Node = node;
         ref readonly NodeData nd = ref n.Nodes[node];
         Mark(ref c, EntityKind.Node, node, nd.Generation, nd.Position);
+        if ((nd.Flags & NodeFlags.Outside) != 0)
+        {
+            return RejectReason.Protected;   // узел внешнего подключения не сливается (ADR-0037)
+        }
+
         if (!ChainEdit.TwoSegments(n, node, out int s1, out int s2) || nd.FirstArm < 0 || nd.ArmCount != 2)
         {
             return RejectReason.InvalidArgument;

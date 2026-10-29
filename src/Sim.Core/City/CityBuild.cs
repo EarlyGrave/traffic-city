@@ -51,6 +51,11 @@ internal static class CityBuild
             return CreateStatus.InvalidCity;
         }
 
+        if (desc.Town.Outside.Count > 0 && desc.Parking.Enabled)
+        {
+            return CreateStatus.InvalidCity;   // внешние подключения пока без парковки как ресурса (ADR-0037, Y3): нога к узлу не резервирует место
+        }
+
         return IsValid(in desc.Town) ? CreateStatus.Ok : CreateStatus.InvalidCity;
     }
 
@@ -80,6 +85,7 @@ internal static class CityBuild
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;
         ok &= ch.SkimPeriods is >= 1 and <= 24 && ch.SkimShift is >= 0 and <= 8 && ch.SkimUpdatePerTick >= 1;
+        ok &= IsValid(in t.Outside);
         if (!ok)
         {
             return false;
@@ -128,6 +134,60 @@ internal static class CityBuild
 
     private static bool Q16(int v) => v is >= 0 and <= 65536;
 
+    /// <summary>Пределы секции <c>outside</c>: 0..4 подключений, узлы неотрицательны и различны, места и стоимость в пределах, сумма долей въезда = 65536 (при секции).</summary>
+    public static bool IsValid(in CityOutsideDesc o)
+    {
+        if (o.Count == 0)
+        {
+            return true;
+        }
+
+        if (o.Count is < 0 or > CityOutsideDesc.Max || !Q16(o.JobsDecayQ16) || o.ArrivalByCar > 1)
+        {
+            return false;
+        }
+
+        long share = 0;
+        for (int k = 0; k < o.Count; k++)
+        {
+            OutsideConnDesc c = o.Get(k);
+            if (c.Node < 0 || c.Jobs is < 0 or > MaxBigCount || c.JobCostTicks is < 0 or > MaxDayTicks || !Q16(c.ShareQ16))
+            {
+                return false;
+            }
+
+            for (int j = 0; j < k; j++)
+            {
+                if (o.Get(j).Node == c.Node)
+                {
+                    return false;
+                }
+            }
+
+            share += c.ShareQ16;
+        }
+
+        return share == 65536;
+    }
+
+    /// <summary>Узлы подключений при Create: живые узлы явной сети, флаг <see cref="NodeFlags.Outside"/> (в сейве - в столбце флагов узлов).</summary>
+    private static bool MarkOutsideNodes(World w)
+    {
+        CityOutsideDesc o = w.Town.Outside;
+        for (int k = 0; k < o.Count; k++)
+        {
+            int node = o.Get(k).Node;
+            if (!w.Net.NodeAlive(node))
+            {
+                return false;
+            }
+
+            w.Net.Nodes[node].Flags |= Network.NodeFlags.Outside;
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Строит город мира: сетка ячеек, хранилища по ёмкостям и (при <paramref name="create"/>) нарезка, автозонирование и начальное население. <c>create = false</c> -
     /// загрузчик сейва: хранилища пусты, состояние берёт из блоков, производные - <see cref="CityWorld.RestoreDerived"/> в конце загрузки. Без режима жителей ничего не делает.
@@ -160,6 +220,16 @@ internal static class CityBuild
         if (w.ParkCfg.Enabled)
         {
             w.City.Parking = new Parking.ParkingStore(in w.ParkCfg, in w.Caps, in grid);
+        }
+
+        if (create && w.City.Outside != null)
+        {
+            if (!MarkOutsideNodes(w))
+            {
+                return CreateStatus.InvalidCity;
+            }
+
+            w.City.Outside.Ensure(w, w.City);
         }
 
         return create ? CityInit.Run(w) : CreateStatus.Ok;

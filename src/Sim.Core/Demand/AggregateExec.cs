@@ -78,8 +78,8 @@ internal static class AggregateExec
         int home = res.Home[r];
         int far = res.PlanDest[tour];
         int dest = outbound ? far : home;
-        int lo = c.Buildings.Lot[outbound ? home : far];
-        int ld = c.Buildings.Lot[dest];
+        int lo = c.LotOf(outbound ? home : far);
+        int ld = c.LotOf(dest);
         long now = w.Tick;
         int o = c.Lots.Cell[lo];
         int d = c.Lots.Cell[ld];

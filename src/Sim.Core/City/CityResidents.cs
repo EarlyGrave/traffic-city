@@ -10,6 +10,7 @@ internal static class ResidentFlags
     public const byte Evicted = 4;    // дом заброшен: переезд с приоритетом (§8.2)
     public const byte Leaving = 8;    // уедет из города при ближайшем AtHome
     public const byte InSeekQueue = 16;   // есть живая запись в очереди ищущих работу (Z4: без дублей)
+    public const byte Arriving = 32;      // переселенец едет от внешнего подключения к дому (ADR-0037): работу не ищет, план дня не строит; клиенту - ResidentState.Arriving
 }
 
 /// <summary>Стадии дневного прохода (<c>CityWorld.DayStage</c>, Z4): здания, жители, рынки и рост, затем покой до границы суток.</summary>

@@ -21,6 +21,9 @@ public enum ResidentState : byte
     AtShop = 2,
     WaitDepart = 3,
     InLeg = 4,
+
+    /// <summary>Переселенец едет от внешнего подключения к дому (new-game-scratch.md §2.3). Только в API: в ядре - флаг жителя поверх <c>WaitDepart/InLeg</c>.</summary>
+    Arriving = 5,
 }
 
 /// <summary>Какое поле доступности отдаёт <see cref="Simulation.GetAccessibility"/> (zoning-demand.md §6.7).</summary>

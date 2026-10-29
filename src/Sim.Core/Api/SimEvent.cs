@@ -55,6 +55,9 @@ public enum SimEventKind : int
 
     // Автобусные инструменты (T9, player-tools.md §8.7). BusRouteCreated (5): A = индекс маршрута, B = поколение; BusStopCreated/Removed (48/49) - для остановок.
     BusRouteRemoved = 66,        // A = индекс маршрута, B = поколение снятого (автобусы линии доезжают до своей ближайшей остановки и завершают рейс)
+
+    // Внешние подключения (new-game-scratch.md §2.5, ADR-0037).
+    ImmigrantsArrived = 67,      // A = переселенцев доехало домой за игровой час, B = индекс подключения; на последнем тике часа
 }
 
 /// <summary>Проблема автобусной линии: <c>SimEvent.A</c> для <see cref="SimEventKind.BusLineProblem"/>.</summary>
@@ -122,6 +125,9 @@ public enum RejectReason : int
     TooSteep = 18,              // уклон оси > max_grade профиля и подгонка высоты нового конца не помогла; в превью Value = уклон, ‰
     NeedsBridge = 19,           // насыпь выше max_fill, мокрый отсчёт или узел в воде без флага Bridge; в превью Value: -1 мост ниже воды + просвет, -2 мост длиннее max_bridge_m
     TooDeep = 20,               // ось ниже земли больше max_cut
+
+    // Внешние подключения (new-game-scratch.md §2.1, ADR-0037).
+    Protected = 21,             // узел внешнего подключения: не сносится и не сливается, сегмент от него не удаляется
 }
 
 /// <summary>Какая ёмкость исчерпана: <c>SimEvent.A</c> для <see cref="SimEventKind.CapacityExhausted"/>.</summary>

@@ -170,12 +170,13 @@ internal static partial class SaveValidator
                 return Bad(c, i, 5);
             }
 
-            if (work != -1 && (!b.Pool.IsAlive(work) || city.Types.Rows[b.Type[work]].Kind == LotZone.Residential))
+            if (OutsideRef.Is(work) ? city.Outside == null || OutsideRef.Conn(work) >= city.Outside.Count
+                : work != -1 && (!b.Pool.IsAlive(work) || city.Types.Rows[b.Type[work]].Kind == LotZone.Residential))
             {
                 return Bad(c, i, 6);
             }
 
-            if (r.Flags[i] > 31 || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.AccessWalkDone || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
+            if (r.Flags[i] > (city.Outside != null ? 63 : 31) || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.AccessWalkDone || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
             {
                 return Bad(c, i, 9);
             }
@@ -190,7 +191,7 @@ internal static partial class SaveValidator
             for (int k = 0; k < CityResidents.MaxTours; k++)
             {
                 int dest = r.PlanDest[pb + k];
-                if (r.PlanKind[pb + k] > TourKind.Shop || r.PlanMode[pb + k] > (byte)TravelMode.Walk || r.PlanSlot[pb + k] >= slots || (dest != -1 && !b.Pool.IsAlive(dest)))
+                if (r.PlanKind[pb + k] > TourKind.Shop || r.PlanMode[pb + k] > (byte)TravelMode.Walk || r.PlanSlot[pb + k] >= slots || !PlaceOk(city, b, dest))
                 {
                     return Bad(c, i, 16);
                 }
@@ -241,7 +242,7 @@ internal static partial class SaveValidator
 
             int stops = w.Net.BusStopCount;
             if ((r.EvTick[i] != -1 && r.EvTick[i] < w.Tick) || (r.EvTick[i] == -1) != (r.EvKind[i] == ResidentEvent.None) ||
-                r.LegDest[i] < -1 || (r.LegDest[i] != -1 && !b.Pool.IsAlive(r.LegDest[i])) || r.LegStopA[i] < -1 || r.LegStopA[i] >= stops || r.LegStopB[i] < -1 || r.LegStopB[i] >= stops ||
+                !PlaceOk(city, b, r.LegDest[i]) || r.LegStopA[i] < -1 || r.LegStopA[i] >= stops || r.LegStopB[i] < -1 || r.LegStopB[i] >= stops ||
                 (r.State[i] == (byte)ResidentState.WaitDepart && r.LegDest[i] == -1) || (r.State[i] == (byte)ResidentState.AtHome && r.Agent[i] != -1))
             {
                 return Bad(c, i, 31);
@@ -264,6 +265,49 @@ internal static partial class SaveValidator
         }
 
         return LoadStatus.Ok;
+    }
+
+    /// <summary>«Место» в поле жителя: -1, живое здание или код существующего внешнего подключения (ADR-0037).</summary>
+    private static bool PlaceOk(CityWorld city, BuildingStore b, int place) =>
+        place == -1 || (place >= 0 ? b.Pool.IsAlive(place) : city.Outside != null && OutsideRef.Conn(place) < city.Outside.Count);
+
+    /// <summary>
+    /// Блок <c>OUTS</c> (ADR-0037): места не меньше занятых, занятые = число жителей с работой у подключения, счётчики неотрицательны. Узлы подключений - живые с флагом <c>Outside</c>.
+    /// </summary>
+    internal static LoadStatus ValidateOutside(LoadContext c)
+    {
+        World w = c.W;
+        CityWorld? city = w.City;
+        OutsideState? o = city?.Outside;
+        if (city == null || o == null)
+        {
+            return LoadStatus.InvalidValue;
+        }
+
+        CityResidents r = city.Residents;
+        for (int k = 0; k < o.Count; k++)
+        {
+            int node = o.Node[k];
+            if (!w.Net.NodeAlive(node) || (w.Net.Nodes[node].Flags & Network.NodeFlags.Outside) == 0 || o.Taken[k] < 0 || o.Jobs[k] < o.Taken[k] ||
+                o.ArrivalsDay[k] < 0 || o.ArrivalsHour[k] < 0)
+            {
+                return Bad(c, k, 1);
+            }
+
+            int code = OutsideRef.Of(k);
+            int taken = 0;
+            for (int i = 0; i < r.HighWater; i++)
+            {
+                taken += r.Pool.IsAlive(i) && r.Work[i] == code ? 1 : 0;
+            }
+
+            if (taken != o.Taken[k])
+            {
+                return Bad(c, k, 2);
+            }
+        }
+
+        return o.Arrivals < 0 || o.ArrivalTimeouts < 0 ? Bad(c, 0, 3) : LoadStatus.Ok;
     }
 
     /// <summary>Списки жителей дома и работников: цепочки без циклов, члены ссылаются на здание, длина = Occupants, охвачены все жители.</summary>
@@ -320,7 +364,7 @@ internal static partial class SaveValidator
             if (r.Pool.IsAlive(i))
             {
                 wantHome++;
-                wantWork += r.Work[i] != -1 ? 1 : 0;
+                wantWork += r.Work[i] >= 0 ? 1 : 0;   // работники внешних фирм (код подключения) - в OUTS.Taken, не в списках зданий
             }
         }
 

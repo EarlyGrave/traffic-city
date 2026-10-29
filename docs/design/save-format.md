@@ -451,6 +451,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 11 | ADR-0034, прогрессия и показатели города (`docs/design/progression.md` §2.4, §4.4, задачи PG1-PG2). Блоки `CKPI` (всегда при `demand.model = residents`: кольцо 24 игровых часов `KpiHour` в физическом порядке с головой и заполненностью, текущий час, отметки `VehicleTicksTotal/MovingVehicleTicksTotal` начала часа, суточное кольцо баланса 32) и `PROG` (только при `PARM.ProgressionEnabled = 1`: вехи - порог, грант, кредитные дни, область, флаги, ворота G0/G1, маска признаков, диапазон профилей, тик взятия; индексы профилей, области, `MinLegs`, закрытые на старте признаки, размер каталога профилей; состояние - взято, открытые признаки и битсет профилей, бонус кредита, стадия области, `GatedNotified`); столбцы `PARM` 240 (`ProgressionEnabled`), `CNTR` 173 (`LockedRejects`), `CBGT` 31 (`WarnLevel`, уровень предупреждения PG5). `hash_version` 4 без изменений: раздел хэша прогрессии (состояние, `CKPI`, `LockedRejects`) пишется только при прогрессии, без неё кольцо показателей - наблюдатель вне хэша; `WarnLevel` в хэш войдёт с PG5 | `MigrationV11` (`Save/MigrationV11.cs`): `PARM` 240 = 0 (прогрессии нет, `PROG` не создаётся), `CNTR` 173 = 0, `CBGT` 31 = 0; у мира с жителями создаётся блок `CKPI` с пустыми кольцами («собираем данные») и отметками начала часа = текущим `CNTR` 7-8 (первый час не берёт всю историю); w1-w10 продолжаются тем же хэшем |
 | 12 | ADR-0036, рельеф и вода (`docs/design/terrain.md` §2, §3.2, §8, задача TR1). Блок `TERR` (только при `PARM.TerrainEnabled = 1`: сетка, `Ground`, `Water`, `WaterKind`, `Version`, `OpSeq`); столбцы `PARM` 241 (`TerrainEnabled`), 242-255 (уклоны улиц и магистралей, срезка/подсыпка, откос берега, просвет и длина моста, `TerrainAutoBridge`, кисть и мазок, лимиты отсчётов за тик и заливки, `LotsMaxSlopePct`, `GradeMaxBoostPm`; без рельефа - строго дефолты). `hash_version` 4 без изменений: раздел хэша 14 (геометрия сетки, база, версии, xxh64 трёх массивов, `Elevation` живых узлов) пишется только при рельефе | `MigrationV12` (`Save/MigrationV12.cs`): `PARM` 241 = 0 (рельефа нет, `TERR` не создаётся), 242-255 - дефолты; w1-w11 продолжаются тем же хэшем |
 | 13 | `docs/design/new-game-scratch.md` §2.2, задача Y4: параметры города для старта с нуля. Столбцы `PARM` 256-258 (`CityMinImmigrantsPerDay` - пол суточного въезда, `CityGrowthHourly` - рост по часам `zoning.growth_step = "hour"`, `CityInitialCityBalance` - абсолютный вклад в казну); блоков нет, `hash_version` 4 без изменений. `calendar.start_hour` (сдвиг `Tick` при `Create`) и `zoning.grid_from_bounds` (сетка города при `Create`; сама сетка уже лежит в `PARM`) в сейв не идут. Окно версии открыто до Y3: Y3 (секция `outside`, состояние `Arriving`, `OUTS`) вправе дописывать столбцы с дефолтом в `MigrationV13` | `MigrationV13` (`Save/MigrationV13.cs`): `PARM` 256-258 = 0 (прежнее суточное поведение, пола и абсолютного вклада нет); блоков не создаёт; w1-w12 продолжаются тем же хэшем |
+| 14 | `docs/design/new-game-scratch.md` §2.1-§2.5, ADR-0037, задача Y3: внешние подключения. Столбцы `PARM` 259-261 (`CityOutsideCount`, `CityOutsideJobsDecayQ16`, `CityOutsideArrivalByCar`), 262-277 (по подключению 0..3: `Node`, `Jobs`, `JobCostTicks`, `ShareQ16`); блок `OUTS` (только при секции `outside`: внешние места, занято, въезд за сутки и час, всего доехало, не дождались выезда); бит `NodeFlags.Outside` (2) в флагах узла; бит жителя `Arriving` (32) в `RESD.Flags`; коды мест `-2 - k` в `Work`, `PlanDest`, `LegDest`. Раздел хэша - только при секции `outside`, `hash_version` 4 без изменений | `MigrationV14` (`Save/MigrationV14.cs`): `PARM` 259-277 = 0 (секции нет); блоков не создаёт; w1-w13 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -737,6 +738,25 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 256 | CityMinImmigrantsPerDay | i32 | 1 | 0 |
 | `PARM` | 257 | CityGrowthHourly | u8 | 1 | 0 |
 | `PARM` | 258 | CityInitialCityBalance | i32 | 1 | 0 |
+| `PARM` | 259 | CityOutsideCount | i32 | 1 | 0 |
+| `PARM` | 260 | CityOutsideJobsDecayQ16 | i32 | 1 | 0 |
+| `PARM` | 261 | CityOutsideArrivalByCar | u8 | 1 | 0 |
+| `PARM` | 262 | CityOutside0Node | i32 | 1 | 0 |
+| `PARM` | 263 | CityOutside0Jobs | i32 | 1 | 0 |
+| `PARM` | 264 | CityOutside0JobCostTicks | i32 | 1 | 0 |
+| `PARM` | 265 | CityOutside0ShareQ16 | i32 | 1 | 0 |
+| `PARM` | 266 | CityOutside1Node | i32 | 1 | 0 |
+| `PARM` | 267 | CityOutside1Jobs | i32 | 1 | 0 |
+| `PARM` | 268 | CityOutside1JobCostTicks | i32 | 1 | 0 |
+| `PARM` | 269 | CityOutside1ShareQ16 | i32 | 1 | 0 |
+| `PARM` | 270 | CityOutside2Node | i32 | 1 | 0 |
+| `PARM` | 271 | CityOutside2Jobs | i32 | 1 | 0 |
+| `PARM` | 272 | CityOutside2JobCostTicks | i32 | 1 | 0 |
+| `PARM` | 273 | CityOutside2ShareQ16 | i32 | 1 | 0 |
+| `PARM` | 274 | CityOutside3Node | i32 | 1 | 0 |
+| `PARM` | 275 | CityOutside3Jobs | i32 | 1 | 0 |
+| `PARM` | 276 | CityOutside3JobCostTicks | i32 | 1 | 0 |
+| `PARM` | 277 | CityOutside3ShareQ16 | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -1498,6 +1518,12 @@ s10k с цифрами размера и времени. Клиентские к
 | `RESD` (demand.model = residents) | 47 | LegStage | u8 | HighWater | 0 |
 | `RESD` (demand.model = residents) | 48 | LegWaitFrom | i64 | HighWater | 0 |
 | `RESD` (demand.model = residents) | 49 | LegParkWait | i32 | HighWater | 0 |
+| `OUTS` (секция outside) | 1 | Jobs | i32 | CityOutsideCount | 0 |
+| `OUTS` (секция outside) | 2 | Taken | i32 | CityOutsideCount | 0 |
+| `OUTS` (секция outside) | 3 | ArrivalsDay | i32 | CityOutsideCount | 0 |
+| `OUTS` (секция outside) | 4 | ArrivalsHour | i32 | CityOutsideCount | 0 |
+| `OUTS` (секция outside) | 5 | Arrivals | i64 | 1 | 0 |
+| `OUTS` (секция outside) | 6 | ArrivalTimeouts | i64 | 1 | 0 |
 | `SKIM` (demand.model = residents) | 1 | Skim | i32 | NC * NC * 3 * P | 0 |
 | `SKIM` (demand.model = residents) | 2 | K | i32 | NC * NC * P | 0 |
 | `SKIM` (demand.model = residents) | 3 | LsRef | i32 | 1 | 0 |

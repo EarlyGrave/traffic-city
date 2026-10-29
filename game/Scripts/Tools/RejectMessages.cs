@@ -37,6 +37,7 @@ public static class RejectMessages
         RejectReason.TooSteep => "Слишком крутой уклон",
         RejectReason.NeedsBridge => "Здесь нужен мост",
         RejectReason.TooDeep => "Слишком глубокая выемка",
+        RejectReason.Protected => "Дорога за край карты",
         _ => "Не получилось",
     };
 
@@ -55,6 +56,7 @@ public static class RejectMessages
         RejectReason.TooSteep => "Ведите дорогу вдоль склона или серпантином",
         RejectReason.NeedsBridge => "Начните и закончите на берегу, включите мост, сократите пролёт до 300 м",
         RejectReason.TooDeep => "Обойдите холм: тоннелей пока нет",
+        RejectReason.Protected => "Её можно расширить, но не снести",
         _ => string.Empty,
     };
 

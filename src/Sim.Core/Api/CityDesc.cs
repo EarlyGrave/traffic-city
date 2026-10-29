@@ -68,6 +68,47 @@ public struct CityCalendarDesc
     public int StartHour;           // calendar.start_hour: игровой час начала (0..23), Tick при Create = StartHour * DayTicks / 24; дефолт 0
 }
 
+/// <summary>Одно внешнее подключение (<c>outside.connections[k]</c>): узел явной сети у края карты, внешние рабочие места, доп. стоимость поездки «за край», доля въезда.</summary>
+public struct OutsideConnDesc
+{
+    public int Node;            // индекс узла сети (NodeFlags.Outside)
+    public int Jobs;            // начальные внешние вакансии; 0 - только въезд
+    public int JobCostTicks;    // job_cost_s * 20: «время за краем» в стоимости поездки на внешнюю работу
+    public int ShareQ16;        // immigrant_share: доля въезжающих через подключение (сумма = 65536)
+}
+
+/// <summary>Секция <c>outside</c> (new-game-scratch.md §2.1): до 4 подключений фиксированным POD (без массивов, FFI).</summary>
+public struct CityOutsideDesc
+{
+    public const int Max = 4;
+
+    public int Count;           // 0..4; 0 - секции нет
+    public int JobsDecayQ16;    // outside_jobs_decay: доля своих вакансий города, на которую за сутки сокращаются внешние места
+    public byte ArrivalByCar;   // arrival_by_car: 1 - переселенец едет машиной от узла к дому
+    public OutsideConnDesc C0, C1, C2, C3;
+
+    /// <summary>Подключение <paramref name="k"/> (0..3).</summary>
+    public readonly OutsideConnDesc Get(int k) => k switch
+    {
+        0 => C0,
+        1 => C1,
+        2 => C2,
+        _ => C3,
+    };
+
+    /// <summary>Записывает подключение <paramref name="k"/> (0..3).</summary>
+    public void Set(int k, in OutsideConnDesc v)
+    {
+        switch (k)
+        {
+            case 0: C0 = v; break;
+            case 1: C1 = v; break;
+            case 2: C2 = v; break;
+            default: C3 = v; break;
+        }
+    }
+}
+
 /// <summary>Участки и рост (<c>zoning</c>).</summary>
 public struct CityZoningDesc
 {
@@ -191,6 +232,9 @@ public struct CityDesc
     public CityResidentsDesc Residents;
     public CityEconomyDesc Economy;
     public CityChoiceDesc Choice;
+
+    /// <summary>Внешние подключения у края карты (<c>outside</c>, new-game-scratch.md §2.1, ADR-0037); <c>Count = 0</c> - секции нет, поведение прежнее.</summary>
+    public CityOutsideDesc Outside;
 
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;

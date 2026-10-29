@@ -96,11 +96,13 @@ internal static class Growth
         if (c.Cfg.Zoning.GrowthStep != 0)
         {
             RemoveAbandoned(w, c);   // спрос, въезд и рост идут по часам (Hourly)
+            c.Outside?.DayDecay(m.TotalVac);   // затухание внешних мест - раз в сутки и при росте по часам (§2.4)
             return;
         }
 
         UpdateDemand(c, m);
         RemoveAbandoned(w, c);
+        c.Outside?.DayDecay(m.TotalVac);   // затухание внешних мест по своим вакансиям города (§2.4)
         Grow(w, c, m, 1);
     }
 
@@ -142,7 +144,7 @@ internal static class Growth
         long seekers = 0;
         for (int r = 0; r < res.HighWater; r++)
         {
-            if (res.Pool.IsAlive(r) && (res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] < 0)
+            if (res.Pool.IsAlive(r) && (res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] == -1)
             {
                 seekers++;
             }
@@ -163,7 +165,7 @@ internal static class Growth
         long excess = Math.Max(0L, visits - (c.Cfg.Economy.CTargetPct * dayCap / 100));
         long rawC = c.UnservedDayTotal[y] + excess;
         long rawI = seekers - m.TotalVac;
-        long rawR = m.TotalVac - seekers + c.Cfg.Residents.RBias;
+        long rawR = m.TotalVac + (c.Outside?.TotalVac() ?? 0) - seekers + c.Cfg.Residents.RBias;   // внешние вакансии - только в спрос R (ADR-0037), в I не входят
         int shift = c.Cfg.Economy.EwmaShift;
         c.DemandR += (int)((Clamp(rawR) - c.DemandR) >> shift);
         c.DemandC += (int)((Clamp(rawC) - c.DemandC) >> shift);
@@ -289,6 +291,37 @@ internal static class Growth
 
     // ------------------------------------------------------------------ рост
 
+    /// <summary>
+    /// Балл R ячейки без своих рабочих мест (ADR-0037): при внешних подключениях с вакансиями - минус ским машиной до ближайшего узла плюс <c>job_cost</c>, иначе «нельзя».
+    /// Без секции <c>outside</c> - прежний <c>int.MinValue</c>.
+    /// </summary>
+    private static int OutsideScoreR(CityWorld c, Skims s, int cell)
+    {
+        OutsideState? o = c.Outside;
+        if (o == null)
+        {
+            return int.MinValue;
+        }
+
+        int best = int.MaxValue;
+        for (int k = 0; k < o.Count; k++)
+        {
+            int lot = c.Lots.Capacity + k;
+            if (o.Vac(k) <= 0 || c.Lots.CarLane[lot] < 0)
+            {
+                continue;
+            }
+
+            int v = s.Get(cell, c.Lots.Cell[lot], TravelMode.Car, 0);
+            if (v > 0)
+            {
+                best = Math.Min(best, v + o.JobCostDs[k]);
+            }
+        }
+
+        return best == int.MaxValue ? int.MinValue : -best;
+    }
+
     /// <summary>Новые здания (§8.3): для каждой зоны с положительным спросом - лучшие по баллу доступности пустые участки, не больше <c>max_new_buildings_per_day</c> в сумме.</summary>
     private static void Build(World w, CityWorld c, Market m, int parts)
     {
@@ -321,7 +354,7 @@ internal static class Growth
         int theta = cfg.Choice.ThetaMode64;
         for (int cell = 0; cell < s.Cells; cell++)
         {
-            m.ScoreR[cell] = s.LsJobs[cell] == Skims.NoLs ? int.MinValue : -s.LsJobs[cell];
+            m.ScoreR[cell] = s.LsJobs[cell] == Skims.NoLs ? OutsideScoreR(c, s, cell) : -s.LsJobs[cell];
             int ls = Accessibility.Combined(s, cell, true, theta);
             m.ScoreC[cell] = ls == Skims.NoLs ? int.MinValue : -ls;
         }

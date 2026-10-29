@@ -400,6 +400,13 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 сетка города строится по `tools.world_bounds` (иначе по протяжённости рельефа; без обоих - ошибка), а не по bbox начальной сети (Y3 включит её для сценариев с `outside`); `residents.min_immigrants_per_day` (целое >= 0, дефолт 0) - пол суточного въезда:
 `cap = max(min, max_immigrants_per_day · N)`; `economy.initial_city_balance` (целое >= 0, дефолт 0) - абсолютный вклад в казну сверх `initial_city_balance_per_resident · N` (действует при `city_budget = true`).
 
+**Секция `outside` (`new-game-scratch.md` §2.1-§2.5, ADR-0037, задача Y3, `world_version` 14)** — необязательна, только при `demand.model = "residents"`, явной сети (`network`) и `tools.world_bounds` или рельефе;
+включает `zoning.grid_from_bounds`. Ключи: `outside_jobs_decay` (0..1, дефолт 0.1) - доля своих вакансий города, на которую за сутки сокращаются внешние места (не ниже занятых); `arrival_by_car` (`bool`, дефолт `true`) -
+переселенец едет машиной от узла до дома (иначе появляется дома сразу); `connections` - 1..4 объекта {`id` (уникальная строка), `node` (индекс узла `network.nodes`; при `world_bounds` - не дальше 50 м от края),
+`jobs` (внешние места, дефолт 0), `job_cost_s` (время «за краем» в стоимости поездки на внешнюю работу, дефолт 1800), `immigrant_share` (доля въезда, сумма 1 ± 0.001; дефолт - поровну)}.
+Узел получает `NodeFlags.Outside`: снести дорогу к нему или слить его нельзя (`RejectReason.Protected`). Пока несовместима с `parking.model = "resource"` (ошибка загрузки, `CreateStatus.InvalidCity`).
+Сценарий `scenarios/yuryev-polsky.json`: подключение `moscow` в узле 0 (`a00`, юго-западный конец магистрали), 2 000 внешних мест.
+
 **Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
 `access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
 `curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,

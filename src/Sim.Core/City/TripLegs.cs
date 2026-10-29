@@ -41,8 +41,8 @@ internal static class TripLegs
         int far = res.PlanDest[tour];
         int origin = outbound ? home : far;
         int dest = outbound ? far : home;
-        int lo = c.Buildings.Lot[origin];
-        int ld = c.Buildings.Lot[dest];
+        int lo = c.LotOf(origin);
+        int ld = c.LotOf(dest);
         long now = w.Tick;
         int stopA = -1;
         int stopB = -1;
@@ -171,8 +171,8 @@ internal static class TripLegs
         bool outbound = dest != res.Home[r];
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         int origin = outbound ? res.Home[r] : res.PlanDest[tour];
-        int lo = c.Buildings.Lot[origin];
-        int ld = c.Buildings.Lot[dest];
+        int lo = c.LotOf(origin);
+        int ld = c.LotOf(dest);
         var mode = (TravelMode)res.LegMode[r];
         if (mode == TravelMode.Car)
         {
@@ -188,7 +188,10 @@ internal static class TripLegs
 
             int type = CarType(w);
             ref readonly VehicleTypeDesc t = ref w.Types[type];
-            float destS = MathF.Min(c.Lots.CarS[ld], MathF.Max(0f, w.Net.Lanes[c.Lots.CarLane[ld]].Length - t.MinGap));
+            bool toOutside = OutsideRef.Is(dest);
+            int destLane = toOutside ? c.Outside!.InLane[OutsideRef.Conn(dest)] : c.Lots.CarLane[ld];   // к подключению - до конца полосы въезда в узел, машина исчезает у края (ADR-0037)
+            float laneEnd = MathF.Max(0f, w.Net.Lanes[destLane].Length - t.MinGap);
+            float destS = toOutside ? laneEnd : MathF.Min(c.Lots.CarS[ld], laneEnd);
             var trip = new PendingTrip
             {
                 FromZone = -1,
@@ -196,7 +199,7 @@ internal static class TripLegs
                 FromLane = c.Lots.CarLane[lo],
                 FromS = 0f,   // машина встаёт в начало полосы участка (как у зон): ближе к узлу активные множества ворот не успевают её увидеть (ADR-0019)
                 Type = (byte)type,
-                DestLane = c.Lots.CarLane[ld],
+                DestLane = destLane,
                 DestS = destS,
                 Route = -1,
                 ResidentRef = r + 1,
@@ -379,8 +382,13 @@ internal static class TripLegs
         var mode = (TravelMode)res.LegMode[r];
         int origin = outbound ? res.Home[r] : res.PlanDest[tour];
         int dest = res.LegDest[r];
-        int lo = c.Buildings.Lot[origin];
-        int ld = c.Buildings.Lot[dest];
+        int lo = c.LotOf(origin);
+        int ld = c.LotOf(dest);
+        if ((res.Flags[r] & ResidentFlags.Arriving) != 0 && c.Outside != null)
+        {
+            c.Outside.ArrivalTimeouts++;   // переселенец не дождался выезда от края: домой его доведёт клапан ниже (не застревание)
+        }
+
         bool parkWait = c.Parking != null && mode == TravelMode.Car && !queued && !dropped;   // ждал место: заявка в очередь так и не попала
         bool keepCar = c.Parking != null && mode == TravelMode.Car && !outbound;               // домой машина едет всегда: иначе она осталась бы стоять у цели
         if (!keepCar && Alternative(w, c, mode, lo, ld, out TravelMode alt) && StartLeg(w, c, r, outbound, alt))
@@ -492,6 +500,11 @@ internal static class TripLegs
         res.LegDest[r] = -1;
         res.LegStopA[r] = -1;
         res.LegStopB[r] = -1;
+        if ((res.Flags[r] & ResidentFlags.Arriving) != 0)
+        {
+            Market.OnArrived(c, r);   // переселенец дома (ADR-0037): дальше обычный автомат
+        }
+
         if ((res.Flags[r] & ResidentFlags.Leaving) != 0)
         {
             c.Market.Emigrate(w, c, r);   // единственная точка «житель дома, события нет»: отъезд по дедлайну
@@ -798,8 +811,9 @@ internal static class TripLegs
         if (res.PlanKind[tour] == TourKind.Work)
         {
             res.State[r] = (byte)ResidentState.AtWork;
-            ref readonly BuildingTypeDesc t = ref c.Types.Rows[c.Buildings.Type[res.PlanDest[tour]]];   // фирма тура: работу могли сменить или потерять в пути
-            int endSlot = t.ShiftStartSlot + ((res.Seq[r] % 7) - 3) + t.ShiftSlots;
+            int firm = res.PlanDest[tour];   // фирма тура: работу могли сменить или потерять в пути
+            int endSlot = ((res.Seq[r] % 7) - 3) + (OutsideRef.Is(firm) ? OutsideState.ShiftStartSlot + OutsideState.ShiftSlots
+                : c.Types.Rows[c.Buildings.Type[firm]].ShiftStartSlot + c.Types.Rows[c.Buildings.Type[firm]].ShiftSlots);
             long end = c.TickOfSlot(Calendar.DayOf(c, res.LegReq[r]), endSlot);
             CityPhase.SetEvent(w, c, r, end > now ? end : now + 1, ResidentEvent.EndActivity);
         }
@@ -870,7 +884,7 @@ internal static class TripLegs
         sMm = 0;
         if ((uint)r >= (uint)c.Residents.HighWater || c.Residents.LegDest[r] < 0)
         {
-            return false;
+            return false;   // нет ноги или нога к внешнему подключению (только машиной)
         }
 
         int lot = c.Buildings.Lot[c.Residents.LegDest[r]];

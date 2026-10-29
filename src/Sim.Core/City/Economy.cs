@@ -23,6 +23,17 @@ internal static class Economy
         CityResidents res = c.Residents;
         BuildingStore b = c.Buildings;
         int firm = res.PlanDest[(r * CityResidents.MaxTours) + res.PlanCursor[r]];
+        if (OutsideRef.Is(firm) && res.Work[r] == firm)
+        {
+            // Внешняя фирма (ADR-0037): зарплата от внешнего мира, налог города - как с обычной; в Ledger фирма не заводится.
+            long presentX = Math.Min((w.Tick - res.StateTick[r]) / c.SlotTicks, OutsideState.ShiftSlots);
+            long wageX = c.Cfg.Economy.WagePerShift * presentX / OutsideState.ShiftSlots;
+            c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(r), wageX, FlowKind.Wage);
+            long taxX = BudgetFlows.TaxWage(c, r, wageX);
+            res.IncomeEwma[r] += (wageX - taxX - res.IncomeEwma[r]) >> c.Cfg.Economy.EwmaShift;
+            return;
+        }
+
         if (firm < 0 || !b.IsAlive(firm) || res.Work[r] != firm)
         {
             return;

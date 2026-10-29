@@ -35,6 +35,9 @@ internal sealed class CityWorld
     /// <summary>Объекты стоянки (parking.md §2.1, ADR-0026); <c>null</c> без <c>parking.model = "resource"</c> - ни одна ветка парковки не исполняется (PK1).</summary>
     public Sim.Core.Parking.ParkingStore? Parking;
 
+    /// <summary>Внешние подключения (new-game-scratch.md §2, ADR-0037); <c>null</c> без секции <c>outside</c> - ни одна ветка подключений не исполняется.</summary>
+    public readonly OutsideState? Outside;
+
     /// <summary>Показатели города (progression.md §2.3): кольцо 24 игровых часов; есть всегда в режиме жителей (сейв CKPI), в хэш - только при прогрессии.</summary>
     public readonly CityKpi Kpi;
 
@@ -100,7 +103,14 @@ internal sealed class CityWorld
         Wheel = new TimerWheel(caps.MaxCityResidents);
         Arrivals = new ArrivalRing(caps.MaxCityResidents);
         DueScratch = new int[Math.Max(1, caps.MaxCityResidents)];
+        if (cfg.Outside.Count > 0)
+        {
+            Outside = new OutsideState(in cfg.Outside);
+        }
     }
+
+    /// <summary>Участок «места»: здание (<c>&gt;= 0</c>) - его участок, код подключения (<see cref="OutsideRef"/>) - виртуальный участок узла.</summary>
+    public int LotOf(int place) => place >= 0 ? Buildings.Lot[place] : Lots.Capacity + OutsideRef.Conn(place);
 
     /// <summary>Период скимов тика (0..P-1).</summary>
     public int PeriodOf(long tick) => Skims.PeriodOf(tick, DayTicks);
@@ -115,6 +125,8 @@ internal sealed class CityWorld
     public void RestoreDerived(World w)
     {
         LotGen.RestoreDerived(w);
+        Outside?.Invalidate();
+        Outside?.Ensure(w, this);
         Market.Invalidate();
         Budget?.RecomputeDerived(this);
         BudgetFlows.RecomputeMaintenance(w, this);   // содержание - производное сети и маршрутов (city-economy.md §6.1)

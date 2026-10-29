@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Api;
 using Sim.Core.Util;
 
 namespace Sim.Core.City;
@@ -60,9 +61,16 @@ internal sealed class LotStore
     /// <summary>Версия данных для клиента (<c>LotsVersion</c>): растёт при любом изменении состояния участков.</summary>
     public int Version;
 
-    public LotStore(int capacity)
+    /// <summary>
+    /// Виртуальные участки внешних подключений (ADR-0037): слоты <c>Capacity + k</c> за пределами <see cref="Count"/>, только производные поля (центр, ячейка, полоса, компонента) -
+    /// чтобы ноги и стоимости между «местом» здания и узлом подключения шли тем же кодом, что между участками. Ни в сейв, ни в хэш, ни в обходы по <c>Count</c> не входят.
+    /// </summary>
+    public const int VirtualSlots = CityOutsideDesc.Max;
+
+    public LotStore(int lotCapacity)
     {
-        Capacity = capacity;
+        Capacity = lotCapacity;
+        int capacity = lotCapacity + VirtualSlots;
         Seg = new int[capacity];
         SegGen = new int[capacity];
         Side = new byte[capacity];

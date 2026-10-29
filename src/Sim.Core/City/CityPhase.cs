@@ -21,6 +21,7 @@ internal static class CityPhase
         }
 
         OverloadValve.OnTick(w, c);   // клапан перегрузки (ADR-0035): машины из тупиков gridlock - к цели
+        c.Outside?.Ensure(w, c);   // виртуальные участки подключений по версии сети (после правок инструментами)
 
         int n = c.Wheel.Collect(w.Tick, c.DueScratch);
         for (int k = 0; k < n; k++)
@@ -88,11 +89,17 @@ internal static class CityPhase
             Growth.Hourly(w, c);   // рост по часам (zoning.growth_step = "hour"), до сдвига кольца показателей
         }
 
+        if (c.Outside != null && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            c.Outside.OnHourEnd(w);   // событие ImmigrantsArrived за час (ADR-0037)
+        }
+
         c.Kpi.OnTickEnd(w);   // показатели (progression.md §2.2): на последнем тике игрового часа час уходит в кольцо - до границы суток
         if ((w.Tick + 1) % c.DayTicks == 0)
         {
             c.Day++;
             w.Counters.CityDays++;
+            c.Outside?.OnDayEnd();
             BudgetFlows.OnDayBoundary(w, c);   // казна (city-economy.md §6.2): применение ожидающей политики; E2 - цена земли, содержание, проценты, лимит
             c.Kpi.OnDayEnd(c.Ledger.City);   // суточное кольцо баланса (K5)
             Progression.CheckMilestone(w, c);   // вехи на границе суток - после роста и казны (PG3, progression.md §3.3)
@@ -272,7 +279,8 @@ internal static class CityPhase
             return;
         }
 
-        bool ok = c.Buildings.IsAlive(dest) && c.Buildings.State[dest] == (byte)BuildingState.Active && TripLegs.StartLeg(w, c, r, true, (TravelMode)res.PlanMode[tour]);
+        bool alive = OutsideRef.Is(dest) ? res.Work[r] == dest : c.Buildings.IsAlive(dest) && c.Buildings.State[dest] == (byte)BuildingState.Active;   // внешняя фирма «живёт», пока житель в ней работает
+        bool ok = alive && TripLegs.StartLeg(w, c, r, true, (TravelMode)res.PlanMode[tour]);
         if (!ok)
         {
             w.Counters.ResToursUnreachable++;
@@ -298,6 +306,13 @@ internal static class CityPhase
 
             if (!TripLegs.StartLeg(w, c, r, false, (TravelMode)res.PlanMode[tour]))
             {
+                if ((res.Flags[r] & ResidentFlags.Arriving) != 0 && c.Outside != null)
+                {
+                    c.Outside.ArrivalTimeouts++;   // от подключения до дома не доехать ничем: переселенец сразу дома (ADR-0037), не застревание
+                    TripLegs.FinishTour(w, c, r);
+                    return;
+                }
+
                 TripLegs.ArriveWithoutLeg(w, c, r);
             }
         }
