@@ -40,6 +40,7 @@ public enum CommandKind : ushort
 
     // Классы ТС (vehicle-classes.md §2.2, ADR-0039, VC2).
     SetStreetAccess = 37,   // запрет улицы по классам (SegmentData.Deny), на месте; обратная - прежняя маска
+    SetOnCall = 38,         // VC3 (§2.4): флаг «на вызове» у спецмашины; ставит диспетчер SR или тест, без цены
 }
 
 public enum SignalMode : int
@@ -141,6 +142,9 @@ public struct Command
 
     [FieldOffset(8)]
     public SetStreetAccessCmd SetStreetAccess;
+
+    [FieldOffset(8)]
+    public SetOnCallCmd SetOnCall;
 
     [FieldOffset(8)]
     public InsertBusStopCmd InsertBusStop;
@@ -337,6 +341,15 @@ public struct Command
         c.Kind = CommandKind.SetStreetAccess;
         c.Tag = tag;
         c.SetStreetAccess = payload;
+        return c;
+    }
+
+    public static Command MakeSetOnCall(VehicleHandle h, bool onCall, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetOnCall;
+        c.Tag = tag;
+        c.SetOnCall = new SetOnCallCmd { Index = h.Index, Generation = h.Generation, OnCall = onCall ? (byte)1 : (byte)0 };
         return c;
     }
 
@@ -538,6 +551,15 @@ public struct SelectVehicleCmd
 {
     public int Index;
     public int Generation;
+}
+
+/// <summary>Флаг «на вызове» (vehicle-classes.md §2.4): допустим только у машины типа класса <c>Special</c>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetOnCallCmd
+{
+    public int Index;
+    public int Generation;
+    public byte OnCall;   // 0/1
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

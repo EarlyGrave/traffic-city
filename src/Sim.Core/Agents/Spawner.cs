@@ -568,6 +568,11 @@ internal static class Spawner
         v.Speed[i] = speed;
         v.Length[i] = t.Length;
         v.Type[i] = trip.Type;
+        if (w.Demand.SpecialOnCall && t.Category == VehicleCategory.Special)
+        {
+            v.Flags[i] |= (byte)VehicleFlags.OnCall;   // VC3: demand.special_on_call - спецмашина едет на вызове всю поездку
+        }
+
         v.DesiredSpeed[i] = desired;
         v.SpawnTick[i] = w.Tick;
         v.DestZone[i] = trip.ToZone;

@@ -938,6 +938,7 @@ public static partial class ScenarioLoader
         d.WeightJitter = (float)r.Num("weight_jitter", 0.5, min: 0, max: 1);
         d.ExternalShare = (float)r.Num("external_share", 0.3, min: 0, max: 1);
         d.MinTripLength = (float)r.Num("min_trip_m", 600, min: 0);
+        d.SpecialOnCall = r.Bool("special_on_call", false);
 
         JsonElement[]? od = r.OptArray("od_pairs");
         if (od != null)
@@ -1212,6 +1213,7 @@ public static partial class ScenarioLoader
             SignalArrowMinTicks = Ticks(3),
             SignalArrowMaxTicks = Ticks(6),
             SignalArrowGapTicks = Ticks(2),
+            EmergencyRedSpeed = 15f / 3.6f,
         };
         if (r == null)
         {
@@ -1236,6 +1238,7 @@ public static partial class ScenarioLoader
         d.SignalArrowMinTicks = Ticks(r.Num("signal_arrow_min_s", 3, min: 0.05));
         d.SignalArrowMaxTicks = Ticks(r.Num("signal_arrow_max_s", 6, min: 0.05));
         d.SignalArrowGapTicks = Ticks(r.Num("signal_arrow_gap_s", 2, min: 0.05));
+        d.EmergencyRedSpeed = Math.Max(0.01f, (float)(r.Num("emergency_red_speed_kmh", 15, min: 0, max: 50) / 3.6));   // 0 км/ч -> 0.01 м/с (полная остановка у линии)
         r.Finish();
         return d;
     }
