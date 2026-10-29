@@ -24,6 +24,7 @@ public sealed class NotifyScreen : UiScreen
         {
             // демо: 5 тостов сразу и без угасания (скриншоты); обычные пороги - в значениях по умолчанию UiNotifyView/UiNotifyCenter
             View.Source = new UiDemoEventSource();
+            View.SourceLocked = true;
             View.MaxVisible = 5;
             View.LifeSec = 3600.0;
             View.Center.ToastIntervalSec = 0.0;
