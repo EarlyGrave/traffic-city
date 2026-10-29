@@ -14,7 +14,8 @@ public enum EntityKind : byte
     Segment = 2,
     BusStop = 3,
     BusRoute = 4,
-    Zone = 5,            // только для PreviewIssue.Obj: индекс зоны (без поколения)
+    Zone = 5,            // только для PreviewIssue.Obj и EventPlace: индекс зоны (без поколения)
+    Building = 6,        // EventPlace (EV1) и жалобы PG4: индекс и поколение здания города
 }
 
 /// <summary>

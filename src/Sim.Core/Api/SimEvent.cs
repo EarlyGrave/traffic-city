@@ -14,7 +14,7 @@ public enum SimEventKind : int
     VehicleStuck = 12,
     VehicleUnstuck = 13,
     BusStopArrived = 14,         // A = индекс маршрута, B = индекс остановки (глобальный)
-    GridlockOn = 20,
+    GridlockOn = 20,             // A = застрявших, B = активных; Place = сегмент с наибольшим числом застрявших (EV1) или нет места
     GridlockOff = 21,
     CapacityExhausted = 30,      // A = (int)CapacityKind, B = сколько отброшено за тик
     EventsOverflow = 31,         // всегда последний элемент, если события не влезли
@@ -26,8 +26,8 @@ public enum SimEventKind : int
     NodeRebuilt = 43,            // A = индекс узла
     SignalPlanReset = 44,        // A = индекс узла (план сброшен перестройкой)
     ToolOpFinished = 45,         // A = id операции (ToolOpView.Id), B = (int)CommandKind
-    DrainStalled = 46,           // A = id операции, B = Remaining (раз за период; цель остаётся Closing)
-    ZoneAccessLost = 47,         // A = индекс зоны
+    DrainStalled = 46,           // A = id операции, B = Remaining (раз за период; цель остаётся Closing); Place = сегмент-цель (EV1)
+    ZoneAccessLost = 47,         // A = индекс зоны, B = индекс закрытого сегмента (EV1); Place = зона (центр)
     BusStopCreated = 48,         // A = индекс остановки, B = поколение
     BusStopRemoved = 49,         // A = индекс остановки, B = поколение
     SegmentRemapped = 50,        // A = старый индекс, B = новый индекс (поколение нового - из handle'ов сегмента)
@@ -41,6 +41,50 @@ public enum SimEventKind : int
     BudgetLimitReached = 56,     // A = номер суток, B = City (насыщенно в int): казна ушла за кредитный лимит
     BudgetRecovered = 57,        // A = номер суток, B = City (насыщенно в int): казна вернулась в лимит
     PolicyApplied = 58,          // A = номер суток, B = Fare новой политики: ожидающая политика стала действующей
+
+    // 59-62 закреплены за прогрессией (progression.md; 62 = Complaint).
+
+    // События с местом (EV1, core-api.md §5.7): место - в SimEvent.Place (EventPlace). Выдаются с ограничением частоты на место.
+    JamAt = 63,                  // A = застрявших машин на сегменте, B = всего застрявших в сети; Place = сегмент (середина оси)
+    BusLineProblem = 64,         // A = (int)BusLineIssue, B = величина (см. BusLineIssue), C = индекс остановки или -1; Place = маршрут, X/Z - точка проблемы
+    ParkingFull = 65,            // A = отказов в месте за окно, B = индекс участка цели; Place = здание цели (центр участка)
+}
+
+/// <summary>Проблема автобусной линии: <c>SimEvent.A</c> для <see cref="SimEventKind.BusLineProblem"/>.</summary>
+public enum BusLineIssue : int
+{
+    None = 0,
+    NoBuses = 1,                 // на линии нет автобусов и выпуск просрочен: B = тиков просрочки, X/Z - первая остановка
+    BusesStuck = 2,              // автобусы линии стоят (stuck, не на остановке): B = сколько, X/Z - первый по индексу из них
+    Overloaded = 3,              // на остановке линии копится очередь: B = ждущих, C = остановка, X/Z - её точка
+}
+
+/// <summary>
+/// Место события (EV1; общий формат для событий и жалоб PG4, progression.md §6.2): вид и ссылка на объект плюс точка мира, которую считает ядро
+/// (узел - ось узла, сегмент - середина осевой полилинии, остановка - точка на полосе, зона - центр, здание - центр участка; у маршрута - точка проблемы).
+/// <c>ObjKind == None</c> - места нет (X/Z = 0). У зоны <c>Generation = 0</c>. 20 Б.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 20)]
+public struct EventPlace
+{
+    public EntityKind ObjKind;
+    public byte Reserved0;
+    public ushort Reserved1;
+    public int Index, Generation;
+    public float X, Z;
+
+    public EventPlace(EntityKind kind, int index, int generation, float x, float z)
+    {
+        ObjKind = kind;
+        Reserved0 = 0;
+        Reserved1 = 0;
+        Index = index;
+        Generation = generation;
+        X = x;
+        Z = z;
+    }
+
+    public readonly bool HasPlace => ObjKind != EntityKind.None;
 }
 
 /// <summary>Причина отказа команды: <c>SimEvent.A</c> для <see cref="SimEventKind.CommandRejected"/>.</summary>
@@ -85,11 +129,18 @@ public enum CapacityKind : int
     BusStops = 13,
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 24)]
+/// <summary>
+/// Событие ядра (48 Б; до EV1 было 24 Б без <see cref="Place"/> и <see cref="C"/>). <see cref="Place"/> заполнен у событий с местом
+/// (<see cref="SimEventKind.JamAt"/>, <see cref="SimEventKind.BusLineProblem"/>, <see cref="SimEventKind.ParkingFull"/>, <see cref="SimEventKind.GridlockOn"/>,
+/// <see cref="SimEventKind.DrainStalled"/>, <see cref="SimEventKind.ZoneAccessLost"/>), у остальных - нули.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 48)]
 public struct SimEvent
 {
     public SimEventKind Kind;
     public uint Tag;             // эхо Command.Tag или 0
     public long Tick;
     public int A, B;             // зависят от Kind: индексы/поколения/коды
+    public EventPlace Place;     // место события (EV1) или нули
+    public int C;                // третий параметр (зависит от Kind) или 0
 }

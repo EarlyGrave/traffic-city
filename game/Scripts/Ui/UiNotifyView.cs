@@ -258,9 +258,20 @@ public sealed class UiNotifyView
     /// <summary>«Показать»: подлететь камерой к объекту и выделить его; без источника или при исчезнувшем объекте - ничего.</summary>
     public bool Show(NotifySubject s)
     {
-        if (Source == null || s.IsNone || !Source.TryLocate(in s, out Vector3 pos, out float extent))
+        if (Source == null || s.IsNone)
         {
             return false;
+        }
+
+        if (!Source.TryLocate(in s, out Vector3 pos, out float extent))
+        {
+            if (!s.HasPoint)
+            {
+                return false;
+            }
+
+            pos = new Vector3(s.X, 0f, s.Z);   // место события ядра (EV1): объект клиенту не известен или уже исчез
+            extent = 80f;
         }
 
         _ui.GetNodeOrNull<RtsCamera>("../CameraRig")?.Focus(pos, Math.Max(extent, 40f));
