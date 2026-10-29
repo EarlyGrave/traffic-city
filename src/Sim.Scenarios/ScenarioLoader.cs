@@ -616,7 +616,10 @@ public static partial class ScenarioLoader
         {
             "car" => VehicleCategory.Car,
             "bus" => VehicleCategory.Bus,
-            _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
+            "van" => VehicleCategory.Van,
+            "truck" => VehicleCategory.Truck,
+            "special" => VehicleCategory.Special,
+            _ => throw new ScenarioException($"{p}.category: expected \"car\", \"van\", \"truck\", \"bus\" or \"special\""),
         };
         var t = new VehicleTypeDesc
         {

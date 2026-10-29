@@ -28,6 +28,9 @@ internal sealed class World : IDisposable
     public readonly RoutingDesc Routing;       // с применёнными дефолтами (WorldBuilder.WithDefaults)
     public readonly ulong Seed;
     public readonly VehicleTypeDesc[] Types;
+
+    /// <summary>Бит доступа класса по номеру типа (vehicle-classes.md §2.1): производное от <see cref="Types"/>, считается в конструкторе, в сейв не пишется.</summary>
+    public readonly byte[] TypeAccess;
     public readonly DemandDesc Demand;
     public readonly TransitDesc TransitCfg;
     public readonly PedDesc PedCfg;            // с применёнными дефолтами (PedNetwork.WithDefaults); Enabled = false - пешеходов нет, ничего не выделено
@@ -205,6 +208,7 @@ internal sealed class World : IDisposable
         Routing = routing;
         Seed = desc.Seed;
         Types = types;
+        TypeAccess = VehicleAccess.ForTypes(types);
         Demand = desc.Demand;
         TransitCfg = desc.Transit;
         LodCfg = WorldBuilder.WithDefaults(desc.Lod);

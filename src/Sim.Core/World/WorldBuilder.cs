@@ -753,7 +753,7 @@ internal static class WorldBuilder
             if (!Positive(t.Length) || !Positive(t.Width) || !Positive(t.MaxSpeed) || !Positive(t.SpeedFactor) ||
                 !Positive(t.Accel) || !Positive(t.ComfortDecel) || !NonNegative(t.HeadwayTime) || !NonNegative(t.MinGap) ||
                 !Positive(t.Delta) || t.LaneChangeDurationTicks < 0 ||
-                (t.Category != VehicleCategory.Car && t.Category != VehicleCategory.Bus))
+                (uint)t.Category > (uint)VehicleCategory.Special)
             {
                 return CreateStatus.InvalidVehicleType;
             }

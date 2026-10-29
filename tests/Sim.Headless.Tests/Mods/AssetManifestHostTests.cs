@@ -18,7 +18,7 @@ namespace Sim.Headless.Tests.Mods;
 public sealed class AssetManifestHostTests : IDisposable
 {
     /// <summary>Отпечаток <c>base</c> v1.0.0 (s1k-v3): если контент <c>base</c> менялся намеренно, обновить вместе с описанием коммита.</summary>
-    private const string BaseFingerprint = "c3ba046c5562f937";   // K1 (ADR-0026): в отпечаток base вошли поля парковки зданий
+    private const string BaseFingerprint = "aadb3d05277d733a";   // VC1 (ADR-0039): в base добавлены van, truck, ambulance, fire, utility; до этого "c3ba046c5562f937" (K1, ADR-0026)
 
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "tc-mani-" + Guid.NewGuid().ToString("N"));
 
@@ -111,9 +111,9 @@ public sealed class AssetManifestHostTests : IDisposable
         AssetManifestBuilder.ForCatalog(sc.Catalog!, sc.Packages!, out AssetRef[] refs, out byte[] ids);
         string[] got = refs.Select(r => $"{r.Kind}:{r.SavedIndex}:{Text(ids, r)}:v{r.Version}").ToArray();
         Assert.Equal(
-            new[] { "1:0:base:vehicle/car:v1", "1:1:base:vehicle/bus:v1", $"4:-1:base:v{ContentFingerprint.PackVersion(new SemVer(1, 0, 0), "base")}" },
+            new[] { "1:0:base:vehicle/car:v1", "1:1:base:vehicle/bus:v1", "1:2:base:vehicle/van:v1", "1:3:base:vehicle/truck:v1", "1:4:base:vehicle/ambulance:v1", "1:5:base:vehicle/fire:v1", "1:6:base:vehicle/utility:v1", $"4:-1:base:v{ContentFingerprint.PackVersion(new SemVer(1, 0, 0), "base")}" },
             got);
-        Assert.Equal(ContentFingerprint.PackageHash("base", sc.Catalog!), refs[2].ContentHash);
+        Assert.Equal(ContentFingerprint.PackageHash("base", sc.Catalog!), refs[7].ContentHash);
         Assert.Equal(AssetManifestBuilder.ParamsHash(sc.Desc.VehicleTypes[0]), refs[0].ContentHash);
     }
 
@@ -149,7 +149,7 @@ public sealed class AssetManifestHostTests : IDisposable
         using (sim)
         {
             Assert.Equal(LoadStatus.Ok, st);
-            Assert.Equal(2, rep.AssetsInManifest);
+            Assert.Equal(7, rep.AssetsInManifest);
             Assert.Equal((0, 0), (rep.AssetsMissing, rep.AssetsChanged));
             Assert.Empty(res.Notices);
             Assert.NotNull(res.Catalog);
@@ -183,7 +183,7 @@ public sealed class AssetManifestHostTests : IDisposable
                 Assert.Equal(AssetNoticeState.Missing, van.State);
                 Assert.True(van.Count > 0, "placeholder count must be the live vans");
                 Assert.Contains(resB.Notices, n => n is { Kind: CoreKind.Package, Id: "transit_plus", State: AssetNoticeState.Missing });
-                Assert.Equal((byte)AssetState.Missing, without!.AssetStates[2]);
+                Assert.Equal((byte)AssetState.Missing, without!.AssetStates[7]);
 
                 without.Step(200);
                 Assert.Equal(expected, without.ComputeStateHash());

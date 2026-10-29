@@ -678,7 +678,7 @@ internal static partial class SaveValidator
             int lane = v.Lane[i];
             if (lane < -1 || lane >= lanes || v.GhostLane[i] < -1 || v.GhostLane[i] >= lanes || !Fin(v.S[i]) || !Fin(v.Speed[i]) || v.Speed[i] < 0f ||
                 !Fin(v.Accel[i]) || !Fin(v.Length[i]) || v.Length[i] <= 0f || v.Type[i] >= w.Types.Length || !Fin(v.DesiredSpeed[i]) ||
-                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 127)
+                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || ((v.Flags[i] & (byte)VehicleFlags.OnCall) != 0 && w.Types[v.Type[i]].Category != VehicleCategory.Special))
             {
                 return Bad(c, i, 30);
             }

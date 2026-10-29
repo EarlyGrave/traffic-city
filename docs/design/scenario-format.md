@@ -628,6 +628,14 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 }
 ```
 
+`category` — класс ТС (`vehicle-classes.md` §2.1, ADR-0039): `"car"` (0), `"bus"` (1), `"van"` (2), `"truck"` (3), `"special"` (4); другое значение — ошибка
+загрузчика. Старые файлы с `car`/`bus` читаются без правок, `format_version` не меняется. Права на полосы и улицы задаёт класс; тип — только параметры
+(длина, ширина, скорость, IDM, MOBIL). Базовый каталог (`vehicle-types.json`, пакет `base`) с VC1 содержит семь типов: `car`, `bus`, `van`, `truck`
+и спецмашины `ambulance`, `fire`, `utility` (класс `special`). Параметры пяти новых типов — стартовые входы калибровки VC4 (спека §2.1), не замеры:
+фургон 5.5 × 2.0 м, 110 км/ч, `a` 0.9; фура 16.5 × 2.55 м, 90 км/ч, `a` 0.5, `b` 1.0, `T` 1.8 с, `s0` 3 м; скорая 6 × 2.1 м, 110 км/ч, `a` 1.2;
+пожарная 9 × 2.5 м, 90 км/ч, `a` 0.7; ЖКХ 7 × 2.3 м, 80 км/ч, `a` 0.7 (остальные поля — по аналогии с автобусом и легковой). Новые типы
+добавлены в конец каталога, индексы `car` = 0 и `bus` = 1 не изменились; в `type_mix` по умолчанию они не входят (вес 0).
+
 Соответствие `VehicleTypeDesc`: `Length, Width, MaxSpeed(м/с), SpeedFactor, Accel=a,
 ComfortDecel=b, HeadwayTime=T, MinGap=s0, Delta, Politeness, LaneChangeThreshold=threshold,
 SafeDecel=b_safe, RightBias=right_bias, LaneChangeDurationTicks=round(duration_s·20)`.

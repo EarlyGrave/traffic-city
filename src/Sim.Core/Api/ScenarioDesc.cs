@@ -75,10 +75,17 @@ public struct RoutingDesc
     public int TimedDriftAbsTicks;         // абсолютная добавка к порогу, тики; дефолт 400 (20 с)
 }
 
+/// <summary>
+/// Класс типа ТС (vehicle-classes.md §2.1, ADR-0039). Номера закреплены (сейвы, <c>PARM</c> типов): новые - только в конец.
+/// Права на полосы и улицы задаёт класс, а не тип; ключ JSON - прежний <c>category</c>.
+/// </summary>
 public enum VehicleCategory : int
 {
     Car = 0,
     Bus = 1,
+    Van = 2,
+    Truck = 3,
+    Special = 4,
 }
 
 public struct VehicleTypeDesc
