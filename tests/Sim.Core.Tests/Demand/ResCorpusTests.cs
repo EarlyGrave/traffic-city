@@ -25,7 +25,10 @@ public sealed class ResCorpusTests
     public ResCorpusTests(ITestOutputHelper output) => _out = output;
 
     private static string CorpusFile() =>
-        Path.Combine(AppContext.BaseDirectory, "SaveCorpus", $"w{Simulation.CurrentWorldVersion}-s1k-res-d3-t{CorpusTicks}.tcsave");
+        Path.Combine(AppContext.BaseDirectory, "SaveCorpus", $"w{CorpusVersion}-s1k-res-d3-t{CorpusTicks}.tcsave");
+
+    // С w12 (TR1, рельеф) корпус текущей версии - подмножество (save-format.md §7): s1k-res-d3 остаётся файлом w11, он мигрирует без изменения поведения.
+    private const int CorpusVersion = 11;
 
     [Fact]
     public void Corpus_S1kResD3_LoadsAndKeepsInvariants()
@@ -33,7 +36,7 @@ public sealed class ResCorpusTests
         string path = CorpusFile();
         Assert.True(File.Exists(path), $"нет файла корпуса {path}: TC_REGEN_CORPUS=1 dotnet test --filter FullyQualifiedName~SaveCorpusTests");
         byte[] raw = SaveEnvelope.ReadContainer(path);
-        using Simulation sim = WorldSaveFixtures.Load(raw);
+        using Simulation sim = WorldSaveFixtures.Load(raw, strict: false);
         CityWorld city = sim.World.City!;
         Assert.Equal(CorpusTicks, sim.Tick);
         Assert.Equal(3, city.Day);
