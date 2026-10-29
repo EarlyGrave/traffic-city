@@ -75,6 +75,8 @@ public sealed partial class SimThreadHost : IDisposable
     private long _selVehPacked;
     private int _forceFresh;
     private NetworkSnapshot? _netSnap;
+    private TerrainSnapshot? _terrSnap;
+    private readonly TerrainDirtyRect[] _terrDirty = new TerrainDirtyRect[256];   // ёмкость кольца грязи ядра
 
     /// <summary>Период обновления тяжёлых оверлеев (<see cref="HostOverlays.SegmentLoads"/>, <see cref="HostOverlays.PedEdgeCounts"/>): heatmap 2 Гц, ADR-0014 п. 6.</summary>
     public const int HeavyOverlayTicks = 10;
@@ -535,11 +537,38 @@ public sealed partial class SimThreadHost : IDisposable
         }
 
         f.Network = _netSnap;
+        CaptureTerrain(f);
 
         RouteView route = _sim.SelectedRoute;
         f.RouteVehicle = route.IsEmpty ? default : route.Vehicle;
         f.RouteCursor = route.Cursor;
         CopyTo(route.Steps, ref f.RouteStepsArr, out f.RouteStepsCount);
+    }
+
+    /// <summary>Снимок рельефа: тот же объект, пока версия не менялась (0 Б); иначе копируются грязные чанки (полная копия - на старте и при overflow).</summary>
+    private void CaptureTerrain(SimFrame f)
+    {
+        TerrainView tv = _sim.Terrain;
+        if (!tv.Enabled)
+        {
+            _terrSnap = null;
+            f.Terrain = null;
+            return;
+        }
+
+        if (_terrSnap == null || _terrSnap.Version != tv.Version)
+        {
+            bool overflow = false;
+            int nd = 0;
+            if (_terrSnap != null)
+            {
+                nd = _sim.CopyTerrainDirty(_terrDirty, _terrSnap.Version, out overflow);
+            }
+
+            _terrSnap = TerrainSnapshot.Build(_terrSnap, tv.Version, tv.CellM, tv.OriginX, tv.OriginZ, tv.SamplesX, tv.SamplesZ, tv.BaseCm, tv.Ground, tv.Water, tv.WaterKind, tv.Lock, _terrDirty.AsSpan(0, nd), overflow);
+        }
+
+        f.Terrain = _terrSnap;
     }
 
     private void CaptureOverlays(SimFrame f)

@@ -75,6 +75,12 @@ public sealed class SimFrame
 
     public int NetworkVersion => Network.Version;
 
+    /// <summary>
+    /// Копия рельефа (terrain.md §10.1): null, если в мире нет рельефа. Пока <c>Terrain.Version</c> не менялась, это тот же объект, что в прошлом кадре;
+    /// после изменения - новый снимок, делящий чистые чанки со старым. Неизменяема, главный поток держит ссылку сколько угодно.
+    /// </summary>
+    public TerrainSnapshot? Terrain { get; internal set; }
+
     /// <summary>Подписки, с которыми собран кадр (<see cref="HostOverlays"/>): оверлей вне подписки в кадре пуст.</summary>
     public HostOverlays Overlays { get; internal set; }
 
