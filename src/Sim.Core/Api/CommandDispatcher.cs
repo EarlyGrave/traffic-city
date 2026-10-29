@@ -228,22 +228,37 @@ internal static partial class CommandDispatcher
         w.Builder.ResetCreated();
         NetworkStatus st;
         int seg;
-        if (chk.Profile >= 0)
+        Span<Vec2> curve = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+        if (chk.Profile >= 0 || chk.Curve)
         {
-            // Дорога по профилю (RP7): концы прилипают или создаются, полосы и тип берутся из профиля; отступы - по рукавам, уже стоящим в узлах.
+            // Дорога по профилю (RP7) и/или кривая (T5): концы прилипают или создаются, полосы и тип - из профиля; ось кривой - сэмплы Безье между узлами концов; отступы - по рукавам узлов.
             st = w.Builder.AddNode(a, NodeControl.None, out int pa);
+            seg = -1;
             if (st == NetworkStatus.Ok)
             {
                 st = w.Builder.AddNode(z, NodeControl.None, out int pb);
-                seg = -1;
                 if (st == NetworkStatus.Ok)
                 {
-                    st = w.Builder.AddProfileSegment(pa, pb, ReadOnlySpan<Vec2>.Empty, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg);
+                    scoped ReadOnlySpan<Vec2> via = ReadOnlySpan<Vec2>.Empty;
+                    var cp = new Vec2(b.ControlX, b.ControlZ);
+                    if (chk.Curve)
+                    {
+                        int np = NetworkBuilder.SampleQuadratic(w.Net.Nodes[pa].Position, cp, w.Net.Nodes[pb].Position, curve);
+                        via = curve[1..(np - 1)];
+                    }
+
+                    st = chk.Profile >= 0
+                        ? w.Builder.AddProfileSegment(pa, pb, via, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg)
+                        : w.Builder.AddSegment(pa, pb, via, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out seg);
+                    if (st == NetworkStatus.Ok && chk.Curve)
+                    {
+                        ref SegmentData sd = ref w.Net.Segments[seg];
+                        sd.Flags |= SegmentFlags.Curve;
+                        sd.Cx = cp.X;
+                        sd.Cz = cp.Z;
+                        w.Net.ToolsTouched = 1;   // флаг Curve и контрольная точка - в хэше и сейве только с правками
+                    }
                 }
-            }
-            else
-            {
-                seg = -1;
             }
         }
         else

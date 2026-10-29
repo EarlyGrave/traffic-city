@@ -302,6 +302,14 @@ public sealed class EditFuzzTests
             if (n.AliveNodes < n.NodePool.Capacity - 4 && Free(n, node, p, q))
             {
                 BuildRoadCmd road = ToolsFixture.Road(p, q, 1 + rng.Next(2));
+                if (chain && rng.Next(3) == 0)
+                {
+                    // T5: кривая - контрольная точка сбоку от середины хорды (до трети её длины).
+                    float side = (rng.Next(2) == 0 ? -1f : 1f) * len * 0.33f * (float)rng.NextDouble();
+                    road.Flags = BuildRoadFlags.Curve;
+                    road.SetControl(((p.X + q.X) * 0.5f) - (MathF.Sin(ang) * side), ((p.Z + q.Z) * 0.5f) + (MathF.Cos(ang) * side));
+                }
+
                 return Command.MakeBuildRoad(in road, tag);
             }
         }

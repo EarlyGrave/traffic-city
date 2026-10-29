@@ -72,8 +72,9 @@ public class ToolPayloadSizesTests
     {
         Assert.Equal(20, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.LanesAB)));
         Assert.Equal(23, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Flags)));
-        Assert.Equal(24, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Cx)));
-        Assert.Equal(28, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Profile)));   // RP7: делит байты с Cz
+        Assert.Equal(24, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.CxDm)));
+        Assert.Equal(26, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.CzDm)));
+        Assert.Equal(28, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Profile)));   // T5: отдельно от контрольной точки
         Assert.Equal(32, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreOf)));
         Assert.Equal(40, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeA)));
         Assert.Equal(48, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeB)));
@@ -189,7 +190,7 @@ public class ToolPayloadSizesTests
     }
 
     [Theory]
-    [InlineData(BuildRoadFlags.Curve)]   // T5: AutoSplit реализован (SplitMergeTests), кривые - ещё нет
+    [InlineData(16)]   // T5: AutoSplit и Curve реализованы (SplitMergeTests, CurveTests); неизвестный бит - NotSupported
     public void BuildRoad_NewFlags_AreNotSupported(byte flags)
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());

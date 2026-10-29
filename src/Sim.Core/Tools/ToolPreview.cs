@@ -86,16 +86,20 @@ internal static class ToolPreview
 
         if (cmd.Kind == CommandKind.BuildRoad && c.LengthM > 0f)
         {
-            // Ось будущей дороги тем же сэмплированием, что у Builder: прямой сегмент - концы после привязки (кривая и разрез - T5).
-            r.AxisPointCount = 2;
-            if (axis.Length > 0)
+            // Ось будущей дороги тем же сэмплированием, что у Builder: концы после привязки (у разреза - точка на оси), кривая - сэмплы Безье (T5).
+            Span<Vec2> pts = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+            int np = 2;
+            pts[0] = new Vec2(c.AX, c.AZ);
+            pts[1] = new Vec2(c.BX, c.BZ);
+            if (c.Curve)
             {
-                axis[0] = new Vec2(c.AX, c.AZ);
+                np = NetworkBuilder.SampleQuadratic(pts[0], new Vec2(cmd.BuildRoad.ControlX, cmd.BuildRoad.ControlZ), pts[1], pts);
             }
 
-            if (axis.Length > 1)
+            r.AxisPointCount = np;
+            for (int i = 0; i < np && i < axis.Length; i++)
             {
-                axis[1] = new Vec2(c.BX, c.BZ);
+                axis[i] = pts[i];
             }
         }
 

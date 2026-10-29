@@ -359,12 +359,12 @@ internal static class InverseBuilder
         if ((sd.Flags & SegmentFlags.Curve) != 0)
         {
             b.Flags = BuildRoadFlags.Curve;
-            b.Cx = sd.Cx;
-            b.Cz = sd.Cz;
+            b.SetControl(sd.Cx, sd.Cz);   // T5: та же кривая (точность команды - 10 см)
         }
-        else if (sd.Profile >= 0)
+
+        if (sd.Profile >= 0)
         {
-            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля (поле делит байты с Cz - кривые и профили вместе пока не поддержаны).
+            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля.
             b.Profile = (ushort)(sd.Profile + 1);
             if ((sd.Flags & SegmentFlags.Mirrored) != 0)
             {

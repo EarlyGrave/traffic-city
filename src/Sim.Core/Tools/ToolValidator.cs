@@ -47,6 +47,7 @@ internal struct ToolCheck
     public bool CancelShrink;               // UpgradeRoad в прежние полосы во время дренажа полос: отмена операции (undo)
     public int SplitSegA, SplitSegB;        // BuildRoad с AutoSplit: разрезаемый сегмент у конца A/B или -1 (T5)
     public float SplitSA, SplitSB;          // точка разреза по полной оси сегмента, м от его узла A
+    public bool Curve;                      // BuildRoad: кривая Безье (T5)
 
     public EntityKind IssueKind;            // объект и точка проблемы (подсветка) для отказа
     public int IssueIndex, IssueGen;
@@ -116,7 +117,7 @@ internal static partial class ToolValidator
 
         if ((b.Flags & ~BuildRoadFlags.Supported) != 0)
         {
-            return RejectReason.NotSupported;   // Curve (T5: кривые ещё не сделаны)
+            return RejectReason.NotSupported;   // неизвестные биты
         }
 
         if (b.RestoreOf.Generation != 0 && n.ResolveSegment(in b.RestoreOf))
@@ -216,6 +217,35 @@ internal static partial class ToolValidator
             return RejectReason.InvalidArgument;
         }
 
+        // Кривая (T5): ось - сэмплы квадратичной Безье между концами после привязки; длина - по ломаной; радиус кривизны не меньше MinCurveRadiusM.
+        Span<Vec2> curve = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+        int curveN = 2;
+        curve[0] = pa;
+        curve[1] = pb;
+        if ((b.Flags & BuildRoadFlags.Curve) != 0)
+        {
+            var cp = new Vec2(b.ControlX, b.ControlZ);
+            if (!float.IsFinite(cp.X) || !float.IsFinite(cp.Z))
+            {
+                return RejectReason.InvalidArgument;
+            }
+
+            c.Curve = true;
+            curveN = NetworkBuilder.SampleQuadratic(pa, cp, pb, curve);
+            len = 0f;
+            for (int i = 1; i < curveN; i++)
+            {
+                len += Dist(curve[i - 1], curve[i]);
+            }
+
+            c.LengthM = len;
+            RejectReason sharp = CheckCurvature(curve[..curveN], ref c);
+            if (sharp != RejectReason.None)
+            {
+                return sharp;
+            }
+        }
+
         // Минимум оси - по базовому отступу: увеличенные отступы ADR-0028 у коротких сегментов сжимаются построителем, а не отклоняют их.
         if (len < (2f * o.NodeSetback) + o.MinLaneLength)
         {
@@ -232,15 +262,13 @@ internal static partial class ToolValidator
         // Дорога по профилю (RP7): полосы ±край профиля не должны накладываться на соседние дороги вне дисков общих узлов.
         if (c.Profile >= 0)
         {
-            Vec2 dir = new Vec2(pb.X - pa.X, pb.Z - pa.Z) * (1f / len);
-            float sa = na >= 0 ? bld.IncrementalSetback(na, pb, 0f) : o.NodeSetback;
-            float sb = nb >= 0 ? bld.IncrementalSetback(nb, pa, 0f) : o.NodeSetback;
+            float sa = na >= 0 ? bld.IncrementalSetback(na, curve[1], 0f) : o.NodeSetback;
+            float sb = nb >= 0 ? bld.IncrementalSetback(nb, curve[curveN - 2], 0f) : o.NodeSetback;
             sa = MathF.Min(sa, len * 0.5f);
             sb = MathF.Min(sb, len * 0.5f);
-            Span<Vec2> axis = stackalloc Vec2[2];
-            axis[0] = pa + (dir * sa);
-            axis[1] = pb - (dir * sb);
-            RejectReason ov = CheckFootprint(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, c.SplitSegA >= 0 ? c.SplitSegA : c.SplitSegB, ref c);
+            Span<Vec2> axis = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+            int an = TrimAxis(curve[..curveN], sa, sb, axis);
+            RejectReason ov = CheckFootprint(w, axis[..an], n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, c.SplitSegA >= 0 ? c.SplitSegA : c.SplitSegB, ref c);
             if (ov != RejectReason.None)
             {
                 return ov;
@@ -304,15 +332,84 @@ internal static partial class ToolValidator
             return RejectReason.Capacity;
         }
 
-        if (!n.CanAllocBlock(n.LanePointArena, laneTotal * 2) || !n.CanAllocBlock(n.SegmentPointArena, 2))
+        if (!n.CanAllocBlock(n.LanePointArena, laneTotal * curveN) || !n.CanAllocBlock(n.SegmentPointArena, curveN))
         {
             c.CapKind = CapacityKind.LanePoints;
             return RejectReason.Capacity;
         }
 
         c.Mechanism = (byte)((na >= 0 && n.Nodes[na].FirstArm >= 0) || (nb >= 0 && n.Nodes[nb].FirstArm >= 0) ? 1 : 0);
-        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: false);
+        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: c.Curve);
         return RejectReason.None;
+    }
+
+    /// <summary>Наименьший радиус кривизны оси кривой (T5; конфигурации пока нет - константа ядра).</summary>
+    internal const float MinCurveRadiusM = 12f;
+
+    // Радиус кривизны ломаной по описанной окружности соседних троек точек (без тригонометрии): меньше MinCurveRadiusM - TooSharp в точке перегиба.
+    private static RejectReason CheckCurvature(ReadOnlySpan<Vec2> pts, ref ToolCheck c)
+    {
+        for (int i = 1; i + 1 < pts.Length; i++)
+        {
+            Vec2 a = pts[i - 1];
+            Vec2 b = pts[i];
+            Vec2 d = pts[i + 1];
+            float ab = Dist(a, b);
+            float bd = Dist(b, d);
+            float ad = Dist(a, d);
+            float cross = MathF.Abs(((b.X - a.X) * (d.Z - a.Z)) - ((b.Z - a.Z) * (d.X - a.X)));
+            if (cross > 1e-6f && (ab * bd * ad) / (2f * cross) < MinCurveRadiusM)
+            {
+                Mark(ref c, EntityKind.None, -1, 0, b);
+                return RejectReason.TooSharp;
+            }
+        }
+
+        return RejectReason.None;
+    }
+
+    // Ломаная pts без отступов концов (sa от начала, sb от конца по длине): то, что останется осью сегмента после AddSegment.
+    private static int TrimAxis(ReadOnlySpan<Vec2> pts, float sa, float sb, Span<Vec2> dst)
+    {
+        float total = 0f;
+        for (int i = 1; i < pts.Length; i++)
+        {
+            total += Dist(pts[i - 1], pts[i]);
+        }
+
+        float end = total - sb;
+        int k = 0;
+        dst[k++] = PointAlong(pts, sa);
+        float acc = 0f;
+        for (int i = 1; i < pts.Length - 1; i++)
+        {
+            acc += Dist(pts[i - 1], pts[i]);
+            if (acc > sa + 0.01f && acc < end - 0.01f)
+            {
+                dst[k++] = pts[i];
+            }
+        }
+
+        dst[k++] = PointAlong(pts, end);
+        return k;
+    }
+
+    private static Vec2 PointAlong(ReadOnlySpan<Vec2> pts, float s)
+    {
+        float acc = 0f;
+        for (int i = 1; i < pts.Length; i++)
+        {
+            float d = Dist(pts[i - 1], pts[i]);
+            if (acc + d >= s || i == pts.Length - 1)
+            {
+                float f = d > 0f ? Math.Clamp((s - acc) / d, 0f, 1f) : 0f;
+                return pts[i - 1] + ((pts[i] - pts[i - 1]) * f);
+            }
+
+            acc += d;
+        }
+
+        return pts[0];
     }
 
     /// <summary>
