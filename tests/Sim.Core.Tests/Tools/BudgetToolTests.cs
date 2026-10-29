@@ -133,7 +133,7 @@ public sealed class BudgetToolTests
 
         // Граница: ровно по кредитному лимиту проходит, на единицу дороже - нет.
         CityBudget b = sim.World.City!.Budget!;
-        long room = before + b.CreditLimit(in sim.World.City.Cfg.Economy);
+        long room = before + b.CreditLimit(in sim.World.City.Cfg.Economy, 0);
         Assert.True(room > 0);
         long perM = 1;
         ToolsDesc cheap = _costs;

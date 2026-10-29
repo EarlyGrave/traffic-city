@@ -83,6 +83,14 @@ internal static class CityHash
         {
             Parking.ParkingHash.Add(ref h, w);   // раздел парковки (parking.md §13): только в режиме, хэш прочих миров не меняется (PK1)
         }
+
+        if (w.Progression != null)
+        {
+            // раздел прогрессии (progression.md §2.4, §4.4): вехи, открытое, показатели города и счётчик замков - только при прогрессии; без неё кольцо KPI - наблюдатель, хэш прежний
+            w.Progression.AddToHash(ref h);
+            c.Kpi.AddToHash(ref h);
+            h.Add(w.Counters.LockedRejects);
+        }
     }
 
     /// <summary>
@@ -110,6 +118,7 @@ internal static class CityHash
         h.Add(b.DebtDays);
         h.Add(b.OverLimitDays);
         h.Add(b.Insolvent);
+        h.Add(b.WarnLevel);   // PG5 (progression.md §5): уровень предупреждения - состояние (гистерезис), хэш econ-сценариев сменился осознанно
         for (int i = 0; i < b.UndoCredits.Length; i++)
         {
             ref readonly UndoCredit u = ref b.UndoCredits[i];

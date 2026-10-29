@@ -25,6 +25,8 @@ public struct ScenarioDesc
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
     public float WorldGridOriginX, WorldGridOriginZ;   // начало мировой сетки 8 м (ADR-0030, road-profiles.md §4.1), м; по умолчанию 0. Хранится в сейве (PARM), в хэш не входит: поведение задаст RP5/RP9
     public RoadProfilesDesc RoadProfiles;  // каталог профилей дорог (ADR-0030, road-profiles.md); Profiles = null - режим legacy: прежняя геометрия, хэши и сейвы побитово прежние
+    public ProgressionDesc Progression;    // вехи и разблокировки (ADR-0034, progression.md §4.1): только при Demand.Model = Residents; Enabled = false - всё открыто, хэш и сейв побитово прежние
+    public TerrainDesc Terrain;            // рельеф и вода (ADR-0036, terrain.md §9.1): Enabled = false (по умолчанию) - массивы не выделяются, хэш и сейв побитово прежние
 }
 
 public struct SimCapacities

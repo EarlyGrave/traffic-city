@@ -27,7 +27,7 @@ public class LayoutTests
         { typeof(SegmentLoad), 12 },
         { typeof(SignalState), 8 },
         { typeof(RouteStep), 8 },
-        { typeof(SimEvent), 24 },
+        { typeof(SimEvent), 48 },   // EV1: + EventPlace (20 Б) и C
         { typeof(VehicleHandle), 8 },
         { typeof(NodeHandle), 8 },
         { typeof(SegmentHandle), 8 },
@@ -87,6 +87,8 @@ public class LayoutTests
         Assert.Equal(8, (int)Marshal.OffsetOf<SimEvent>(nameof(SimEvent.Tick)));
         Assert.Equal(16, (int)Marshal.OffsetOf<SimEvent>(nameof(SimEvent.A)));
         Assert.Equal(20, (int)Marshal.OffsetOf<SimEvent>(nameof(SimEvent.B)));
+        Assert.Equal(24, (int)Marshal.OffsetOf<SimEvent>(nameof(SimEvent.Place)));
+        Assert.Equal(44, (int)Marshal.OffsetOf<SimEvent>(nameof(SimEvent.C)));
     }
 
     [Fact]
@@ -105,7 +107,7 @@ public class LayoutTests
     private static readonly string[] _notBlittableByDesign =
     {
         nameof(ScenarioDesc), nameof(NetworkDesc), nameof(DemandDesc), nameof(TransitDesc), nameof(BusRouteDesc), nameof(LodDesc), nameof(LodTourDesc), nameof(LoadOptions), nameof(CityDesc),
-        nameof(RoadProfileDesc), nameof(RoadProfilesDesc),
+        nameof(RoadProfileDesc), nameof(RoadProfilesDesc), nameof(ProgressionDesc), nameof(TerrainDesc), nameof(TerrainWaterDesc), nameof(TerrainRiverDesc),
     };
 
     [Fact]

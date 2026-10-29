@@ -223,6 +223,8 @@ internal static class TripLegs
             {
                 res.LegParkWait[r] = -1;   // «ждёт место»: отметка первого отказа на ногу; при успехе заменится на реальное ожидание
                 w.Counters.ParkNoSpotWaits++;
+                c.Kpi.OnNoParking(c, dest);   // случай недовольства NoParking и жалоба у здания цели (progression.md §6.1)
+                w.Places.OnNoSpot(w, c, dest);   // EV1: ParkingFull у здания цели (с окном и остыванием)
             }
 
             return Begin.NoSpot;
@@ -394,6 +396,7 @@ internal static class TripLegs
         if (outbound)
         {
             w.Counters.ResToursCancelled++;
+            c.Kpi.OnTourCancelled(c, r);   // случай TourCancelled и жалоба у дома (progression.md §6.1)
             if (parkWait)
             {
                 w.Counters.ParkToursDropped++;
@@ -691,6 +694,7 @@ internal static class TripLegs
             if (outbound)
             {
                 w.Counters.ResToursCancelled++;
+                c.Kpi.OnTourCancelled(c, r);   // случай TourCancelled и жалоба у дома (progression.md §6.1)
                 FinishTour(w, c, r);
             }
             else
@@ -778,6 +782,7 @@ internal static class TripLegs
         res.AgentGen[r] = 0;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         bool returning = res.LegDest[r] == res.Home[r];
+        c.Kpi.OnLeg(mode, Calendar.TicksToDs(now - res.LegReq[r]), !returning && res.PlanKind[tour] == TourKind.Work, skim, res.Home[r], res.Home[r] >= 0 ? c.Buildings.Pool.GenerationOf(res.Home[r]) : 0);   // показатели (progression.md §2.3): от заявки до прибытия
         if (returning)
         {
             if (c.Parking != null && res.CarWalkMm[r] < 0)
@@ -842,6 +847,9 @@ internal static class TripLegs
         if ((uint)r < (uint)w.City!.Residents.HighWater)
         {
             w.City.Residents.LegWait[r] += (int)waitTicks;
+            int stop = w.City.Residents.LegStopA[r];
+            int stopGen = (uint)stop < (uint)w.Net.BusStopCount ? w.Net.BusStops[stop].Generation : 0;
+            w.City.Kpi.OnBoarded(waitTicks, stop, stopGen);   // случай LongStopWait и жалоба у остановки (progression.md §6.1)
         }
     }
 

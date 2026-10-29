@@ -127,9 +127,26 @@ internal static partial class SaveValidator
         for (int k = 0; k < ops.Count; k++)
         {
             int seg = ops.TargetIndex[k];
+            if (ops.Kind[k] == (byte)ToolOpKind.ShrinkLanes)
+            {
+                // T5: правка полос занятого сегмента. Цель упакована в TargetGen (ToolOps.PackReshape); сегмент жив и не сносится, одна операция на сегмент.
+                ToolOps.UnpackReshape(ops.TargetGen[k], out int ab, out int ba, out RoadKind kind, out int profile, out bool _);
+                if (ops.Id[k] <= prev || ops.Id[k] >= ops.NextId || ops.Flags[k] != 0 || ops.TargetGen[k] < 0 || !n.SegmentAlive(seg) ||
+                    (n.Segments[seg].Flags & SegmentFlags.Closing) != 0 || ops.FindAny(seg) != k || ab > NetworkBuilder.MaxLanesPerDirection ||
+                    ba > NetworkBuilder.MaxLanesPerDirection || ab + ba == 0 || (int)kind > 1 || (profile >= 0 && (n.Profiles == null || profile >= n.Profiles.Count)) ||
+                    ops.StartTick[k] > w.Tick || ops.LastProgressTick[k] < ops.StartTick[k] || ops.LastProgressTick[k] > w.Tick ||
+                    ops.LastStallTick[k] < ops.StartTick[k] || ops.LastStallTick[k] > w.Tick || ops.BestRemaining[k] < 0)
+                {
+                    return Bad(c, k, 51);
+                }
+
+                prev = ops.Id[k];
+                continue;
+            }
+
             if (ops.Id[k] <= prev || ops.Id[k] >= ops.NextId || ops.Kind[k] != (byte)ToolOpKind.RemoveSegment || (ops.Flags[k] & ~ToolOpFlags.KeepNodes) != 0 ||
                 !n.ResolveSegment(seg, ops.TargetGen[k]) || ops.TargetGen[k] == 0 || (n.Segments[seg].Flags & SegmentFlags.Closing) == 0 ||
-                ops.FindSegment(seg) != k || ops.StartTick[k] > w.Tick || ops.LastProgressTick[k] < ops.StartTick[k] || ops.LastProgressTick[k] > w.Tick ||
+                ops.FindAny(seg) != k || ops.StartTick[k] > w.Tick || ops.LastProgressTick[k] < ops.StartTick[k] || ops.LastProgressTick[k] > w.Tick ||
                 ops.LastStallTick[k] < ops.StartTick[k] || ops.LastStallTick[k] > w.Tick || ops.BestRemaining[k] < 0)
             {
                 return Bad(c, k, 51);

@@ -27,7 +27,7 @@ public class ToolPayloadSizesTests
         { typeof(BuildRoadCmd), 56 },
         { typeof(RemoveRoadCmd), 12 },
         { typeof(UpgradeRoadCmd), 20 },
-        { typeof(SplitRoadCmd), 20 },
+        { typeof(SplitRoadCmd), 36 },
         { typeof(MergeAtNodeCmd), 16 },
         { typeof(SetArmControlCmd), 12 },
         { typeof(SetTurnBanCmd), 12 },
@@ -35,7 +35,7 @@ public class ToolPayloadSizesTests
         { typeof(InsertBusStopCmd), 36 },
         { typeof(RemoveBusStopCmd), 8 },
         { typeof(RemoveBusRouteCmd), 8 },
-        { typeof(SetBusRouteParamsCmd), 16 },
+        { typeof(SetBusRouteParamsCmd), 20 },   // T9: + Flags (приостановка / возобновление)
         { typeof(SetSignalPlanCmd), 50 },
         { typeof(SetNodeControlCmd), 12 },
         { typeof(CreateBusRouteCmd), 20 },
@@ -72,8 +72,9 @@ public class ToolPayloadSizesTests
     {
         Assert.Equal(20, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.LanesAB)));
         Assert.Equal(23, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Flags)));
-        Assert.Equal(24, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Cx)));
-        Assert.Equal(28, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Profile)));   // RP7: делит байты с Cz
+        Assert.Equal(24, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.CxDm)));
+        Assert.Equal(26, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.CzDm)));
+        Assert.Equal(28, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.Profile)));   // T5: отдельно от контрольной точки
         Assert.Equal(32, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreOf)));
         Assert.Equal(40, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeA)));
         Assert.Equal(48, (int)Marshal.OffsetOf<BuildRoadCmd>(nameof(BuildRoadCmd.RestoreNodeB)));
@@ -146,19 +147,17 @@ public class ToolPayloadSizesTests
     }
 
     [Fact]
-    public void NotYetImplementedToolCommands_AreNotSupported_AndStateIsUntouched()
+    public void BusToolCommands_WithDeadHandles_AreRejected_AndStateIsUntouched()
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());
         sim.Step(5);
-        var seg = new EntityRef(0, 1);
+        var seg = new EntityRef(0, 12345);   // T9: команды реализованы; мёртвый handle - InvalidHandle без эффекта
         Command[] cmds =
         {
-            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 1),
-            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 2),
-            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 3),
-            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 4),
-            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 5),
-            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 6),
+            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 1),
+            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 2),
+            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 3),
+            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 4),
         };
         foreach (Command c in cmds)
         {
@@ -169,10 +168,10 @@ public class ToolPayloadSizesTests
         int rejected = 0;
         foreach (SimEvent e in sim.Events)
         {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 6)
+            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= cmds.Length)
             {
                 rejected++;
-                Assert.Equal((int)RejectReason.NotSupported, e.A);
+                Assert.Equal((int)RejectReason.InvalidHandle, e.A);
                 Assert.Equal((int)cmds[e.Tag - 1].Kind, e.B);
             }
         }
@@ -183,7 +182,7 @@ public class ToolPayloadSizesTests
         twin.Step(5);
         for (int i = 0; i < cmds.Length; i++)
         {
-            Assert.True(twin.Enqueue(new Command { Kind = (CommandKind)99, Tag = (uint)(i + 1) }));   // тот же счёт отказов, но заведомо без эффекта
+            Assert.True(twin.Enqueue(Command.MakeRemoveRoad(new RemoveRoadCmd { Seg = seg }, (uint)(i + 1))));   // тот же счёт отказов (InvalidHandle), но заведомо без эффекта
         }
 
         twin.Step(1);
@@ -191,8 +190,7 @@ public class ToolPayloadSizesTests
     }
 
     [Theory]
-    [InlineData(BuildRoadFlags.AutoSplit)]
-    [InlineData(BuildRoadFlags.Curve)]
+    [InlineData(16)]   // T5: AutoSplit и Curve реализованы (SplitMergeTests, CurveTests); неизвестный бит - NotSupported
     public void BuildRoad_NewFlags_AreNotSupported(byte flags)
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());

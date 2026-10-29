@@ -31,6 +31,9 @@ public sealed class LoadedScenario
 
     public ScenarioDesc Desc { get; }
 
+    /// <summary>Строковые id вех секции <c>progression</c> (индекс = веха ядра); пусто без прогрессии. Тексты и названия вех клиент берёт по id (progression.md §4.1).</summary>
+    public string[] MilestoneIds { get; init; } = [];
+
     /// <summary>Таймлайн команд (<c>timeline</c>, modding.md §3.5); пустой, если ключа нет. В <see cref="Desc"/> не входит.</summary>
     public IReadOnlyList<TimelineEntry> Timeline { get; }
 
@@ -201,6 +204,7 @@ public static partial class ScenarioLoader
 
         CityDesc town = ParseTown(root, residents, catalog);
         ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
+        ProgressionDesc progression = ParseProgression(root.OptObject(ProgressionKey), residents, roadProfiles, out string[] milestoneIds);
         ToolsDesc tools = ParseTools(root.OptObject("tools"));
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
@@ -228,8 +232,9 @@ public static partial class ScenarioLoader
             Rules = rules,
             VehicleTypes = types,
             RoadProfiles = roadProfiles,
+            Progression = progression,
         };
-        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline);
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds };
     }
 
     // ---------------------------------------------------------------- units

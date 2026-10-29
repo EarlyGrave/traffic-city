@@ -283,6 +283,15 @@ ComplaintInfo (32 Б): long Tick; byte Kind; byte ObjKind /*EntityKind: Segment,
 - Хост (`src/Sim.Scenarios/Game/ReadyCity.cs`): `Create` → сутки 0 в `aggregate` (прыжки, секунды) → на границе — `SetTripExecution(micro)` →
   micro до **06:00 первых суток** (18 000 тиков ≈ 11 с [Оценка] при 0.6 мс/тик). Итог — первый сейв `user://saves/ready-city.tcsave`; повторная «новая игра» на том же seed
   грузит его. Кольцо KPI к старту уже заполнено ночью и утром суток 1 (ворота считаются честно).
+- **Как начать игру (клиенту, факт PG6).** `using Sim.Scenarios; using Sim.Scenarios.Game;` →
+  `ScenarioDesc d = ScenarioLoader.LoadInfo(путь_к_game-city.json).Desc;` (при желании `d.Seed = …`) →
+  `CreateStatus st = ReadyCity.TryPrepare(in d, new SimRuntimeOptions { WorkerThreads = 3 }, new ReadyCityOptions { StopHour = 6, Progress = (done, total) => … }, out Simulation? sim);`
+  (или `ReadyCity.Prepare(in d, rt)` - бросает исключение при ошибке). Вызывать в фоновом потоке: **≈ 45 с при 3 потоках, ≈ 84 с при одном** [Замер, облако];
+  `Progress` вызывается примерно раз в 1 000 тиков (всего 90 000) - для полосы загрузки. Вернувшийся `Simulation` стоит на тике 90 000 (06:00 суток 1), режим micro; дальше его
+  отдают `SimThreadHost`. Сейв результата (`ready-city.tcsave`) ускоряет повторные «новые игры» на том же seed. Headless: `Sim.Headless ready-city --scenario game-city --days N [--exec micro|aggregate] [--seed S] [--threads T]`
+  и `bench --scenario game-city --ready-city --window am_peak`.
+- **Отличие от первоначальной спеки:** «сутки 0 в aggregate» невозможны - `SetTripExecution(aggregate)` вступает на границе суток и калибрует K по уже прошедшим micro-суткам,
+  поэтому все 1.25 суток идут micro (первые числа §7.3 про «11 с» неверны). В aggregate показатели ворот бессмысленны (машин нет, K3 ≈ 0 %), ворота вех там открыты - прогрессию гонять только в micro.
 - Почему не со старта сценария: в нулевые сутки нет дневного прохода (рост, найм), а утренний пик с нуля — 7 часов пустого города.
 - Почему не готовый сейв в сборке: формат сейва ещё меняется (`world_version` растёт каждую волну); генерация на месте всегда в актуальной версии.
 
@@ -356,3 +365,108 @@ UI8+ — после PG5; UI-N — после PG6. Плейтест 3 — пос�
 
 ## 10. Результаты задач
 (заполняют PG1–PG7: отличия от спеки, замороженная поверхность, числа калибровки)
+
+### PG1 + PG2 (агент 183, облако, 2026-10-29; ветка `claude/cool-newton-91p1tr-n5`)
+**Замороженная поверхность (`Api/Progression.cs`, `Api/Simulation.Progression.cs`).**
+- `enum Feature : byte` 0..10 (§4.2), `enum KpiKind : byte` (`None`, `TravelMin`, `IdlePct`, `BusSharePct`, `SatisfactionPct`, `WorkMin`), `enum ComplaintKind : byte` 0..5,
+  `MilestoneFlags.GatesAny = 1`, `KpiGate` (8 Б: `Kpi`, `IsMin`, `R`, `Value`), `MilestoneDesc` (48 Б: `Population`, `Grant`, `CreditDays`, `Area`, `Flags`, `G0`, `G1`, `Features`,
+  `ProfileFirst`, `ProfileCount`), `AreaRect` (16 Б, м), `ProgressionDesc` (`Enabled`, `LockedFeatures`, `LockedProfiles`, `MinLegs`, `Areas`, `Milestones`, `ProfileIdx`) в `ScenarioDesc.Progression`.
+- `ProgressionInfo` (`Features`, `Reached`, `MilestoneCount`, `AreaStage`, `CreditDaysBonus`, `NextPopulation`, `NextGateMask`, `NextGateValue0/1`), `MilestoneInfo` (`Desc`, `ReachedTick`),
+  `KpiHour` (88 Б, §2.3), `CityKpiInfo` (окно = полные часы кольца + текущий час: `HoursFilled`, `CurrentHourTicks`, `Legs*`, `TravelMinX10`, `Travel{Car,Bus,Walk}MinX10`, `WorkMinX10`,
+  `BusSharePermille`, `WalkSharePermille`, `IdlePermille`, `SatisfactionPermille`, `Inc*`, `StuckNow`, `Gridlock`, `Balance`, `TrendPerDay`, `DaysToLimit`, `HasBudget`, `Population`, `DaysFilled`),
+  `ComplaintInfo` (40 Б: `Tick`, `Seq`, `Kind`, `Count`, `Place: EventPlace`).
+- Вызовы: `HasProgression`, `GetProgression`, `GetMilestone(i)`, `IsProfileUnlocked(p)`, `IsFeatureUnlocked(f)`, `GetCityKpi`, `CopyKpiHours(Span<KpiHour>)` (от старого к новому, до 24),
+  `GetKpiCurrentHour`, `CopyKpiDays(Span<long>)` (баланс на конце суток, до 32), `CopyComplaints` (заглушка до PG4, 0).
+- `RejectReason.Locked = 17` (текст клиента в `RejectMessages`), `SimEventKind` 59-62 (`MilestoneReached`, `MilestoneGated`, `BudgetWarning`, `Complaint`), `SimCounters.LockedRejects`.
+
+**Отличия от спеки.**
+- Единицы порогов и показателей - целые ×10: минуты ×10 и ‰ (`KpiGate.Value`, `CityKpiInfo`), загрузчик переводит `round(v · 10)`; K4 - тоже в ‰.
+- Сдвиг часа - по смене игрового часа суток (`HourOf(t) = (t mod D) · 24 / D`), а не `(tick + 1) % HourTicks`: границы часов совпадают с границами суток при любом `DayTicks`.
+  Прыжки агрегата (`IdleSpan`) останавливаются на последнем тике часа.
+- K1 - длительность ноги от заявки до прибытия (`TicksToDs(now − LegReq)`) у всех способов (у автобуса - не обобщённая стоимость).
+- `ComplaintInfo` - 40 Б с `EventPlace` (EV1) вместо полей места 32 Б; добавлен `Seq`.
+- `CityKpiInfo`/`ProgressionInfo` - новые POD (в спеке только перечислены); `DaysToLimit` - в `CityKpiInfo` (в `CityBudgetInfo` раскладку не трогали).
+- Пороги случаев (`LongCommute` 60 игровых мин или 2 × ским, `LongStopWait` 20 игровых мин) - константы `CityKpi` [Старт], в сценарий не вынесены.
+- `ProgressionState` лежит в `World.Progression`, кольцо - `CityWorld.Kpi`. Проверка определений - одна функция `ProgressionState.Validate` (Create и загрузка).
+- Сейв: `world_version` 11, `PARM` 240, `CNTR` 173, `CBGT` 31 (`WarnLevel`, в хэш - с PG5), блоки `CKPI` и `PROG` (save-format.md §12). `MigrationV11` создаёт пустой `CKPI` у мира с жителями.
+- Корпус: полный набор `w11-*` + `w11-s1k-res-econ-prog-t3600` (s1k-res-econ + секция прогрессии); бюджет корпуса 25 → 32 МБ (≈ 29.7 МБ). Файла `w11-game-city-d1` нет - сценарий `game-city` делает PG6.
+
+**Осталось PG3:** `Progression.Check` в диспетчере и превью, проверка вех в 9r (на сдвиге часа - `CityKpi.OnTickEnd`, после него), грант, бонус кредита в `CreditLimit`, области, события 59-60,
+`LockedRejects++`. Готово для PG3: `ProgressionState.MilestoneForFeature/Profile`, `CityKpi.SumWindow/Value`, ворота считает `Simulation.GetProgression` (`GateMiss`).
+
+### PG3 + PG4 + PG5 (агент 185, облако, 2026-10-29; ветка `claude/cool-newton-91p1tr-n7`)
+**PG3 - вехи и замки.**
+- `City/Progression.Rules.cs` (`static class Progression`): `Check(World, in Command, out milestone)` - чистая, O(1); `InOpenArea`, `GateMiss` (общий с `GetProgression`), `CheckMilestone`,
+  `CreditDaysBonus`. Без прогрессии - выход первой строкой.
+- Место проверки: `ToolValidator.Check` после разбора команды, если причина не структурная (`InvalidArgument`/`InvalidHandle`/`NotSupported`/`UnknownKind`), до `ToolCosts.Resolve` -
+  поэтому превью и применение дают один вердикт; `Locked` перекрывает геометрические отказы. `PaintZone` и `SetBudgetPolicy` (вне валидатора) - тот же вызов в диспетчере (`Locked`) и
+  в превью зонирования. Превью: `PreviewIssue { Code = 17, Value = веха, которая откроет (-1) }` (`ToolCheck.LockMilestone`). `LockedRejects++` - в `CommandDispatcher.Rejected`.
+- Сопоставление команд: `UpgradeRoad` - `ArterialUpgrade`, только если меняются профиль, зеркальность, полосы, тип или снимается профиль (одна скорость - открыта); профиль - если отличается от
+  текущего. `SetNodeControl` - `SignalsFixed` только для `Signal`; `SetSignalPlan` - `Adaptive` -> `SignalsAdaptive`, иначе `SignalsFixed`; `SetBudgetPolicy` - `Taxes`, только если
+  меняются ставки или плата (при казне). `BuildRoad` без профиля (`Profile = 0`) профильный замок не проверяет.
+- Области: `ToolValidator.InBounds` - точка в объединении открытых областей `0..AreaStage` и в границах инструментов, иначе `OutOfBounds`.
+- Вехи: `CheckMilestone` - в конце `CityKpi.OnTickEnd` на сдвиге часа и в `CityPhase.Periodic` на границе суток после казны и `OnDayEnd`. Одна веха за вызов (на тике конца суток - два
+  вызова). Ворота - по окну `SumWindow(includeCurrent)`, как в `GetProgression`; веха без ворот данных не требует. Грант - `Ledger.Transfer(External, City, grant, Subsidy)` при `city_budget`.
+- Кредит: `CityBudget.CreditLimit(in e, bonusDays)` = `(credit_days + бонус) · IncomeEwma`; бонус берут все места (`BudgetFlows`, `ToolCosts`, `GetCityBudget`, `DaysToLimit`).
+
+**PG4 - жалобы.** `Metrics/Complaints.cs` (в `CityKpi.Complaints`): накопитель - своя открытая адресация 256 слотов на вид (заполнение ≤ 192, дальше - `Overflow`); выпуск в
+`CityKpi.OnTickEnd` после вех: два прохода по видам 1..5 (сначала лучшее место каждого вида, затем второе), счёт ≥ 3, ≤ 2 на вид, ≤ 6 за час, ничья - меньший индекс; остывание 6 игровых
+часов - по кольцу 64 выпусков. Событие `Complaint`: A = вид, B = `Seq`, C = счёт, `Place` (сегмент - середина оси, здание - центр участка, остановка - точка на полосе). Хуки случаев - методы
+`CityKpi.OnLongWait/OnNoParking/OnTourCancelled`, параметры места у `OnLeg`/`OnBoarded` (дом жителя, остановка посадки `LegStopA`). Вне хэша и сейва (тест `Complaints_OutsideHashAndSave`).
+
+**PG5 - банкротство.** `BudgetFlows.Warn` на границе суток после лимита: уровень 1 при ≤ 7 днях до лимита, 2 при ≤ 2, событие `BudgetWarning` (A = уровень, B = дни) только вверх,
+снятие при > 10 днях или тренде ≥ 0. `WarnLevel` (CBGT 31) - в хэше раздела казны: хэши econ-сценариев изменились (эталоны перегенерированы отдельным коммитом). `Insolvent = 1` -
+платные команды (цена > 0 после undo-кредита) - `InsufficientFunds` в `ToolValidator.Check` (превью = применение); возвраты, undo в окне, `SetBudgetPolicy`, `SetBusRouteParams`,
+`RemoveBusRoute`, бесплатное - проходят. Выход - прежний `BudgetRecovered` на границе суток.
+Замеры тестов (не калибровка): выход из банкротства на `s1k-res` (агрегат, `credit_days` 0, долг 30 · `IncomeEwma` после 3 суток) - налог R 10 % - **14 суток**, без правки - **17 суток**
+[Замер `BankruptcyTests`]. Жалобы на `s10k-res-overload` - **22 за 10 игровых часов** (≤ 6 за час, ≤ 2 на вид выполнено) [Замер `ComplaintsTests.Overload_AtMostSixPerGameHour`, Release].
+Хэш: без секции `progression` и без казны состояние мира прежнее; у корпуса `w11-s1k-res-d3` хэш сменился только через `EventsDropped` (события `Complaint` за один `Step(216000)`
+генератора переполняют буфер событий).
+
+**Клиент:** `UiNotifyMap` - тосты 59-62 («Новая веха: № N, жителей …», «веха ждёт трафика», «Через N дн. казна уйдёт за кредитный лимит», жалоба по виду); `RejectMessages` - подсказка к
+`InsufficientFunds`. Имена вех по `id` клиент пока не показывает (номер вехи).
+
+**Осталось PG6:** сценарий `game-city.json`, `ReadyCity.Prepare`, калибровка порогов ворот, `max_immigrants`, `r_bias`, казны (E7) и проверка частоты жалоб на игровом городе.
+
+### PG6 (агент 186, облако, 2026-10-29; ветка `claude/cool-newton-91p1tr-n8`)
+**Что сделано.** `scenarios/game-city.json` (= `s10k-res` + `economy` с `city_budget`, `credit_days` 20, 20 на жителя при старте; `tools` (цены §2.8, `inverse_capacity` 1024, `world_bounds` ±1720 м);
+`residents` `initial_fill` 0.07, `max_immigrants_per_day` 0.03, `r_bias` 200; `progression`: 4 области ±1720/2320/2920/3720 м и вехи M1-M6 по §3.2). `src/Sim.Scenarios/Game/ReadyCity.cs`
+(`TryPrepare`/`Prepare`/`Advance`/`TargetTick`, `ReadyCityOptions { StopHour, Progress }`), `Sim.Headless ready-city`, `bench --ready-city`, тесты `ReadyCityTests`, `game-city` в `ResScenariosTests`.
+Отличие: сутки 0 нельзя вести агрегатом (см. §7.3) - подготовка 1.25 суток micro, ≈ 45 с на 3 потоках.
+
+**Ручки (итог).**
+| Ручка | Было (спека) | Стало | Почему |
+|---|---|---|---|
+| M1 порог населения | 11 400 | **11 300** | старт 11 040-11 167, суточный прирост ограничен 3 % (+331…+335) - 11 400 не набиралось в первые сутки |
+| `maint_*` | 15 / 30 / 40 / 3 | **23 / 46 / 62 / 5** (×1.5) | см. казну ниже |
+| Ворота M3 (или) | K3 ≤ 45 %, K1 ≤ 40 | **K3 ≤ 9 %, K1 ≤ 115 мин** | K1 и K3 у старта: 137 мин и 15.7 %; прежние пороги открыты с первой секунды |
+| Ворота M5 (и) | K1 ≤ 40, K3 ≤ 45 | **K1 ≤ 110, K3 ≤ 8** | на ступень строже M3 |
+| `initial_fill`, `max_immigrants`, `r_bias`, `credit_days`, цены, M2, M4, M6 | по §7.2 | без изменений | второй итерации не потребовалось |
+
+K1 в «минутах» - игровые минуты (1 с симуляции = 24 игровых с), поэтому числа 110-140, а не 40. K2 (автобус) на старте 0.0 % на всех seed, K4 96.8-100 %.
+
+**Приёмка §7.4 (Release, 3 потока для суточных прогонов; seed 20261024 / 11 / 12).**
+| Пункт | seed 20261024 | 11 | 12 |
+|---|---|---|---|
+| Жителей на старте (06:00 суток 1) | 11 040 | 11 115 | 11 167 |
+| 1. `GridlockFlag` за 10 суток micro (опрос каждые 20 тиков) | не был | не был | не был |
+| 1. `res_stuck` за 10 суток | 0 | 0 | 0 |
+| 1. Доля ожиданий ≥ 60 с, окно `am_peak` суток 1 (`bench --ready-city`) | 0 % (0 эпизодов) | 0 % | 0 % | 
+| 1. Поездок в окне | 2 011 | 1 987 | 1 868 |
+| 2. M1, тиков от старта (лимит 18 000) | 8 999 | 8 999 | 8 999 |
+| 3. `Insolvent` за 8 суток aggregate / 10 суток micro | 0 / 0 | 0 / 0 | 0 / 0 |
+| 3. Тренд казны (`IncomeEwma - ExpenseEwma`) на конец суток 1…8 aggregate | +28 442 … +26 589 (всегда > 0) | > 0 | > 0 |
+| 4. M3 за 10 суток micro (население 14 831 / 14 932 / 15 001 к концу) | не взята | не взята | не взята |
+| M2 взята, тиков от старта | 152 999 (micro) | 152 999 | 152 999 |
+Медиана ожиданий ≥ 60 с по 3 seed - **0 %** (бюджет ≤ 0.15 %). Окно идентично замеру L46: жалобы на `s10k-res` не изменились экономикой.
+- Пункт 5: `bench --scenario game-city --ready-city --window am_peak` (1 поток, загруженный контейнер): tick p95 **1.037 / 1.027 / 1.165 мс**, `alloc_bytes_per_tick` **0**, `stuck` 0. Бюджета у s10k нет (справочно, `s10k-res` по L46: 0.62-0.67 мс на ПК разработчика).
+- Казна (E7): после калибровки `maint_road_per_lane_km_day` дороги 32 282 + автобусы 15 542 = **47 824 в сутки**. `ExpenseEwma` сходится к ним медленно (шаг 1/8: 5 978 → 36 813 за 10 суток), поэтому
+  показанный тренд в первые 10 суток завышен (+28 тыс.). Установившийся тренд: доход ≈ 4.2 на жителя в сутки (≈ 52.5 тыс. при 12.4 тыс. жителей, сутки 4) → **≈ +9 % дохода при 12.4 тыс., ≈ 0 % при старте 11.3 тыс., ≈ +20 % при 14.4 тыс.**
+  (содержание от роста города не зависит, пока игрок не строит). Целевые +5…10 % попадают на сутки 3-5.
+- Баланс казны: 274 716 при старте (20 · жителей) в первой калибровке; к концу суток 10 micro - 489 687 (seed 20261024).
+
+**Что осталось / риски.**
+- Ворота M3/M5 подобраны по 3 seed × 10 суток; трафик почти не деградирует при росте 11 → 15 тыс. (K3 10.8-18.3 %, K1 122-147 мин), поэтому ворота «строже старта» на ≈ 16 % (K1) / 40 % (K3): достижимы ли они игроку (улучшение трафика на 16 %), не проверено - нужен прогон с действиями игрока.
+- В aggregate ворота вех открыты (KPI бессмысленны) - fast-forward «лет» с прогрессией даст все вехи.
+- Частота жалоб на игровом городе (§6) не измерялась. Прогон `GridlockFlag` - опрос раз в 20 тиков.
+- M4 (автобус ≥ 6 %) на старте недостижим без игрока (автобус 0.0 %), M6 - тоже; проверка достижимости - после клиентских инструментов.

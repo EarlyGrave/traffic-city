@@ -21,12 +21,26 @@ public enum NotifySubjectKind
     Segment,
     Node,
     Zone,
+    Point,      // место события ядра без своего инспектора у клиента (линия, здание, остановка): только точка X/Z
 }
 
-/// <summary>Объект уведомления: индекс (и поколение, если есть). Привязка к миру - на стороне <see cref="IUiEventSource"/>.</summary>
-public readonly record struct NotifySubject(NotifySubjectKind Kind, int Index, int Generation = 0)
+/// <summary>
+/// Объект уведомления: индекс (и поколение, если есть). Привязка к миру - на стороне <see cref="IUiEventSource"/>; <see cref="HasPoint"/> - точка мира
+/// из места события ядра (<see cref="EventPlace"/>, EV1), запасной вариант для «Показать».
+/// </summary>
+public readonly record struct NotifySubject(NotifySubjectKind Kind, int Index, int Generation = 0, float X = 0f, float Z = 0f, bool HasPoint = false)
 {
     public bool IsNone => Kind == NotifySubjectKind.None;
+
+    /// <summary>Объект из места события ядра: сегмент, узел, зона - как раньше, остальное - точка.</summary>
+    public static NotifySubject FromPlace(in EventPlace p) => p.ObjKind switch
+    {
+        EntityKind.None => default,
+        EntityKind.Segment => new(NotifySubjectKind.Segment, p.Index, p.Generation, p.X, p.Z, true),
+        EntityKind.Node => new(NotifySubjectKind.Node, p.Index, p.Generation, p.X, p.Z, true),
+        EntityKind.Zone => new(NotifySubjectKind.Zone, p.Index, 0, p.X, p.Z, true),
+        _ => new(NotifySubjectKind.Point, p.Index, p.Generation, p.X, p.Z, true),
+    };
 }
 
 /// <summary>
@@ -45,7 +59,7 @@ public readonly record struct NotifyRaw(
 /// <summary>
 /// Таблица «событие ядра -> короткий русский текст» (чистый C#, без Godot: юнит-тестируется). Только события, которые ядро уже выдаёт.
 /// Не показываются (шум, не для игрока): VehicleSpawned, TripCompleted, VehicleUnstuck, BusStopArrived, CommandApplied, *Created/*Removed/*Remapped, NodeRebuilt, ToolOpFinished.
-/// Номера 59-62 зарезервированы облаком под прогрессию: сюда не попадают, пока не появятся в <see cref="SimEventKind"/>.
+/// Прогрессия (59-62): веха, веха ждёт трафика, предупреждение о казне, жалоба жителей (с местом - «Показать»).
 /// </summary>
 public static class UiNotifyMap
 {
@@ -56,7 +70,7 @@ public static class UiNotifyMap
         switch (e.Kind)
         {
             case SimEventKind.GridlockOn:
-                raw = Make(key, NotifySeverity.Warning, "Затор по сети: застряло машин - " + e.A.ToString(CultureInfo.InvariantCulture), "затор", "затора", "заторов", default);
+                raw = Make(key, NotifySeverity.Warning, "Затор по сети: застряло машин - " + e.A.ToString(CultureInfo.InvariantCulture), "затор", "затора", "заторов", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.GridlockOff:
                 raw = Make(key, NotifySeverity.Good, "Затор рассосался", "рассасывание затора", "рассасывания затора", "рассасываний затора", default);
@@ -65,10 +79,20 @@ public static class UiNotifyMap
                 raw = Make(key, NotifySeverity.Warning, "Машина застряла", "машина застряла", "машины застряли", "машин застряли", new NotifySubject(NotifySubjectKind.Vehicle, e.A, e.B));
                 return true;
             case SimEventKind.DrainStalled:
-                raw = Make(key, NotifySeverity.Warning, "Дорога не пустеет: машины не могут уехать", "дорога не пустеет", "дороги не пустеют", "дорог не пустеют", default);
+                raw = Make(key, NotifySeverity.Warning, "Дорога не пустеет: машины не могут уехать", "дорога не пустеет", "дороги не пустеют", "дорог не пустеют", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.ZoneAccessLost:
-                raw = Make(key, NotifySeverity.Warning, "Район потерял доступ к дорогам", "район без доступа к дорогам", "района без доступа к дорогам", "районов без доступа к дорогам", new NotifySubject(NotifySubjectKind.Zone, e.A));
+                raw = Make(key, NotifySeverity.Warning, "Район потерял доступ к дорогам", "район без доступа к дорогам", "района без доступа к дорогам", "районов без доступа к дорогам", e.Place.HasPlace ? NotifySubject.FromPlace(in e.Place) : new NotifySubject(NotifySubjectKind.Zone, e.A));
+                return true;
+            case SimEventKind.JamAt:
+                raw = Make(key, NotifySeverity.Warning, "Пробка: стоят машины - " + e.A.ToString(CultureInfo.InvariantCulture), "пробка", "пробки", "пробок", NotifySubject.FromPlace(in e.Place));
+                return true;
+            case SimEventKind.BusLineProblem:
+                string bus = BusIssueText((BusLineIssue)e.A, e.B);
+                raw = Make((key * 1000) + e.A, NotifySeverity.Warning, bus, "проблема линии", "проблемы линий", "проблем линий", NotifySubject.FromPlace(in e.Place));
+                return true;
+            case SimEventKind.ParkingFull:
+                raw = Make(key, NotifySeverity.Warning, "Негде припарковаться у здания", "нехватка парковки", "нехватки парковки", "нехваток парковки", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.ZoneLotsLost:
                 if (e.B <= 0)
@@ -104,6 +128,19 @@ public static class UiNotifyMap
                 return true;
             case SimEventKind.PolicyApplied:
                 raw = Make(key, NotifySeverity.Info, "Новая политика вступила в силу", "смена политики", "смены политики", "смен политики", default);
+                return true;
+            case SimEventKind.MilestoneReached:
+                raw = Make(key, NotifySeverity.Good, "Новая веха: № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
+                return true;
+            case SimEventKind.MilestoneGated:
+                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
+                return true;
+            case SimEventKind.BudgetWarning:
+                raw = Make((key * 1000) + e.A, e.A >= 2 ? NotifySeverity.Error : NotifySeverity.Warning, "Через " + e.B.ToString(CultureInfo.InvariantCulture) + " дн. казна уйдёт за кредитный лимит", "предупреждение о казне", "предупреждения о казне", "предупреждений о казне", default);
+                return true;
+            case SimEventKind.Complaint:
+                string what = ComplaintText((ComplaintKind)e.A);
+                raw = Make((key * 1000) + e.A, NotifySeverity.Warning, what, "жалоба: " + what, "жалобы: " + what, "жалоб: " + what, NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.BusRouteCreated:
                 raw = Make(key, NotifySeverity.Info, "Создана автобусная линия", "новая линия", "новые линии", "новых линий", default);
@@ -168,7 +205,28 @@ public static class UiNotifyMap
         RejectReason.Unreachable => "нет пути от соседней остановки",
         RejectReason.OutOfBounds => "за границей карты",
         RejectReason.BudgetRule => "ставки вне допустимых",
+        RejectReason.Locked => "ещё не открыто",
         _ => "отказ ядра",
+    };
+
+    /// <summary>Жалоба жителей (progression.md §6.1) по виду.</summary>
+    public static string ComplaintText(ComplaintKind k) => k switch
+    {
+        ComplaintKind.LongWait => "Жители: стоим в пробке больше получаса",
+        ComplaintKind.NoParking => "Жители: негде припарковаться",
+        ComplaintKind.LongCommute => "Жители: на работу больше часа",
+        ComplaintKind.TourCancelled => "Жители: не смогли выехать",
+        ComplaintKind.LongStopWait => "Жители: долго ждали автобус",
+        _ => "Жалоба жителей",
+    };
+
+    /// <summary>Проблема автобусной линии (EV1): <paramref name="value"/> - <c>SimEvent.B</c>.</summary>
+    public static string BusIssueText(BusLineIssue i, int value) => i switch
+    {
+        BusLineIssue.NoBuses => "На автобусной линии нет автобусов",
+        BusLineIssue.BusesStuck => "Автобусы линии застряли: " + value.ToString(CultureInfo.InvariantCulture),
+        BusLineIssue.Overloaded => "Переполнена остановка: ждут " + value.ToString(CultureInfo.InvariantCulture),
+        _ => "Проблема автобусной линии",
     };
 
     /// <summary>Какая ёмкость исчерпана (для текста «предел симуляции»).</summary>

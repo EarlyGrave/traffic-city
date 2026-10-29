@@ -391,8 +391,8 @@ public struct Command
 }
 
 /// <summary>
-/// Раскладка явная (56 Б): <see cref="Profile"/> лежит на младших двух байтах <see cref="Cz"/> - контрольная точка Безье нужна только при <c>BuildRoadFlags.Curve</c>
-/// (T5, пока <c>NotSupported</c>); когда кривые появятся вместе с профилями, поле придётся переложить (в payload 56 Б свободного места нет).
+/// Раскладка явная (56 Б). T5: контрольная точка квадратичной Безье (<c>BuildRoadFlags.Curve</c>) хранится смещением от середины хорды A-B в дециметрах (<see cref="CxDm"/>,
+/// <see cref="CzDm"/>, ±3.2 км, шаг 10 см) - так рядом поместился <see cref="Profile"/> (раньше делил байты с float <c>Cz</c>, REPORT-stage4 техдолг 8). Задавать - <see cref="SetControl"/>.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = 56)]
 public struct BuildRoadCmd
@@ -422,21 +422,23 @@ public struct BuildRoadCmd
     public RoadKind Kind;             // Street = 0, Arterial = 1
 
     [FieldOffset(23)]
-    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5; пока NotSupported), бит3 Mirrored (RP7)
+    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5), бит3 Mirrored (RP7)
 
     // player-tools.md §2 (24 -> 56 Б). Нулевая инициализация = прежнее поведение.
     [FieldOffset(24)]
-    public float Cx;                  // контрольная точка квадратичной Безье (Curve), иначе 0
+    public short CxDm;                // контрольная точка Безье (Curve): X минус середина хорды (Ax + Bx) / 2, дм
 
-    [FieldOffset(28)]
-    public float Cz;
+    [FieldOffset(26)]
+    public short CzDm;
 
     /// <summary>
     /// Профиль дороги (ADR-0030, RP7): индекс в каталоге + 1, 0 - без профиля (прежнее поведение). Полосы и тип обязаны совпасть с профилем (с учётом <c>Mirrored</c>), иначе <c>InvalidArgument</c>.
-    /// Делит байты с <see cref="Cz"/> (см. описание типа).
     /// </summary>
     [FieldOffset(28)]
     public ushort Profile;
+
+    [FieldOffset(30)]
+    public ushort Reserved;
 
     [FieldOffset(32)]
     public EntityRef RestoreOf;       // сегмент, который команда восстанавливает (undo); Generation == 0 - не задан
@@ -446,6 +448,20 @@ public struct BuildRoadCmd
 
     [FieldOffset(48)]
     public EntityRef RestoreNodeB;
+
+    /// <summary>Контрольная точка Безье в мире, м (по концам команды <c>A</c>, <c>B</c> до привязки).</summary>
+    public readonly float ControlX => ((Ax + Bx) * 0.5f) + (CxDm * 0.1f);
+
+    public readonly float ControlZ => ((Az + Bz) * 0.5f) + (CzDm * 0.1f);
+
+    /// <summary>Задаёт контрольную точку Безье в мире (концы <c>Ax..Bz</c> уже заданы); округление до 10 см, насыщение ±3276.7 м от середины хорды.</summary>
+    public void SetControl(float x, float z)
+    {
+        CxDm = ToDm(x - ((Ax + Bx) * 0.5f));
+        CzDm = ToDm(z - ((Az + Bz) * 0.5f));
+    }
+
+    private static short ToDm(float m) => (short)System.Math.Clamp(Util.DetMath.ToIntSat(System.MathF.Round(m * 10f)), short.MinValue, short.MaxValue);
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

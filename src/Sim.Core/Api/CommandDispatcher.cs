@@ -77,13 +77,13 @@ internal static partial class CommandDispatcher
 
                 break;
             case CommandKind.PaintZone:
-                Result(w, in cmd, City.Zoning.Apply(w, in cmd));
+                Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.Zoning.Apply(w, in cmd));
                 break;
             case CommandKind.SetTripExecution:
                 Result(w, in cmd, Demand.AggregateExec.ApplySwitch(w, in cmd));
                 break;
             case CommandKind.SetBudgetPolicy:
-                Result(w, in cmd, City.BudgetFlows.SetPolicy(w, in cmd));
+                Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.BudgetFlows.SetPolicy(w, in cmd));
                 break;
             case CommandKind.SetSignalPlan:
                 SetSignalPlan(w, in cmd);
@@ -92,10 +92,23 @@ internal static partial class CommandDispatcher
                 SetNodeControl(w, in cmd);
                 break;
             case CommandKind.CreateBusRoute:
+                CreateBusRoute(w, in cmd);
+                break;
             case CommandKind.AppendBusStop:
+            case CommandKind.InsertBusStop:
+                InsertBusStop(w, in cmd);
+                break;
+            case CommandKind.RemoveBusStop:
+                RemoveBusStop(w, in cmd);
+                break;
+            case CommandKind.RemoveBusRoute:
+                RemoveBusRoute(w, in cmd);
+                break;
+            case CommandKind.SetBusRouteParams:
+                SetBusRouteParams(w, in cmd);
+                break;
             case CommandKind.SpawnBus:
-                // TODO(step 4): транспорт.
-                Rejected(w, in cmd, RejectReason.NotSupported);
+                Rejected(w, in cmd, RejectReason.NotSupported);   // выпуск - по интервалу линии (BusDispatch)
                 break;
             case CommandKind.SetArmControl:
                 SetArmControl(w, in cmd);
@@ -113,18 +126,34 @@ internal static partial class CommandDispatcher
                 UpgradeRoad(w, in cmd);
                 break;
             case CommandKind.SplitRoad:
-            case CommandKind.InsertBusStop:
-            case CommandKind.RemoveBusStop:
-            case CommandKind.RemoveBusRoute:
-            case CommandKind.SetBusRouteParams:
+                SplitRoad(w, in cmd);
+                break;
             case CommandKind.MergeAtNode:
-                // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
-                Rejected(w, in cmd, RejectReason.NotSupported);
+                MergeAtNode(w, in cmd);
                 break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Замок прогрессии (PG3, progression.md §4.3) для команд вне валидатора инструментов (<c>PaintZone</c>, <c>SetBudgetPolicy</c>): структурная проверка зонирования - та же, что в превью
+    /// (<see cref="Tools.ToolPreview"/>), замок - до мутации. Без прогрессии - false сразу.
+    /// </summary>
+    private static bool Locked(World w, in Command cmd)
+    {
+        if (w.Progression == null)
+        {
+            return false;
+        }
+
+        if (cmd.Kind == CommandKind.PaintZone && City.Zoning.Check(w, in cmd.PaintZone, out _) is RejectReason.InvalidArgument or RejectReason.NotSupported)
+        {
+            return false;   // структурный отказ выдаст сам обработчик
+        }
+
+        return City.Progression.Check(w, in cmd, out _) == RejectReason.Locked;
     }
 
     /// <summary>Итог обработчика города: <see cref="RejectReason.None"/> - применена, иначе отклонена с причиной.</summary>
@@ -143,7 +172,25 @@ internal static partial class CommandDispatcher
     /// <summary>Применена платная команда инструмента: проводка в казне (E4, <see cref="ToolCosts.Settle"/>), затем <c>CommandApplied</c>. Сегмент, созданный прямой <c>BuildRoad</c>, - в <c>w.Inv.BuiltSeg</c>.</summary>
     private static void AppliedPaid(World w, in Command cmd, in ToolCheck chk)
     {
-        ToolCosts.Settle(w, in cmd, in chk, cmd.Kind == CommandKind.BuildRoad && !chk.Reopen ? w.Inv.BuiltSeg : -1);
+        int ti = -1;
+        int tg = 0;
+        if (cmd.Kind == CommandKind.BuildRoad && !chk.Reopen && w.Inv.BuiltSeg >= 0)
+        {
+            ti = w.Inv.BuiltSeg;
+            tg = w.Net.Segments[ti].Generation;
+        }
+        else if (cmd.Kind == CommandKind.CreateBusRoute && w.Inv.BuiltRoute >= 0)
+        {
+            ti = ToolCosts.RouteTarget(w.Inv.BuiltRoute);
+            tg = w.Net.BusRoutes[w.Inv.BuiltRoute].Generation;
+        }
+        else if (cmd.Kind is CommandKind.InsertBusStop or CommandKind.AppendBusStop && w.Inv.BuiltStop >= 0)
+        {
+            ti = ToolCosts.StopTarget(w.Inv.BuiltStop);
+            tg = w.Net.BusStops[w.Inv.BuiltStop].Generation;
+        }
+
+        ToolCosts.Settle(w, in cmd, in chk, ti, tg);
         Applied(w, in cmd);
     }
 
@@ -176,6 +223,11 @@ internal static partial class CommandDispatcher
 
     private static void Rejected(World w, in Command cmd, RejectReason reason)
     {
+        if (reason == RejectReason.Locked)
+        {
+            w.Counters.LockedRejects++;
+        }
+
         w.Counters.CommandsRejected++;
         w.Emit(SimEventKind.CommandRejected, cmd.Tag, (int)reason, (int)cmd.Kind);
     }
@@ -201,6 +253,11 @@ internal static partial class CommandDispatcher
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
         var a = new Vec2(b.Ax, b.Az);
         var z = new Vec2(b.Bx, b.Bz);
+        if (!SplitEnds(w, in cmd, in chk, ref a, ref z))
+        {
+            return;
+        }
+
         if (!noConnectors)
         {
             // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла.
@@ -219,22 +276,37 @@ internal static partial class CommandDispatcher
         w.Builder.ResetCreated();
         NetworkStatus st;
         int seg;
-        if (chk.Profile >= 0)
+        Span<Vec2> curve = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+        if (chk.Profile >= 0 || chk.Curve)
         {
-            // Дорога по профилю (RP7): концы прилипают или создаются, полосы и тип берутся из профиля; отступы - по рукавам, уже стоящим в узлах.
+            // Дорога по профилю (RP7) и/или кривая (T5): концы прилипают или создаются, полосы и тип - из профиля; ось кривой - сэмплы Безье между узлами концов; отступы - по рукавам узлов.
             st = w.Builder.AddNode(a, NodeControl.None, out int pa);
+            seg = -1;
             if (st == NetworkStatus.Ok)
             {
                 st = w.Builder.AddNode(z, NodeControl.None, out int pb);
-                seg = -1;
                 if (st == NetworkStatus.Ok)
                 {
-                    st = w.Builder.AddProfileSegment(pa, pb, ReadOnlySpan<Vec2>.Empty, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg);
+                    scoped ReadOnlySpan<Vec2> via = ReadOnlySpan<Vec2>.Empty;
+                    var cp = new Vec2(b.ControlX, b.ControlZ);
+                    if (chk.Curve)
+                    {
+                        int np = NetworkBuilder.SampleQuadratic(w.Net.Nodes[pa].Position, cp, w.Net.Nodes[pb].Position, curve);
+                        via = curve[1..(np - 1)];
+                    }
+
+                    st = chk.Profile >= 0
+                        ? w.Builder.AddProfileSegment(pa, pb, via, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg)
+                        : w.Builder.AddSegment(pa, pb, via, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out seg);
+                    if (st == NetworkStatus.Ok && chk.Curve)
+                    {
+                        ref SegmentData sd = ref w.Net.Segments[seg];
+                        sd.Flags |= SegmentFlags.Curve;
+                        sd.Cx = cp.X;
+                        sd.Cz = cp.Z;
+                        w.Net.ToolsTouched = 1;   // флаг Curve и контрольная точка - в хэше и сейве только с правками
+                    }
                 }
-            }
-            else
-            {
-                seg = -1;
             }
         }
         else
@@ -291,6 +363,37 @@ internal static partial class CommandDispatcher
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    // AutoSplit (T5): концы на оси сегментов - сначала разрезы (узлы разреза - концы новой дороги; индексы второго сегмента первый разрез не трогает).
+    private static bool SplitEnds(World w, in Command cmd, in ToolCheck chk, ref Vec2 a, ref Vec2 z)
+    {
+        for (int e = 0; e < 2; e++)
+        {
+            int seg = e == 0 ? chk.SplitSegA : chk.SplitSegB;
+            if (seg < 0)
+            {
+                continue;
+            }
+
+            NetworkStatus st = ChainEdit.Split(w, seg, e == 0 ? chk.SplitSA : chk.SplitSB, cmd.Tag, out int node, out _, out _);
+            if (st != NetworkStatus.Ok)
+            {
+                RejectNetwork(w, in cmd, st);
+                return false;
+            }
+
+            if (e == 0)
+            {
+                a = w.Net.Nodes[node].Position;
+            }
+            else
+            {
+                z = w.Net.Nodes[node].Position;
+            }
+        }
+
+        return true;
     }
 
     // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.
@@ -369,6 +472,7 @@ internal static partial class CommandDispatcher
         }
 
         w.Net.Version++;
+        NetworkEdit.RefreshDerived(w, pedsChanged: false);   // слот сегмента мог поднять HighWater: граф и оверлей - по новому числу слотов (T5: ловил фаззер)
         Rejected(w, in cmd, RejectOf(bad));
         return false;
     }

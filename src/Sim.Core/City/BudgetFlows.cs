@@ -304,7 +304,7 @@ internal static class BudgetFlows
         b.ExpenseEwma += (expense - b.ExpenseEwma) >> e.BudgetEwmaShift;
         System.Diagnostics.Debug.Assert(Math.Abs(lg.City) < (1L << 56), "казна: |City| >= 2^56");
 
-        long limit = b.CreditLimit(in e);
+        long limit = b.CreditLimit(in e, Progression.CreditDaysBonus(w));
         bool negative = lg.City < 0;
         bool over = lg.City < -limit;
         b.DebtDays = negative ? Math.Min(b.DebtDays + 1, int.MaxValue - 1) : 0;
@@ -325,6 +325,7 @@ internal static class BudgetFlows
             w.Emit(SimEventKind.BudgetRecovered, 0, c.Day, Sat(lg.City));
         }
 
+        Warn(w, c, b);
         int idx = c.Day & 1;
         b.FareEvadedDay[idx] = 0;
         b.DebtEvictionsDay[idx] = 0;
@@ -336,6 +337,32 @@ internal static class BudgetFlows
             w.Emit(SimEventKind.PolicyApplied, 0, c.Day, b.Policy.Fare);
         }
     }
+
+    /// <summary>
+    /// Предупреждения о кредитном лимите (PG5, progression.md §5): по дням до лимита (<see cref="CityKpi.DaysToLimit"/>, после EWMA и лимита этих суток) уровень 1 при &lt;= 7 днях, 2 при &lt;= 2
+    /// (и за лимитом). Событие <see cref="SimEventKind.BudgetWarning"/> - только на переходе уровня вверх; гистерезис - уровень снимается, когда дней &gt; 10 или тренд &gt;= 0.
+    /// </summary>
+    internal static void Warn(World w, CityWorld c, CityBudget b)
+    {
+        int days = CityKpi.DaysToLimit(c, Progression.CreditDaysBonus(w));
+        if (days < 0 || days > WarnClearDays)
+        {
+            b.WarnLevel = 0;
+            return;
+        }
+
+        byte level = days <= Warn2Days ? (byte)2 : days <= Warn1Days ? (byte)1 : (byte)0;
+        if (level > b.WarnLevel)
+        {
+            b.WarnLevel = level;
+            w.Emit(SimEventKind.BudgetWarning, 0, level, days);
+        }
+    }
+
+    /// <summary>[Старт] пороги предупреждений, дни до лимита (progression.md §5).</summary>
+    public const int Warn1Days = 7;
+    public const int Warn2Days = 2;
+    public const int WarnClearDays = 10;
 
     private static int Sat(long v) => (int)Math.Clamp(v, int.MinValue, int.MaxValue);
 
@@ -413,7 +440,7 @@ internal static class BudgetFlows
         Vec2 prev = default;
         for (int k = 0; k < br.StopCount; k++)
         {
-            ref readonly BusStopData s = ref net.BusStops[br.FirstStop + k];
+            ref readonly BusStopData s = ref net.BusStops[net.BusRouteStops[br.FirstStop + k]];
             LaneGeometry.Evaluate(net, s.Lane, s.S, ref hint, out Vec2 pos, out _);
             if (k > 0)
             {

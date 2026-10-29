@@ -13,7 +13,8 @@ namespace Sim.Core.Peds;
 /// Контракт: пешеход в очереди остановки: <c>State = AtStop</c>, <c>T0</c> = начало ожидания, <c>EvTick = -1</c>, список через <c>PedStore.Next</c> (<c>StopQHead/StopQTail/StopQCount</c>), цель ноги
 /// (<c>GoalEdge</c>, <c>GoalSMm</c>) остаётся точкой доступа остановки (по ней снапшот ставит очередь); пассажир: <c>State = OnBus</c>, <c>Bus</c> = индекс автобуса, <c>AlightStop</c> = глобальный
 /// индекс остановки высадки (он же запись <c>BusRouteStops</c>), список <c>PaxHead[bus]</c> упорядочен по возрастанию индекса пешехода (порядок высадки, §7).
-/// Остановка принадлежит ровно одному маршруту (<c>BusStopData.Route</c>), остановки маршрута идут подряд, поэтому порядок остановок на маршруте - порядок глобальных индексов.
+/// Остановка принадлежит ровно одному маршруту (<c>BusStopData.Route</c>); порядок остановок на маршруте - позиция в его списке (<c>NetworkStore.StopPos</c>, T9: после правок игрока
+/// он не совпадает с порядком глобальных индексов). Остановка высадки, которой больше нет на маршруте автобуса, - выход на ближайшей достигнутой.
 /// Точка доступа остановки - тротуар той же стороны, что полоса остановки (правая по ходу), ось <c>s</c> остановки; нет рёбер на этой стороне - противоположная.
 /// </para>
 /// </summary>
@@ -66,9 +67,9 @@ internal static class Stops
             stop = rs.Where[r] == ResidentStore.ToWork ? rs.StopAOut[r] : rs.StopABack[r];
         }
 
-        if ((uint)stop >= (uint)w.Net.BusStopCount)
+        if ((uint)stop >= (uint)w.Net.BusStopCount || (w.Net.ToolsTouched != 0 && w.Net.StopPos(stop) < 0))
         {
-            pw.Arrive(w, p);
+            pw.Arrive(w, p);   // остановки нет (T9: убрана с линии или линия снята) - как пешая нога
             return;
         }
 
@@ -103,10 +104,14 @@ internal static class Stops
         int prev = -1;
         int p = pw.PaxHead[bus];
         bool access = AccessPoint(w, stop, out int edge, out int sMm);
+        NetworkStore net = w.Net;
+        bool edited = net.ToolsTouched != 0;
+        int here = edited ? net.StopPos(stop) : stop;
         while (p >= 0)
         {
             int next = ps.Next[p];
-            if (all || ps.AlightStop[p] <= stop)
+            int a = ps.AlightStop[p];
+            if (all || (edited ? AlightPos(net, a, stop) <= here : a <= stop))
             {
                 if (prev >= 0)
                 {
@@ -134,6 +139,10 @@ internal static class Stops
 
         return n;
     }
+
+    /// <summary>Позиция остановки высадки на маршруте остановки <paramref name="stop"/>; другой маршрут или её нет на линии - -1 (выход на ближайшей достигнутой).</summary>
+    private static int AlightPos(NetworkStore net, int alight, int stop) =>
+        net.BusStopAlive(alight) && net.BusStops[alight].Route == net.BusStops[stop].Route ? net.StopPos(alight) : -1;
 
     /// <summary>Пассажир вышел: <c>PendingPath</c> к назначению поездки либо (нет точки доступа) мгновенное прибытие.</summary>
     private static void Release(World w, PedWorld pw, int p, bool access, int edge, int sMm)

@@ -22,14 +22,17 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 25L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ
+    // w12 (TR1): бюджет не растёт - пересоздаётся только подмножество Current (small, s1k, terrain-demo), остальные случаи покрыты файлами w11 (мигрируют без смены поведения).
+    private const int SubsetSinceVersion = 12;
+    private const long BudgetBytes = 32L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ; w11 (ADR-0034, PG1): 32 МБ - полный набор w11 (+5,7 МБ) и файл прогрессии
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
     private static readonly CorpusCase[] _cases =
     {
-        new("small", 600, Small),
-        new("s1k", 2400, S1k),
+        new("small", 600, Small) { Current = true },
+        new("s1k", 2400, S1k) { Current = true },
+        new("terrain-demo", 600, TerrainDemo) { Current = true },   // w12 (ADR-0036, TR1): малый город на рельефе - блок TERR, PARM 241-255, раздел хэша 14
         new("s1k-peds", 2400, S1kPeds),
         new("s1k-res", 24000, S1kRes),
         new("s1k-res-d3", 216000, S1kRes),   // Z8 (E4): s1k-res на границе 3-х суток, настоящий календарь; тест Demand/ResCorpusTests
@@ -39,7 +42,8 @@ public sealed class SaveCorpusTests
         new("s1k-prof", 2400, S1kProf),
         new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
         new("s1k-res-prof", 4800, S1kResProf),   // w10, RP5 (ADR-0030): s1k-res по профилям фикстуры - участки на мировой сетке 8 м (CellX/CellZ/CellsF/CellsD/Orient в LOTS)
-        new("s1k-res-park", 24000, S1kResPark),   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
+        new("s1k-res-park", 24000, S1kResPark),
+        new("s1k-res-econ-prog", 3600, S1kResEconProg),   // w11 (ADR-0034, PG1-PG2): s1k-res-econ + секция progression - блоки PROG и CKPI, кольцо показателей посреди второго часа   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -51,9 +55,10 @@ public sealed class SaveCorpusTests
     [Fact]
     public void Corpus_HasCurrentVersion()
     {
-        int v = Simulation.CurrentWorldVersion;
+        int cur = Simulation.CurrentWorldVersion;
         foreach (CorpusCase c in _cases)
         {
+            int v = c.Current ? cur : SubsetSinceVersion - 1;
             string stem = Path.Combine(CorpusDir, c.FileStem(v));
             Assert.True(File.Exists(stem + ".tcsave") && File.Exists(stem + ".json"), Regen($"нет файлов корпуса {c.FileStem(v)} для world_version {v}"));
         }
@@ -109,6 +114,18 @@ public sealed class SaveCorpusTests
         using (sim!)
         {
             Assert.Equal(fileVersion, rep.FileWorldVersion);
+            if (Regenerating && !current)
+            {
+                // Файл старой версии не пересоздаётся (его пишет только старый код): при осознанной смене хэша (PG5: WarnLevel в разделе казны) обновляются ожидания .json.
+                ulong load = sim!.ComputeStateHash();
+                sim.Step(cont);
+                string text = File.ReadAllText(Path.ChangeExtension(path, ".json"))
+                    .Replace("\"hash_after_load\": \"" + j.GetProperty("hash_after_load").GetString() + "\"", $"\"hash_after_load\": \"{load:x16}\"", StringComparison.Ordinal)
+                    .Replace("\"hash_after_continue\": \"" + j.GetProperty("hash_after_continue").GetString() + "\"", $"\"hash_after_continue\": \"{sim.ComputeStateHash():x16}\"", StringComparison.Ordinal);
+                File.WriteAllText(Path.ChangeExtension(path, ".json"), text);
+                return;
+            }
+
             Assert.True(sim!.ComputeStateHash() == Hex(j, "hash_after_load"), Regen($"{name}: хэш после загрузки не равен записанному"));
 
             // Повторный сейв: для текущей версии побайтно равен файлу, для старых - после миграции стабилен (save -> load -> save).
@@ -156,7 +173,10 @@ public sealed class SaveCorpusTests
 
         foreach (CorpusCase c in _cases)
         {
-            Generate(c, dir);
+            if (c.Current)
+            {
+                Generate(c, dir);
+            }
         }
 
         return dir;
@@ -204,6 +224,8 @@ public sealed class SaveCorpusTests
     }
 
     private static (ScenarioDesc, string[]) Small() => (WorldSaveFixtures.Small(), new[] { "car", "bus" });
+
+    private static (ScenarioDesc, string[]) TerrainDemo() => (Sim.Core.Tests.Terrain.TerrainFixtures.Demo(), new[] { "car", "bus" });
 
     private static (ScenarioDesc, string[]) CrossProf() => (ProfileSaveFixtures.Cross(), new[] { "car" });
 
@@ -269,6 +291,12 @@ public sealed class SaveCorpusTests
         ScenarioDesc d = sc.Desc;
         d.City.LandUse = new LandUseDesc { Enabled = true, ParkShare = 0.08f, PondShare = 0.25f, Coast = LandUseCoast.South, CoastWidthM = 300f };
         return (d, sc.TypeNames);
+    }
+
+    private static (ScenarioDesc, string[]) S1kResEconProg()
+    {
+        LoadedScenario sc = Sim.Core.Tests.City.ProgressionFixtures.Econ();
+        return (sc.Desc, sc.TypeNames);
     }
 
     // За 100 тиков до конца - SetBudgetPolicy: в сейве ожидающая политика (граница суток ещё впереди: тик 216500 > 216000, следующая - 288000).
@@ -505,8 +533,75 @@ public sealed class SaveCorpusTests
         }
     }
 
+    [Fact]
+    public void Corpus_W10Files_AreKeptAndMigrate_ToNoProgression()
+    {
+        // Файлы w10 (до прогрессии, ADR-0034) остаются навсегда: миграция 10 -> 11 даёт «прогрессии нет», пустое кольцо показателей у жителей (CKPI с отметками
+        // текущих счётчиков), LockedRejects = 0; хэш продолжения не меняется (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w10-*.tcsave");
+        Assert.True(old.Length >= 12, "корпус w10 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveEnvelope.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(10, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 10, rep.MigrationsApplied);
+                Assert.False(sim!.HasProgression);
+                Assert.Equal(0, sim.Counters.LockedRejects);
+                Sim.Core.City.CityWorld? city = sim.World.City;
+                Assert.Equal(city != null, sim.GetCityKpi(out CityKpiInfo k));
+                if (city != null)
+                {
+                    Assert.Equal(0, k.HoursFilled + k.DaysFilled);
+                    Assert.Equal(sim.Counters.VehicleTicksTotal, city.Kpi.VehAtHourStart);
+                    Assert.Equal(0, city.Budget?.WarnLevel ?? 0);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W11Files_AreKeptAndMigrate_ToNoTerrain()
+    {
+        // Файлы w11 (до рельефа, ADR-0036) остаются навсегда: миграция 11 -> 12 даёт «рельефа нет» (PARM 241 = 0, 242-255 - дефолты), блока TERR и раздела хэша 14 нет,
+        // хэш продолжения прежний (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w11-*.tcsave");
+        Assert.True(old.Length >= 13, "корпус w11 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveEnvelope.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(11, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 1 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 11, rep.MigrationsApplied);
+                Assert.False(sim!.HasTerrain);
+                Assert.Equal(head.StateHash, sim.ComputeStateHash());   // без рельефа раздел 14 не пишется: хэш мира w11 прежний
+                Assert.True(Sim.Core.Terrain.TerrainParams.AreDefaults(sim.World.TerrainCfg));
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_TerrainDemo_HasTerrain()
+    {
+        string path = Path.Combine(CorpusDir, $"w{Simulation.CurrentWorldVersion}-terrain-demo-t600.tcsave");
+        using Simulation sim = WorldSaveFixtures.Load(SaveEnvelope.ReadContainer(path));
+        Assert.True(sim.HasTerrain);
+        Assert.Equal(Sim.Core.Tests.Terrain.TerrainFixtures.DemoTerrain().BaseCm, sim.World.Terrain!.BaseCm);
+    }
+
     private sealed record CorpusCase(string Name, int Ticks, Func<(ScenarioDesc, string[])> Build, Action<Simulation, int>? Evolve = null)
     {
+        /// <summary>Пересоздаётся в текущей версии; иначе случай покрыт файлом версии <c>SubsetSinceVersion - 1</c>.</summary>
+        public bool Current { get; init; }
+
         public string FileStem(int worldVersion) => $"w{worldVersion}-{Name}-t{Ticks}";
     }
 }

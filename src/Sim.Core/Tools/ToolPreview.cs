@@ -65,6 +65,15 @@ internal static class ToolPreview
         r.SnapKindB = c.SnapKindB;
         r.SnapA = c.NodeA >= 0 ? new EntityRef(c.NodeA, w.Net.Nodes[c.NodeA].Generation) : EntityRef.None;
         r.SnapB = c.NodeB >= 0 ? new EntityRef(c.NodeB, w.Net.Nodes[c.NodeB].Generation) : EntityRef.None;
+        if (c.SplitSegA >= 0)
+        {
+            r.SnapA = new EntityRef(c.SplitSegA, w.Net.Segments[c.SplitSegA].Generation);   // T5: разрезаемый сегмент (SnapKind 2)
+        }
+
+        if (c.SplitSegB >= 0)
+        {
+            r.SnapB = new EntityRef(c.SplitSegB, w.Net.Segments[c.SplitSegB].Generation);
+        }
         r.Cost = c.Cost;
         r.AX = c.AX;
         r.AZ = c.AZ;
@@ -77,29 +86,32 @@ internal static class ToolPreview
 
         if (cmd.Kind == CommandKind.BuildRoad && c.LengthM > 0f)
         {
-            // Ось будущей дороги тем же сэмплированием, что у Builder: прямой сегмент - концы после привязки (кривая и разрез - T5).
-            r.AxisPointCount = 2;
-            if (axis.Length > 0)
+            // Ось будущей дороги тем же сэмплированием, что у Builder: концы после привязки (у разреза - точка на оси), кривая - сэмплы Безье (T5).
+            Span<Vec2> pts = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+            int np = 2;
+            pts[0] = new Vec2(c.AX, c.AZ);
+            pts[1] = new Vec2(c.BX, c.BZ);
+            if (c.Curve)
             {
-                axis[0] = new Vec2(c.AX, c.AZ);
+                np = NetworkBuilder.SampleQuadratic(pts[0], new Vec2(cmd.BuildRoad.ControlX, cmd.BuildRoad.ControlZ), pts[1], pts);
             }
 
-            if (axis.Length > 1)
+            r.AxisPointCount = np;
+            for (int i = 0; i < np && i < axis.Length; i++)
             {
-                axis[1] = new Vec2(c.BX, c.BZ);
+                axis[i] = pts[i];
             }
         }
 
         if (v != RejectReason.None)
         {
-            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ);
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ, v == RejectReason.Locked ? c.LockMilestone : 0);
         }
         else
         {
             // Обратная запись для undo: нет вовсе или не влезет в запись (> InverseLog.MaxPerRecord команд) - предупреждаем заранее (player-tools.md §8.1).
             if (!InverseBuilder.HasInverse(cmd.Kind) ||
-                (cmd.Kind == CommandKind.RemoveRoad && c.Seg >= 0 && InverseBuilder.MaxRemoveRoadInverse(w, c.Seg) > InverseLog.MaxPerRecord) ||
-                (cmd.Kind == CommandKind.UpgradeRoad && InverseBuilder.UpgradeLacksInverse(w, in cmd)))
+                (cmd.Kind == CommandKind.RemoveRoad && c.Seg >= 0 && InverseBuilder.MaxRemoveRoadInverse(w, c.Seg) > InverseLog.MaxPerRecord))
             {
                 iw.Add(IssueCode.UndoUnavailable, IssueSeverity.Warning, EntityKind.None, -1, 0, c.AX, c.AZ);
             }
@@ -137,13 +149,20 @@ internal static class ToolPreview
     {
         var iw = new IssueWriter(issues);
         RejectReason v = Zoning.Check(w, in cmd.PaintZone, out ZonePlan plan);
+        int lockMs = -1;
+        if (v is not (RejectReason.InvalidArgument or RejectReason.NotSupported))
+        {
+            RejectReason lk = Progression.Check(w, in cmd, out lockMs);   // PG3: замок зонирования - тем же вызовом, что в применении
+            v = lk != RejectReason.None ? lk : v;
+        }
+
         r.Verdict = v;
         PaintZoneCmd p = cmd.PaintZone;
         float cx = (p.X0 + p.X1) * 0.5f;
         float cz = (p.Z0 + p.Z1) * 0.5f;
         if (v != RejectReason.None)
         {
-            iw.Add((IssueCode)(int)v, IssueSeverity.Error, EntityKind.None, -1, 0, cx, cz);
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, EntityKind.None, -1, 0, cx, cz, v == RejectReason.Locked ? lockMs : 0);
         }
         else
         {
@@ -339,6 +358,13 @@ internal static class ToolPreview
         int seg = c.Seg;
         ref readonly SegmentData sd = ref n.Segments[seg];
         r.NewLanes = c.Reshape == ReshapeMode.Swap ? c.LanesAB + c.LanesBA : 0;
+        r.DrainVehicles = c.Drain;
+        if (c.Drain > 0)
+        {
+            // T5: занятый сегмент - правка после опустения убираемых полос и исчезающих connector'ов (операция ShrinkLanes).
+            iw.Add(IssueCode.DrainNeeded, IssueSeverity.Warning, EntityKind.Segment, seg, sd.Generation, c.IssueX, c.IssueZ, c.Drain);
+        }
+
         for (int e = 0; e < 2; e++)
         {
             int node = e == 0 ? sd.NodeA : sd.NodeB;

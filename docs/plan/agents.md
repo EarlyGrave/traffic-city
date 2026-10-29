@@ -247,9 +247,23 @@
 | L62 | ui12-settings (локал, worktree) | sonnet | UI12 настройки | done, merged (~33 вызова; масштаб, палитра для дальтоников, непрозрачность, F4, user://settings.cfg; клики и сохранение из игры не проверены; новый флейк UndoRightAfterDo_WaitsForResult) |
 | L63 | ui9-zones (локал, worktree) | sonnet | UI9 зоны кистью | done, merged (219k токенов, 68 вызовов, 30 мин; прямоугольная кисть, автослой «Зоны», оценка участков, лимит площади, 4 теста; мышью не проверено; undo не работает — нет обратной команды PaintZone в ядре) |
 | L64 | ui7-legend (локал, worktree) | sonnet | UI7 легенда инфо-слоёв | done, merged (171k токенов, 78 вызовов, 36 мин; легенда трафик/пешеходы/зоны по палитре UI12, адаптивная шкала пешеходов p95, клик в слое → инспектор сегмента; клик не проверен; нет плашки «Заброшено» — нет флага в LotRenderData) |
+| 178 | n1-e4 (облако, worktree) | sonnet | ночь N1: E4 цены инструментов + undo/превью PaintZone | wip |
+| 179 | n2-reads (облако, worktree) | sonnet | ночь N2: ArmFlags, план светофора в NetworkView, Abandoned в LotRenderData | wip |
 | L65 | palette-cleanup (локал, worktree) | haiku | дубль цветов зон + IDE1006 в Palette | done, merged (~95k токенов, 25 вызовов, ~38 мин из-за 2 прогонов pre-commit; первый упал на флейке BackToBackExclusiveAccess) |
 | L66 | host-flakes (локал, worktree) | opus | флейки Sim.Host.Tests | done, merged (~25 вызовов после перезапуска; 1 раз завис по watchdog на 600-с прогоне; BackToBack — настоящий баг хоста: потерянное пробуждение _resume.Reset в AcquireExclusive; UndoRightAfterDo — баг теста: ack undo терялся в одном Pump; под нагрузкой до ~21%/20% падений, после 0/110) |
 | L66 | host-flakes (локал, worktree) | opus | флейки Sim.Host.Tests | в работе (1 раз завис по watchdog, продолжен) |
 | 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | wip |
 | L67 | reject-texts (локал, worktree) | sonnet | тексты IssueCode 114–115 (после N1 облака) | done, merged (74k токенов, 6 вызовов, 7 мин) |
 | 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | done, merged (тексты ZoneBuildingsAbandoned/ZoneNothingToPaint в game/Scripts/Tools/RejectMessages.cs; тесты 1257+503+52 зелёные) |
+| 181 | n3-t5 (облако, worktree) | opus | ночь N3: T5 полный UpgradeRoad + SplitRoad | wip |
+| 182 | n4-ev1 (облако, worktree) | opus | ночь N4: EV1 события с местом | wip |
+| 183 | n5-pg12 (облако, worktree) | opus | ночь N5: PG1+PG2 прогрессия — поверхность, сейв v11, кольцо KPI | wip |
+| 184 | n6-t9 (облако, worktree) | opus | ночь N6: T9 автобусные инструменты (opus — риск: автобусы на ходу) | wip |
+| 185 | n7-pg345 (облако, worktree) | opus | ночь N7: PG3 вехи/замки, PG4 жалобы, PG5 банкротство | wip |
+| 186 | n8-pg6 (облако, worktree) | sonnet | ночь N8: game-city.json + калибровка (PG6 + E7) | wip |
+| 187 | tr0-terrain-spec (облако, worktree) | opus | TR0: спека рельефа и воды (terrain.md + ADR), пример Юрьев-Польский | остановлен владельцем через ~5 мин (пауза) |
+| 188 | tr0-terrain-spec (облако, worktree, перезапуск 187) | opus | TR0: спека рельефа и воды (terrain.md + ADR-0036), пример Юрьев-Польский | done: terrain.md + ADR-0036, 1 коммит, ~104k токенов, 60 вызовов, 17 мин, переделок 0; TR0b done (2f4d87b, ~169k токенов, 28 вызовов, 6 мин) |
+| 189 | tr1-terrain-store (облако, worktree) | opus | TR1: TerrainStore, вода, TERR/MigrationV12, хэш п. 14, корпус w12 (terrain.md §2, §3, §8, §12) | done: 4 коммита, ~176k токенов, 149 вызовов, 54 мин, переделок 0; s1k p95 0.432→0.414 мс, миры без рельефа бит-в-бит; коммиты с --no-verify (проверки прогнал сам) |
+| 190 | tr10-verify-w1a (облако, devmerge) | haiku | TR10: build/format/test/bench-gate на dev после TR1 | done: 0 предупреждений, format чисто, тесты 1365+504+52 зелёные (6 skip), bench-gate s1k p95 0.388 мс (−10%), 0 B/тик, stuck 0, с 1-й попытки |
+| 191 | tr2-terrain-loader (облако, worktree) | sonnet | TR2: загрузчик секции terrain (JSON, .r16, data_b64, штампы, water.sources без исполнения), WSRC в save-format, scenario-format, terrain-demo.json | в работе |
+| 192 | tr9-terrain-snapshot (облако, worktree) | sonnet | TR9: TerrainSnapshot с чанками и копированием при записи в Sim.Host | в работе |

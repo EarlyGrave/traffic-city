@@ -36,7 +36,16 @@ internal sealed class LoadContext
     public float NetCornerRadius;   // w6 (ADR-0028); 0 - фиксированный отступ (сейвы до w6)
     public int NetConnectorSamples = 8;
     public int RoadProfileMode;     // w8 (ADR-0030): 0 - legacy, 1 - режим профилей (блок RPRF обязателен)
+    public int ProgMilestones;      // w11 (progression.md §4.4): счётчики PROG до выделения состояния
+    public int ProgProfileIdx;
+    public int ProgAreas;
     public int LandUseCount;        // w10 (visual-style.md §8): число полигонов землепользования (блок LUSE обязателен при > 0)
+    public int TerrCellMm;          // w12 (terrain.md §8): скаляры TERR до выделения хранилища (столбец 7)
+    public float TerrOriginX;
+    public float TerrOriginZ;
+    public int TerrSamplesX;
+    public int TerrSamplesZ;
+    public int TerrBaseCm;
 
     // каталог профилей (RPRF, PreWorld): столбцы по группам, собираются в RoadProfilesDesc в After блока
     public int RprfModuleMm;

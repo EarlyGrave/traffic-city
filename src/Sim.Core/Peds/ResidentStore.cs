@@ -446,8 +446,8 @@ internal sealed class BusPlanner
             ref readonly BusRouteData br = ref _net.BusRoutes[r];
             for (int k = 1; k < br.StopCount; k++)
             {
-                int a = br.FirstStop + k - 1;
-                int b = br.FirstStop + k;
+                int a = _net.BusRouteStops[br.FirstStop + k - 1];
+                int b = _net.BusRouteStops[br.FirstStop + k];
                 _cum[b] = _cum[a] + Dist(_stopX[a], _stopZ[a], _stopX[b], _stopZ[b]);
             }
         }
@@ -528,9 +528,9 @@ internal sealed class BusPlanner
             for (int ib = _zsFirst[wz]; ib < _zsFirst[wz + 1]; ib++)
             {
                 int b = _zsList[ib];
-                if (b <= a || b >= br.FirstStop + br.StopCount || _net.BusStops[b].Route != route)
+                if (_net.BusStops[b].Route != route || (_net.ToolsTouched == 0 ? b <= a || b >= br.FirstStop + br.StopCount : _net.StopPos(b) <= _net.StopPos(a)))
                 {
-                    continue;
+                    continue;   // по ходу линии после a (T9: после правок - по позиции в списке маршрута)
                 }
 
                 float c = walkA + (Dist(_zx[wz], _zz[wz], _stopX[b], _stopZ[b]) / _vNomMps) + ((_cum[b] - _cum[a]) / RideSpeedMps) + (br.HeadwayTicks * 0.05f * 0.5f);

@@ -309,7 +309,7 @@ public class SimulationTests
 
         ReadOnlySpan<SimEvent> ev = sim.Events;
         Assert.Equal(4, ev.Length);
-        Assert.Equal((int)RejectReason.NotSupported, ev[0].A);
+        Assert.Equal((int)RejectReason.InvalidArgument, ev[0].A);   // T9: CreateBusRoute реализована, интервал 0 - неверный аргумент
         Assert.Equal((int)RejectReason.NotSupported, ev[1].A);
         Assert.Equal((int)RejectReason.UnknownKind, ev[2].A);
         Assert.Equal((int)RejectReason.InvalidArgument, ev[3].A);

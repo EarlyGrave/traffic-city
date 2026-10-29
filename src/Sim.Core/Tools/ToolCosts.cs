@@ -15,6 +15,16 @@ internal static class ToolCosts
 {
     private const int NoSlot = -1;
 
+    // T9: цели остановок и линий в UndoCredits - индекс со старшим тегом вида (индексы сегментов, узлов, остановок и линий пересекаются; поколение у генератора у всех 1).
+    private const int StopTag = 1 << 24;
+    private const int RouteTag = 2 << 24;
+
+    /// <summary>Индекс цели undo-кредита для остановки <paramref name="stop"/>.</summary>
+    public static int StopTarget(int stop) => StopTag | stop;
+
+    /// <summary>Индекс цели undo-кредита для линии <paramref name="route"/>.</summary>
+    public static int RouteTarget(int route) => RouteTag | route;
+
     /// <summary>Цель команды в терминах handle'ов: то, что команда создаёт, меняет или сносит; индекс -1 - не известна (прямая <c>BuildRoad</c>: сегмент появится после применения).</summary>
     public static void TargetOf(World w, in Command cmd, out int index, out int gen)
     {
@@ -51,6 +61,24 @@ internal static class ToolCosts
                 break;
             case CommandKind.SetSignalPlan:
                 NodeTarget(w, cmd.SetSignalPlan.Node, cmd.SetSignalPlan.NodeGen, out index, out gen);
+                break;
+            case CommandKind.CreateBusRoute:
+                index = RouteTarget(cmd.CreateBusRoute.RestoreOf.Index);
+                gen = cmd.CreateBusRoute.RestoreOf.Index >= 0 ? cmd.CreateBusRoute.RestoreOf.Generation : 0;
+                break;
+            case CommandKind.InsertBusStop:
+                index = StopTarget(cmd.InsertBusStop.RestoreOf.Index);
+                gen = cmd.InsertBusStop.RestoreOf.Index >= 0 ? cmd.InsertBusStop.RestoreOf.Generation : 0;
+                break;
+            case CommandKind.RemoveBusStop:
+                index = StopTarget(cmd.RemoveBusStop.Stop.Index);
+                gen = (uint)cmd.RemoveBusStop.Stop.Index < (uint)w.Net.BusStopCount
+                    ? (cmd.RemoveBusStop.Stop.Generation != 0 ? cmd.RemoveBusStop.Stop.Generation : w.Net.BusStops[cmd.RemoveBusStop.Stop.Index].Generation) : 0;
+                break;
+            case CommandKind.RemoveBusRoute:
+                index = RouteTarget(cmd.RemoveBusRoute.Route.Index);
+                gen = (uint)cmd.RemoveBusRoute.Route.Index < (uint)w.Net.BusRouteCount
+                    ? (cmd.RemoveBusRoute.Route.Generation != 0 ? cmd.RemoveBusRoute.Route.Generation : w.Net.BusRoutes[cmd.RemoveBusRoute.Route.Index].Generation) : 0;
                 break;
         }
 
@@ -98,7 +126,7 @@ internal static class ToolCosts
             }
         }
 
-        if (c.Cost > 0 && city.Ledger.City - c.Cost < -b.CreditLimit(in city.Cfg.Economy))
+        if (c.Cost > 0 && city.Ledger.City - c.Cost < -b.CreditLimit(in city.Cfg.Economy, Progression.CreditDaysBonus(w)))
         {
             return RejectReason.InsufficientFunds;
         }
@@ -127,9 +155,9 @@ internal static class ToolCosts
 
     /// <summary>
     /// Проводка применённой команды: <c>Construction</c> (трата) либо <c>Refund</c> (возврат), погашение использованной записи, запись нового кредита для прямой платной команды.
-    /// <paramref name="builtSeg"/> - сегмент, созданный прямой <c>BuildRoad</c> (иначе -1).
+    /// <paramref name="builtIndex"/>/<paramref name="builtGen"/> - цель, созданная прямой командой (сегмент <c>BuildRoad</c>, линия или остановка с тегом вида; T9); <c>builtGen == 0</c> - цель из команды.
     /// </summary>
-    public static void Settle(World w, in Command cmd, in ToolCheck c, int builtSeg)
+    public static void Settle(World w, in Command cmd, in ToolCheck c, int builtIndex, int builtGen)
     {
         CityWorld? city = w.City;
         CityBudget? b = city?.Budget;
@@ -167,10 +195,10 @@ internal static class ToolCosts
 
         int ti;
         int tg;
-        if (builtSeg >= 0)
+        if (builtGen != 0 && builtIndex >= 0)
         {
-            ti = builtSeg;
-            tg = w.Net.Segments[builtSeg].Generation;
+            ti = builtIndex;
+            tg = builtGen;
         }
         else
         {

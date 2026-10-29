@@ -37,6 +37,7 @@ internal sealed class World : IDisposable
     public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
     public CityDesc Town;           // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
     public readonly ParkingDesc ParkCfg;     // секция parking (parking.md §14); нули, если режима нет (нужен demand.model = residents)
+    public readonly TerrainDesc TerrainCfg;   // параметры рельефа с дефолтами (PARM 242-255, Terrain.TerrainParams); без рельефа - чистые дефолты
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -57,7 +58,9 @@ internal sealed class World : IDisposable
     public readonly Sim.Core.Tools.InverseLog Inv;    // обратные записи и scratch перенумерации (player-tools.md §8): не состояние, вне хэша и сейва
     public readonly ToolOps Ops;                 // длительные операции инструментов (дренаж, 4.3 T4); состояние - в хэше и сейве при ToolsTouched = 1
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
-    public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
+    public CityWorld? City;
+    public ProgressionState? Progression;        // вехи и разблокировки (ADR-0034, progression.md §4.4); null без progression.enabled - всё открыто, ни одна ветка не исполняется                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
+    public Sim.Core.Terrain.TerrainStore? Terrain;   // рельеф и вода (ADR-0036, terrain.md §2.1); null без terrain.enabled - ни одна ветка рельефа не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
@@ -112,6 +115,7 @@ internal sealed class World : IDisposable
     public readonly SimEvent[] Events;
     public int EventCount;
     public bool EventsOverflowed;
+    public readonly Sim.Core.Metrics.PlaceEvents Places;   // события с местом (EV1): остывание мест и scratch обхода; вывод, вне хэша и сейва
 
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
@@ -209,6 +213,7 @@ internal sealed class World : IDisposable
         WorldGridOriginZ = desc.WorldGridOriginZ;
         Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
         ParkCfg = desc.Demand.Model == DemandModel.Residents && desc.Parking.Enabled ? desc.Parking : default;
+        TerrainCfg = Sim.Core.Terrain.TerrainParams.ConfigFor(in desc.Terrain);
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);
@@ -256,6 +261,7 @@ internal sealed class World : IDisposable
 
         Commands = new RingBuffer<Command>(c.CommandQueueCapacity);
         Events = new SimEvent[c.EventCapacity];
+        Places = new Sim.Core.Metrics.PlaceEvents(Net.Segments.Length, Net.BusRoutes.Length);
 
         SegmentLoads = new SegmentLoad[c.MaxSegments];
         for (int i = 0; i < SegmentLoads.Length; i++)
@@ -276,10 +282,16 @@ internal sealed class World : IDisposable
     /// </summary>
     public void Emit(SimEventKind kind, uint tag = 0, int a = 0, int b = 0)
     {
+        EmitAt(kind, tag, a, b, default);
+    }
+
+    /// <summary>То же с местом события (EV1, <see cref="EventPlace"/>) и третьим параметром <paramref name="c"/>.</summary>
+    public void EmitAt(SimEventKind kind, uint tag, int a, int b, in EventPlace place, int c = 0)
+    {
         int cap = Events.Length;
         if (EventCount < cap - 1)
         {
-            Events[EventCount++] = new SimEvent { Kind = kind, Tag = tag, Tick = Tick, A = a, B = b };
+            Events[EventCount++] = new SimEvent { Kind = kind, Tag = tag, Tick = Tick, A = a, B = b, Place = place, C = c };
             return;
         }
 

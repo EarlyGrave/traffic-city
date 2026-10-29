@@ -37,6 +37,7 @@ internal static class QualityMetrics
         }
 
         int[] perLane = w.LaneScratch;
+        City.CityKpi? kpi = w.City?.Kpi;   // случай недовольства LongWait (progression.md §6.1): эпизод стояния >= 60 с
         int hw = v.HighWater;
         int maxStill = 0;
         int concurrent = 0;
@@ -59,6 +60,11 @@ internal static class QualityMetrics
                 if (still < Still60Ticks + SampleTicks)
                 {
                     c.StillEpisodes60++;
+                    if (kpi != null)
+                    {
+                        int seg = PlaceEvents.SegmentOfLane(net, v.Lane[i]);
+                        kpi.OnLongWait(seg, seg >= 0 ? net.Segments[seg].Generation : 0);   // случай и жалоба у сегмента (progression.md §6.1)
+                    }
                 }
 
                 if (still >= Still120Ticks && still < Still120Ticks + SampleTicks)

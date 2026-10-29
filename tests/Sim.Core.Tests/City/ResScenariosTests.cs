@@ -11,6 +11,7 @@ public sealed class ResScenariosTests
     [Theory]
     [InlineData("s10k-res", 16_000, true)]
     [InlineData("s100k-res", 150_000, false)]
+    [InlineData("game-city", 16_000, true)]
     public void Scenario_Loads_AsResidentsCity(string name, int minLots, bool peds)
     {
         LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", name + ".json"));

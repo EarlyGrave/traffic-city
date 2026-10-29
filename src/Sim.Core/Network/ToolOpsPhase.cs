@@ -24,6 +24,26 @@ internal static class ToolOpsPhase
         for (int k = 0; k < ops.Count;)
         {
             int seg = ops.TargetIndex[k];
+            if (ops.Kind[k] == (byte)ToolOpKind.ShrinkLanes)
+            {
+                if (!n.SegmentAlive(seg))
+                {
+                    ops.RemoveAt(k);   // защита: сегмент под правкой полос не удаляется (Busy)
+                    continue;
+                }
+
+                int left = ReshapeEdit.TryFinish(w, k);   // пересчёт производных сделан внутри
+                if (left == 0)
+                {
+                    continue;
+                }
+
+                ops.Remaining[k] = left;
+                Progress(w, k, left);
+                k++;
+                continue;
+            }
+
             if (!n.ResolveSegment(seg, ops.TargetGen[k]))
             {
                 ops.RemoveAt(k);   // цель уже исчезла (защита: операция не должна пережить сегмент)
@@ -71,7 +91,9 @@ internal static class ToolOpsPhase
         {
             ops.LastStallTick[k] = w.Tick;
             w.Work.DrainStalls++;
-            w.Emit(SimEventKind.DrainStalled, 0, ops.Id[k], remaining);
+            int seg = ops.TargetIndex[k];
+            EventPlace place = (uint)seg < (uint)w.Net.SegmentCount ? Metrics.PlaceEvents.SegmentPlace(w.Net, seg) : default;   // EV1: цель операции - сегмент
+            w.EmitAt(SimEventKind.DrainStalled, 0, ops.Id[k], remaining, in place);
         }
     }
 

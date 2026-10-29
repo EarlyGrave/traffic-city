@@ -15,11 +15,12 @@ internal struct InvCtx
     public bool Inactive;
     public int NodeA, NodeB, GenA, GenB;   // BuildRoad: существующие построенные узлы концов (до мутации) и их режим
     public NodeControl CtlA, CtlB;
+    public EntityRef Ref;                  // SplitRoad: разрезаемый сегмент; MergeAtNode: узел слияния (T5)
 }
 
 /// <summary>
 /// Обратные записи ядра (player-tools.md §8.1): строятся из фактического состояния до мутации (<see cref="Begin"/>), для <c>BuildRoad</c> дополняются после неё (<see cref="End"/>,
-/// индекс нового сегмента известен только тогда). Запись фиксируется, только если команда применена. Автобусные команды (T9) обратных пока не имеют.
+/// индекс нового сегмента известен только тогда). Запись фиксируется, только если команда применена. Автобусные (T9): создание - снятие созданного, снятие - пересоздание с <c>RestoreOf</c>, параметры - прежние.
 /// </summary>
 internal static class InverseBuilder
 {
@@ -37,6 +38,9 @@ internal static class InverseBuilder
         InverseLog log = w.Inv;
         var ctx = new InvCtx { Start = log.CmdCount, NodeA = -1, NodeB = -1 };
         log.BuiltSeg = -1;
+        log.BuiltNode = -1;
+        log.BuiltRoute = -1;
+        log.BuiltStop = -1;
         if (!IsTool(cmd.Kind))
         {
             ctx.Inactive = true;
@@ -72,12 +76,125 @@ internal static class InverseBuilder
             case CommandKind.PaintZone:
                 BeginPaintZone(w, in cmd, ref ctx);
                 break;
+            case CommandKind.SplitRoad:
+                ctx.Ref = cmd.SplitRoad.Seg.Index >= 0 && w.Net.SegmentAlive(cmd.SplitRoad.Seg.Index)
+                    ? new EntityRef(cmd.SplitRoad.Seg.Index, w.Net.Segments[cmd.SplitRoad.Seg.Index].Generation)
+                    : EntityRef.None;
+                break;
+            case CommandKind.MergeAtNode:
+                ctx.Ref = cmd.MergeAtNode.Node.Index >= 0 && w.Net.NodeAlive(cmd.MergeAtNode.Node.Index)
+                    ? new EntityRef(cmd.MergeAtNode.Node.Index, w.Net.Nodes[cmd.MergeAtNode.Node.Index].Generation)
+                    : EntityRef.None;
+                break;
+            case CommandKind.RemoveBusStop:
+                BeginRemoveBusStop(w, in cmd, ref ctx);
+                break;
+            case CommandKind.RemoveBusRoute:
+                BeginRemoveBusRoute(w, in cmd, ref ctx);
+                break;
+            case CommandKind.SetBusRouteParams:
+                BeginBusRouteParams(w, in cmd, ref ctx);
+                break;
+            case CommandKind.CreateBusRoute:
+            case CommandKind.AppendBusStop:
+            case CommandKind.InsertBusStop:
+                break;   // T9: обратная (снять созданное) - в End, индекс известен после применения
             default:
-                ctx.NoInverse = true;   // SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
+                ctx.NoInverse = true;
                 break;
         }
 
         return ctx;
+    }
+
+    /// <summary>Остановка <paramref name="si"/> как команда вставки на позицию <paramref name="pos"/> (-1 - в конец) линии <paramref name="route"/> с восстановлением handle'а (T9).</summary>
+    private static Command RestoreStop(NetworkStore n, int si, EntityRef route, int pos)
+    {
+        ref readonly BusStopData st = ref n.BusStops[si];
+        ref readonly LaneData ld = ref n.Lanes[st.Lane];
+        var ins = new InsertBusStopCmd
+        {
+            Route = route,
+            Position = pos,
+            Seg = new EntityRef(ld.Segment, n.Segments[ld.Segment].Generation),
+            Dir = ld.Direction,
+            LaneNo = ld.LaneNo,
+            Kind = (byte)st.Kind,
+            S = st.S,
+            RestoreOf = new EntityRef(si, st.Generation),
+        };
+        return Command.MakeInsertBusStop(in ins);
+    }
+
+    private static void BeginRemoveBusStop(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        RemoveBusStopCmd b = cmd.RemoveBusStop;
+        if (!n.ResolveBusStop(in b.Stop) || (uint)n.BusStops[b.Stop.Index].Lane >= (uint)n.LaneCount)
+        {
+            return;   // будет отклонена
+        }
+
+        int r = n.BusStops[b.Stop.Index].Route;
+        int pos = n.StopPos(b.Stop.Index);
+        if (pos < 0)
+        {
+            ctx.NoInverse = true;   // остановка вне линии (не создаётся инструментами)
+            return;
+        }
+
+        Add(w.Inv, ref ctx, RestoreStop(n, b.Stop.Index, new EntityRef(r, n.BusRoutes[r].Generation), pos));
+    }
+
+    private static void BeginRemoveBusRoute(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        RemoveBusRouteCmd b = cmd.RemoveBusRoute;
+        if (!n.ResolveBusRoute(in b.Route))
+        {
+            return;
+        }
+
+        int r = b.Route.Index;
+        ref readonly BusRouteData br = ref n.BusRoutes[r];
+        var route = new EntityRef(r, br.Generation);
+        var create = new CreateBusRouteCmd
+        {
+            HeadwayTicks = br.HeadwayTicks < 0 ? -br.HeadwayTicks : br.HeadwayTicks,
+            VehicleType = br.VehicleType,
+            Flags = br.HeadwayTicks < 0 ? BusRouteFlags.Suspend : 0,
+            RestoreOf = route,
+        };
+        InverseLog log = w.Inv;
+        Add(log, ref ctx, Command.MakeCreateBusRoute(in create));
+        for (int k = 0; k < br.StopCount; k++)
+        {
+            int si = n.BusRouteStops[br.FirstStop + k];
+            if ((uint)n.BusStops[si].Lane < (uint)n.LaneCount)
+            {
+                Add(log, ref ctx, RestoreStop(n, si, route, -1));   // ссылка на линию переводится на пересозданную (BusRouteRemapped, та же фаза 1)
+            }
+        }
+    }
+
+    private static void BeginBusRouteParams(World w, in Command cmd, ref InvCtx ctx)
+    {
+        NetworkStore n = w.Net;
+        SetBusRouteParamsCmd b = cmd.SetBusRouteParams;
+        if (!n.ResolveBusRoute(in b.Route))
+        {
+            return;
+        }
+
+        ref readonly BusRouteData br = ref n.BusRoutes[b.Route.Index];
+        var prev = new SetBusRouteParamsCmd
+        {
+            Route = new EntityRef(b.Route.Index, br.Generation),
+            HeadwayTicks = br.HeadwayTicks < 0 ? -br.HeadwayTicks : br.HeadwayTicks,
+            VehicleType = br.VehicleType,
+            Flags = br.HeadwayTicks < 0 ? BusRouteFlags.Suspend : BusRouteFlags.Resume,
+        };
+        Add(w.Inv, ref ctx, Command.MakeSetBusRouteParams(in prev));
     }
 
     /// <summary>Фиксирует запись, если команда применена; иначе отбрасывает построенное.</summary>
@@ -103,6 +220,35 @@ internal static class InverseBuilder
             {
                 Add(log, ref ctx, Command.MakeSetNodeControl(new SetNodeControlCmd { Node = ctx.NodeB, Control = ctx.CtlB, NodeGen = ctx.GenB }));
             }
+        }
+
+        if (cmd.Kind == CommandKind.CreateBusRoute && log.BuiltRoute >= 0)
+        {
+            Add(log, ref ctx, Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = new EntityRef(log.BuiltRoute, w.Net.BusRoutes[log.BuiltRoute].Generation) }));
+        }
+        else if (cmd.Kind is CommandKind.InsertBusStop or CommandKind.AppendBusStop && log.BuiltStop >= 0)
+        {
+            Add(log, ref ctx, Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = new EntityRef(log.BuiltStop, w.Net.BusStops[log.BuiltStop].Generation) }));
+        }
+
+        if (cmd.Kind == CommandKind.SplitRoad && log.BuiltNode >= 0)
+        {
+            // Разрез: обратная - слияние в новом узле (RestoreSeg - разрезанный сегмент, хост переведёт ссылки по SegmentRemapped).
+            var m = new MergeAtNodeCmd { Node = new EntityRef(log.BuiltNode, w.Net.Nodes[log.BuiltNode].Generation), RestoreSeg = ctx.Ref };
+            Add(log, ref ctx, Command.MakeMergeAtNode(in m));
+        }
+        else if (cmd.Kind == CommandKind.MergeAtNode && log.BuiltSeg >= 0)
+        {
+            // Слияние: обратная - разрез общего сегмента в точке бывшего узла (RestoreNode - бывший узел).
+            var sr = new SplitRoadCmd
+            {
+                Seg = new EntityRef(log.BuiltSeg, w.Net.Segments[log.BuiltSeg].Generation),
+                S = log.BuiltS,
+                RestoreNode = ctx.Ref,
+                RestoreSeg1 = log.MergedA,
+                RestoreSeg2 = log.MergedB,
+            };
+            Add(log, ref ctx, Command.MakeSplitRoad(in sr));
         }
 
         if (log.RecCount >= log.Recs.Length)
@@ -151,16 +297,9 @@ internal static class InverseBuilder
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone;
-
-    /// <summary>
-    /// <c>UpgradeRoad</c>, у которого обратной записи не будет: сегмент без профиля получает профиль (вернуть «без профиля» командой нельзя). Зеркало <c>BeginUpgradeRoad</c> для превью.
-    /// </summary>
-    public static bool UpgradeLacksInverse(World w, in Command cmd)
-    {
-        var chk = default(ToolCheck);
-        return ToolValidator.Check(w, in cmd, ref chk) == RejectReason.None && chk.Reshape != ReshapeMode.None && chk.Profile >= 0 && w.Net.Segments[chk.Seg].Profile < 0;
-    }
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
+        or CommandKind.SplitRoad or CommandKind.MergeAtNode or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop
+        or CommandKind.RemoveBusStop or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams;
 
     /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.
@@ -201,18 +340,32 @@ internal static class InverseBuilder
         }
 
         ref readonly SegmentData sd = ref w.Net.Segments[chk.Seg];
+        if (chk.CancelShrink)
+        {
+            // Отмена дренажа полос (T5): обратная - снова та правка, что ждала (redo), со скоростью до отмены.
+            int k = w.Ops.FindShrink(chk.Seg);
+            ToolOps.UnpackReshape(w.Ops.TargetGen[k], out int ab, out int ba, out RoadKind kind, out int profile, out bool mirrored);
+            var redo = new UpgradeRoadCmd
+            {
+                Seg = new EntityRef(chk.Seg, sd.Generation),
+                SpeedLimit = sd.SpeedLimit,
+                LanesAB = (byte)ab,
+                LanesBA = (byte)ba,
+                Kind = kind,
+                Profile = (ushort)(profile + 1),
+                Flags = (byte)(profile >= 0 ? (mirrored ? UpgradeRoadFlags.Mirrored : 0) : (sd.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
+            };
+            Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in redo));
+            return;
+        }
+
         if (chk.Reshape == ReshapeMode.None)
         {
             return;
         }
 
-        if (chk.Profile >= 0 && sd.Profile < 0)
-        {
-            ctx.NoInverse = true;
-            return;
-        }
-
-        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип. Флаги ReshapeMode.Swap на занятость не влияют: возврат проходит тот же валидатор.
+        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип; сегмент без профиля, получающий профиль, возвращается с NoProfile (T5).
+        // Занятость на обратную не влияет: возврат проходит тот же валидатор (перенос машин или дренаж ShrinkLanes).
         var u = new UpgradeRoadCmd
         {
             Seg = new EntityRef(chk.Seg, sd.Generation),
@@ -221,7 +374,7 @@ internal static class InverseBuilder
             LanesBA = sd.LanesBA,
             Kind = sd.Kind,
             Profile = (ushort)(sd.Profile + 1),
-            Flags = (byte)(sd.Profile >= 0 && (sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0),
+            Flags = (byte)(sd.Profile >= 0 ? ((sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0) : (chk.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
         };
         Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in u));
     }
@@ -291,7 +444,7 @@ internal static class InverseBuilder
         RemoveRoadCmd c = cmd.RemoveRoad;
         NetworkStore n = w.Net;
         InverseLog log = w.Inv;
-        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindSegment(c.Seg.Index) >= 0)
+        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindAny(c.Seg.Index) >= 0)
         {
             return;   // команда будет отклонена
         }
@@ -321,12 +474,12 @@ internal static class InverseBuilder
         if ((sd.Flags & SegmentFlags.Curve) != 0)
         {
             b.Flags = BuildRoadFlags.Curve;
-            b.Cx = sd.Cx;
-            b.Cz = sd.Cz;
+            b.SetControl(sd.Cx, sd.Cz);   // T5: та же кривая (точность команды - 10 см)
         }
-        else if (sd.Profile >= 0)
+
+        if (sd.Profile >= 0)
         {
-            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля (поле делит байты с Cz - кривые и профили вместе пока не поддержаны).
+            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля.
             b.Profile = (ushort)(sd.Profile + 1);
             if ((sd.Flags & SegmentFlags.Mirrored) != 0)
             {

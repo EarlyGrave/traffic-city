@@ -120,6 +120,7 @@ internal sealed partial class NetworkStore
         BusStops = new BusStopData[Math.Max(0, caps.MaxBusStops)];
         BusRoutes = new BusRouteData[Math.Max(0, caps.MaxBusRoutes)];
         BusRouteStops = new int[Math.Max(0, caps.MaxBusRoutes) * Math.Max(0, caps.MaxBusStopsPerRoute)];
+        MaxStopsPerRoute = Math.Max(0, caps.MaxBusStopsPerRoute);
         NodeTicket = new uint[nodes];
         OutReserved = new float[lanes];
         LaneGateNode = new int[lanes];
@@ -221,6 +222,41 @@ internal sealed partial class NetworkStore
                 RefreshLaneGateNode(n);
             }
         }
+    }
+
+    /// <summary>Предел остановок одного маршрута (<c>max_bus_stops_per_route</c>): больше - <c>Capacity</c> у <c>InsertBusStop</c> (T9).</summary>
+    public readonly int MaxStopsPerRoute;
+
+    /// <summary>
+    /// Остановка на позиции <paramref name="k"/> маршрута <paramref name="route"/> (T9: косвенно через <see cref="BusRouteStops"/>). У сети генератора <c>BusRouteStops</c> - тождество,
+    /// поэтому порядок остановок маршрута - порядок глобальных индексов; после правок игрока это уже не так, и порядок на маршруте даёт только эта функция и <see cref="StopPos"/>.
+    /// </summary>
+    public int RouteStop(int route, int k) => BusRouteStops[BusRoutes[route].FirstStop + k];
+
+    /// <summary>Позиция остановки <paramref name="stop"/> в её маршруте (<c>BusStopData.Route</c>) или -1: остановка мертва, маршрута нет или в списке маршрута её нет. O(остановок маршрута).</summary>
+    public int StopPos(int stop)
+    {
+        if (!BusStopAlive(stop))
+        {
+            return -1;
+        }
+
+        int r = BusStops[stop].Route;
+        if (!BusRouteAlive(r))
+        {
+            return -1;
+        }
+
+        ref readonly BusRouteData br = ref BusRoutes[r];
+        for (int k = 0; k < br.StopCount; k++)
+        {
+            if (BusRouteStops[br.FirstStop + k] == stop)
+            {
+                return k;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
