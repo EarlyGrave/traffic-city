@@ -35,6 +35,9 @@ internal sealed class CityWorld
     /// <summary>Объекты стоянки (parking.md §2.1, ADR-0026); <c>null</c> без <c>parking.model = "resource"</c> - ни одна ветка парковки не исполняется (PK1).</summary>
     public Sim.Core.Parking.ParkingStore? Parking;
 
+    /// <summary>Показатели города (progression.md §2.3): кольцо 24 игровых часов; есть всегда в режиме жителей (сейв CKPI), в хэш - только при прогрессии.</summary>
+    public readonly CityKpi Kpi;
+
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
     public readonly ArrivalRing Arrivals;
@@ -78,6 +81,7 @@ internal sealed class CityWorld
         DayTicks = cfg.Calendar.DayTicks;
         SlotTicks = DayTicks / SlotsPerDay;
         Exec = cfg.Residents.TripExecution;
+        Kpi = new CityKpi(DayTicks);
         Lots = new LotStore(caps.MaxLots);
         Buildings = new BuildingStore(caps.MaxBuildings);
         Residents = new CityResidents(caps.MaxCityResidents);

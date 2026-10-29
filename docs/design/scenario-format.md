@@ -466,6 +466,34 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
   `lanes_ab`/`lanes_ba`/`kind` выводятся из профиля (с учётом `mirrored`), а если заданы - обязаны совпасть. Без каталога эти ключи - ошибка.
 - Тесты и golden подменяют файл каталога через `ScenarioOverrides.Profiles` (`tests/fixtures/road-profiles.fixture.json`); подмена действует, только если сценарий сам объявил `road_profiles_file`.
 
+### 2.10 Секция `progression` (этап 6.5, PG1, ADR-0034, `docs/design/progression.md` §4.1)
+
+Необязательна; `format_version` не растёт (2 и 3 принимают секцию). Нет секции или `"enabled": false` - прогрессии нет: всё открыто, поведение, хэш и сейв побитово прежние.
+Допустима только при `demand.model = "residents"`.
+
+```jsonc
+"progression": {
+  "enabled": true,                       // по умолчанию true
+  "locked_features": ["arterial_upgrade", "bus_lines", "signals_adaptive", "curves", "bus_lanes", "parking_fees", "zoning"],
+  "locked_profiles": ["arterial_6", "asym_1_2"],   // id каталога road_profiles; без каталога - ошибка
+  "min_legs": 500,                       // ворота без данных: ног за окно меньше - веха не берётся (0..1e8)
+  "areas": [ { "min_x": -1700, "min_z": -1700, "max_x": 1700, "max_z": 1700 } ],   // м; 0 - стартовая; <= 8
+  "milestones": [                        // <= 32, по порядку; population строго растёт
+    { "id": "m1", "population": 11400, "unlock": ["arterial_upgrade", "bus_lines"], "unlock_profiles": [], "grant": 20000 },
+    { "id": "m3", "population": 13000, "gates": [ { "kpi": "idle_pct", "max": 45 }, { "kpi": "travel_min", "max": 40 } ], "gates_any": true,
+      "unlock": ["bus_lanes"], "credit_days": 10, "grant": 40000, "area": 0 }
+  ]
+}
+```
+- Признаки (`Feature`, номер = бит): `roads_basic` (0, закрыть нельзя), `arterial_upgrade`, `curves`, `signals_fixed`, `signals_adaptive`, `turn_rules`, `bus_lines`, `bus_lanes`, `zoning`,
+  `taxes`, `parking_fees` (10).
+- Ворота (`gates`, <= 2; `gates_any` - связка «или», иначе «и»): `kpi` из `travel_min`, `idle_pct`, `bus_share_pct`, `satisfaction_pct`, `work_min` и ровно один из `min`/`max`.
+  Порог переводится в целое ×10 (`round(v · 10)`): минуты ×10, проценты ×10 = ‰ - те же единицы, что `CityKpiInfo`.
+- `area` - индекс области (по умолчанию -1: не меняет); `credit_days` 0..32767; `grant` >= 0.
+- Ошибки загрузчика (опечатки): неизвестный признак, профиль, показатель или ключ; признак/профиль в `unlock`/`unlock_profiles` не закрыт в `locked_*`; повтор `id`, признака или профиля;
+  `population` не растёт строго; вех > 32, ворот > 2, областей > 8; `min_* > max_*`; `area` вне областей.
+- `id` вех - только у загрузчика и клиента (`LoadedScenario.MilestoneIds`, индекс = веха ядра); ядро получает POD `ProgressionDesc` (`Api/Progression.cs`).
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
 В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.

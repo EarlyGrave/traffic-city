@@ -22,7 +22,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    private const long BudgetBytes = 25L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ
+    private const long BudgetBytes = 32L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ; w11 (ADR-0034, PG1): 32 МБ - полный набор w11 (+5,7 МБ) и файл прогрессии
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -39,7 +39,8 @@ public sealed class SaveCorpusTests
         new("s1k-prof", 2400, S1kProf),
         new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
         new("s1k-res-prof", 4800, S1kResProf),   // w10, RP5 (ADR-0030): s1k-res по профилям фикстуры - участки на мировой сетке 8 м (CellX/CellZ/CellsF/CellsD/Orient в LOTS)
-        new("s1k-res-park", 24000, S1kResPark),   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
+        new("s1k-res-park", 24000, S1kResPark),
+        new("s1k-res-econ-prog", 3600, S1kResEconProg),   // w11 (ADR-0034, PG1-PG2): s1k-res-econ + секция progression - блоки PROG и CKPI, кольцо показателей посреди второго часа   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
     };
 
     private static readonly Lazy<string> _dir = new(PrepareCorpusDir);
@@ -271,6 +272,12 @@ public sealed class SaveCorpusTests
         return (d, sc.TypeNames);
     }
 
+    private static (ScenarioDesc, string[]) S1kResEconProg()
+    {
+        LoadedScenario sc = Sim.Core.Tests.City.ProgressionFixtures.Econ();
+        return (sc.Desc, sc.TypeNames);
+    }
+
     // За 100 тиков до конца - SetBudgetPolicy: в сейве ожидающая политика (граница суток ещё впереди: тик 216500 > 216000, следующая - 288000).
     private static void EvolveBudget(Simulation sim, int ticks)
     {
@@ -500,6 +507,37 @@ public sealed class SaveCorpusTests
                     {
                         Assert.Equal((-1, -1, -1), (r.HomeFac[i], r.CarFac[i], r.CarLot[i]));
                     }
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Corpus_W10Files_AreKeptAndMigrate_ToNoProgression()
+    {
+        // Файлы w10 (до прогрессии, ADR-0034) остаются навсегда: миграция 10 -> 11 даёт «прогрессии нет», пустое кольцо показателей у жителей (CKPI с отметками
+        // текущих счётчиков), LockedRejects = 0; хэш продолжения не меняется (его проверяет CheckFile для каждого файла).
+        string[] old = Directory.GetFiles(CorpusDir, "w10-*.tcsave");
+        Assert.True(old.Length >= 12, "корпус w10 должен остаться в репозитории");
+        foreach (string path in old)
+        {
+            byte[] raw = SaveEnvelope.ReadContainer(path);
+            Assert.Equal(LoadStatus.Ok, Simulation.InspectSave(raw, out SaveHeaderInfo head));
+            Assert.Equal(10, head.WorldVersion);
+            var opt = new LoadOptions { StrictHash = 0 };
+            Assert.Equal(LoadStatus.Ok, Simulation.Load(raw, in opt, new SimRuntimeOptions { WorkerThreads = 1 }, out Simulation? sim, out LoadReport rep));
+            using (sim!)
+            {
+                Assert.Equal(Simulation.CurrentWorldVersion - 10, rep.MigrationsApplied);
+                Assert.False(sim!.HasProgression);
+                Assert.Equal(0, sim.Counters.LockedRejects);
+                Sim.Core.City.CityWorld? city = sim.World.City;
+                Assert.Equal(city != null, sim.GetCityKpi(out CityKpiInfo k));
+                if (city != null)
+                {
+                    Assert.Equal(0, k.HoursFilled + k.DaysFilled);
+                    Assert.Equal(sim.Counters.VehicleTicksTotal, city.Kpi.VehAtHourStart);
+                    Assert.Equal(0, city.Budget?.WarnLevel ?? 0);
                 }
             }
         }

@@ -83,6 +83,14 @@ internal static class CityHash
         {
             Parking.ParkingHash.Add(ref h, w);   // раздел парковки (parking.md §13): только в режиме, хэш прочих миров не меняется (PK1)
         }
+
+        if (w.Progression != null)
+        {
+            // раздел прогрессии (progression.md §2.4, §4.4): вехи, открытое, показатели города и счётчик замков - только при прогрессии; без неё кольцо KPI - наблюдатель, хэш прежний
+            w.Progression.AddToHash(ref h);
+            c.Kpi.AddToHash(ref h);
+            h.Add(w.Counters.LockedRejects);
+        }
     }
 
     /// <summary>

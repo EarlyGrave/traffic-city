@@ -222,3 +222,9 @@
 > BusesStuck / Overloaded), `ParkingFull` 65 (здание). Место получили `GridlockOn`, `DrainStalled`, `ZoneAccessLost`. `EntityKind.Building = 6`.
 > Облако поправило `game/Scripts/Ui/UiNotifyMap.cs` и `UiNotifyView.cs` (тексты новых тостов, `NotifySubject.FromPlace`, «Показать» летит к X/Z) —
 > **локалу:** инспекторов линии/здания в `SimHost.TryLocate` нет — `Point` только двигает камеру. Пороги — первые прикидки, крутить по плейтесту.
+
+> **2026-10-29: N5 влит (облако, агент 183, opus) — PG1 + PG2 прогрессии.** Для клиента (панель города UI16): `Simulation.GetCityKpi(out CityKpiInfo)`
+> (время в пути, доля автобуса/пешком, простой, довольство, инциденты, казна, тренд, `DaysToLimit`; минуты ×10, доли в ‰, −1 = нет данных),
+> `CopyKpiHours(Span<KpiHour>)` (до 24 ч), `CopyKpiDays(Span<long>)` (баланс на конец суток, до 32), `GetProgression`/`GetMilestone`,
+> `IsFeatureUnlocked`/`IsProfileUnlocked`; `RejectReason.Locked = 17` (текст в RejectMessages есть); события 59–62 объявлены. Сейв **w11**
+> (CKPI всегда в режиме жителей, PROG — при включённой прогрессии); корпус сейвов — бюджет поднят 25 → 32 МБ (сейчас 29.7). Вех и замков ещё нет (PG3).

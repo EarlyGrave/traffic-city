@@ -90,6 +90,8 @@ public sealed class RefKindTests
         ["XING.StopQHead"] = "пешеход; строка = остановка",
         ["XING.StopQTail"] = "пешеход; строка = остановка",
         ["XING.StopQCount"] = "счётчик; строка = остановка",
+        ["CKPI.RingIncLongStopWait"] = "счётчик случаев за час (progression.md §6.1)",
+        ["CKPI.CurIncLongStopWait"] = "счётчик случаев за час",
         ["PEDS.Edge"] = "ребро графа пешеходов - производное сети, перенос по (Side, S) - T11",
         ["PEDS.GoalEdge"] = "ребро графа пешеходов (T11)",
         ["RESI.HomeEdge"] = "ребро графа пешеходов (T11)",

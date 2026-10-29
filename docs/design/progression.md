@@ -356,3 +356,31 @@ UI8+ — после PG5; UI-N — после PG6. Плейтест 3 — пос�
 
 ## 10. Результаты задач
 (заполняют PG1–PG7: отличия от спеки, замороженная поверхность, числа калибровки)
+
+### PG1 + PG2 (агент 183, облако, 2026-10-29; ветка `claude/cool-newton-91p1tr-n5`)
+**Замороженная поверхность (`Api/Progression.cs`, `Api/Simulation.Progression.cs`).**
+- `enum Feature : byte` 0..10 (§4.2), `enum KpiKind : byte` (`None`, `TravelMin`, `IdlePct`, `BusSharePct`, `SatisfactionPct`, `WorkMin`), `enum ComplaintKind : byte` 0..5,
+  `MilestoneFlags.GatesAny = 1`, `KpiGate` (8 Б: `Kpi`, `IsMin`, `R`, `Value`), `MilestoneDesc` (48 Б: `Population`, `Grant`, `CreditDays`, `Area`, `Flags`, `G0`, `G1`, `Features`,
+  `ProfileFirst`, `ProfileCount`), `AreaRect` (16 Б, м), `ProgressionDesc` (`Enabled`, `LockedFeatures`, `LockedProfiles`, `MinLegs`, `Areas`, `Milestones`, `ProfileIdx`) в `ScenarioDesc.Progression`.
+- `ProgressionInfo` (`Features`, `Reached`, `MilestoneCount`, `AreaStage`, `CreditDaysBonus`, `NextPopulation`, `NextGateMask`, `NextGateValue0/1`), `MilestoneInfo` (`Desc`, `ReachedTick`),
+  `KpiHour` (88 Б, §2.3), `CityKpiInfo` (окно = полные часы кольца + текущий час: `HoursFilled`, `CurrentHourTicks`, `Legs*`, `TravelMinX10`, `Travel{Car,Bus,Walk}MinX10`, `WorkMinX10`,
+  `BusSharePermille`, `WalkSharePermille`, `IdlePermille`, `SatisfactionPermille`, `Inc*`, `StuckNow`, `Gridlock`, `Balance`, `TrendPerDay`, `DaysToLimit`, `HasBudget`, `Population`, `DaysFilled`),
+  `ComplaintInfo` (40 Б: `Tick`, `Seq`, `Kind`, `Count`, `Place: EventPlace`).
+- Вызовы: `HasProgression`, `GetProgression`, `GetMilestone(i)`, `IsProfileUnlocked(p)`, `IsFeatureUnlocked(f)`, `GetCityKpi`, `CopyKpiHours(Span<KpiHour>)` (от старого к новому, до 24),
+  `GetKpiCurrentHour`, `CopyKpiDays(Span<long>)` (баланс на конце суток, до 32), `CopyComplaints` (заглушка до PG4, 0).
+- `RejectReason.Locked = 17` (текст клиента в `RejectMessages`), `SimEventKind` 59-62 (`MilestoneReached`, `MilestoneGated`, `BudgetWarning`, `Complaint`), `SimCounters.LockedRejects`.
+
+**Отличия от спеки.**
+- Единицы порогов и показателей - целые ×10: минуты ×10 и ‰ (`KpiGate.Value`, `CityKpiInfo`), загрузчик переводит `round(v · 10)`; K4 - тоже в ‰.
+- Сдвиг часа - по смене игрового часа суток (`HourOf(t) = (t mod D) · 24 / D`), а не `(tick + 1) % HourTicks`: границы часов совпадают с границами суток при любом `DayTicks`.
+  Прыжки агрегата (`IdleSpan`) останавливаются на последнем тике часа.
+- K1 - длительность ноги от заявки до прибытия (`TicksToDs(now − LegReq)`) у всех способов (у автобуса - не обобщённая стоимость).
+- `ComplaintInfo` - 40 Б с `EventPlace` (EV1) вместо полей места 32 Б; добавлен `Seq`.
+- `CityKpiInfo`/`ProgressionInfo` - новые POD (в спеке только перечислены); `DaysToLimit` - в `CityKpiInfo` (в `CityBudgetInfo` раскладку не трогали).
+- Пороги случаев (`LongCommute` 60 игровых мин или 2 × ским, `LongStopWait` 20 игровых мин) - константы `CityKpi` [Старт], в сценарий не вынесены.
+- `ProgressionState` лежит в `World.Progression`, кольцо - `CityWorld.Kpi`. Проверка определений - одна функция `ProgressionState.Validate` (Create и загрузка).
+- Сейв: `world_version` 11, `PARM` 240, `CNTR` 173, `CBGT` 31 (`WarnLevel`, в хэш - с PG5), блоки `CKPI` и `PROG` (save-format.md §12). `MigrationV11` создаёт пустой `CKPI` у мира с жителями.
+- Корпус: полный набор `w11-*` + `w11-s1k-res-econ-prog-t3600` (s1k-res-econ + секция прогрессии); бюджет корпуса 25 → 32 МБ (≈ 29.7 МБ). Файла `w11-game-city-d1` нет - сценарий `game-city` делает PG6.
+
+**Осталось PG3:** `Progression.Check` в диспетчере и превью, проверка вех в 9r (на сдвиге часа - `CityKpi.OnTickEnd`, после него), грант, бонус кредита в `CreditLimit`, области, события 59-60,
+`LockedRejects++`. Готово для PG3: `ProgressionState.MilestoneForFeature/Profile`, `CityKpi.SumWindow/Value`, ворота считает `Simulation.GetProgression` (`GateMiss`).

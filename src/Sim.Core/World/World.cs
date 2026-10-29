@@ -57,7 +57,8 @@ internal sealed class World : IDisposable
     public readonly Sim.Core.Tools.InverseLog Inv;    // обратные записи и scratch перенумерации (player-tools.md §8): не состояние, вне хэша и сейва
     public readonly ToolOps Ops;                 // длительные операции инструментов (дренаж, 4.3 T4); состояние - в хэше и сейве при ToolsTouched = 1
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
-    public CityWorld? City;                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
+    public CityWorld? City;
+    public ProgressionState? Progression;        // вехи и разблокировки (ADR-0034, progression.md §4.4); null без progression.enabled - всё открыто, ни одна ветка не исполняется                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
