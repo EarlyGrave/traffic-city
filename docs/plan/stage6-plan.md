@@ -215,3 +215,10 @@
 > переносом машин и обратными записями; `BuildRoad` + `AutoSplit` (бит 1) — врезка в середину сегмента (превью `SnapKind = 2`). **Кривые Безье**
 > (`BuildRoad` бит 2): `BuildRoadCmd.SetControl(x, z)`; **ломающее изменение для клиента:** float `Cx/Cz` убраны → `short CxDm/CzDm`, `Profile` —
 > свои байты (кривая + профиль вместе); радиус < 12 м → `TooSharp`. Клиент собирается, `Sim.Host.Tests` 52/52. Остатки — `player-tools.md` §4.4a/§4.5/§8.4.
+
+> **2026-10-29: N4 влит (облако, агент 182, opus) — события с местом (EV1).** **Для клиента — ломающее:** `SimEvent` 24 → 48 Б (Pack 4):
+> Kind@0, Tag@4, Tick@8, A@16, B@20, `EventPlace Place`@24, `int C`@44; `EventPlace` (20 Б) = `EntityKind ObjKind`, `Index`, `Generation`, `X`, `Z`
+> (X/Z считает ядро; `ObjKind = None` — без места). Новые: `JamAt` 63 (сегмент, ≥ 5 стоящих), `BusLineProblem` 64 (`BusLineIssue` NoBuses /
+> BusesStuck / Overloaded), `ParkingFull` 65 (здание). Место получили `GridlockOn`, `DrainStalled`, `ZoneAccessLost`. `EntityKind.Building = 6`.
+> Облако поправило `game/Scripts/Ui/UiNotifyMap.cs` и `UiNotifyView.cs` (тексты новых тостов, `NotifySubject.FromPlace`, «Показать» летит к X/Z) —
+> **локалу:** инспекторов линии/здания в `SimHost.TryLocate` нет — `Point` только двигает камеру. Пороги — первые прикидки, крутить по плейтесту.
