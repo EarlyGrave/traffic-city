@@ -80,7 +80,7 @@ bash scripts/rust-check.sh                               # Rust-пилот: fmt,
 - PostToolUse Edit|Write `*.cs`: сборка затронутого проекта, ошибка → exit 2.
 - PostToolUse Edit|Write `*.rs`/`Cargo.toml`/`clippy.toml` под `rust/`: `cargo clippy -D warnings` (`post-rust.sh`), ошибка → exit 2.
 - Stop: если изменены `.cs` — test + `scripts/bench-gate.sh` (bench-smoke s1k + compare с повторами).
-- SessionStart (облако): доустановка .NET SDK из `global.json`.
+- SessionStart (облако): доустановка .NET SDK из `global.json` и `core.hooksPath = .githooks`.
 - `.githooks/pre-commit`: для коммитов только из документации (`*.md`, `docs/**`, `CLAUDE.md`) проверки format/build/test пропускаются.
 
 ## Оркестрация

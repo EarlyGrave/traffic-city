@@ -90,6 +90,17 @@ t "stop_hook_active=true -> exit 0" 0 stop-verify.sh '{"hook_event_name":"Stop",
 echo "== post-build / session-start (не-.cs и не-облако) =="
 t "post-build: не .cs -> allow" 0 post-build.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
 t "session-start вне облака -> exit 0" 0 session-start.sh '{"hook_event_name":"SessionStart"}'
+# в облаке core.hooksPath ставится во временном git-репо (без global.json, чтобы проверить ранний шаг)
+SS_TMP=$(mktemp -d 2>/dev/null || echo "/tmp/th-ss.$$")
+git init -q "$SS_TMP" 2>/dev/null
+TOTAL=$((TOTAL + 1))
+if (cd "$SS_TMP" && printf '%s' '{"hook_event_name":"SessionStart"}' | CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$SS_TMP" bash "$HERE/session-start.sh" >/dev/null 2>&1) \
+   && [ "$(git -C "$SS_TMP" config --get core.hooksPath)" = .githooks ]; then
+  echo "PASS  session-start в облаке -> core.hooksPath = .githooks"
+else
+  echo "FAIL  session-start в облаке -> core.hooksPath не задан"; FAILS=$((FAILS + 1))
+fi
+rm -rf "$SS_TMP"
 
 echo "== post-rust =="
 t "post-rust: не .rs -> allow" 0 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
