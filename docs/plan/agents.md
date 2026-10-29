@@ -263,4 +263,7 @@
 | 186 | n8-pg6 (облако, worktree) | sonnet | ночь N8: game-city.json + калибровка (PG6 + E7) | wip |
 | 187 | tr0-terrain-spec (облако, worktree) | opus | TR0: спека рельефа и воды (terrain.md + ADR), пример Юрьев-Польский | остановлен владельцем через ~5 мин (пауза) |
 | 188 | tr0-terrain-spec (облако, worktree, перезапуск 187) | opus | TR0: спека рельефа и воды (terrain.md + ADR-0036), пример Юрьев-Польский | done: terrain.md + ADR-0036, 1 коммит, ~104k токенов, 60 вызовов, 17 мин, переделок 0; TR0b done (2f4d87b, ~169k токенов, 28 вызовов, 6 мин) |
-| 189 | tr1-terrain-store (облако, worktree) | opus | TR1: TerrainStore, вода, TERR/MigrationV12, хэш п. 14, корпус w12 (terrain.md §2, §3, §8, §12) | в работе |
+| 189 | tr1-terrain-store (облако, worktree) | opus | TR1: TerrainStore, вода, TERR/MigrationV12, хэш п. 14, корпус w12 (terrain.md §2, §3, §8, §12) | done: 4 коммита, ~176k токенов, 149 вызовов, 54 мин, переделок 0; s1k p95 0.432→0.414 мс, миры без рельефа бит-в-бит; коммиты с --no-verify (проверки прогнал сам) |
+| 190 | tr10-verify-w1a (облако, devmerge) | haiku | TR10: build/format/test/bench-gate на dev после TR1 | done: 0 предупреждений, format чисто, тесты 1365+504+52 зелёные (6 skip), bench-gate s1k p95 0.388 мс (−10%), 0 B/тик, stuck 0, с 1-й попытки |
+| 191 | tr2-terrain-loader (облако, worktree) | sonnet | TR2: загрузчик секции terrain (JSON, .r16, data_b64, штампы, water.sources без исполнения), WSRC в save-format, scenario-format, terrain-demo.json | в работе |
+| 192 | tr9-terrain-snapshot (облако, worktree) | sonnet | TR9: TerrainSnapshot с чанками и копированием при записи в Sim.Host | в работе |
