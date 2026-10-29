@@ -262,4 +262,5 @@
 | 185 | n7-pg345 (облако, worktree) | opus | ночь N7: PG3 вехи/замки, PG4 жалобы, PG5 банкротство | wip |
 | 186 | n8-pg6 (облако, worktree) | sonnet | ночь N8: game-city.json + калибровка (PG6 + E7) | wip |
 | 187 | tr0-terrain-spec (облако, worktree) | opus | TR0: спека рельефа и воды (terrain.md + ADR), пример Юрьев-Польский | остановлен владельцем через ~5 мин (пауза) |
-| 188 | tr0-terrain-spec (облако, worktree, перезапуск 187) | opus | TR0: спека рельефа и воды (terrain.md + ADR-0036), пример Юрьев-Польский | done: terrain.md + ADR-0036, 1 коммит, ~104k токенов, 60 вызовов, 17 мин, переделок 0; TR0b — правка по ответам владельца, в работе |
+| 188 | tr0-terrain-spec (облако, worktree, перезапуск 187) | opus | TR0: спека рельефа и воды (terrain.md + ADR-0036), пример Юрьев-Польский | done: terrain.md + ADR-0036, 1 коммит, ~104k токенов, 60 вызовов, 17 мин, переделок 0; TR0b done (2f4d87b, ~169k токенов, 28 вызовов, 6 мин) |
+| 189 | tr1-terrain-store (облако, worktree) | opus | TR1: TerrainStore, вода, TERR/MigrationV12, хэш п. 14, корпус w12 (terrain.md §2, §3, §8, §12) | в работе |
