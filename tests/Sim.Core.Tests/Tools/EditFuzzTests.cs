@@ -16,6 +16,7 @@ public sealed class EditFuzzTests
     private static readonly RejectReason[] _allowed =
     {
         RejectReason.None, RejectReason.Busy, RejectReason.CreatesTrap, RejectReason.NodeLimit, RejectReason.NotSupported, RejectReason.InvalidHandle, RejectReason.Capacity, RejectReason.InvalidArgument,
+        RejectReason.TooShort,
     };
 
     [Theory]
@@ -99,6 +100,7 @@ public sealed class EditFuzzTests
         int applied = 0;
         int upgrades = 0;
         int drains = 0;
+        int chains = 0;
         for (int step = 0; step < commands; step++)
         {
             Command cmd = Pick(sim, rng, (uint)(step + 1));
@@ -121,6 +123,7 @@ public sealed class EditFuzzTests
 
                 Assert.True(Array.IndexOf(_allowed, r) >= 0, $"seed {seed} step {step}: {cmd.Kind} отклонена {r}");
                 applied += r == RejectReason.None ? 1 : 0;
+                chains += r == RejectReason.None && cmd.Kind is CommandKind.SplitRoad or CommandKind.MergeAtNode ? 1 : 0;
                 if (r == RejectReason.None && cmd.Kind == CommandKind.UpgradeRoad)
                 {
                     upgrades++;
@@ -176,7 +179,7 @@ public sealed class EditFuzzTests
         Assert.True(n.ToolsTouched == 1);
         Assert.True(w.Work.NodeRebuilds >= 8, $"перестроек узлов {w.Work.NodeRebuilds}");
         Assert.True(w.Work.ToolCommandsApplied >= 8);
-        Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, операций начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}; правок полос {upgrades}, из них с дренажом {drains}");
+        Console.WriteLine($"[fuzz] seed {seed}: команд {applied}, перестроек узлов {w.Work.NodeRebuilds}, операций начато {w.Work.ToolOpsStarted}, закончено {w.Work.ToolOpsFinished}; правок полос {upgrades}, из них с дренажом {drains}; разрезов и слияний {chains}");
         probe?.Invoke(w);
         return sim.ComputeStateHash();
     }
@@ -215,7 +218,8 @@ public sealed class EditFuzzTests
     }
 
     // Случайная команда по состоянию мира (детерминированно: обходы по возрастанию индекса, rng - единственный источник случайности).
-    internal static Command Pick(Simulation sim, Random rng, uint tag)
+    // chain = false - без разреза и слияния (последовательность выбора - как до T5: на ней держатся эталонные прогоны UndoFuzz).
+    internal static Command Pick(Simulation sim, Random rng, uint tag, bool chain = true)
     {
         NetworkStore n = sim.World.Net;
         int built = 0;
@@ -272,6 +276,19 @@ public sealed class EditFuzzTests
         if (kind < 80)
         {
             return PickUpgrade(sim, rng, n.NodeArms[nd.FirstArm + rng.Next(nd.ArmCount)], tag);
+        }
+
+        if (chain && kind < 84)
+        {
+            // T5: разрез сегмента рукава в случайной точке (иногда слишком близко к концу - TooShort) или слияние в узле степени 2.
+            if (nd.ArmCount == 2 && rng.Next(2) == 0)
+            {
+                return Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = ToolsFixture.Node(sim, node) }, tag);
+            }
+
+            int seg = n.NodeArms[nd.FirstArm + rng.Next(nd.ArmCount)];
+            float full = sim.World.Builder.FullAxisLength(seg);
+            return Command.MakeSplitRoad(new SplitRoadCmd { Seg = ToolsFixture.Segment(sim, seg), S = full * (0.05f + (0.9f * (float)rng.NextDouble())) }, tag);
         }
 
         // Врезка нового рукава в построенный узел под одним из восьми углов, без пересечения чужих сегментов.

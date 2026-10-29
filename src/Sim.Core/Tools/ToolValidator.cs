@@ -60,7 +60,7 @@ internal static partial class ToolValidator
 {
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad;
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode;
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -80,6 +80,8 @@ internal static partial class ToolValidator
             CommandKind.SetLaneFlags => CheckSetLaneFlags(w, in cmd, ref c),
             CommandKind.SetNodeControl => CheckSetNodeControl(w, in cmd, ref c),
             CommandKind.SetSignalPlan => CheckSetSignalPlan(w, in cmd, ref c),
+            CommandKind.SplitRoad => CheckSplitRoad(w, in cmd, ref c),
+            CommandKind.MergeAtNode => CheckMergeAtNode(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
         if (c.Reason == RejectReason.None)

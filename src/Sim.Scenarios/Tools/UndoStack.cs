@@ -224,6 +224,15 @@ public sealed class UndoStack
                 }
 
                 break;
+            case CommandKind.SplitRoad:
+                if (kind == EntityKind.Segment)
+                {
+                    return c.SplitRoad.RestoreSeg1.Index == index ? c.SplitRoad.RestoreSeg1.Generation : c.SplitRoad.RestoreSeg2.Index == index ? c.SplitRoad.RestoreSeg2.Generation : 0;
+                }
+
+                return kind == EntityKind.Node && c.SplitRoad.RestoreNode.Index == index ? c.SplitRoad.RestoreNode.Generation : 0;
+            case CommandKind.MergeAtNode:
+                return kind == EntityKind.Segment && c.MergeAtNode.RestoreSeg.Index == index ? c.MergeAtNode.RestoreSeg.Generation : 0;
             case CommandKind.InsertBusStop:
                 return kind == EntityKind.BusStop && c.InsertBusStop.RestoreOf.Index == index ? c.InsertBusStop.RestoreOf.Generation : 0;
             case CommandKind.CreateBusRoute:

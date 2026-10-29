@@ -109,8 +109,10 @@ public struct UpgradeRoadCmd
 public struct SplitRoadCmd
 {
     public EntityRef Seg;
-    public float S;                   // по оси от NodeA, м
-    public EntityRef RestoreNode;
+    public float S;                   // по полной оси от узла NodeA, м
+    public EntityRef RestoreNode;     // узел, который команда восстанавливает (undo слияния), или {-1,0}
+    public EntityRef RestoreSeg1;     // T5: половины, которые команда восстанавливает (обратная к MergeAtNode): A -> узел и узел -> B, или {-1,0}
+    public EntityRef RestoreSeg2;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -353,6 +355,8 @@ public static class CommandRefs
             case CommandKind.SplitRoad:
                 Fix(ref cmd.SplitRoad.Seg, EntityKind.Segment, t);
                 Fix(ref cmd.SplitRoad.RestoreNode, EntityKind.Node, t);
+                Fix(ref cmd.SplitRoad.RestoreSeg1, EntityKind.Segment, t);
+                Fix(ref cmd.SplitRoad.RestoreSeg2, EntityKind.Segment, t);
                 break;
             case CommandKind.MergeAtNode:
                 Fix(ref cmd.MergeAtNode.Node, EntityKind.Node, t);

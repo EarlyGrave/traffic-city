@@ -27,7 +27,7 @@ public class ToolPayloadSizesTests
         { typeof(BuildRoadCmd), 56 },
         { typeof(RemoveRoadCmd), 12 },
         { typeof(UpgradeRoadCmd), 20 },
-        { typeof(SplitRoadCmd), 20 },
+        { typeof(SplitRoadCmd), 36 },
         { typeof(MergeAtNodeCmd), 16 },
         { typeof(SetArmControlCmd), 12 },
         { typeof(SetTurnBanCmd), 12 },
@@ -153,12 +153,10 @@ public class ToolPayloadSizesTests
         var seg = new EntityRef(0, 1);
         Command[] cmds =
         {
-            Command.MakeSplitRoad(new SplitRoadCmd { Seg = seg, S = 30f }, 1),
-            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 2),
-            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 3),
-            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 4),
-            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 5),
-            Command.MakeMergeAtNode(new MergeAtNodeCmd { Node = seg }, 6),
+            Command.MakeInsertBusStop(new InsertBusStopCmd { Route = seg, Seg = seg, Position = -1 }, 1),
+            Command.MakeRemoveBusStop(new RemoveBusStopCmd { Stop = seg }, 2),
+            Command.MakeRemoveBusRoute(new RemoveBusRouteCmd { Route = seg }, 3),
+            Command.MakeSetBusRouteParams(new SetBusRouteParamsCmd { Route = seg, VehicleType = -1 }, 4),
         };
         foreach (Command c in cmds)
         {
@@ -169,7 +167,7 @@ public class ToolPayloadSizesTests
         int rejected = 0;
         foreach (SimEvent e in sim.Events)
         {
-            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= 6)
+            if (e.Kind == SimEventKind.CommandRejected && e.Tag >= 1 && e.Tag <= cmds.Length)
             {
                 rejected++;
                 Assert.Equal((int)RejectReason.NotSupported, e.A);

@@ -15,6 +15,7 @@ internal struct InvCtx
     public bool Inactive;
     public int NodeA, NodeB, GenA, GenB;   // BuildRoad: существующие построенные узлы концов (до мутации) и их режим
     public NodeControl CtlA, CtlB;
+    public EntityRef Ref;                  // SplitRoad: разрезаемый сегмент; MergeAtNode: узел слияния (T5)
 }
 
 /// <summary>
@@ -37,6 +38,7 @@ internal static class InverseBuilder
         InverseLog log = w.Inv;
         var ctx = new InvCtx { Start = log.CmdCount, NodeA = -1, NodeB = -1 };
         log.BuiltSeg = -1;
+        log.BuiltNode = -1;
         if (!IsTool(cmd.Kind))
         {
             ctx.Inactive = true;
@@ -72,8 +74,18 @@ internal static class InverseBuilder
             case CommandKind.PaintZone:
                 BeginPaintZone(w, in cmd, ref ctx);
                 break;
+            case CommandKind.SplitRoad:
+                ctx.Ref = cmd.SplitRoad.Seg.Index >= 0 && w.Net.SegmentAlive(cmd.SplitRoad.Seg.Index)
+                    ? new EntityRef(cmd.SplitRoad.Seg.Index, w.Net.Segments[cmd.SplitRoad.Seg.Index].Generation)
+                    : EntityRef.None;
+                break;
+            case CommandKind.MergeAtNode:
+                ctx.Ref = cmd.MergeAtNode.Node.Index >= 0 && w.Net.NodeAlive(cmd.MergeAtNode.Node.Index)
+                    ? new EntityRef(cmd.MergeAtNode.Node.Index, w.Net.Nodes[cmd.MergeAtNode.Node.Index].Generation)
+                    : EntityRef.None;
+                break;
             default:
-                ctx.NoInverse = true;   // SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
+                ctx.NoInverse = true;   // автобусные (T9): обратных пока нет
                 break;
         }
 
@@ -103,6 +115,26 @@ internal static class InverseBuilder
             {
                 Add(log, ref ctx, Command.MakeSetNodeControl(new SetNodeControlCmd { Node = ctx.NodeB, Control = ctx.CtlB, NodeGen = ctx.GenB }));
             }
+        }
+
+        if (cmd.Kind == CommandKind.SplitRoad && log.BuiltNode >= 0)
+        {
+            // Разрез: обратная - слияние в новом узле (RestoreSeg - разрезанный сегмент, хост переведёт ссылки по SegmentRemapped).
+            var m = new MergeAtNodeCmd { Node = new EntityRef(log.BuiltNode, w.Net.Nodes[log.BuiltNode].Generation), RestoreSeg = ctx.Ref };
+            Add(log, ref ctx, Command.MakeMergeAtNode(in m));
+        }
+        else if (cmd.Kind == CommandKind.MergeAtNode && log.BuiltSeg >= 0)
+        {
+            // Слияние: обратная - разрез общего сегмента в точке бывшего узла (RestoreNode - бывший узел).
+            var sr = new SplitRoadCmd
+            {
+                Seg = new EntityRef(log.BuiltSeg, w.Net.Segments[log.BuiltSeg].Generation),
+                S = log.BuiltS,
+                RestoreNode = ctx.Ref,
+                RestoreSeg1 = log.MergedA,
+                RestoreSeg2 = log.MergedB,
+            };
+            Add(log, ref ctx, Command.MakeSplitRoad(in sr));
         }
 
         if (log.RecCount >= log.Recs.Length)
@@ -151,7 +183,8 @@ internal static class InverseBuilder
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone;
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
+        or CommandKind.SplitRoad or CommandKind.MergeAtNode;
 
     /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.

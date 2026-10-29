@@ -113,11 +113,15 @@ internal static partial class CommandDispatcher
                 UpgradeRoad(w, in cmd);
                 break;
             case CommandKind.SplitRoad:
+                SplitRoad(w, in cmd);
+                break;
+            case CommandKind.MergeAtNode:
+                MergeAtNode(w, in cmd);
+                break;
             case CommandKind.InsertBusStop:
             case CommandKind.RemoveBusStop:
             case CommandKind.RemoveBusRoute:
             case CommandKind.SetBusRouteParams:
-            case CommandKind.MergeAtNode:
                 // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;

@@ -230,4 +230,82 @@ internal static partial class CommandDispatcher
         w.Work.ToolCommandsApplied++;
         AppliedPaid(w, in cmd, in chk);
     }
+
+    /// <summary>
+    /// <c>SplitRoad</c> (T5, player-tools.md §4.4): узел в точке полной оси (м от узла A), сегмент заменяется двумя половинами; машины переносятся по координате (в «коробке» узла - на его
+    /// connector'ы), connector'ы концов сохраняются. Перенумерация (<c>SegmentRemapped</c>/<c>NodeRemapped</c>) - только для <c>RestoreSeg1/2</c> и <c>RestoreNode</c> (undo слияния).
+    /// </summary>
+    private static void SplitRoad(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        SplitRoadCmd c = cmd.SplitRoad;
+        NetworkStatus st = ChainEdit.Split(w, chk.Seg, c.S, cmd.Tag, out int node, out int seg1, out int seg2);
+        if (st != NetworkStatus.Ok)
+        {
+            Rejected(w, in cmd, RejectOf(st));
+            return;
+        }
+
+        // Перенумерация (player-tools.md §8.2) - только для восстанавливаемого (undo слияния): ссылки хоста на прежние половины и узел переводятся на новые.
+        NetworkStore n = w.Net;
+        RestoreRemap(w, in cmd, EntityKind.Node, in c.RestoreNode, new EntityRef(node, n.Nodes[node].Generation));
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg1, new EntityRef(seg1, n.Segments[seg1].Generation));
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg2, new EntityRef(seg2, n.Segments[seg2].Generation));
+
+        w.Inv.BuiltNode = node;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>
+    /// <c>MergeAtNode</c> (T5, player-tools.md §4.4): два сегмента узла степени 2 сливаются в один, узел освобождается; машины на сегментах и connector'ах узла переносятся.
+    /// Перенумерация - только для <c>RestoreSeg</c> (undo разреза): ссылки на половины остаются ссылками на мёртвые сегменты, их вернёт обратная <c>SplitRoad</c> (<c>RestoreSeg1/2</c>).
+    /// </summary>
+    private static void MergeAtNode(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        NetworkStore n = w.Net;
+        ChainEdit.TwoSegments(n, chk.Node, out int s1, out int s2);
+        w.Inv.MergedA = new EntityRef(s1, n.Segments[s1].Generation);
+        w.Inv.MergedB = new EntityRef(s2, n.Segments[s2].Generation);
+        NetworkStatus st = ChainEdit.Merge(w, chk.Node, cmd.Tag, out int merged, out float splitS);
+        if (st != NetworkStatus.Ok)
+        {
+            Rejected(w, in cmd, RejectOf(st));
+            return;
+        }
+
+        MergeAtNodeCmd c = cmd.MergeAtNode;
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg, new EntityRef(merged, n.Segments[merged].Generation));
+        w.Inv.BuiltSeg = merged;
+        w.Inv.BuiltS = splitS;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    // Пересоздание по Restore*: событие *Remapped и запись scratch-таблицы old -> new (player-tools.md §8.2).
+    private static void RestoreRemap(World w, in Command cmd, EntityKind kind, in EntityRef old, in EntityRef now)
+    {
+        if (old.Generation == 0)
+        {
+            return;
+        }
+
+        w.Inv.AddRemap(kind, in old, in now);
+        w.Emit(kind == EntityKind.Node ? SimEventKind.NodeRemapped : SimEventKind.SegmentRemapped, cmd.Tag, old.Index, now.Index);
+    }
 }
