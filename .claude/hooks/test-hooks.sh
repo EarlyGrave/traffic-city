@@ -87,6 +87,23 @@ rm -rf "$TMP"
 echo "== stop-verify =="
 t "stop_hook_active=true -> exit 0" 0 stop-verify.sh '{"hook_event_name":"Stop","stop_hook_active":true}'
 
+# режим прототипа: временный репо с незакоммиченным .cs; флаг есть -> ранний выход с сообщением, нет -> ветка не берётся
+PT=$(mktemp -d 2>/dev/null || echo "/tmp/th-pt.$$")
+git init -q "$PT" >/dev/null 2>&1
+( cd "$PT" && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'class A {}\n' > "$PT/A.cs"
+( cd "$PT" && git add A.cs ) >/dev/null 2>&1
+TOTAL=$((TOTAL + 1))
+PT_OUT=$(cd "$PT" && mkdir -p .claude && printf '# flag\n' > .claude/prototype-mode && printf '{"hook_event_name":"Stop"}' | bash "$HERE/stop-verify.sh" 2>&1 >/dev/null; echo "rc=$?")
+case "$PT_OUT" in *"режим прототипа — проверка в конце волны"*"rc=0") echo "PASS  stop-verify: режим прототипа (флаг есть) -> exit 0 с сообщением" ;;
+  *) echo "FAIL  stop-verify: режим прототипа (флаг есть): $PT_OUT"; FAILS=$((FAILS + 1)) ;; esac
+TOTAL=$((TOTAL + 1))
+PT_OUT=$(cd "$PT" && rm -f .claude/prototype-mode && printf '{"hook_event_name":"Stop"}' | bash "$HERE/stop-verify.sh" 2>&1 >/dev/null; echo "rc=$?")
+case "$PT_OUT" in *"режим прототипа"*) echo "FAIL  stop-verify: без флага сообщение прототипа не должно печататься: $PT_OUT"; FAILS=$((FAILS + 1)) ;;
+  *"rc=0") echo "PASS  stop-verify: без флага -> строгая ветка (exit 0, нет сообщения прототипа)" ;;
+  *) echo "FAIL  stop-verify: без флага: $PT_OUT"; FAILS=$((FAILS + 1)) ;; esac
+rm -rf "$PT"
+
 echo "== post-build / session-start (не-.cs и не-облако) =="
 t "post-build: не .cs -> allow" 0 post-build.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
 t "session-start вне облака -> exit 0" 0 session-start.sh '{"hook_event_name":"SessionStart"}'
