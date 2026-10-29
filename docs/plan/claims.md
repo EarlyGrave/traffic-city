@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| AP-спека (asset-pipeline.md) | локал | local/ap-spec | docs/design/asset-pipeline.md, docs/adr/0045-* | 2026-10-30 |
