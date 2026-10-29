@@ -1,0 +1,7 @@
+{
+  "format_version": 1,
+  "roads": [
+    { "name": "street_2", "rev": 1, "kind": "street", "lanes_ab": 1, "lanes_ba": 1, "speed_kmh": 40 },
+    { "name": "arterial_4", "rev": 1, "kind": "arterial", "lanes_ab": 2, "lanes_ba": 2, "speed_kmh": 60 }
+  ]
+}

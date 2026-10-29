@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "buildings": [
+    { "name": "r_low", "rev": 1, "kind": "residential", "density": "low", "capacity": 8, "construct_days": 0, "parking": 8 },
+    { "name": "r_high", "rev": 1, "kind": "residential", "density": "high", "capacity": 40, "construct_days": 6, "parking": 20 },
+    { "name": "c_low", "rev": 1, "kind": "commercial", "density": "low", "capacity": 10, "shop_capacity": 30, "shift_start_slot": 96, "shift_slots": 96, "construct_days": 0, "attract": 1.0, "parking": 10, "parking_access": "public" },
+    { "name": "c_high", "rev": 1, "kind": "commercial", "density": "high", "capacity": 40, "shop_capacity": 120, "shift_start_slot": 96, "shift_slots": 96, "construct_days": 6, "attract": 1.5, "parking": 30, "parking_access": "public" },
+    { "name": "i_low", "rev": 1, "kind": "industrial", "density": "low", "capacity": 12, "shift_start_slot": 90, "shift_slots": 96, "construct_days": 0, "parking": 12 },
+    { "name": "i_high", "rev": 1, "kind": "industrial", "density": "high", "capacity": 60, "shift_start_slot": 90, "shift_slots": 96, "construct_days": 6, "parking": 40 }
+  ]
+}
