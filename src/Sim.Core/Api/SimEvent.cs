@@ -58,6 +58,9 @@ public enum SimEventKind : int
 
     // Внешние подключения (new-game-scratch.md §2.5, ADR-0037).
     ImmigrantsArrived = 67,      // A = переселенцев доехало домой за игровой час, B = индекс подключения; на последнем тике часа
+
+    // Цели сценария (scenarios-mode.md §2.3, ADR-0038).
+    ScenarioOutcome = 68,        // A = исход (GoalOutcome: 1 победа, 2 поражение), B = индекс условия поражения (-1 при победе); на последнем тике часа, один раз
 }
 
 /// <summary>Проблема автобусной линии: <c>SimEvent.A</c> для <see cref="SimEventKind.BusLineProblem"/>.</summary>

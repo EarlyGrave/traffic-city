@@ -87,6 +87,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateGoals(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         st = Terrain.TerrainBuild.Validate(in desc);
         if (st != CreateStatus.Ok)
         {
@@ -151,6 +157,11 @@ internal static class WorldBuilder
             w.Progression = City.ProgressionState.FromDesc(in desc.Progression, ProfileCount(in desc));   // вехи (ADR-0034): только при residents (проверено выше)
         }
 
+        if (desc.Goals.Enabled)
+        {
+            w.City!.Goals = City.GoalsState.FromDesc(in desc.Goals);   // цели сценария (ADR-0038): только при residents (проверено выше)
+        }
+
         w.TargetVehicles = desc.Demand.TargetVehicles;
         SyncStructuralCounters(w);
         world = w;
@@ -158,6 +169,29 @@ internal static class WorldBuilder
     }
 
     private static int ProfileCount(in ScenarioDesc desc) => desc.RoadProfiles.Enabled ? desc.RoadProfiles.Profiles.Length : 0;
+
+    /// <summary>Секция goals (scenarios-mode.md §2.2): только при жителях; счётчики, виды условий и пустые слоты - <see cref="City.GoalsState.Validate"/>.</summary>
+    private static CreateStatus ValidateGoals(in ScenarioDesc desc)
+    {
+        ref readonly GoalsDesc g = ref desc.Goals;
+        if (!g.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        if (desc.Demand.Model != DemandModel.Residents)
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        System.Span<GoalCondDesc> conds = stackalloc GoalCondDesc[City.GoalsState.Slots];
+        for (int i = 0; i < conds.Length; i++)
+        {
+            conds[i] = g.Get(i);
+        }
+
+        return City.GoalsState.Validate(conds, g.WinCount, g.LoseCount, g.GraceHours, g.AfterWin) ? CreateStatus.Ok : CreateStatus.InvalidCity;
+    }
 
     /// <summary>Секция progression (progression.md §4.1): только при жителях; вехи, ворота, признаки, профили и области - <see cref="City.ProgressionState.Validate"/>.</summary>
     private static CreateStatus ValidateProgression(in ScenarioDesc desc)

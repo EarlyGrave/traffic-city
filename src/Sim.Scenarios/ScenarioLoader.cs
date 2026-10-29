@@ -34,6 +34,9 @@ public sealed class LoadedScenario
     /// <summary>Строковые id вех секции <c>progression</c> (индекс = веха ядра); пусто без прогрессии. Тексты и названия вех клиент берёт по id (progression.md §4.1).</summary>
     public string[] MilestoneIds { get; init; } = [];
 
+    /// <summary>Метаданные карточки «Новой игры» (<c>meta</c>, scenarios-mode.md §1.2); <c>null</c> - сценарий в меню не показывается.</summary>
+    public ScenarioMeta? Meta { get; init; }
+
     /// <summary>Предупреждения загрузчика (не ошибки): напр. секции, которые ядро пока не исполняет (<c>terrain.water.sources</c>, <c>terrain.stamps</c>).</summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
@@ -218,6 +221,8 @@ public static partial class ScenarioLoader
         var warnings = new List<string>();
         TerrainDesc terrain = ParseTerrain(root.OptObject(TerrainKey), tools, readRelativeBytes, warnings, out TerrainStampDesc[] stamps);
         ParseOutside(root.OptObject(OutsideKey), residents, network, tools, terrain.Enabled, ref town);
+        GoalsDesc goals = ParseGoals(root.OptObject(GoalsKey), residents, town.Economy.CityBudget, in progression, warnings);
+        ScenarioMeta? meta = ParseMeta(root.OptObject(MetaKey));
         if (town.Outside.Count > 0 && parking.Enabled)
         {
             throw new ScenarioException("$.outside: not supported together with parking.model = \"resource\" yet");
@@ -254,9 +259,10 @@ public static partial class ScenarioLoader
             VehicleTypes = types,
             RoadProfiles = roadProfiles,
             Progression = progression,
+            Goals = goals,
             Terrain = terrain,
         };
-        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds, Warnings = warnings, TerrainStamps = stamps };
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds, Warnings = warnings, TerrainStamps = stamps, Meta = meta };
     }
 
     // ---------------------------------------------------------------- units

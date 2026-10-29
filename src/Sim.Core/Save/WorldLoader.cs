@@ -84,7 +84,7 @@ internal static class WorldLoader
         foreach (BlockDef b in SaveSchema.Blocks)
         {
             int idx = t.FindBlock(b.Id);
-            ExpectedPresent(b, c, out bool expected);
+            ExpectedPresent(b, c, idx >= 0, out bool expected);
             if (idx < 0)
             {
                 if (expected)
@@ -146,7 +146,7 @@ internal static class WorldLoader
     }
 
     /// <summary>Нужен ли блок: обязательные - всегда; условные - по уже прочитанным параметрам (<c>PARM</c> идёт первым).</summary>
-    private static void ExpectedPresent(BlockDef b, LoadContext c, out bool expected)
+    private static void ExpectedPresent(BlockDef b, LoadContext c, bool inFile, out bool expected)
     {
         expected = true;
         switch (b.Name)
@@ -185,6 +185,9 @@ internal static class WorldLoader
                 break;
             case "OUTS":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Outside.Count > 0;
+                break;
+            case "GOAL":
+                expected = inFile && c.Desc.Demand.Model == DemandModel.Residents;   // признак секции goals - сам блок (w15, ADR-0038): столбца PARM нет
                 break;
             case "TERR":
                 expected = c.Desc.Terrain.Enabled;
