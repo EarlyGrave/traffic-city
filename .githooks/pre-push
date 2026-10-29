@@ -1,0 +1,7 @@
+#!/bin/sh
+# Обёртка git-lfs: stdin (список ref'ов) передаётся как есть, код выхода — от git lfs.
+# Без git-lfs в PATH хук молча пропускается.
+if command -v git-lfs >/dev/null 2>&1; then
+  exec git lfs pre-push "$@"
+fi
+exit 0

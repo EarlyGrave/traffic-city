@@ -118,6 +118,21 @@ else
   echo "SKIP  post-rust: cargo не найден"
 fi
 
+echo "== git-lfs обёртки (.githooks) =="
+LFS_EMPTY=$(mktemp -d 2>/dev/null || echo "/tmp/th-lfs.$$")
+mkdir -p "$LFS_EMPTY"
+for lfs_hook in pre-push post-checkout post-commit post-merge; do
+  TOTAL=$((TOTAL + 1))
+  lfs_path="$P/.githooks/$lfs_hook"
+  lfs_got=$(cd "$P" && PATH="$LFS_EMPTY" /bin/sh "$lfs_path" </dev/null >/dev/null 2>&1; echo $?)
+  if [ -f "$lfs_path" ] && [ -x "$lfs_path" ] && [ "$lfs_got" = 0 ]; then
+    echo "PASS  .githooks/$lfs_hook есть, исполняемый, без git-lfs exit 0"
+  else
+    echo "FAIL  .githooks/$lfs_hook (нет, не исполняемый или не exit 0 без git-lfs)"; FAILS=$((FAILS + 1))
+  fi
+done
+rm -rf "$LFS_EMPTY"
+
 echo
 echo "Итого: $((TOTAL - FAILS))/$TOTAL PASS"
 [ "$FAILS" -eq 0 ] || { echo "FAILED: $FAILS"; exit 1; }
