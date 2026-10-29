@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Threading.Tasks;
 using Godot;
 using Sim.Core.Api;
 using Sim.Core.Network;
@@ -176,6 +177,17 @@ public partial class SimHost : Node3D
             return;
         }
 
+        if (start == StartKind.New && _loadPath.Length == 0 && !_profRes && BeginReadyCity(name, args))
+        {
+            return; // готовый город готовится в фоне; FinishReady вызовет PollReadyCity
+        }
+
+        FinishReady(name, args, start);
+    }
+
+    /// <summary>Вторая половина старта: создать мир (TryStart), хост, камеру, режимы; для «готового города» вызывается после фоновой подготовки.</summary>
+    private void FinishReady(string name, string[] args, StartKind start)
+    {
         if (!TryStart(name, out string error))
         {
             GD.PushError(error);
@@ -537,10 +549,18 @@ public partial class SimHost : Node3D
         _host = null;
         _bootSim?.Dispose();
         _bootSim = null;
+        _preparedSim?.Dispose();
+        _preparedSim = null;
+        Task<ReadyResult>? pending = _prepTask;
+        if (pending != null && !pending.IsCompleted)
+        {
+            pending.ContinueWith(t => t.Result.Sim?.Dispose(), TaskScheduler.Default); // сцену сносят посреди подготовки: мир никому не нужен
+        }
     }
 
     public override void _Process(double delta)
     {
+        PollReadyCity();
         if (_frameTiming)
         {
             if (_ftSkip > 0)
@@ -612,6 +632,7 @@ public partial class SimHost : Node3D
         }
 
         RefreshCityHud(f, delta);
+        RefreshCityPanel(f, delta);
         UpdateSaveFlow(f);
         if (_timeAuto && _dayTicks > 0)
         {
@@ -1048,7 +1069,8 @@ public partial class SimHost : Node3D
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"[threads] sim workers {workers} (logical cores {System.Environment.ProcessorCount})"));
 
         // загрузка сейва: мир приходит из файла, сценарий (имя из meta сейва) нужен клиенту только для типов ТС и сетки привязки
-        Simulation? sim = null;
+        Simulation? sim = _preparedSim;
+        _preparedSim = null;
         if (_loadPath.Length > 0)
         {
             sim = LoadWorld(in rt, out nameOrPath, out error);
