@@ -134,10 +134,10 @@ public static class UiNotifyMap
                 raw = Make(key, NotifySeverity.Info, "Новая политика вступила в силу", "смена политики", "смены политики", "смен политики", default);
                 return true;
             case SimEventKind.MilestoneReached:
-                raw = Make(key, NotifySeverity.Good, "Новая веха: «" + MilestoneName(e.A) + "», жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
+                raw = Make(key, NotifySeverity.Good, "Новая веха: «" + UiMilestones.Name(e.A) + "», жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
                 return true;
             case SimEventKind.MilestoneGated:
-                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи «" + MilestoneName(e.A) + "», но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
+                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи «" + UiMilestones.Name(e.A) + "», но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
                 return true;
             case SimEventKind.BudgetWarning:
                 raw = Make((key * 1000) + e.A, e.A >= 2 ? NotifySeverity.Error : NotifySeverity.Warning, "Через " + e.B.ToString(CultureInfo.InvariantCulture) + " дн. казна уйдёт за кредитный лимит", "предупреждение о казне", "предупреждения о казне", "предупреждений о казне", default);
@@ -154,21 +154,6 @@ public static class UiNotifyMap
                 return false;
         }
     }
-
-    /// <summary>Названия вех M1-M6 (progression.md §3.2; ядро имён не хранит - таблица клиента, индекс события 0 = M1).</summary>
-    private static readonly string[] MilestoneNames =
-    {
-        "Город растёт",
-        "Час пик",
-        "Пробки — дело мэра",
-        "Транспортный город",
-        "Магистраль",
-        "Большой город",
-    };
-
-    /// <summary>Название вехи по индексу события (<c>SimEvent.A</c>); неизвестный индекс - «Веха N».</summary>
-    public static string MilestoneName(int index) =>
-        (uint)index < (uint)MilestoneNames.Length ? MilestoneNames[index] : "Веха " + (index + 1).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Текст записи: один раз - как есть, иначе «×N форма» по склонению числа.</summary>
     public static string Render(in NotifyRaw raw, int count) =>
@@ -191,7 +176,7 @@ public static class UiNotifyMap
             sb.Append(digits[i]);
         }
 
-        return (v < 0 ? "−$ " : "$ ") + sb;
+        return (v < 0 ? "−$\u00A0" : "$\u00A0") + sb;
     }
 
     /// <summary>Русское склонение: 1 затор, 2-4 затора, 5-20 заторов, 21 затор...</summary>
