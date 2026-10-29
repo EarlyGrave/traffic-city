@@ -223,6 +223,7 @@ internal static class TripLegs
             {
                 res.LegParkWait[r] = -1;   // «ждёт место»: отметка первого отказа на ногу; при успехе заменится на реальное ожидание
                 w.Counters.ParkNoSpotWaits++;
+                w.Places.OnNoSpot(w, c, dest);   // EV1: ParkingFull у здания цели (с окном и остыванием)
             }
 
             return Begin.NoSpot;

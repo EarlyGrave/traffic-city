@@ -271,7 +271,7 @@ internal static class SegmentClosure
             {
                 if (n.Lanes[n.ZoneLanes[zd.FirstSpawnLane + k]].Segment == seg)
                 {
-                    w.Emit(SimEventKind.ZoneAccessLost, tag, z);
+                    w.EmitAt(SimEventKind.ZoneAccessLost, tag, z, seg, Metrics.PlaceEvents.ZonePlace(n, z));   // EV1: B = сегмент, место - центр зоны
                     break;
                 }
             }

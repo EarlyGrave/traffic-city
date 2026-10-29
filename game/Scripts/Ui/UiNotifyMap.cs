@@ -21,12 +21,26 @@ public enum NotifySubjectKind
     Segment,
     Node,
     Zone,
+    Point,      // место события ядра без своего инспектора у клиента (линия, здание, остановка): только точка X/Z
 }
 
-/// <summary>Объект уведомления: индекс (и поколение, если есть). Привязка к миру - на стороне <see cref="IUiEventSource"/>.</summary>
-public readonly record struct NotifySubject(NotifySubjectKind Kind, int Index, int Generation = 0)
+/// <summary>
+/// Объект уведомления: индекс (и поколение, если есть). Привязка к миру - на стороне <see cref="IUiEventSource"/>; <see cref="HasPoint"/> - точка мира
+/// из места события ядра (<see cref="EventPlace"/>, EV1), запасной вариант для «Показать».
+/// </summary>
+public readonly record struct NotifySubject(NotifySubjectKind Kind, int Index, int Generation = 0, float X = 0f, float Z = 0f, bool HasPoint = false)
 {
     public bool IsNone => Kind == NotifySubjectKind.None;
+
+    /// <summary>Объект из места события ядра: сегмент, узел, зона - как раньше, остальное - точка.</summary>
+    public static NotifySubject FromPlace(in EventPlace p) => p.ObjKind switch
+    {
+        EntityKind.None => default,
+        EntityKind.Segment => new(NotifySubjectKind.Segment, p.Index, p.Generation, p.X, p.Z, true),
+        EntityKind.Node => new(NotifySubjectKind.Node, p.Index, p.Generation, p.X, p.Z, true),
+        EntityKind.Zone => new(NotifySubjectKind.Zone, p.Index, 0, p.X, p.Z, true),
+        _ => new(NotifySubjectKind.Point, p.Index, p.Generation, p.X, p.Z, true),
+    };
 }
 
 /// <summary>
@@ -56,7 +70,7 @@ public static class UiNotifyMap
         switch (e.Kind)
         {
             case SimEventKind.GridlockOn:
-                raw = Make(key, NotifySeverity.Warning, "Затор по сети: застряло машин - " + e.A.ToString(CultureInfo.InvariantCulture), "затор", "затора", "заторов", default);
+                raw = Make(key, NotifySeverity.Warning, "Затор по сети: застряло машин - " + e.A.ToString(CultureInfo.InvariantCulture), "затор", "затора", "заторов", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.GridlockOff:
                 raw = Make(key, NotifySeverity.Good, "Затор рассосался", "рассасывание затора", "рассасывания затора", "рассасываний затора", default);
@@ -65,10 +79,20 @@ public static class UiNotifyMap
                 raw = Make(key, NotifySeverity.Warning, "Машина застряла", "машина застряла", "машины застряли", "машин застряли", new NotifySubject(NotifySubjectKind.Vehicle, e.A, e.B));
                 return true;
             case SimEventKind.DrainStalled:
-                raw = Make(key, NotifySeverity.Warning, "Дорога не пустеет: машины не могут уехать", "дорога не пустеет", "дороги не пустеют", "дорог не пустеют", default);
+                raw = Make(key, NotifySeverity.Warning, "Дорога не пустеет: машины не могут уехать", "дорога не пустеет", "дороги не пустеют", "дорог не пустеют", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.ZoneAccessLost:
-                raw = Make(key, NotifySeverity.Warning, "Район потерял доступ к дорогам", "район без доступа к дорогам", "района без доступа к дорогам", "районов без доступа к дорогам", new NotifySubject(NotifySubjectKind.Zone, e.A));
+                raw = Make(key, NotifySeverity.Warning, "Район потерял доступ к дорогам", "район без доступа к дорогам", "района без доступа к дорогам", "районов без доступа к дорогам", e.Place.HasPlace ? NotifySubject.FromPlace(in e.Place) : new NotifySubject(NotifySubjectKind.Zone, e.A));
+                return true;
+            case SimEventKind.JamAt:
+                raw = Make(key, NotifySeverity.Warning, "Пробка: стоят машины - " + e.A.ToString(CultureInfo.InvariantCulture), "пробка", "пробки", "пробок", NotifySubject.FromPlace(in e.Place));
+                return true;
+            case SimEventKind.BusLineProblem:
+                string bus = BusIssueText((BusLineIssue)e.A, e.B);
+                raw = Make((key * 1000) + e.A, NotifySeverity.Warning, bus, "проблема линии", "проблемы линий", "проблем линий", NotifySubject.FromPlace(in e.Place));
+                return true;
+            case SimEventKind.ParkingFull:
+                raw = Make(key, NotifySeverity.Warning, "Негде припарковаться у здания", "нехватка парковки", "нехватки парковки", "нехваток парковки", NotifySubject.FromPlace(in e.Place));
                 return true;
             case SimEventKind.ZoneLotsLost:
                 if (e.B <= 0)
@@ -169,6 +193,15 @@ public static class UiNotifyMap
         RejectReason.OutOfBounds => "за границей карты",
         RejectReason.BudgetRule => "ставки вне допустимых",
         _ => "отказ ядра",
+    };
+
+    /// <summary>Проблема автобусной линии (EV1): <paramref name="value"/> - <c>SimEvent.B</c>.</summary>
+    public static string BusIssueText(BusLineIssue i, int value) => i switch
+    {
+        BusLineIssue.NoBuses => "На автобусной линии нет автобусов",
+        BusLineIssue.BusesStuck => "Автобусы линии застряли: " + value.ToString(CultureInfo.InvariantCulture),
+        BusLineIssue.Overloaded => "Переполнена остановка: ждут " + value.ToString(CultureInfo.InvariantCulture),
+        _ => "Проблема автобусной линии",
     };
 
     /// <summary>Какая ёмкость исчерпана (для текста «предел симуляции»).</summary>

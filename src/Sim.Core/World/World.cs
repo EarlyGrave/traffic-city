@@ -112,6 +112,7 @@ internal sealed class World : IDisposable
     public readonly SimEvent[] Events;
     public int EventCount;
     public bool EventsOverflowed;
+    public readonly Sim.Core.Metrics.PlaceEvents Places;   // события с местом (EV1): остывание мест и scratch обхода; вывод, вне хэша и сейва
 
     // ---- управляющее состояние (команды) ----
     public int TargetVehicles;
@@ -256,6 +257,7 @@ internal sealed class World : IDisposable
 
         Commands = new RingBuffer<Command>(c.CommandQueueCapacity);
         Events = new SimEvent[c.EventCapacity];
+        Places = new Sim.Core.Metrics.PlaceEvents(Net.Segments.Length, Net.BusRoutes.Length);
 
         SegmentLoads = new SegmentLoad[c.MaxSegments];
         for (int i = 0; i < SegmentLoads.Length; i++)
@@ -276,10 +278,16 @@ internal sealed class World : IDisposable
     /// </summary>
     public void Emit(SimEventKind kind, uint tag = 0, int a = 0, int b = 0)
     {
+        EmitAt(kind, tag, a, b, default);
+    }
+
+    /// <summary>То же с местом события (EV1, <see cref="EventPlace"/>) и третьим параметром <paramref name="c"/>.</summary>
+    public void EmitAt(SimEventKind kind, uint tag, int a, int b, in EventPlace place, int c = 0)
+    {
         int cap = Events.Length;
         if (EventCount < cap - 1)
         {
-            Events[EventCount++] = new SimEvent { Kind = kind, Tag = tag, Tick = Tick, A = a, B = b };
+            Events[EventCount++] = new SimEvent { Kind = kind, Tag = tag, Tick = Tick, A = a, B = b, Place = place, C = c };
             return;
         }
 
