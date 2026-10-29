@@ -4,7 +4,8 @@ using Godot;
 namespace TrafficCity.Ui.Kit;
 
 /// <summary>
-/// Витрина UI-кита (F1): все варианты кнопок во всех состояниях, панель, тулбар из 12 иконок, переключатели палитры и масштаба.
+/// Витрина UI-кита (F1, F2): все компоненты Kit во всех состояниях (кнопки, тулбар, сегменты, слайдер, список, панель, карточка,
+/// плитки KPI, бейджи, подсказка, диалог, тосты), переключатели палитры и масштаба.
 /// Запуск: сцена <c>res://Scripts/Ui/Kit/KitGallery.tscn</c>; аргументы после <c>--</c>: <c>--kit-palette 0..2</c>,
 /// <c>--ui-scale 75..150</c>, <c>--ui-shot файл.png [--ui-shot-frame K]</c> (кадр окна в PNG и выход, как у <see cref="UiRoot"/>).
 /// Масштаб витрины = пользовательский процент (без базы от высоты окна), чтобы 100 % и 150 % сравнивались на одном окне.
@@ -12,17 +13,20 @@ namespace TrafficCity.Ui.Kit;
 /// </summary>
 public sealed partial class KitGallery : Control
 {
-    private static readonly string[] _icons =
-    {
-        "road", "intersection", "zones", "bus", "bulldoze", "layers", "stats", "undo", "redo", "pause", "fast", "settings",
-    };
-
     private static readonly string[] _variationTitles = { "Основная", "Вторичная", "Призрачная", "Иконка", "Переключатель", "Опасная" };
     private static readonly string[] _stateTitles = { "обычная", "наведение", "нажата", "выбрана", "заблок.", "фокус" };
     private static readonly int[] _scales = { 75, 100, 125, 150 };
 
-    private readonly Texture2D[] _iconTex = new Texture2D[12];
+    private static readonly string[] _toolTitles =
+    {
+        "Дороги", "Перекрёстки", "Зоны", "Автобусы", "Снос", "Слои", "Статистика", "Отменить", "Повторить", "Пауза", "Быстрее", "Настройки",
+    };
+
+    private static readonly string[] _toolKeys = { "R", "I", "Z", "B", "X", "L", "S", "Ctrl+Z", "Ctrl+Y", "Space", "F", "Esc" };
+
     private Control _content = null!;
+    private UiDialog _dialog = null!;
+    private UiToast _toasts = null!;
     private int _scalePercent = 100;
     private string _shotPath = string.Empty;
     private int _shotFrame = 20;
@@ -32,11 +36,6 @@ public sealed partial class KitGallery : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         ParseArgs(OS.GetCmdlineUserArgs());
-        for (int i = 0; i < _icons.Length; i++)
-        {
-            _iconTex[i] = GD.Load<Texture2D>("res://assets/ui/icons/toolbar/" + _icons[i] + ".png");
-        }
-
         ApplyScale();
         Rebuild();
         SetProcess(_shotPath.Length > 0);
@@ -134,12 +133,26 @@ public sealed partial class KitGallery : Control
         margin.AddChild(col);
 
         col.AddChild(Header());
-        var body = new HBoxContainer();
-        body.AddThemeConstantOverride("separation", Tokens.Space4);
-        col.AddChild(body);
-        body.AddChild(ButtonGrid(theme));
-        body.AddChild(SamplePanel());
-        col.AddChild(Toolbar());
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        col.AddChild(scroll);
+        var body = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", Tokens.Space6);
+        scroll.AddChild(body);
+        var left = new VBoxContainer();
+        left.AddThemeConstantOverride("separation", Tokens.Space4);
+        var right = new VBoxContainer();
+        right.AddThemeConstantOverride("separation", Tokens.Space4);
+        body.AddChild(left);
+        body.AddChild(right);
+        FillLeft(left, theme);
+        FillRight(right);
+
+        _dialog = new UiDialog();
+        root.AddChild(_dialog);
+        _toasts = new UiToast();
+        root.AddChild(_toasts);
+        _toasts.Push("Маршрут 7 открыт", UiTone.Info, "автобус", 0f);
+        _toasts.Push("Не хватает бюджета", UiTone.Danger, "!", 0f);
 
         _content = root;
         AddChild(root);
@@ -172,8 +185,100 @@ public sealed partial class KitGallery : Control
         return row;
     }
 
+    private static Label Section(string text) => new() { Text = text, ThemeTypeVariation = UiTheme.LabelHeader };
+
+    private static Label Caption(string text) => new() { Text = text, ThemeTypeVariation = UiTheme.LabelSecondary, SizeFlagsVertical = SizeFlags.ShrinkCenter };
+
+    private static HBoxContainer Row(params Control[] items)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", Tokens.Space3);
+        foreach (Control c in items)
+        {
+            row.AddChild(c);
+        }
+
+        return row;
+    }
+
+    private static void FillLeft(VBoxContainer col, Theme theme)
+    {
+        col.AddChild(Section("Кнопки"));
+        col.AddChild(ButtonGrid(theme));
+        col.AddChild(Row(
+            Caption("С иконкой"),
+            new UiButton("Дорога", UiButtonKind.Primary, UiIcons.Glyph("road")),
+            new UiButton("Автобус", UiButtonKind.Secondary, UiIcons.Glyph("bus")),
+            new UiButton("Снести", UiButtonKind.Danger, UiIcons.Glyph("bulldoze")),
+            new UiButton("Слои", UiButtonKind.Ghost, UiIcons.Glyph("layers"))));
+
+        col.AddChild(Section("Тулбар"));
+        var bar = new UiToolbar();
+        for (int i = 0; i < UiIcons.ToolbarNames.Length; i++)
+        {
+            if (i == 7)
+            {
+                bar.Separator();
+            }
+
+            bar.Add(UiIcons.ToolbarNames[i], _toolTitles[i], _toolKeys[i]);
+        }
+
+        bar.Select(0);
+        bar[3].AddThemeStyleboxOverride("normal", theme.GetStylebox("hover", ThemeBuilder.Icon));
+        bar[4].Disabled = true;
+        col.AddChild(bar);
+        col.AddChild(Caption("выбран «Дороги», наведение — «Автобусы», заблокирован — «Снос»"));
+
+        col.AddChild(Section("Сегменты"));
+        col.AddChild(Row(new UiSegmented("День", "Неделя", "Месяц"), new UiSegmented("Авто", "Пешком").Select(1).Disable()));
+
+        col.AddChild(Section("Слайдер и список"));
+        col.AddChild(new UiSlider("Громкость", 0, 100, 5, 70, "{0} %"));
+        col.AddChild(new UiSlider("Заблок.", 0, 100, 5, 30, "{0} %").Disable());
+        var hover = new UiDropdown("Обычная", "Дейтеранопия", "Тританопия");
+        hover.AddThemeStyleboxOverride("normal", theme.GetStylebox("hover", "OptionButton"));
+        col.AddChild(Row(
+            new UiDropdown("Обычная", "Дейтеранопия", "Тританопия").Choose((int)Tokens.Mode),
+            hover,
+            new UiDropdown("Заблок.").Disable()));
+    }
+
+    private void FillRight(VBoxContainer col)
+    {
+        col.AddChild(Section("Панель и карточка"));
+        var panel = new UiPanel("Бюджет").MinWidth(300);
+        panel.Add(new Label { Text = "Баланс: 12 345 ₽" })
+            .Add(new Label { Text = "Цифры 0123456789", ThemeTypeVariation = UiTheme.LabelSecondary })
+            .Add(new UiCard("Маршрут 7").Add(Row(new Label { Text = "12 автобусов" }, new UiBadge("в пути", UiTone.Info))))
+            .AddRow(new UiButton("Ок", UiButtonKind.Primary), new UiButton("Отмена"));
+        col.AddChild(panel);
+
+        col.AddChild(Section("Плитки KPI"));
+        col.AddChild(Row(
+            new UiTile("Население", "8 096", "+120", UiTone.Info),
+            new UiTile("Пробки", "14 %", "−3", UiTone.Danger),
+            new UiTile("Бюджет", "12 345")));
+
+        col.AddChild(Section("Бейджи"));
+        col.AddChild(Row(new UiBadge("обычный"), new UiBadge("новое", UiTone.Accent), new UiBadge("инфо", UiTone.Info), new UiBadge("опасно", UiTone.Danger)));
+
+        col.AddChild(Section("Подсказка"));
+        col.AddChild(UiTooltip.BuildPanel("Дороги", "R"));
+
+        col.AddChild(Section("Диалог"));
+        var dialog = new UiPanel("Снести район?", ThemeBuilder.Dialog).MinWidth(320);
+        dialog.Add(new Label { Text = "Действие нельзя отменить." })
+            .AddRow(new UiButton("Отмена"), new UiButton("Снести", UiButtonKind.Danger));
+        dialog.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        col.AddChild(dialog);
+        col.AddChild(Row(
+            new UiButton("Открыть диалог").OnPressed(() => _dialog.Open("Снести район?", "Enter — снести, Esc — отмена.", "Снести", "Отмена", danger: true)),
+            new UiButton("Тост").OnPressed(() => _toasts.Push("Сохранено", UiTone.Info, "ок"))));
+    }
+
     /// <summary>Сетка вариант x состояние: состояния показаны подменой стиля normal (наведение и фокус иначе не снять скриншотом).</summary>
-    private GridContainer ButtonGrid(Theme theme)
+    private static GridContainer ButtonGrid(Theme theme)
     {
         var grid = new GridContainer { Columns = 1 + _stateTitles.Length };
         grid.AddThemeConstantOverride("h_separation", Tokens.Space2);
@@ -186,108 +291,47 @@ public sealed partial class KitGallery : Control
 
         for (int v = 0; v < ThemeBuilder.ButtonVariations.Length; v++)
         {
-            string variation = ThemeBuilder.ButtonVariations[v];
-            grid.AddChild(new Label { Text = _variationTitles[v], ThemeTypeVariation = UiTheme.LabelSecondary, SizeFlagsVertical = SizeFlags.ShrinkCenter });
+            grid.AddChild(Caption(_variationTitles[v]));
             for (int s = 0; s < _stateTitles.Length; s++)
             {
-                grid.AddChild(StateButton(theme, variation, s));
+                grid.AddChild(StateButton(theme, (UiButtonKind)v, s));
             }
         }
 
         return grid;
     }
 
-    private Button StateButton(Theme theme, string variation, int state)
+    private static UiButton StateButton(Theme theme, UiButtonKind kind, int state)
     {
-        bool icon = variation == ThemeBuilder.Icon;
-        var b = new Button { ThemeTypeVariation = variation, FocusMode = FocusModeEnum.None, SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
-        if (icon)
-        {
-            b.Icon = _iconTex[0];
-            b.ExpandIcon = true;
-            b.CustomMinimumSize = new Vector2(Tokens.ToolSize, Tokens.ToolSize);
-        }
-        else
-        {
-            b.Text = variation == ThemeBuilder.Danger ? "Снести" : "Кнопка";
-            b.CustomMinimumSize = new Vector2(96, 0);
-        }
+        string variation = UiButton.VariationOf(kind);
+        UiButton b = kind == UiButtonKind.Icon
+            ? UiButton.ForIcon("road", "Дороги", "R")
+            : new UiButton(kind == UiButtonKind.Danger ? "Снести" : "Кнопка", kind) { CustomMinimumSize = new Vector2(96, 0) };
+        b.FocusMode = FocusModeEnum.None;
+        b.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
 
-        string box = state switch
+        switch (state)
         {
-            1 => "hover",
-            2 => "pressed",
-            3 => "pressed",
-            4 => "disabled",
-            _ => "normal",
-        };
-
-        if (state == 3)
-        {
-            // выбрана = зажатый переключатель: заливка selected (у иконки — tool-active), просадка
-            b.ToggleMode = true;
-            b.ButtonPressed = true;
-        }
-        else if (state == 4)
-        {
-            b.Disabled = true;
-        }
-        else if (state != 0)
-        {
-            b.AddThemeStyleboxOverride("normal", theme.GetStylebox(box, variation));
-        }
-
-        if (state == 5)
-        {
-            b.AddThemeStyleboxOverride("normal", theme.GetStylebox("normal", variation));
-            var focus = new Panel { MouseFilter = MouseFilterEnum.Ignore, AnchorRight = 1f, AnchorBottom = 1f };
-            focus.AddThemeStyleboxOverride("panel", theme.GetStylebox("focus", variation));
-            b.AddChild(focus);
-        }
-
-        if (state == 2 && variation == ThemeBuilder.Toggle)
-        {
-            b.AddThemeStyleboxOverride("normal", theme.GetStylebox("pressed", ThemeBuilder.Secondary));
+            case 1:
+                b.AddThemeStyleboxOverride("normal", theme.GetStylebox("hover", variation));
+                break;
+            case 2:
+                // нажатие = просадка; у переключателя нажатие без выбора показываем стилем вторичной кнопки
+                b.AddThemeStyleboxOverride("normal", theme.GetStylebox("pressed", kind == UiButtonKind.Toggle ? ThemeBuilder.Secondary : variation));
+                break;
+            case 3:
+                b.Selected();
+                break;
+            case 4:
+                b.Disabled = true;
+                break;
+            case 5:
+                var focus = new Panel { MouseFilter = MouseFilterEnum.Ignore, AnchorRight = 1f, AnchorBottom = 1f };
+                focus.AddThemeStyleboxOverride("panel", theme.GetStylebox("focus", variation));
+                b.AddChild(focus);
+                break;
         }
 
         return b;
-    }
-
-    private static PanelContainer SamplePanel()
-    {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(250, 0), SizeFlagsVertical = SizeFlags.ShrinkBegin };
-        var v = new VBoxContainer();
-        panel.AddChild(v);
-        v.AddChild(new Label { Text = "Панель", ThemeTypeVariation = UiTheme.LabelHeader });
-        v.AddChild(new Label { Text = "Бюджет: 12 345 ₽", });
-        v.AddChild(new Label { Text = "Население 8 096 · 08:30", });
-        v.AddChild(new Label { Text = "Цифры 0123456789", ThemeTypeVariation = UiTheme.LabelSecondary });
-        v.AddChild(new HSeparator());
-        var row = new HBoxContainer();
-        row.AddChild(new Button { Text = "Ок", ThemeTypeVariation = ThemeBuilder.Primary });
-        row.AddChild(new Button { Text = "Отмена", ThemeTypeVariation = ThemeBuilder.Secondary });
-        v.AddChild(row);
-        return panel;
-    }
-
-    private PanelContainer Toolbar()
-    {
-        var bar = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkBegin };
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", Tokens.Space1);
-        bar.AddChild(row);
-        for (int i = 0; i < _iconTex.Length; i++)
-        {
-            row.AddChild(new TextureRect
-            {
-                Texture = _iconTex[i],
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                CustomMinimumSize = new Vector2(Tokens.ToolSize + Tokens.Space2, Tokens.ToolSize + Tokens.Space2),
-                TooltipText = _icons[i],
-            });
-        }
-
-        return bar;
     }
 }
