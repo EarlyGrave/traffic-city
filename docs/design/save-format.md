@@ -445,6 +445,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 8 | ADR-0030, профили дорог и участки на мировой сетке (`docs/design/road-profiles.md` §3.4, §4.4). Блок `RPRF` (PreWorld, только при `PARM.RoadProfileMode = 1`): каталог целиком - модуль, по профилю вид/ширина/число элементов/длина id, по элементу тип/направление/ширина, байты id (UTF-8); столбцы `PARM` 188-190 (`RoadProfileMode`: 0 legacy, 1 профили; `WorldGridOriginX/Z`), `NSEG` 16 `Profile` (-1 - без профиля; бит `Mirrored` - в `NSEG.Flags`), `NLAN` 19 `Width`, `LOTS` 11-15 (`CellX`, `CellZ`, `CellsF`, `CellsD`, `Orient`: 255 - legacy; объявлены сразу, заполняет RP5); раздел хэша «профили» - только в режиме профилей (RP1); хэш участков столбцы сетки пока не читает | `MigrationV8` (`Save/MigrationV8.cs`): режим legacy, `Profile = -1`, `Width = NetLaneWidth` у живых обычных полос (connector'ы и мёртвые слоты 0), начало сетки 0, у участков клеток нет и `Orient = 255`; блоков не создаёт; w1-w7 продолжаются тем же хэшем |
 | 9 | ADR-0025, казна города (`docs/design/city-economy.md` §12, задача E1). Блок `CBGT` (только при `PARM.CityBudget = 1`); столбцы `PARM` 191-218 (секция `economy`: `CityBudget`, ставки, плата за проезд, вклад в казну, процент, кредит, содержание, цена земли, ценность времени, буферы, пределы политики), `BLDG` 21 `PayrollEwma`, `CNTR` 154-156 (`FareEvaded`, `DebtEvictions`, `InsufficientFunds`), `LEDG` 3-5 длиной 17 (виды потоков 13-16: `Interest`, `Dividend`, `Leakage`, `Refund`); `hash_version` 4: раздел хэша казны (политики, цена земли, переносы, долг, кредиты undo, потоки 13-16, фонд оплаты, счётчики) - только при бюджете, виды 13-16 вне бюджета в хэш не входят. Окно версии открыто до E8: E2-E5 вправе дописывать столбцы с дефолтом в `MigrationV9` и перегенерировать корпус w9 | `MigrationV9` (`Save/MigrationV9.cs`): бюджет выключен - `PARM` 191-218 = дефолты `economy` (нули у мира без жителей), `CityBudget = 0`; потоки 13-16 = 0 (столбцы `LEDG` 3-5 дополняются нулями), `PayrollEwma = 0`, счётчики 0; блоков не создаёт; w1-w8 продолжаются тем же хэшем |
 | 10 | ADR-0026, парковка как ресурс (`docs/design/parking.md` §13, задача K1) и землепользование в сейве (ADR-0027, долг VS8). Блоки `PARK` (только при `PARM.ParkingEnabled = 1`) и `LUSE` (только при `PARM.LandUseCount > 0`); столбцы `PARM` 219 (`LandUseCount`), 220-238 (секция `parking`: режим, ходьба, кандидаты, повторы, обочина, гараж) и 239 (`MaxParking`), `BTYP` 10-12 (`ParkingCapacity`, `ParkingAccess`, `ParkingFee`), `RESD` 41-49 (`HomeFac`, `HomeFacGen`, `CarFac`, `CarFacGen`, `CarLot`, `CarWalkMm`, `LegStage`, `LegWaitFrom`, `LegParkWait`), `VEHC` 42-44 (`ParkFac`, `ParkFacGen`, `ParkSearchTick`), `TRIP` 12-13 (`ParkRef`, `ParkGen`), `CNTR` 157-172 (счётчики parking.md §11); `hash_version` 4 без изменений: раздел хэша парковки (`ParkingHash`) и поля заявок пишутся только в режиме. `AccessLane/AccessS` и точки пешехода объектов - производные от участка (отличие от parking.md §2.1: сохранять индексы полос значило бы заводить `RefKind` и перенос при правках сети). Окно версии открыто до K8: K2-K7 вправе дописывать столбцы с дефолтом в `MigrationV10` и перегенерировать корпус w10 | `MigrationV10` (`Save/MigrationV10.cs`): `PARM` 219-239 = нули (режима нет), `BTYP` 10-12 = нули, `RESD` 41-49 (`HomeFac`, `CarFac`, `CarLot` = -1, остальное 0), `VEHC` 42-44 (`ParkFac`, `ParkSearchTick` = -1), `TRIP` 12-13 = 0, `CNTR` 157-172 = 0; блоков `PARK` и `LUSE` не создаёт; w1-w9 продолжаются тем же хэшем |
+| 11 | ADR-0034, прогрессия и показатели города (`docs/design/progression.md` §2.4, §4.4, задачи PG1-PG2). Блоки `CKPI` (всегда при `demand.model = residents`: кольцо 24 игровых часов `KpiHour` в физическом порядке с головой и заполненностью, текущий час, отметки `VehicleTicksTotal/MovingVehicleTicksTotal` начала часа, суточное кольцо баланса 32) и `PROG` (только при `PARM.ProgressionEnabled = 1`: вехи - порог, грант, кредитные дни, область, флаги, ворота G0/G1, маска признаков, диапазон профилей, тик взятия; индексы профилей, области, `MinLegs`, закрытые на старте признаки, размер каталога профилей; состояние - взято, открытые признаки и битсет профилей, бонус кредита, стадия области, `GatedNotified`); столбцы `PARM` 240 (`ProgressionEnabled`), `CNTR` 173 (`LockedRejects`), `CBGT` 31 (`WarnLevel`, уровень предупреждения PG5). `hash_version` 4 без изменений: раздел хэша прогрессии (состояние, `CKPI`, `LockedRejects`) пишется только при прогрессии, без неё кольцо показателей - наблюдатель вне хэша; `WarnLevel` в хэш войдёт с PG5 | `MigrationV11` (`Save/MigrationV11.cs`): `PARM` 240 = 0 (прогрессии нет, `PROG` не создаётся), `CNTR` 173 = 0, `CBGT` 31 = 0; у мира с жителями создаётся блок `CKPI` с пустыми кольцами («собираем данные») и отметками начала часа = текущим `CNTR` 7-8 (первый час не берёт всю историю); w1-w10 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -712,6 +713,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 237 | ParkingGarageFee | i32 | 1 | 0 |
 | `PARM` | 238 | ParkingGaragePermits | u8 | 1 | 0 |
 | `PARM` | 239 | MaxParking | i32 | 1 | 0 |
+| `PARM` | 240 | ProgressionEnabled | u8 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -947,6 +949,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 170 | ParkCarShed | i64 | 1 | 0 |
 | `CNTR` | 171 | ParkSearching | i64 | 1 | 0 |
 | `CNTR` | 172 | ParkWalkTicks | i64 | 1 | 0 |
+| `CNTR` | 173 | LockedRejects | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1534,6 +1537,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `CBGT` (PARM.CityBudget = 1) | 28 | UndoExpireTick | i64 | 64 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 29 | FareEvadedDay | i32 | 2 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 30 | DebtEvictionsDay | i32 | 2 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 31 | WarnLevel | u8 | 1 | 0 |
 | `PARK` (PARM.ParkingEnabled = 1) | 1 | HighWater | i32 | 1 | 0 |
 | `PARK` (PARM.ParkingEnabled = 1) | 2 | FreeCount | i32 | 1 | 0 |
 | `PARK` (PARM.ParkingEnabled = 1) | 3 | FreeList | i32 | FreeCount | 0 |
@@ -1559,6 +1563,75 @@ s10k с цифрами размера и времени. Клиентские к
 | `LUSE` (PARM.LandUseCount > 0) | 9 | P3Z | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 10 | Kind | u8 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 11 | Flags | u8 | Count | 0 |
+| `CKPI` (demand.model = residents) | 1 | Head | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 2 | HoursFilled | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 3 | VehAtHourStart | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 4 | MovingAtHourStart | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 5 | DayHead | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 6 | DaysFilled | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 7 | DayBalance | i64 | 32 | 0 |
+| `CKPI` (demand.model = residents) | 8 | RingLegsCar | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 9 | RingLegsBus | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 10 | RingLegsWalk | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 11 | RingLegsWork | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 12 | RingDurCarDs | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 13 | RingDurBusDs | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 14 | RingDurWalkDs | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 15 | RingDurWorkDs | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 16 | RingVehTicks | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 17 | RingMovingTicks | i64 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 18 | RingIncLongWait | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 19 | RingIncNoParking | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 20 | RingIncLongCommute | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 21 | RingIncTourCancelled | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 22 | RingIncLongStopWait | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 23 | CurLegsCar | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 24 | CurLegsBus | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 25 | CurLegsWalk | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 26 | CurLegsWork | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 27 | CurDurCarDs | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 28 | CurDurBusDs | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 29 | CurDurWalkDs | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 30 | CurDurWorkDs | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 31 | CurVehTicks | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 32 | CurMovingTicks | i64 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 33 | CurIncLongWait | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 34 | CurIncNoParking | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 35 | CurIncLongCommute | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 36 | CurIncTourCancelled | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 37 | CurIncLongStopWait | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 1 | MilestoneCount | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 2 | ProfileIdxCount | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 3 | AreaCount | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 4 | ProfileCount | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 5 | MinLegs | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 6 | LockedFeatures | u64 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 7 | Population | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 8 | Grant | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 9 | CreditDays | i16 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 10 | Area | i8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 11 | Flags | u8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 12 | G0Kpi | u8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 13 | G0IsMin | u8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 14 | G0Value | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 15 | G1Kpi | u8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 16 | G1IsMin | u8 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 17 | G1Value | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 18 | Features | u64 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 19 | ProfileFirst | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 20 | ProfileCountOf | i32 | MilestoneCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 21 | ReachedTick | i64 | MilestoneCount | -1 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 22 | ProfileIdx | i32 | ProfileIdxCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 23 | AreaMinX | f32 | AreaCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 24 | AreaMinZ | f32 | AreaCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 25 | AreaMaxX | f32 | AreaCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 26 | AreaMaxZ | f32 | AreaCount | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 27 | Reached | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 28 | FeaturesOpen | u64 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 29 | ProfilesOpen | u64 | ceil(ProfileCount / 64), >= 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 30 | CreditDaysBonus | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 31 | AreaStage | i32 | 1 | 0 |
+| `PROG` (PARM.ProgressionEnabled = 1) | 32 | GatedNotified | u64 | 1 | 0 |
 | `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
 | `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
 | `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |
