@@ -177,6 +177,12 @@ internal static class WorldLoader
             case "LUSE":
                 expected = c.LandUseCount > 0;
                 break;
+            case "CKPI":
+                expected = c.Desc.Demand.Model == DemandModel.Residents;
+                break;
+            case "PROG":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Progression.Enabled;
+                break;
             case "CBGT":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Economy.CityBudget;
                 break;

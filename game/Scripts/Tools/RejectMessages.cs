@@ -33,6 +33,7 @@ public static class RejectMessages
         RejectReason.ZoneRule => "Здесь нельзя эту зону",
         RejectReason.OutOfBounds => "За границей карты",
         RejectReason.BudgetRule => "Бюджет не допускает такой политики",
+        RejectReason.Locked => "Ещё не открыто",
         _ => "Не получилось",
     };
 
@@ -46,6 +47,7 @@ public static class RejectMessages
         RejectReason.Busy => "Дождитесь окончания",
         RejectReason.CreatesTrap => "Добавьте выезд или сделайте двустороннюю",
         RejectReason.Unreachable => "Проверьте связь дорог",
+        RejectReason.Locked => "Откроется на одной из следующих вех города",
         _ => string.Empty,
     };
 

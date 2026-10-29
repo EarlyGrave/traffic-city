@@ -81,6 +81,12 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateProgression(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
@@ -126,10 +132,45 @@ internal static class WorldBuilder
             return st;
         }
 
+        if (desc.Progression.Enabled)
+        {
+            w.Progression = City.ProgressionState.FromDesc(in desc.Progression, ProfileCount(in desc));   // вехи (ADR-0034): только при residents (проверено выше)
+        }
+
         w.TargetVehicles = desc.Demand.TargetVehicles;
         SyncStructuralCounters(w);
         world = w;
         return CreateStatus.Ok;
+    }
+
+    private static int ProfileCount(in ScenarioDesc desc) => desc.RoadProfiles.Enabled ? desc.RoadProfiles.Profiles.Length : 0;
+
+    /// <summary>Секция progression (progression.md §4.1): только при жителях; вехи, ворота, признаки, профили и области - <see cref="City.ProgressionState.Validate"/>.</summary>
+    private static CreateStatus ValidateProgression(in ScenarioDesc desc)
+    {
+        ref readonly ProgressionDesc p = ref desc.Progression;
+        if (!p.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        if (desc.Demand.Model != DemandModel.Residents)
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        int profiles = ProfileCount(in desc);
+        int[] locked = p.LockedProfiles ?? System.Array.Empty<int>();
+        foreach (int lp in locked)
+        {
+            if ((uint)lp >= (uint)profiles)
+            {
+                return CreateStatus.InvalidCity;
+            }
+        }
+
+        bool ok = City.ProgressionState.Validate(p.Milestones, p.ProfileIdx, p.Areas, p.MinLegs, p.LockedFeatures, profiles);
+        return ok ? CreateStatus.Ok : CreateStatus.InvalidCity;
     }
 
     /// <summary>

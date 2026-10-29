@@ -42,6 +42,9 @@ internal sealed class CityBudget
     /// <summary>1 - казна за кредитным лимитом сейчас (обновляет E2 на границе суток).</summary>
     public byte Insolvent;
 
+    /// <summary>Уровень предупреждения о лимите (progression.md §5, PG5): 0 нет, 1/2 - выдан <c>BudgetWarning</c> этого уровня. Сейв CBGT 31 (w11); в хэш войдёт с PG5.</summary>
+    public byte WarnLevel;
+
     /// <summary>Кольцо undo-кредитов (§8.3); мёртвые записи - нули.</summary>
     public readonly UndoCredit[] UndoCredits = new UndoCredit[UndoSlots];
 

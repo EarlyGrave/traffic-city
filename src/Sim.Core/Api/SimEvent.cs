@@ -42,7 +42,11 @@ public enum SimEventKind : int
     BudgetRecovered = 57,        // A = номер суток, B = City (насыщенно в int): казна вернулась в лимит
     PolicyApplied = 58,          // A = номер суток, B = Fare новой политики: ожидающая политика стала действующей
 
-    // 59-62 закреплены за прогрессией (progression.md; 62 = Complaint).
+    // Прогрессия (progression.md §4.5, ADR-0034): номера закреплены в PG1; выдают PG3 (59-60), PG5 (61), PG4 (62).
+    MilestoneReached = 59,       // A = индекс вехи, B = население
+    MilestoneGated = 60,         // A = индекс вехи, B = маска невыполненных ворот (бит 0 - G0, бит 1 - G1): населения хватает, ворот нет (раз на веху)
+    BudgetWarning = 61,          // A = уровень предупреждения (1/2), B = DaysToLimit
+    Complaint = 62,              // A = (int)ComplaintKind, B = порядковый номер записи в кольце жалоб (CopyComplaints)
 
     // События с местом (EV1, core-api.md §5.7): место - в SimEvent.Place (EventPlace). Выдаются с ограничением частоты на место.
     JamAt = 63,                  // A = застрявших машин на сегменте, B = всего застрявших в сети; Place = сегмент (середина оси)
@@ -109,6 +113,7 @@ public enum RejectReason : int
     ZoneRule = 14,              // резерв ADR-0011
     OutOfBounds = 15,           // вне tools.world_bounds
     BudgetRule = 16,            // экономика (4.2): ставки политики за пределами, выключение бюджета, политика без бюджета
+    Locked = 17,                // прогрессия (progression.md §4.3): признак или профиль ещё не открыт вехой; в превью Value = веха, которая откроет (-1 - не откроется)
 }
 
 /// <summary>Какая ёмкость исчерпана: <c>SimEvent.A</c> для <see cref="SimEventKind.CapacityExhausted"/>.</summary>

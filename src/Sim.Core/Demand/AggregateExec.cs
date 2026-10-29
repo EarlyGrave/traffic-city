@@ -324,6 +324,8 @@ internal static class AggregateExec
         // граница суток: тик t с (t + 1) % dayTicks == 0 исполняется обычным путём
         long boundary = tick + (dayTicks - 1 - (tick % dayTicks));
         n = Math.Min(n, boundary - tick);
+        // сдвиг часа показателей (progression.md §2.2): последний тик игрового часа исполняется обычным путём
+        n = Math.Min(n, CityKpi.NextHourEnd(tick, dayTicks) - tick);
         // ячейка доступности: тики, кратные step
         long step = Math.Max(1, dayTicks / Math.Max(1, s.Cells));
         long access = tick % step == 0 ? tick : tick + (step - (tick % step));

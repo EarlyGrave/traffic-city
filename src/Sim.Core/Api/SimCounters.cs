@@ -150,6 +150,8 @@ public struct SimCounters
     public long ParkCarShed;              // parking_car_shed: жителей без машины из-за нехватки домашних мест
     public long ParkSearching;            // parking_searching: машин в поиске сейчас (gauge)
     public long ParkWalkTicks;            // parking_walk_ticks: Σ ходьбы от мест
+    // --- прогрессия (progression.md §4.3, ADR-0034): в сейве (CNTR) всегда, в хэше - только при прогрессии; считает PG3 ---
+    public long LockedRejects;            // отказов команд RejectReason.Locked
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>
