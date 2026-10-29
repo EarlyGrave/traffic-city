@@ -21,6 +21,7 @@ public sealed class UiMenus
         Load,
         Settings,
         Busy,
+        Confirm,
     }
 
     private const float ButtonHeight = 44f;
@@ -156,10 +157,27 @@ public sealed class UiMenus
         _content.AddChild(Btn("Сохранить", () => SaveRequested?.Invoke()));
         _content.AddChild(Btn("Загрузить", () => ShowLoad())); // список может пополниться сохранением из этого же меню - кнопка всегда живая
         _content.AddChild(Btn("Настройки", () => ShowSettings()));
-        _content.AddChild(Btn("Главное меню", () => MainMenuRequested?.Invoke()));
-        _content.AddChild(Btn("Выход", () => QuitRequested?.Invoke()));
+        _content.AddChild(Btn("Главное меню", () => ShowConfirm("Выйти в главное меню?", () => MainMenuRequested?.Invoke())));
+        _content.AddChild(Btn("Выход", () => ShowConfirm("Выйти из игры?", () => QuitRequested?.Invoke())));
         _pauseStatus = Secondary("Игра на паузе, пока открыто меню", HorizontalAlignment.Left);
         _content.AddChild(_pauseStatus);
+    }
+
+    /// <summary>Подтверждение выхода из паузы. Отслеживания несохранённых изменений нет, поэтому спрашиваем всегда.</summary>
+    private void ShowConfirm(string title, Action exit)
+    {
+        _page = Page.Confirm;
+        _pauseStatus = null;
+        Clear();
+        _content.AddChild(new Label { Text = title, ThemeTypeVariation = UiTheme.LabelHeader });
+        _content.AddChild(Secondary("Несохранённый прогресс будет потерян.", HorizontalAlignment.Left));
+        _content.AddChild(Btn("Сохранить и выйти", () =>
+        {
+            SaveRequested?.Invoke();
+            exit();
+        }));
+        _content.AddChild(Btn("Выйти без сохранения", exit));
+        _content.AddChild(Btn("Отмена  Esc", ShowPause));
     }
 
     /// <summary>Список сейвов; назад (кнопка, Esc) - на ту страницу, откуда открыт.</summary>
@@ -243,6 +261,9 @@ public sealed class UiMenus
                 return true;
             case Page.Settings:
                 BackFromSettings();
+                return true;
+            case Page.Confirm:
+                ShowPause();
                 return true;
             case Page.Main:
             case Page.Busy:

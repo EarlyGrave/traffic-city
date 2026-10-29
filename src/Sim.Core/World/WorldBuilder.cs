@@ -138,6 +138,8 @@ internal static class WorldBuilder
             return st;
         }
 
+        RoadTerrain.InitOnCreate(w);   // TR3: высоты узлов, мосты, штамп дорог, Lock, высоты полос (без рельефа - ничего)
+
         st = City.CityBuild.Build(w, create: true, default);   // жители: нарезка, зоны, начальное население (zoning-demand.md §2.5); без residents - ничего
         if (st != CreateStatus.Ok)
         {

@@ -333,6 +333,10 @@ public sealed partial class UiRoot : CanvasLayer
         {
             ToggleTool("zones");
         }
+        else if (UiActions.Pressed(@event, UiActions.ToolTransit))
+        {
+            ToggleTool("transit");
+        }
         else if (@event.IsActionPressed(UiActions.InfoToggle))
         {
             _router.ToggleInfo();

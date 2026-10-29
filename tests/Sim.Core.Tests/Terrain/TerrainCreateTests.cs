@@ -11,6 +11,13 @@ public sealed class TerrainCreateTests
 {
     private static Simulation Make(in ScenarioDesc d, int threads = 1) => Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
 
+    // Рельеф ровно как его строит TR1 (до штампа дорог TR3, terrain.md §4.4): пересборка карты в созданном мире; дороги города не перештамповываются.
+    private static TerrainStore Raw(Simulation sim, in ScenarioDesc d)
+    {
+        Assert.Equal(CreateStatus.Ok, TerrainBuild.Build(sim.World, in d));
+        return sim.World.Terrain!;
+    }
+
     private static ScenarioDesc WithTerrain(in TerrainDesc t)
     {
         ScenarioDesc d = WorldSaveFixtures.Small();
@@ -148,7 +155,7 @@ public sealed class TerrainCreateTests
         };
         using (Simulation sim = Make(WithTerrain(in t)))
         {
-            TerrainStore s = sim.World.Terrain!;
+            TerrainStore s = Raw(sim, WithTerrain(in t));
             Assert.Equal(5, s.SamplesX);
             Assert.Equal(5000, s.BaseCm);
             Assert.Equal(25, s.Ground[1]);                 // fx = 1/4
@@ -163,7 +170,7 @@ public sealed class TerrainCreateTests
         t.SourceUnitMm = 1;
         using (Simulation sim = Make(WithTerrain(in t)))
         {
-            TerrainStore s = sim.World.Terrain!;
+            TerrainStore s = Raw(sim, WithTerrain(in t));
             Assert.Equal(0, s.Ground[1]);     // 2.5 мм -> 0 см
             Assert.Equal(1, s.Ground[2]);     // 5 мм -> 1 см
             Assert.Equal(1, s.Ground[4]);     // 10 мм
@@ -175,7 +182,7 @@ public sealed class TerrainCreateTests
         t.ExtentMinX = -16f;
         using (Simulation sim = Make(WithTerrain(in t)))
         {
-            Assert.All(sim.World.Terrain!.Ground, g => Assert.Equal(70, g));
+            Assert.All(Raw(sim, WithTerrain(in t)).Ground, g => Assert.Equal(70, g));
         }
     }
 
@@ -261,9 +268,9 @@ public sealed class TerrainCreateTests
     public void River_MirrorNeverRises_ChannelCarved_BankSlope()
     {
         using Simulation sim = Make(TerrainFixtures.Demo());
-        TerrainStore s = sim.World.Terrain!;
+        TerrainStore s = Raw(sim, TerrainFixtures.Demo());
         using Simulation flatSim = Make(WithTerrain(DemoWithoutWater()));
-        TerrainStore orig = flatSim.World.Terrain!;
+        TerrainStore orig = Raw(flatSim, WithTerrain(DemoWithoutWater()));
         Assert.Equal(orig.Count, s.Count);
 
         // Вдоль оси (700, 700) -> (−700, −700): зеркало не растёт, мокро, грунт ниже зеркала на глубину (или 0).
@@ -353,7 +360,7 @@ public sealed class TerrainCreateTests
         TerrainDesc t = Grid(new ushort[] { 0, 100, 200, 300, 400, 500, 600, 700, 800 }, n);
         t.BaseCm = -50;
         using Simulation sim = Make(WithTerrain(in t));
-        TerrainStore s = sim.World.Terrain!;
+        TerrainStore s = Raw(sim, WithTerrain(in t));
         Assert.Equal(-50, s.GroundCmAt(0f, 0f));
         Assert.Equal(-50 + 400, s.GroundCmAt(8f, 8f));
         Assert.Equal(-50 + 50, s.GroundCmAt(4f, 0f));

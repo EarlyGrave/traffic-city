@@ -1276,6 +1276,8 @@ public static partial class ScenarioLoader
                 BusRoute = 1000,
                 DemolishRefundPct = 50,
                 UpgradeRefundPct = 50,
+                EarthworkPerM3 = 2,
+                BridgePerMLane = 60,
             },
         };
         if (r == null)
@@ -1302,6 +1304,8 @@ public static partial class ScenarioLoader
             d.Costs.BusRoute = (long)c.Num("bus_route", d.Costs.BusRoute, min: 0, max: MaxCostValue);
             d.Costs.DemolishRefundPct = c.Int("demolish_refund_pct", d.Costs.DemolishRefundPct, min: 0, max: 100);
             d.Costs.UpgradeRefundPct = c.Int("upgrade_refund_pct", d.Costs.UpgradeRefundPct, min: 0, max: 100);
+            d.Costs.EarthworkPerM3 = (long)c.Num("earthwork_per_m3", d.Costs.EarthworkPerM3, min: 0, max: MaxCostValue);
+            d.Costs.BridgePerMLane = (long)c.Num("bridge_per_m_lane", d.Costs.BridgePerMLane, min: 0, max: MaxCostValue);
             c.Finish();
         }
 

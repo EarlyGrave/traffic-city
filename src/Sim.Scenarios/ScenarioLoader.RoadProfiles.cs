@@ -48,6 +48,7 @@ public static partial class ScenarioLoader
                 _ => throw new ScenarioException($"{r.ChildPath("kind")}: expected \"street\" or \"arterial\""),
             };
             profiles[i].WidthMm = Mm(r.Num("width_m", min: 0.001), r.ChildPath("width_m"));
+            profiles[i].MaxGradePm = (int)Math.Round(r.Num("max_grade_pct", 0, min: 0, max: 100) * 10);   // TR3, terrain.md §4.3: 0 - по виду дороги
             JsonElement[] els = r.ReqArray("elements");
             string ep = r.ChildPath("elements");
             r.Finish();

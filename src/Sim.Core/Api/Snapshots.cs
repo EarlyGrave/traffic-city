@@ -123,6 +123,12 @@ public readonly ref struct NetworkView
     public readonly ReadOnlySpan<int> NodeArms;         // сегменты, инцидентные узлу, по часовой стрелке
     public readonly ReadOnlySpan<byte> ArmFlags;        // биты <see cref="ArmFlagBits"/>
 
+    // Рельеф (terrain.md §4.2, TR3): высоты полос и осей. Пусто без рельефа (Y = 0). Статика: читать после Create/Load и при смене Version.
+    public readonly ReadOnlySpan<float> LanePointY;     // параллельно LanePoints, м
+    public readonly ReadOnlySpan<float> LaneGrade;      // уклон по ходу полосы (Δh / длина), connector'ы - 0
+    public readonly ReadOnlySpan<Vec2> SegmentPoints;   // осевые полилинии сегментов (между стоп-линиями), диапазоны из SegmentData.FirstPoint/PointCount
+    public readonly ReadOnlySpan<float> SegmentPointY;  // параллельно SegmentPoints, м; пусто без рельефа
+
     /// <summary>Знак рукава <paramref name="arm"/> (слот 0..ArmCount-1) узла <paramref name="node"/> в кодах <c>SetArmControl</c>: 0 авто, 1 главный, 2 уступи, 3 стоп; вне диапазона - 0.</summary>
     public int ArmSign(int node, int arm)
     {
@@ -186,8 +192,16 @@ public readonly ref struct NetworkView
         float gridOriginX = 0f,
         float gridOriginZ = 0f,
         ReadOnlySpan<int> nodeArms = default,
-        ReadOnlySpan<byte> armFlags = default)
+        ReadOnlySpan<byte> armFlags = default,
+        ReadOnlySpan<float> lanePointY = default,
+        ReadOnlySpan<float> laneGrade = default,
+        ReadOnlySpan<Vec2> segmentPoints = default,
+        ReadOnlySpan<float> segmentPointY = default)
     {
+        LanePointY = lanePointY;
+        LaneGrade = laneGrade;
+        SegmentPoints = segmentPoints;
+        SegmentPointY = segmentPointY;
         NodeArms = nodeArms;
         ArmFlags = armFlags;
         Version = version;

@@ -205,10 +205,16 @@ internal static class ChainEdit
         float sa = SetbackA(n, in sd);
         float sb = SetbackB(n, in sd);
         Vec2 p = PointOnFull(n, in sd, s, out int before);
+        int yCm = w.Terrain != null ? RoadTerrain.SegmentYCm(w, seg, s) : 0;   // TR3: узел разреза - на профиле сегмента (уклоны половин сохраняются)
         NetworkStatus st = b.AddNodeExact(p, out node);
         if (st != NetworkStatus.Ok)
         {
             return st;
+        }
+
+        if (w.Terrain != null)
+        {
+            n.Nodes[node].Elevation = RoadTerrain.Meters(yCm);
         }
 
         // Ось половин: точки старой оси до и после точки разреза (крайние точки старой оси лежат на прямой «узел - соседняя точка» - их не повторяем).
@@ -264,6 +270,12 @@ internal static class ChainEdit
 
         CopyLaneFlags(n, seg, seg1, true, true);
         CopyLaneFlags(n, seg, seg2, true, true);
+        if ((sd.Flags & SegmentFlags.Bridge) != 0)
+        {
+            // TR3: разрез моста - обе половины мосты (без отказа: разрез - обратная команда слияния).
+            n.Segments[seg1].Flags |= SegmentFlags.Bridge;
+            n.Segments[seg2].Flags |= SegmentFlags.Bridge;
+        }
 
         Span<ChainPiece> old = stackalloc ChainPiece[1];
         old[0] = new ChainPiece { Seg = seg, Node = -1, Forward = true, U0 = sa, Len = sd.Length };
@@ -351,6 +363,11 @@ internal static class ChainEdit
         }
 
         CopyLaneFlags(n, s1, merged, fw1, true);
+        if ((d1.Flags & d2.Flags & SegmentFlags.Bridge) != 0)
+        {
+            n.Segments[merged].Flags |= SegmentFlags.Bridge;   // TR3: слияние двух мостов (мост с дорогой валидатор отклоняет)
+        }
+
         float g1 = Dist(end1, np);
         splitS = set1 + d1.Length + g1;
         Span<ChainPiece> old = stackalloc ChainPiece[3];

@@ -487,6 +487,11 @@ internal static class InverseBuilder
             }
         }
 
+        if ((sd.Flags & SegmentFlags.Bridge) != 0)
+        {
+            b.Flags |= BuildRoadFlags.Bridge;   // TR3: мост возвращается мостом
+        }
+
         Add(log, ref ctx, Command.MakeBuildRoad(in b));
 
         const byte writable = LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut;

@@ -133,3 +133,7 @@
   Решение: `git config core.hooksPath .githooks` в начале облачной сессии (настройка общая для всех worktree); SessionStart-хук
   дополнен этим шагом. Проверка на старте: `git config --get core.hooksPath` → `.githooks`.
 - **`git lfs` и `core.hooksPath=.githooks` (2026-10-29).** Git LFS пишет свои хуки в `.githooks/` как untracked-файлы (`post-checkout`, `post-commit`, `post-merge`, `pre-push`), а хуки из `.git/hooks` при `core.hooksPath` не запускаются. Решение: трекаемые обёртки в `.githooks/` (вызывают `git lfs <хук>` только если `git-lfs` в PATH, иначе молча `exit 0`); проверка — `test-hooks.sh`. Сырые сгенерированные файлы не коммитить.
+
+- **2026-10-29: мерж без конфликтов не запускает pre-commit.** `git merge` без конфликта создаёт коммит без хука `pre-commit` (его нет у
+  merge-коммитов, есть только `pre-merge-commit`). Верификатор после мержа обязан явно прогнать build -warnaserror, format и test.
+  Полный `dotnet test` в облаке ≈ 17 мин — не оборачивать в `timeout 590`, запускать в фоне и ждать уведомления.

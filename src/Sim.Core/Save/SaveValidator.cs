@@ -270,8 +270,10 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
-                (n.ToolsTouched == 0 && ((sd.Flags & ~SegmentFlags.Mirrored) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
+            // Bridge (TR3, terrain.md §4.5) - только с рельефом; мост ставит и Create (автомат по воде), поэтому он допустим и у сети без правок.
+            byte bridge = c.Desc.Terrain.Enabled ? SegmentFlags.Bridge : (byte)0;
+            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored | bridge)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
+                (n.ToolsTouched == 0 && ((sd.Flags & ~(SegmentFlags.Mirrored | bridge)) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
             {
                 return Bad(c, i, 3);
             }

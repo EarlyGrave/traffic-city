@@ -273,8 +273,9 @@ internal static partial class ToolValidator
         }
 
         // Стоимость: новая дорога минус возврат за заменяемую.
-        long add = RoadCost(in w.ToolsCfg.Costs, kind, c.LengthM, total, (sd.Flags & SegmentFlags.Curve) != 0);
-        long old = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0);
+        bool bridge = (sd.Flags & SegmentFlags.Bridge) != 0;   // TR3: мост остаётся мостом
+        long add = RoadCost(in w.ToolsCfg.Costs, kind, c.LengthM, total, (sd.Flags & SegmentFlags.Curve) != 0, bridge);
+        long old = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0, bridge);
         c.Cost = add - (old * w.ToolsCfg.Costs.UpgradeRefundPct / 100);
         return RejectReason.None;
     }

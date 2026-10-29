@@ -19,6 +19,9 @@ public sealed class UiSettingsPage
     /// <summary>Настройки изменены и сохранены: перерисовать UI.</summary>
     public event Action? Changed;
 
+    /// <summary>Час суток выбран в настройках: null - «Авто» (по игровому времени), иначе час 0..24.</summary>
+    public static event Action<float?>? TimeOfDayRequested;
+
     public void Build(VBoxContainer into, Action back)
     {
         into.AddChild(new Label { Text = "Настройки", ThemeTypeVariation = UiTheme.LabelHeader });
@@ -67,6 +70,27 @@ public sealed class UiSettingsPage
 
         into.AddChild(presets);
         into.AddChild(new Label { Text = "Тени, разрешение и сглаживание; пороги LOD - после перезапуска", ThemeTypeVariation = UiTheme.LabelSecondary, AutowrapMode = TextServer.AutowrapMode.WordSmart });
+
+        into.AddChild(new Label { Text = "Время суток", ThemeTypeVariation = UiTheme.LabelSecondary });
+        var tod = new HBoxContainer();
+        tod.AddThemeConstantOverride("separation", 4);
+        foreach ((string name, float? hour) in new (string, float?)[] { ("Авто", null), ("Утро", 8f), ("День", 12f), ("Вечер", 19f), ("Ночь", 1f) })
+        {
+            float? captured = hour;
+            var b = new Button
+            {
+                Text = name,
+                FocusMode = Control.FocusModeEnum.None,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                ThemeTypeVariation = UiTheme.ButtonCompact,
+                CustomMinimumSize = new Vector2(0f, 34f),
+            };
+            b.Pressed += () => TimeOfDayRequested?.Invoke(captured);
+            tod.AddChild(b);
+        }
+
+        into.AddChild(tod);
+        into.AddChild(new Label { Text = "«Авто» - по игровому времени; остальное фиксирует час", ThemeTypeVariation = UiTheme.LabelSecondary, AutowrapMode = TextServer.AutowrapMode.WordSmart });
 
         var backBtn = new Button { Text = "Назад  Esc", FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(0f, 44f) };
         backBtn.Pressed += back;

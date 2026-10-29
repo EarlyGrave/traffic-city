@@ -50,6 +50,12 @@ internal struct ToolCheck
     public float SplitSA, SplitSB;          // точка разреза по полной оси сегмента, м от его узла A
     public bool Curve;                      // BuildRoad: кривая Безье (T5)
 
+    // Рельеф (TR3, terrain.md §4): высоты концов после подгонки (абсолютные см), мост, земляные работы; значение отказа для превью (TooSteep - ‰, NeedsBridge -1/-2).
+    public int ElevACm, ElevBCm;
+    public bool Bridge, BridgeAuto;
+    public long EarthworkM3, EarthworkCost;
+    public int RejectValue;
+
     // Автобусные инструменты (T9): линия, остановка, полоса и позиция новой остановки; Noop - восстанавливаемая остановка уже на линии (повтор обратной записи).
     public int Route, Stop, Lane, Pos;
     public float StopS;
@@ -146,9 +152,9 @@ internal static partial class ToolValidator
             return RejectReason.None;
         }
 
-        if ((b.Flags & ~BuildRoadFlags.Supported) != 0)
+        if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || ((b.Flags & BuildRoadFlags.Bridge) != 0 && w.Terrain == null))
         {
-            return RejectReason.NotSupported;   // неизвестные биты
+            return RejectReason.NotSupported;   // неизвестные биты; мост - только на рельефе (TR3)
         }
 
         if (b.RestoreOf.Generation != 0 && n.ResolveSegment(in b.RestoreOf))
@@ -370,7 +376,17 @@ internal static partial class ToolValidator
         }
 
         c.Mechanism = (byte)((na >= 0 && n.Nodes[na].FirstArm >= 0) || (nb >= 0 && n.Nodes[nb].FirstArm >= 0) ? 1 : 0);
-        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: c.Curve);
+        if (w.Terrain != null)
+        {
+            // Рельеф (TR3): высоты концов, предел уклона, выемка/насыпь, мост, земляные работы - после всех проверок сети, до цены.
+            RejectReason tr = CheckBuildTerrain(w, in cmd, curve[..curveN], len, ref c);
+            if (tr != RejectReason.None)
+            {
+                return tr;
+            }
+        }
+
+        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: c.Curve, bridge: c.Bridge) + c.EarthworkCost;
         return RejectReason.None;
     }
 
@@ -525,7 +541,7 @@ internal static partial class ToolValidator
 
         c.Mechanism = 2;
         c.LengthM = w.Builder.FullAxisLength(seg);   // от узла до узла: отступы концов по рукавам (ADR-0028), не 2 * NodeSetback
-        long build = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0);
+        long build = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0, (sd.Flags & SegmentFlags.Bridge) != 0);
         c.Cost = -(build * w.ToolsCfg.Costs.DemolishRefundPct / 100);
         return RejectReason.None;
     }
@@ -723,9 +739,9 @@ internal static partial class ToolValidator
     /// <summary>
     /// Стоимость дороги (целые единицы): длина в мм x полосы x ставка за метр-полосу, кривая - <c>curve_factor_pct</c> (0 = 100). Округление - к ближайшему целому.
     /// </summary>
-    public static long RoadCost(in ToolCostsDesc costs, RoadKind kind, float lengthM, int lanes, bool curve)
+    public static long RoadCost(in ToolCostsDesc costs, RoadKind kind, float lengthM, int lanes, bool curve, bool bridge = false)
     {
-        long rate = kind == RoadKind.Arterial ? costs.RoadPerMLaneArterial : costs.RoadPerMLaneStreet;
+        long rate = bridge ? costs.BridgePerMLane : kind == RoadKind.Arterial ? costs.RoadPerMLaneArterial : costs.RoadPerMLaneStreet;   // мост (TR3): bridge_per_m_lane
         long mm = (long)MathF.Round(lengthM * 1000f);
         long v = (((mm * lanes * rate) + 500) / 1000);
         if (curve)

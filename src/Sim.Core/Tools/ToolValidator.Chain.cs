@@ -139,7 +139,7 @@ internal static partial class ToolValidator
         ref readonly SegmentData d2 = ref n.Segments[s2];
         bool fw1 = d1.NodeA == far1;
         bool fw2 = d2.NodeA == node;
-        if (far1 == far2 || far1 == node || far2 == node || d1.Kind != d2.Kind || d1.SpeedLimit != d2.SpeedLimit || d1.Profile != d2.Profile ||
+        if (far1 == far2 || far1 == node || far2 == node || d1.Kind != d2.Kind || ((d1.Flags ^ d2.Flags) & SegmentFlags.Bridge) != 0 || d1.SpeedLimit != d2.SpeedLimit || d1.Profile != d2.Profile ||
             (d1.Profile >= 0 && ChainEdit.MirroredAlong(in d1, fw1) != ChainEdit.MirroredAlong(in d2, fw2)) ||
             (d1.PointCount - 2) + 1 + (d2.PointCount - 2) > NetworkBuilder.MaxVia)
         {
