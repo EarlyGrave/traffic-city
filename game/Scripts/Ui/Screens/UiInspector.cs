@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -18,7 +19,10 @@ public sealed class UiInspector
     public const int ArmColumns = 7;
     public const int MaxArmRows = 8;
 
-    private readonly PanelContainer _root;
+    private readonly UiPanel _root;
+    private readonly ScrollContainer _scroll;
+    private readonly VBoxContainer _content;
+    private float _maxHeight = float.MaxValue;
     private readonly Label _title;
     private readonly Label[] _keys = new Label[MaxRows];
     private readonly Label[] _values = new Label[MaxRows];
@@ -26,13 +30,15 @@ public sealed class UiInspector
     private readonly string[] _valueText = new string[MaxRows];
     private readonly GridContainer _rows;
     private readonly GridContainer _arms;
+    private readonly Control _armsCard;
     private readonly Label[] _armCells = new Label[ArmColumns * (MaxArmRows + 1)];
     private readonly string[] _armText = new string[ArmColumns * (MaxArmRows + 1)];
     private readonly Color[] _armColor = new Color[ArmColumns * (MaxArmRows + 1)];
     private readonly Label _note;
+    private readonly UiCard _noteCard;
     private readonly HSeparator _actionsSep;
     private readonly HFlowContainer _actionsRow;
-    private readonly Button[] _actions = new Button[MaxActions];
+    private readonly UiButton[] _actions = new UiButton[MaxActions];
     private string _titleText = string.Empty;
     private string _noteText = string.Empty;
     private int _rowCount;
@@ -40,10 +46,9 @@ public sealed class UiInspector
 
     public UiInspector(Control parent)
     {
-        _root = new PanelContainer { Name = "Inspector", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
+        _root = new UiPanel { Name = "Inspector", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
         parent.AddChild(_root);
-        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _root.AddChild(box);
+        VBoxContainer box = _root.Body;
 
         var head = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         box.AddChild(head);
@@ -55,21 +60,28 @@ public sealed class UiInspector
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         head.AddChild(_title);
-        var close = new Button
-        {
-            Text = "×",
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(36f, 36f),
-            TooltipText = "Закрыть (Esc)",
-        };
+        var close = new UiButton("×", UiButtonKind.Ghost).WithTooltip("Закрыть", "Esc");
+        close.FocusMode = Control.FocusModeEnum.None;
+        close.CustomMinimumSize = new Vector2(36f, 36f);
         close.Pressed += () => CloseRequested?.Invoke();
         head.AddChild(close);
-        box.AddChild(new HSeparator());
+
+        // тело прокручивается: высоту задаёт SetMaxHeight (док не должен выходить за тулбар)
+        _scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        box.AddChild(_scroll);
+        _content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _content.AddThemeConstantOverride("separation", Tokens.Space2);
+        _scroll.AddChild(_content);
+        _content.MinimumSizeChanged += FitHeight;
+        box = _content;
+
+        var rowsCard = new UiCard();
+        box.AddChild(rowsCard);
 
         _rows = new GridContainer { Columns = 2, MouseFilter = Control.MouseFilterEnum.Ignore };
         _rows.AddThemeConstantOverride("h_separation", 16);
         _rows.AddThemeConstantOverride("v_separation", 4);
-        box.AddChild(_rows);
+        rowsCard.Add(_rows);
         for (int i = 0; i < MaxRows; i++)
         {
             _keyText[i] = string.Empty;
@@ -86,10 +98,13 @@ public sealed class UiInspector
             _rows.AddChild(_values[i]);
         }
 
-        _arms = new GridContainer { Columns = ArmColumns, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        _arms.AddThemeConstantOverride("h_separation", 10);
+        _arms = new GridContainer { Columns = ArmColumns, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _arms.AddThemeConstantOverride("h_separation", 4);
         _arms.AddThemeConstantOverride("v_separation", 2);
-        box.AddChild(_arms);
+        var armsCard = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        armsCard.AddChild(_arms);
+        _armsCard = armsCard;
+        box.AddChild(armsCard);
         for (int i = 0; i < _armCells.Length; i++)
         {
             bool header = i < ArmColumns;
@@ -108,11 +123,12 @@ public sealed class UiInspector
         {
             ThemeTypeVariation = UiTheme.LabelSecondary,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(UiMetrics.DockWidth - 32f, 0f),
+            CustomMinimumSize = new Vector2(UiMetrics.DockWidth - 96f, 0f),
             MouseFilter = Control.MouseFilterEnum.Ignore,
-            Visible = false,
         };
-        box.AddChild(_note);
+        _noteCard = new UiCard { Visible = false };
+        _noteCard.Add(_note);
+        box.AddChild(_noteCard);
 
         _actionsSep = new HSeparator();
         box.AddChild(_actionsSep);
@@ -124,7 +140,7 @@ public sealed class UiInspector
         for (int i = 0; i < MaxActions; i++)
         {
             int idx = i;
-            var b = new Button
+            var b = new UiButton(string.Empty, UiButtonKind.Secondary)
             {
                 FocusMode = Control.FocusModeEnum.None,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -134,6 +150,26 @@ public sealed class UiInspector
             b.Pressed += () => ActionPressed?.Invoke(idx);
             _actionsRow.AddChild(b);
             _actions[i] = b;
+        }
+    }
+
+    /// <summary>Предел высоты панели в доке: тело прокручивается, если не влезает (шапка и поля панели вычитаются здесь).</summary>
+    public void SetMaxHeight(float panelMax)
+    {
+        float body = Math.Max(120f, panelMax - 36f - (2f * Tokens.Space3) - (2f * Tokens.Stroke) - Tokens.ShadowPanel - Tokens.Space2);
+        if (Math.Abs(body - _maxHeight) > 0.5f)
+        {
+            _maxHeight = body;
+            FitHeight();
+        }
+    }
+
+    private void FitHeight()
+    {
+        float h = Math.Min(_content.GetCombinedMinimumSize().Y, _maxHeight);
+        if (Math.Abs(_scroll.CustomMinimumSize.Y - h) > 0.5f)
+        {
+            _scroll.CustomMinimumSize = new Vector2(0f, h);
         }
     }
 
@@ -153,7 +189,7 @@ public sealed class UiInspector
     public Control Root => _root;
 
     /// <summary>Кнопка действия (скриптовые прогоны).</summary>
-    public Button Action(int i) => _actions[i];
+    public UiButton Action(int i) => _actions[i];
 
     public void SetTitle(string text)
     {
@@ -239,7 +275,7 @@ public sealed class UiInspector
         }
 
         _armRows = n;
-        _arms.Visible = n > 0;
+        _armsCard.Visible = n > 0;
         for (int r = 1; r <= MaxArmRows; r++)
         {
             for (int c = 0; c < ArmColumns; c++)
@@ -259,26 +295,27 @@ public sealed class UiInspector
 
         _noteText = text;
         _note.Text = text;
-        _note.Visible = text.Length > 0;
+        _noteCard.Visible = text.Length > 0;
     }
 
     /// <summary>Кнопка действия: подпись, переключатель ли и его состояние, доступность, подсказка.</summary>
     public void SetAction(int i, string text, bool toggle, bool pressed, bool enabled, string tooltip)
     {
-        Button b = _actions[i];
+        UiButton b = _actions[i];
         if (!string.Equals(b.Text, text, StringComparison.Ordinal))
         {
             b.Text = text;
         }
 
         b.ToggleMode = toggle;
+        b.ThemeTypeVariation = toggle ? ThemeBuilder.Toggle : ThemeBuilder.Secondary;
         if (toggle && b.ButtonPressed != pressed)
         {
             b.SetPressedNoSignal(pressed);
         }
 
         b.Disabled = !enabled;
-        b.TooltipText = tooltip;
+        b.WithTooltip(tooltip);
         b.Visible = true;
     }
 

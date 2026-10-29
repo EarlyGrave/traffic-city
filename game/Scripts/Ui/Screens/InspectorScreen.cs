@@ -37,6 +37,18 @@ public sealed class InspectorScreen : UiScreen
         }
     }
 
+    /// <summary>Высота док-колонки делится с панелью города: инспектор прокручивается, а не вылезает за тулбар.</summary>
+    public override void Process(double delta)
+    {
+        if (!View.Visible)
+        {
+            return;
+        }
+
+        float col = Ui.Slot(UiDock.Right).Size.Y;
+        View.SetMaxHeight(Ui.Screen<CityScreen>().IsOpen ? col * 0.5f : col);
+    }
+
     public override void Refresh()
     {
         View.Visible = IsOpen;
