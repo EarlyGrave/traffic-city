@@ -384,3 +384,37 @@ UI8+ — после PG5; UI-N — после PG6. Плейтест 3 — пос�
 
 **Осталось PG3:** `Progression.Check` в диспетчере и превью, проверка вех в 9r (на сдвиге часа - `CityKpi.OnTickEnd`, после него), грант, бонус кредита в `CreditLimit`, области, события 59-60,
 `LockedRejects++`. Готово для PG3: `ProgressionState.MilestoneForFeature/Profile`, `CityKpi.SumWindow/Value`, ворота считает `Simulation.GetProgression` (`GateMiss`).
+
+### PG3 + PG4 + PG5 (агент 185, облако, 2026-10-29; ветка `claude/cool-newton-91p1tr-n7`)
+**PG3 - вехи и замки.**
+- `City/Progression.Rules.cs` (`static class Progression`): `Check(World, in Command, out milestone)` - чистая, O(1); `InOpenArea`, `GateMiss` (общий с `GetProgression`), `CheckMilestone`,
+  `CreditDaysBonus`. Без прогрессии - выход первой строкой.
+- Место проверки: `ToolValidator.Check` после разбора команды, если причина не структурная (`InvalidArgument`/`InvalidHandle`/`NotSupported`/`UnknownKind`), до `ToolCosts.Resolve` -
+  поэтому превью и применение дают один вердикт; `Locked` перекрывает геометрические отказы. `PaintZone` и `SetBudgetPolicy` (вне валидатора) - тот же вызов в диспетчере (`Locked`) и
+  в превью зонирования. Превью: `PreviewIssue { Code = 17, Value = веха, которая откроет (-1) }` (`ToolCheck.LockMilestone`). `LockedRejects++` - в `CommandDispatcher.Rejected`.
+- Сопоставление команд: `UpgradeRoad` - `ArterialUpgrade`, только если меняются профиль, зеркальность, полосы, тип или снимается профиль (одна скорость - открыта); профиль - если отличается от
+  текущего. `SetNodeControl` - `SignalsFixed` только для `Signal`; `SetSignalPlan` - `Adaptive` -> `SignalsAdaptive`, иначе `SignalsFixed`; `SetBudgetPolicy` - `Taxes`, только если
+  меняются ставки или плата (при казне). `BuildRoad` без профиля (`Profile = 0`) профильный замок не проверяет.
+- Области: `ToolValidator.InBounds` - точка в объединении открытых областей `0..AreaStage` и в границах инструментов, иначе `OutOfBounds`.
+- Вехи: `CheckMilestone` - в конце `CityKpi.OnTickEnd` на сдвиге часа и в `CityPhase.Periodic` на границе суток после казны и `OnDayEnd`. Одна веха за вызов (на тике конца суток - два
+  вызова). Ворота - по окну `SumWindow(includeCurrent)`, как в `GetProgression`; веха без ворот данных не требует. Грант - `Ledger.Transfer(External, City, grant, Subsidy)` при `city_budget`.
+- Кредит: `CityBudget.CreditLimit(in e, bonusDays)` = `(credit_days + бонус) · IncomeEwma`; бонус берут все места (`BudgetFlows`, `ToolCosts`, `GetCityBudget`, `DaysToLimit`).
+
+**PG4 - жалобы.** `Metrics/Complaints.cs` (в `CityKpi.Complaints`): накопитель - своя открытая адресация 256 слотов на вид (заполнение ≤ 192, дальше - `Overflow`); выпуск в
+`CityKpi.OnTickEnd` после вех: два прохода по видам 1..5 (сначала лучшее место каждого вида, затем второе), счёт ≥ 3, ≤ 2 на вид, ≤ 6 за час, ничья - меньший индекс; остывание 6 игровых
+часов - по кольцу 64 выпусков. Событие `Complaint`: A = вид, B = `Seq`, C = счёт, `Place` (сегмент - середина оси, здание - центр участка, остановка - точка на полосе). Хуки случаев - методы
+`CityKpi.OnLongWait/OnNoParking/OnTourCancelled`, параметры места у `OnLeg`/`OnBoarded` (дом жителя, остановка посадки `LegStopA`). Вне хэша и сейва (тест `Complaints_OutsideHashAndSave`).
+
+**PG5 - банкротство.** `BudgetFlows.Warn` на границе суток после лимита: уровень 1 при ≤ 7 днях до лимита, 2 при ≤ 2, событие `BudgetWarning` (A = уровень, B = дни) только вверх,
+снятие при > 10 днях или тренде ≥ 0. `WarnLevel` (CBGT 31) - в хэше раздела казны: хэши econ-сценариев изменились (эталоны перегенерированы отдельным коммитом). `Insolvent = 1` -
+платные команды (цена > 0 после undo-кредита) - `InsufficientFunds` в `ToolValidator.Check` (превью = применение); возвраты, undo в окне, `SetBudgetPolicy`, `SetBusRouteParams`,
+`RemoveBusRoute`, бесплатное - проходят. Выход - прежний `BudgetRecovered` на границе суток.
+Замеры тестов (не калибровка): выход из банкротства на `s1k-res` (агрегат, `credit_days` 0, долг 30 · `IncomeEwma` после 3 суток) - налог R 10 % - **14 суток**, без правки - **17 суток**
+[Замер `BankruptcyTests`]. Жалобы на `s10k-res-overload` - **22 за 10 игровых часов** (≤ 6 за час, ≤ 2 на вид выполнено) [Замер `ComplaintsTests.Overload_AtMostSixPerGameHour`, Release].
+Хэш: без секции `progression` и без казны состояние мира прежнее; у корпуса `w11-s1k-res-d3` хэш сменился только через `EventsDropped` (события `Complaint` за один `Step(216000)`
+генератора переполняют буфер событий).
+
+**Клиент:** `UiNotifyMap` - тосты 59-62 («Новая веха: № N, жителей …», «веха ждёт трафика», «Через N дн. казна уйдёт за кредитный лимит», жалоба по виду); `RejectMessages` - подсказка к
+`InsufficientFunds`. Имена вех по `id` клиент пока не показывает (номер вехи).
+
+**Осталось PG6:** сценарий `game-city.json`, `ReadyCity.Prepare`, калибровка порогов ворот, `max_immigrants`, `r_bias`, казны (E7) и проверка частоты жалоб на игровом городе.

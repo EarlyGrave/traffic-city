@@ -230,7 +230,7 @@ public sealed class BankruptcyTests
             CityBudget b = c.Budget!;
             Assert.True(b.IncomeEwma > 0);
             Ledger lg = c.Ledger;
-            lg.Transfer(lg.CityAccount, lg.ExternalAccount, lg.City + (3 * b.IncomeEwma), FlowKind.Leakage);   // долг = трое суток дохода
+            lg.Transfer(lg.CityAccount, lg.ExternalAccount, lg.City + (30 * b.IncomeEwma), FlowKind.Leakage);   // долг - 30 сглаженных суточных доходов (EWMA после трёх суток ещё отстаёт от потока)
             sim.Step(Day);
             Assert.Equal(1, b.Insolvent);
             if (raise)
@@ -260,6 +260,6 @@ public sealed class BankruptcyTests
         int baseline = Run(false);
         _out.WriteLine($"выход из банкротства: налог R 10 % - {withTax} сут., без правки - {baseline} сут.");
         Assert.InRange(withTax, 1, 30);
-        Assert.True(baseline < 0 || withTax <= baseline);
+        Assert.True(baseline < 0 || withTax < baseline);
     }
 }
