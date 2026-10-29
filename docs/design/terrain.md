@@ -639,9 +639,22 @@ public struct TerrainDirtyRect { public int Version; public ushort ChunkX0, Chun
 - `NetworkView` + `ReadOnlySpan<float> LanePointY, SegmentPointY, LaneGrade` (пусто без рельефа); `SegmentFlags.Bridge`.
 - `VehicleRenderData.Y`, `PedRenderData.Y` — высота с рельефом. Раскладка 32 Б не меняется.
 - Участки и здания (`CityView`/`GetBuildings`): `BaseY`, `SlopePct`, признак «непригоден».
-- **`Sim.Host` (TR9, облако):** `TerrainSnapshot` — чанки 32×32 `ushort` (2 КБ) как отдельные массивы с копированием при записи.
-  При смене `Version` поток симуляции копирует только грязные чанки, чистые разделяются по ссылке со старым снапшотом. Кадр несёт
-  ссылку, как `NetworkSnapshot` (ADR-0024). Полная копия 5 МБ двадцать раз в секунду при штрихе была бы лишней.
+- **`Sim.Host` (TR9, сделано; `src/Sim.Host/TerrainSnapshot.cs`).** Клиент Godot (TC1/TC2/TC6) ядро не трогает, читает только кадр:
+  - `SimFrame.Terrain` (`TerrainSnapshot?`): `null`, если в мире нет рельефа (кадры прежние). Пока `Terrain.Version` не менялась, это **тот же объект**,
+    что в прошлом кадре (0 Б на кадр на обоих потоках, тест `Unchanged_SameReference_AndZeroBytes_OnBothThreads`). Снимок неизменяем, ссылку можно держать сколько угодно.
+  - Поля снимка: `Version`, `PreviousVersion`, `Full`, `CellM`, `OriginX/Z`, `SamplesX/Z`, `BaseCm`, `ChunksX/Z`, `ChunkCount`,
+    `ChangedChunks` (`ReadOnlySpan<int>` индексов `cz · ChunksX + cx` по возрастанию), `GetChunk(cx, cz)` / `GetChunk(index)`.
+  - `TerrainChunk` (неизменяемый): `CX, CZ, X0, Z0` (индекс первого отсчёта в сетке), `Width, Height` (до 33×33 отсчётов: общий край с соседом продублирован,
+    меш чанка строится без соседей; у последних чанков меньше), `Version` (версия рельефа, на которой чанк скопирован), `Ground, Water, WaterKind, Lock`
+    (`ReadOnlySpan`, индекс `lz · Width + lx`), `HeightM(lx, lz, baseCm)`. Высота, м = `(BaseCm + Ground) / 100`; мировая точка отсчёта `(OriginX + (X0 + lx) · CellM, OriginZ + (Z0 + lz) · CellM)`.
+  - **Как перестраивать меши.** Надёжный способ (кадры могут быть пропущены - почтовый ящик): клиент хранит у каждого своего меша `chunk.Version` и сравнивает с
+    `snapshot.GetChunk(i).Version`; различие - перестроить. `ChangedChunks` - удобство для клиента, видевшего ровно `PreviousVersion`; при `Full` в нём все чанки.
+  - Копирование при записи: на смене `Version` поток симуляции берёт `CopyTerrainDirty(since = версия прошлого снимка)` и копирует (`ushort[]`×2, `byte[]`×2 на чанк)
+    только грязные чанки; чистые переходят в новый снимок по ссылке (общие со старым). Полная копия - на старте и при `overflow` (кольцо 256 потеряло записи) или смене размеров.
+    Выделения - только на смену версии: массив ссылок на чанки, маска, список изменённых и новые чанки (~8.7 КБ на чанк 33×33: 2+2+1+1 Б на отсчёт); пулов нет.
+  - Ограничения: `Lock` обновляется вместе с чанком, т.е. только когда чанк помечен грязным (TR3 обязан помечать чанки, у которых изменился `Lock`, и поднимать `Version`);
+    загрузка сейва создаёт новый `Simulation` и новый хост, поэтому снимок начинается с полной копии.
+  - Тесты: `tests/Sim.Host.Tests/TerrainSnapshotTests.cs` (путь грязных чанков - синтетически через `TerrainSnapshot.Build`, `InternalsVisibleTo` для тестов хоста, пока ядро не умеет менять рельеф).
 
 ### 10.2 Заявка локалу (клиент Godot, `game/**`)
 | # | Что | Данные | Примечание |
