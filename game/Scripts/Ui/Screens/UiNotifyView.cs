@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Godot;
 using Sim.Core.Api;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -25,10 +26,11 @@ public sealed class UiNotifyView
     private readonly IUiContext _ui;
     private readonly VBoxContainer _toastBox;
     private readonly Button _notesButton;
-    private readonly PanelContainer _listPanel;
+    private readonly UiPanel _listPanel;
     private readonly VBoxContainer _rows;
     private readonly List<Toast> _toasts = new();
     private readonly List<SimEvent> _drain = new();
+    private IUiEventSource? _source;
     private bool _listDirty;
     private int _shownBadge = -1;
 
@@ -43,7 +45,7 @@ public sealed class UiNotifyView
         _toastBox.Alignment = BoxContainer.AlignmentMode.End;
         _toastBox.AddThemeConstantOverride("separation", 6);
 
-        _listPanel = new PanelContainer { Name = "NotifyList", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
+        _listPanel = new UiPanel { Name = "NotifyList", MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
         _listPanel.AnchorLeft = 1f;
         _listPanel.AnchorRight = 1f;
         _listPanel.OffsetLeft = -(ListWidth + UiMetrics.Margin);
@@ -51,12 +53,12 @@ public sealed class UiNotifyView
         _listPanel.OffsetTop = UiMetrics.TopBarHeight + UiMetrics.Margin;
         _listPanel.OffsetBottom = UiMetrics.TopBarHeight + UiMetrics.Margin + 440f;
         listParent.AddChild(_listPanel);
-        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _listPanel.AddChild(box);
+        VBoxContainer box = _listPanel.Body;
+        box.MouseFilter = Control.MouseFilterEnum.Ignore;
         var head = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         box.AddChild(head);
         head.AddChild(new Label { Text = "События", ThemeTypeVariation = UiTheme.LabelHeader, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
-        Button close = SmallButton("×", 32f);
+        UiButton close = SmallButton("×", 32f, UiButtonKind.Ghost);
         close.Pressed += () => SetListOpen(false);
         head.AddChild(close);
         box.AddChild(new HSeparator());
@@ -81,7 +83,20 @@ public sealed class UiNotifyView
     public UiNotifyCenter Center { get; } = new();
 
     /// <summary>Источник событий хоста; null - события только через <see cref="Center"/>.Push.</summary>
-    public IUiEventSource? Source { get; set; }
+    public IUiEventSource? Source
+    {
+        get => _source;
+        set
+        {
+            if (!SourceLocked)
+            {
+                _source = value;
+            }
+        }
+    }
+
+    /// <summary>Демо-режим (<c>--ui-demo-*</c>): хост не подменяет демо-источник.</summary>
+    public bool SourceLocked { get; set; }
 
     public bool ListOpen => _listPanel.Visible;
 
@@ -167,18 +182,18 @@ public sealed class UiNotifyView
     private void AddToast(NotifyEntry e)
     {
         var t = new Toast { Entry = e };
-        t.Panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop, CustomMinimumSize = new Vector2(0f, 40f) };
+        t.Panel = new PanelContainer { ThemeTypeVariation = ThemeBuilder.Toast, MouseFilter = Control.MouseFilterEnum.Stop, CustomMinimumSize = new Vector2(0f, 40f) };
         var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 8);
         t.Panel.AddChild(row);
-        row.AddChild(Glyph(e.Severity));
+        row.AddChild(Tag(e.Severity));
         t.Text = new Label
         {
             Text = e.Text,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            CustomMinimumSize = new Vector2(120f, 0f),
+            CustomMinimumSize = new Vector2(60f, 0f),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         row.AddChild(t.Text);
@@ -187,7 +202,7 @@ public sealed class UiNotifyView
             row.AddChild(ShowButton(t.Entry));
         }
 
-        Button x = SmallButton("×", 28f);
+        UiButton x = SmallButton("×", 28f, UiButtonKind.Ghost);
         x.Pressed += () =>
         {
             int idx = _toasts.IndexOf(t);
@@ -226,14 +241,14 @@ public sealed class UiNotifyView
             NotifyEntry e = Center.Newest(i);
             var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
             row.AddThemeConstantOverride("separation", 8);
-            row.AddChild(Glyph(e.Severity));
+            row.AddChild(Tag(e.Severity));
             var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
             col.AddThemeConstantOverride("separation", 0);
             col.AddChild(new Label
             {
                 Text = e.Text,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(120f, 0f),
+                CustomMinimumSize = new Vector2(60f, 0f),
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             });
             col.AddChild(new Label { Text = TimeText(e.LastTick), ThemeTypeVariation = UiTheme.LabelSecondary, MouseFilter = Control.MouseFilterEnum.Ignore });
@@ -248,12 +263,7 @@ public sealed class UiNotifyView
         }
     }
 
-    private Button ShowButton(NotifyEntry e)
-    {
-        Button b = SmallButton("Показать", 0f);
-        b.Pressed += () => Show(e.Subject);
-        return b;
-    }
+    private UiButton ShowButton(NotifyEntry e) => SmallButton("Показать", 0f, UiButtonKind.Secondary).OnPressed(() => Show(e.Subject));
 
     /// <summary>«Показать»: подлететь камерой к объекту и выделить его; без источника или при исчезнувшем объекте - ничего.</summary>
     public bool Show(NotifySubject s)
@@ -279,31 +289,21 @@ public sealed class UiNotifyView
         return true;
     }
 
-    private static Label Glyph(NotifySeverity s)
+    /// <summary>Важность - бейдж кита: цвет и слово вместе (палитры для дальтоников).</summary>
+    private static UiBadge Tag(NotifySeverity s)
     {
-        (string text, Color col) = s switch
+        (string text, UiTone tone) = s switch
         {
-            NotifySeverity.Error => ("✕", UiPalette.Error),
-            NotifySeverity.Warning => ("!", UiPalette.Warning),
-            NotifySeverity.Good => ("✓", UiPalette.Accent),
-            _ => ("i", UiPalette.TextSecondary),
+            NotifySeverity.Error => ("Ошибка", UiTone.Danger),
+            NotifySeverity.Warning => ("Важно", UiTone.Accent),
+            NotifySeverity.Good => ("Ок", UiTone.Info),
+            _ => ("Инфо", UiTone.Neutral),
         };
-        var l = new Label
-        {
-            Text = text,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            CustomMinimumSize = new Vector2(18f, 0f),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        l.AddThemeColorOverride("font_color", col);
-        return l;
+        return new UiBadge(text, tone) { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
     }
 
-    private static Button SmallButton(string text, float minWidth) => new()
+    private static UiButton SmallButton(string text, float minWidth, UiButtonKind kind) => new(text, kind)
     {
-        Text = text,
-        ThemeTypeVariation = UiTheme.ButtonCompact,
         FocusMode = Control.FocusModeEnum.None,
         SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         CustomMinimumSize = new Vector2(minWidth, 28f),

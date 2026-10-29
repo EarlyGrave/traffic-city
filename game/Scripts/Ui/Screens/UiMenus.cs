@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using TrafficCity.Saves;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -31,7 +32,7 @@ public sealed class UiMenus
     private readonly Control _modal;
     private readonly ColorRect _scrim;
     private readonly ColorRect _backdrop;
-    private readonly PanelContainer _panel;
+    private readonly UiPanel _panel;
     private readonly VBoxContainer _content;
     private readonly PanelContainer _flashPanel;
     private readonly Label _flashLabel;
@@ -51,14 +52,13 @@ public sealed class UiMenus
         var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         center.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         modal.AddChild(center);
-        _panel = new PanelContainer { CustomMinimumSize = new Vector2(PanelWidth, 0f) };
+        _panel = new UiPanel().MinWidth(PanelWidth);
         center.AddChild(_panel);
-        _content = new VBoxContainer();
+        _content = _panel.Body;
         _content.AddThemeConstantOverride("separation", 10);
-        _panel.AddChild(_content);
 
         // короткое сообщение «Сохранено» и т.п. по центру под верхней полосой; пока нет тостов (UI6), живёт здесь
-        _flashPanel = new PanelContainer { Name = "SaveFlash", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
+        _flashPanel = new PanelContainer { Name = "SaveFlash", ThemeTypeVariation = ThemeBuilder.Toast, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         _flashPanel.AnchorLeft = 0.5f;
         _flashPanel.AnchorRight = 0.5f;
         _flashPanel.AnchorTop = 0f;
@@ -124,8 +124,8 @@ public sealed class UiMenus
         _content.AddChild(new Label { Text = "Traffic City", HorizontalAlignment = HorizontalAlignment.Center }.WithSize(32));
         _content.AddChild(Secondary("Симулятор городского трафика", HorizontalAlignment.Center));
         _content.AddChild(new Control { CustomMinimumSize = new Vector2(0f, 8f) });
-        _content.AddChild(Btn("Новая игра", () => NewGameRequested?.Invoke()));
-        Button cont = Btn("Продолжить", () => ContinueRequested?.Invoke(), saves.Count == 0);
+        _content.AddChild(Btn("Новая игра", () => NewGameRequested?.Invoke(), UiButtonKind.Primary));
+        Button cont = Btn("Продолжить", () => ContinueRequested?.Invoke(), UiButtonKind.Secondary, saves.Count == 0);
         cont.TooltipText = saves.Count == 0 ? "Сохранений пока нет" : saves[0].Title + ": " + saves[0].Subtitle;
         _content.AddChild(cont);
         if (saves.Count > 0)
@@ -133,7 +133,7 @@ public sealed class UiMenus
             _content.AddChild(Secondary(saves[0].Title + "  ·  " + saves[0].Subtitle, HorizontalAlignment.Center));
         }
 
-        _content.AddChild(Btn("Загрузить", () => ShowLoad(), saves.Count == 0));
+        _content.AddChild(Btn("Загрузить", () => ShowLoad(), UiButtonKind.Secondary, saves.Count == 0));
         _content.AddChild(Btn("Настройки", () => ShowSettings()));
         _content.AddChild(Btn("Выход", () => QuitRequested?.Invoke()));
         if (GameFlow.Notice.Length > 0)
@@ -153,7 +153,7 @@ public sealed class UiMenus
         _scrim.Visible = true;
         Clear();
         _content.AddChild(new Label { Text = "Меню", ThemeTypeVariation = UiTheme.LabelHeader });
-        _content.AddChild(Btn("Продолжить", () => ResumeRequested?.Invoke()));
+        _content.AddChild(Btn("Продолжить", () => ResumeRequested?.Invoke(), UiButtonKind.Primary));
         _content.AddChild(Btn("Сохранить", () => SaveRequested?.Invoke()));
         _content.AddChild(Btn("Загрузить", () => ShowLoad())); // список может пополниться сохранением из этого же меню - кнопка всегда живая
         _content.AddChild(Btn("Настройки", () => ShowSettings()));
@@ -175,8 +175,8 @@ public sealed class UiMenus
         {
             SaveRequested?.Invoke();
             exit();
-        }));
-        _content.AddChild(Btn("Выйти без сохранения", exit));
+        }, UiButtonKind.Primary));
+        _content.AddChild(Btn("Выйти без сохранения", exit, UiButtonKind.Danger));
         _content.AddChild(Btn("Отмена  Esc", ShowPause));
     }
 
@@ -204,7 +204,7 @@ public sealed class UiMenus
         foreach (SaveInfo s in saves)
         {
             SaveInfo captured = s;
-            Button row = Btn(s.Title + "\n" + s.Subtitle, () => LoadRequested?.Invoke(captured), false, 58f);
+            Button row = Btn(s.Title + "\n" + s.Subtitle, () => LoadRequested?.Invoke(captured), UiButtonKind.Secondary, false, 58f);
             row.Alignment = HorizontalAlignment.Left;
             row.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             row.TooltipText = s.Path;
@@ -326,11 +326,10 @@ public sealed class UiMenus
         MouseFilter = Control.MouseFilterEnum.Ignore,
     };
 
-    private static Button Btn(string text, Action onPress, bool disabled = false, float height = ButtonHeight)
+    private static UiButton Btn(string text, Action onPress, UiButtonKind kind = UiButtonKind.Secondary, bool disabled = false, float height = ButtonHeight)
     {
-        var b = new Button
+        var b = new UiButton(text, kind)
         {
-            Text = text,
             Disabled = disabled,
             FocusMode = Control.FocusModeEnum.None,
             CustomMinimumSize = new Vector2(0f, height),

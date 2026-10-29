@@ -1,96 +1,70 @@
 using System;
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
 /// <summary>
-/// Подтверждение опасного действия (P13, ui-spec §5): затемнённый экран, текст, две кнопки. Esc или «Отмена» закрывают без действия, Enter или основная кнопка выполняют.
-/// Пока открыто, клики не доходят до мира (затемнение забирает мышь), а <see cref="UiRoot"/> не пускает в мир и клавиши.
+/// Подтверждение опасного действия (P13, ui-spec §5): обёртка над <see cref="UiDialog"/> кита (затемнение, панель, две кнопки).
+/// Esc или «Отмена» закрывают без действия, Enter или основная кнопка выполняют (Esc/Enter ловит сам диалог, <see cref="ConfirmScreen"/> - запасной путь).
+/// Пока открыто, клики не доходят до мира (диалог забирает мышь), а <see cref="UiRoot"/> не пускает в мир и клавиши.
 /// </summary>
 #pragma warning disable CA1001 // узлы Godot принадлежат дереву сцены
 public sealed class UiConfirm
 {
-    private readonly Control _scrim;
-    private readonly Label _text;
-    private readonly Button _ok;
+    private readonly UiDialog _dialog;
     private Action? _onOk;
+    private string _text = string.Empty;
 
     public UiConfirm(Control parent)
     {
-        _scrim = new ColorRect { Name = "Confirm", Color = UiPalette.Scrim, MouseFilter = Control.MouseFilterEnum.Stop, Visible = false }.WithFullRect();
-        parent.AddChild(_scrim);
-
-        var center = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore }.WithFullRect();
-        _scrim.AddChild(center);
-        var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop };
-        center.AddChild(panel);
-        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddThemeConstantOverride("separation", 12);
-        panel.AddChild(box);
-
-        _text = new Label
-        {
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(340f, 0f),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        box.AddChild(_text);
-
-        var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, MouseFilter = Control.MouseFilterEnum.Ignore };
-        row.AddThemeConstantOverride("separation", 8);
-        box.AddChild(row);
-        Button cancel = Btn("Отмена");
-        cancel.Pressed += () => Cancel();
-        row.AddChild(cancel);
-        _ok = Btn("Да");
-        _ok.Pressed += () => Accept();
-        row.AddChild(_ok);
+        _dialog = new UiDialog { Name = "Confirm" };
+        parent.AddChild(_dialog);
+        _dialog.Confirmed += () => Finish(true);
+        _dialog.Cancelled += () => Finish(false);
     }
 
-    public bool Visible => _scrim.Visible;
+    public bool Visible => _dialog.IsOpen;
 
-    public string Text => _text.Text;
+    public string Text => _text;
 
     public void Ask(string text, string okText, Action onOk)
     {
-        _text.Text = text;
-        _ok.Text = okText;
+        _text = text;
         _onOk = onOk;
-        _scrim.Visible = true;
+        _dialog.Open("Подтверждение", text, okText, "Отмена", danger: true);
     }
 
     /// <summary>Закрыть без действия; true - было открыто.</summary>
     public bool Cancel()
     {
-        if (!_scrim.Visible)
+        if (!_dialog.IsOpen)
         {
             return false;
         }
 
-        _scrim.Visible = false;
-        _onOk = null;
+        _dialog.Close();
+        Finish(false);
         return true;
     }
 
     /// <summary>Закрыть и выполнить; true - было открыто.</summary>
     public bool Accept()
     {
-        if (!_scrim.Visible)
+        if (!_dialog.IsOpen)
         {
             return false;
         }
 
-        Action? run = _onOk;
-        _scrim.Visible = false;
-        _onOk = null;
-        run?.Invoke();
+        _dialog.Close();
+        Finish(true);
         return true;
     }
 
-    private static Button Btn(string text) => new()
+    private void Finish(bool ok)
     {
-        Text = text,
-        FocusMode = Control.FocusModeEnum.None,
-        CustomMinimumSize = new Vector2(96f, 36f),
-    };
+        Action? run = ok ? _onOk : null;
+        _onOk = null;
+        run?.Invoke();
+    }
 }

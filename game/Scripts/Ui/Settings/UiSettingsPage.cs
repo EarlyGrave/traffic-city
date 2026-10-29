@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -11,6 +12,8 @@ namespace TrafficCity.Ui;
 public sealed class UiSettingsPage
 {
     private static readonly string[] _modeNames = { "Обычная", "Дейтеранопия / протанопия", "Тританопия" };
+
+    private static int _lastTimeOfDay;
 
     private readonly UiSettings _s;
 
@@ -30,111 +33,59 @@ public sealed class UiSettingsPage
         AddSlider(into, "Непрозрачность панелей", UiSettings.AlphaMinPercent, UiSettings.AlphaMaxPercent, UiSettings.AlphaStepPercent, _s.PanelAlphaPercent, v => _s.PanelAlphaPercent = UiSettings.SnapAlpha(v));
 
         into.AddChild(new Label { Text = "Палитра для дальтоников", ThemeTypeVariation = UiTheme.LabelSecondary });
-        var group = new ButtonGroup();
-        var modes = new HBoxContainer();
-        modes.AddThemeConstantOverride("separation", 4);
         var swatches = new HBoxContainer();
         swatches.AddThemeConstantOverride("separation", 4);
-        for (int i = 0; i < _modeNames.Length; i++)
+        var modes = new UiDropdown(_modeNames) { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        modes.Choose((int)_s.Colorblind).OnChanged(i =>
         {
-            var mode = (ColorblindMode)i;
-            Button b = Toggle(_modeNames[i], group, _s.Colorblind == mode);
-            b.Pressed += () =>
-            {
-                _s.Colorblind = mode;
-                Commit();
-                FillSwatches(swatches);
-            };
-            modes.AddChild(b);
-        }
-
+            _s.Colorblind = (ColorblindMode)i;
+            Commit();
+            FillSwatches(swatches);
+        });
         into.AddChild(modes);
         FillSwatches(swatches);
         into.AddChild(swatches);
 
         into.AddChild(new Label { Text = "Пресет рендера (F4)", ThemeTypeVariation = UiTheme.LabelSecondary });
-        var presets = new HBoxContainer();
-        presets.AddThemeConstantOverride("separation", 4);
-        var pGroup = new ButtonGroup();
-        foreach ((string id, string name) in new[] { ("high", "Высокий"), ("low", "Низкий") })
+        string[] presetIds = { "high", "low" };
+        var presets = new UiSegmented("Высокий", "Низкий");
+        presets.Select(Math.Max(0, Array.IndexOf(presetIds, _s.RenderPreset)));
+        presets.OnChanged(i =>
         {
-            string captured = id;
-            Button b = Toggle(name, pGroup, _s.RenderPreset == id);
-            b.Pressed += () =>
-            {
-                _s.RenderPreset = captured;
-                Commit();
-            };
-            presets.AddChild(b);
-        }
-
+            _s.RenderPreset = presetIds[i];
+            Commit();
+        });
         into.AddChild(presets);
         into.AddChild(new Label { Text = "Тени, разрешение и сглаживание; пороги LOD - после перезапуска", ThemeTypeVariation = UiTheme.LabelSecondary, AutowrapMode = TextServer.AutowrapMode.WordSmart });
 
         into.AddChild(new Label { Text = "Время суток", ThemeTypeVariation = UiTheme.LabelSecondary });
-        var tod = new HBoxContainer();
-        tod.AddThemeConstantOverride("separation", 4);
-        foreach ((string name, float? hour) in new (string, float?)[] { ("Авто", null), ("Утро", 8f), ("День", 12f), ("Вечер", 19f), ("Ночь", 1f) })
+        float?[] hours = { null, 8f, 12f, 19f, 1f };
+        var tod = new UiSegmented("Авто", "Утро", "День", "Вечер", "Ночь");
+        tod.Select(_lastTimeOfDay);
+        tod.OnChanged(i =>
         {
-            float? captured = hour;
-            var b = new Button
-            {
-                Text = name,
-                FocusMode = Control.FocusModeEnum.None,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                ThemeTypeVariation = UiTheme.ButtonCompact,
-                CustomMinimumSize = new Vector2(0f, 34f),
-            };
-            b.Pressed += () => TimeOfDayRequested?.Invoke(captured);
-            tod.AddChild(b);
-        }
-
+            _lastTimeOfDay = i;
+            TimeOfDayRequested?.Invoke(hours[i]);
+        });
         into.AddChild(tod);
         into.AddChild(new Label { Text = "«Авто» - по игровому времени; остальное фиксирует час", ThemeTypeVariation = UiTheme.LabelSecondary, AutowrapMode = TextServer.AutowrapMode.WordSmart });
 
-        var backBtn = new Button { Text = "Назад  Esc", FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(0f, 44f) };
-        backBtn.Pressed += back;
-        into.AddChild(backBtn);
+        into.AddChild(new UiButton("Назад  Esc", UiButtonKind.Secondary) { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(0f, 44f) }.OnPressed(back));
     }
-
-    private static Button Toggle(string text, ButtonGroup group, bool on) => new()
-    {
-        Text = text,
-        ToggleMode = true,
-        ButtonGroup = group,
-        ButtonPressed = on,
-        FocusMode = Control.FocusModeEnum.None,
-        SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        ThemeTypeVariation = UiTheme.ButtonCompact,
-        CustomMinimumSize = new Vector2(0f, 34f),
-    };
 
     private void AddSlider(VBoxContainer into, string title, int min, int max, int step, int value, Action<int> set)
     {
-        var head = new HBoxContainer();
-        head.AddChild(new Label { Text = title, ThemeTypeVariation = UiTheme.LabelSecondary, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        var val = new Label { Text = value + " %", HorizontalAlignment = HorizontalAlignment.Right };
-        head.AddChild(val);
-        var slider = new HSlider
-        {
-            MinValue = min,
-            MaxValue = max,
-            Step = step,
-            Value = value,
-            FocusMode = Control.FocusModeEnum.None,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0f, 24f),
-        };
-        slider.ValueChanged += v => val.Text = (int)v + " %";
-        slider.DragEnded += changed =>
+        into.AddChild(new Label { Text = title, ThemeTypeVariation = UiTheme.LabelSecondary });
+        var slider = new UiSlider(string.Empty, min, max, step, value, "{0} %");
+        slider.Slider.FocusMode = Control.FocusModeEnum.None;
+        slider.Slider.DragEnded += changed =>
         {
             if (changed)
             {
-                set((int)slider.Value);
+                set((int)slider.Slider.Value);
                 Commit();
             }
         };
-        into.AddChild(head);
         into.AddChild(slider);
     }
 
