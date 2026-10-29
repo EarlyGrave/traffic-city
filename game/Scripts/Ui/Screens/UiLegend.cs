@@ -1,6 +1,7 @@
 using System.Globalization;
 using Godot;
 using Sim.Core.Api;
+using TrafficCity.Ui.Kit;
 
 namespace TrafficCity.Ui;
 
@@ -21,6 +22,7 @@ public sealed partial class UiLegend
     private readonly Label _summary2;
     private readonly Label _summary3;
     private readonly HBoxContainer _stuckRow;
+    private readonly UiBadge _stuckBadge;
     private readonly VBoxContainer _scaleBox;
     private readonly VBoxContainer _zonesBox;
     private readonly Label[] _zoneLabels = new Label[3];
@@ -63,7 +65,9 @@ public sealed partial class UiLegend
         _stuckRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         _scaleBox.AddChild(_stuckRow);
         _stuckRow.AddChild(Swatch(UiPalette.Error));
-        _stuckRow.AddChild(Label("машина стоит (stuck)"));
+        _stuckRow.AddChild(Label("машина стоит"));
+        _stuckBadge = new UiBadge { Visible = false };
+        _stuckRow.AddChild(_stuckBadge);
 
         _zonesBox = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         box.AddChild(_zonesBox);
@@ -97,6 +101,7 @@ public sealed partial class UiLegend
         _avgPct = _p95Pct = _stuck = _pedTotal = _pedEdges = _topX10 = _zonesTotal = -1;
         _summary.Text = string.Empty;
         _summary2.Text = string.Empty;
+        _stuckBadge.Visible = false;
         _summary3.Text = string.Empty;
         for (int i = 0; i < 3; i++)
         {
@@ -157,7 +162,8 @@ public sealed partial class UiLegend
         if (stuck != _stuck)
         {
             _stuck = stuck;
-            _summary2.Text = string.Create(CultureInfo.InvariantCulture, $"Стоят: {stuck}");
+            _stuckBadge.Set(string.Create(CultureInfo.InvariantCulture, $"Стоят: {stuck}"), stuck > 0 ? UiTone.Danger : UiTone.Neutral);
+            _stuckBadge.Visible = true;
         }
     }
 
@@ -258,7 +264,7 @@ public sealed partial class UiLegend
                 DrawRect(new Rect2(i * w, 0f, w + 1f, Size.Y), c);
             }
 
-            DrawRect(new Rect2(Vector2.Zero, Size), UiPalette.PanelBorder, false, 1f);
+            DrawRect(new Rect2(Vector2.Zero, Size), Tokens.Ink, false, 2f);
         }
     }
 }
