@@ -65,7 +65,7 @@ public sealed class UiTopBar
         left.AddThemeConstantOverride("separation", 12);
         row.AddChild(left);
         _money.AddThemeConstantOverride("separation", 8);
-        _money.TooltipText = "Казна города и сглаженный итог за игровые сутки (доход минус расход). Подробности — бюджет (F5), позже.";
+        _money.TooltipText = "Казна города и сглаженный итог за игровые сутки (доход минус расход). Подробности — бюджет (B), позже.";
         _money.AddChild(_balance);
         _money.AddChild(_flow);
         left.AddChild(_money);
@@ -201,7 +201,7 @@ public sealed class UiTopBar
             _shownBalance = d.Balance;
             _shownFlow = d.FlowPerDay;
             _shownInsolvent = d.Insolvent;
-            _balance.Text = "$ " + Group(d.Balance);
+            _balance.Text = "$\u00A0" + Group(d.Balance);
             string sign = d.FlowPerDay >= 0 ? "+" : "−";
             _flow.Text = (d.FlowPerDay >= 0 ? "▲ " : "▼ ") + sign + Short(Math.Abs(d.FlowPerDay)) + "/д";
             _flow.AddThemeColorOverride("font_color", d.FlowPerDay >= 0 ? UiPalette.TextSecondary : UiPalette.Error);

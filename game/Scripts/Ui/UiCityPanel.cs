@@ -196,7 +196,7 @@ public sealed class UiCityPanel
         if (k.HasBudget != 0)
         {
             string trend = (k.TrendPerDay >= 0 ? "+" : "−") + UiTopBar.Short(Math.Abs(k.TrendPerDay)) + "/д";
-            Set(4, "$ " + UiTopBar.Group(k.Balance), k.DaysToLimit >= 0 ? trend + ", до лимита " + k.DaysToLimit.ToString(CultureInfo.InvariantCulture) + " д" : trend);
+            Set(4, "$\u00A0" + UiTopBar.Group(k.Balance), k.DaysToLimit >= 0 ? trend + ", до лимита " + k.DaysToLimit.ToString(CultureInfo.InvariantCulture) + " д" : trend);
             _tileValue[4].AddThemeColorOverride("font_color", k.Balance < 0 ? UiPalette.Error : UiPalette.Text);
             _tileSub[4].AddThemeColorOverride("font_color", k.DaysToLimit >= 0 ? UiPalette.Error : UiPalette.TextSecondary);
         }
@@ -317,7 +317,7 @@ public sealed class UiCityPanel
             bool done = mi.ReachedTick >= 0;
             bool next = i == p.Reached;
             _sb.Clear();
-            _sb.Append(done ? "✓ " : next ? "▶ " : "○ ").Append("Веха ").Append(i + 1).Append(" — ").Append(UiTopBar.Group(mi.Desc.Population)).Append(" жит.: ");
+            _sb.Append(done ? "✓ " : next ? "▶ " : "○ ").Append(UiMilestones.Name(i)).Append(" — ").Append(UiTopBar.Group(mi.Desc.Population)).Append(" жит.: ");
             AppendUnlocks(in mi.Desc);
             _rows[i].Text = _sb.ToString();
             _rows[i].AddThemeColorOverride("font_color", done ? UiPalette.TextSecondary : next ? UiPalette.Text : UiPalette.TextSecondary);
