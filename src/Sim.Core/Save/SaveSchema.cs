@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 14;
+    public const int WorldVersion = 15;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 4;
@@ -71,6 +71,7 @@ internal static partial class SaveSchema
         Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
         Extend(ResidentsCityBlock(), ParkingResidentColumns()),
         OutsideBlock(),
+        GoalsBlock(),
         SkimsBlock(),
         LedgerBlock(),
         Extend(BudgetBlock(), ProgressionBudgetColumns()),

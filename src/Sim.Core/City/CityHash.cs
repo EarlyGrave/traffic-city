@@ -107,6 +107,9 @@ internal static class CityHash
             h.Add(o.Arrivals);
             h.Add(o.ArrivalTimeouts);
         }
+
+        // раздел целей сценария (ADR-0038): только при секции goals, хэш прочих миров не меняется
+        c.Goals?.AddToHash(ref h);
     }
 
     /// <summary>

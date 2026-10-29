@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 
 namespace Sim.Scenarios;
 
@@ -35,6 +37,62 @@ public static class ScenarioLocator
         }
 
         return candidate;
+    }
+
+    /// <summary>
+    /// Каталог «Новой игры» (scenarios-mode.md §1.2): перебирает <c>scenarios/*.json</c> (без подкаталогов) и читает только секцию <c>meta</c>, без загрузки сети.
+    /// Файлы без <c>meta</c> (тестовые сценарии, типы ТС, профили) пропускаются. Порядок - по <c>order</c>, затем по имени файла. Испорченная <c>meta</c> или JSON - ошибка с именем файла.
+    /// </summary>
+    public static IReadOnlyList<ScenarioListEntry> List(string? scenariosDir = null)
+    {
+        string dir = scenariosDir ?? FindScenariosDir();
+        string[] files = Directory.GetFiles(dir, "*.json", SearchOption.TopDirectoryOnly);
+        Array.Sort(files, StringComparer.Ordinal);
+        var list = new List<ScenarioListEntry>();
+        foreach (string file in files)
+        {
+            ScenarioMeta? meta = ReadMeta(file);
+            if (meta != null)
+            {
+                list.Add(new ScenarioListEntry(Path.GetFileNameWithoutExtension(file), file, meta));
+            }
+        }
+
+        list.Sort(static (a, b) => a.Meta.Order != b.Meta.Order ? a.Meta.Order.CompareTo(b.Meta.Order) : string.CompareOrdinal(a.Name, b.Name));
+        return list;
+    }
+
+    /// <summary>Только секция <c>meta</c> файла сценария; <c>null</c> - секции нет или корень не объект.</summary>
+    public static ScenarioMeta? ReadMeta(string path)
+    {
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new ScenarioException($"cannot read '{path}': {e.Message}", e);
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("meta", out JsonElement m))
+            {
+                return null;
+            }
+
+            return ScenarioLoader.ParseMeta(new JsonObjectReader(m, "$.meta"));
+        }
+        catch (JsonException e)
+        {
+            throw new ScenarioException($"{Path.GetFileName(path)}: {e.Message}", e);
+        }
+        catch (ScenarioException e)
+        {
+            throw new ScenarioException($"{Path.GetFileName(path)}: {e.Message}", e);
+        }
     }
 
     private static string FindScenariosDir()
@@ -78,3 +136,6 @@ public static class ScenarioLocator
         return null;
     }
 }
+
+/// <summary>Карточка каталога «Новой игры»: имя (как у <c>--scenario</c>), путь к файлу, метаданные.</summary>
+public sealed record ScenarioListEntry(string Name, string Path, ScenarioMeta Meta);

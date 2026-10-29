@@ -1,6 +1,22 @@
 {
   "format_version": 2,
   "name": "game-city",
+  "meta": {
+    "mode": "scenario",
+    "title": "Город у колена сети",
+    "summary": "Готовый город на 11 тысяч жителей. Свободная игра: цели нет, держите казну в плюсе.",
+    "difficulty": 1,
+    "order": 10
+  },
+  "goals": {
+    "grace_days": 2,
+    "lose": [
+      {
+        "kind": "insolvent",
+        "for_days": 10
+      }
+    ]
+  },
   "seed": 20261024,
   "duration_s": 3600,
   "vehicle_types_file": "vehicle-types.json",

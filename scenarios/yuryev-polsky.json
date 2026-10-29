@@ -1,6 +1,13 @@
 {
   "format_version": 3,
   "name": "yuryev-polsky",
+  "meta": {
+    "mode": "empty_map",
+    "title": "Юрьев-Польский",
+    "summary": "Пустая карта 6×6 км: рельеф, река Колокша и въезд с края. Город строите сами.",
+    "difficulty": 2,
+    "order": 10
+  },
   "seed": 1,
   "duration_s": 600,
   "city": {

@@ -38,6 +38,9 @@ internal sealed class CityWorld
     /// <summary>Внешние подключения (new-game-scratch.md §2, ADR-0037); <c>null</c> без секции <c>outside</c> - ни одна ветка подключений не исполняется.</summary>
     public readonly OutsideState? Outside;
 
+    /// <summary>Цели сценария (scenarios-mode.md §2.3, ADR-0038); <c>null</c> без секции <c>goals</c> - ни одна ветка целей не исполняется.</summary>
+    public GoalsState? Goals;
+
     /// <summary>Показатели города (progression.md §2.3): кольцо 24 игровых часов; есть всегда в режиме жителей (сейв CKPI), в хэш - только при прогрессии.</summary>
     public readonly CityKpi Kpi;
 

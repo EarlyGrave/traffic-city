@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| YS1 цели сценария (goals/meta) | локал | local/ys1-goals | src/Sim.Core/{Api,Save,City}/**, src/Sim.Scenarios/**, scenarios/game-city.json | 2026-10-29 |

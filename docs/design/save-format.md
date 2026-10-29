@@ -452,6 +452,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 12 | ADR-0036, рельеф и вода (`docs/design/terrain.md` §2, §3.2, §8, задача TR1). Блок `TERR` (только при `PARM.TerrainEnabled = 1`: сетка, `Ground`, `Water`, `WaterKind`, `Version`, `OpSeq`); столбцы `PARM` 241 (`TerrainEnabled`), 242-255 (уклоны улиц и магистралей, срезка/подсыпка, откос берега, просвет и длина моста, `TerrainAutoBridge`, кисть и мазок, лимиты отсчётов за тик и заливки, `LotsMaxSlopePct`, `GradeMaxBoostPm`; без рельефа - строго дефолты). `hash_version` 4 без изменений: раздел хэша 14 (геометрия сетки, база, версии, xxh64 трёх массивов, `Elevation` живых узлов) пишется только при рельефе | `MigrationV12` (`Save/MigrationV12.cs`): `PARM` 241 = 0 (рельефа нет, `TERR` не создаётся), 242-255 - дефолты; w1-w11 продолжаются тем же хэшем |
 | 13 | `docs/design/new-game-scratch.md` §2.2, задача Y4: параметры города для старта с нуля. Столбцы `PARM` 256-258 (`CityMinImmigrantsPerDay` - пол суточного въезда, `CityGrowthHourly` - рост по часам `zoning.growth_step = "hour"`, `CityInitialCityBalance` - абсолютный вклад в казну); блоков нет, `hash_version` 4 без изменений. `calendar.start_hour` (сдвиг `Tick` при `Create`) и `zoning.grid_from_bounds` (сетка города при `Create`; сама сетка уже лежит в `PARM`) в сейв не идут. Окно версии открыто до Y3: Y3 (секция `outside`, состояние `Arriving`, `OUTS`) вправе дописывать столбцы с дефолтом в `MigrationV13` | `MigrationV13` (`Save/MigrationV13.cs`): `PARM` 256-258 = 0 (прежнее суточное поведение, пола и абсолютного вклада нет); блоков не создаёт; w1-w12 продолжаются тем же хэшем |
 | 14 | `docs/design/new-game-scratch.md` §2.1-§2.5, ADR-0037, задача Y3: внешние подключения. Столбцы `PARM` 259-261 (`CityOutsideCount`, `CityOutsideJobsDecayQ16`, `CityOutsideArrivalByCar`), 262-277 (по подключению 0..3: `Node`, `Jobs`, `JobCostTicks`, `ShareQ16`); блок `OUTS` (только при секции `outside`: внешние места, занято, въезд за сутки и час, всего доехало, не дождались выезда); бит `NodeFlags.Outside` (2) в флагах узла; бит жителя `Arriving` (32) в `RESD.Flags`; коды мест `-2 - k` в `Work`, `PlanDest`, `LegDest`. Раздел хэша - только при секции `outside`, `hash_version` 4 без изменений | `MigrationV14` (`Save/MigrationV14.cs`): `PARM` 259-277 = 0 (секции нет); блоков не создаёт; w1-w13 продолжаются тем же хэшем |
+| 15 | `docs/design/scenarios-mode.md` §2.2-§2.3, ADR-0038, задача YS1: цели сценария. Блок `GOAL` (только при секции `goals`; признак секции - само наличие блока при жителях, столбца `PARM` нет): 16 слотов условий (0..7 победа, 8..15 поражение: вид, показатель, значение, часов подряд нужно), грейс в часах, `after_win`, часы подряд по слотам, часов от старта, исход, тик исхода, индекс условия поражения. Раздел хэша - только при секции `goals` (в конце раздела города), `hash_version` 4 без изменений. Сейвы без целей отличаются от w14 только номером версии | `MigrationV15` (`Save/MigrationV15.cs`): ничего не меняет (секции нет - блока нет); w1-w14 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -1524,6 +1525,19 @@ s10k с цифрами размера и времени. Клиентские к
 | `OUTS` (секция outside) | 4 | ArrivalsHour | i32 | CityOutsideCount | 0 |
 | `OUTS` (секция outside) | 5 | Arrivals | i64 | 1 | 0 |
 | `OUTS` (секция outside) | 6 | ArrivalTimeouts | i64 | 1 | 0 |
+| `GOAL` (секция goals) | 1 | GraceHours | i32 | 1 | 0 |
+| `GOAL` (секция goals) | 2 | AfterWin | u8 | 1 | 0 |
+| `GOAL` (секция goals) | 3 | WinCount | u8 | 1 | 0 |
+| `GOAL` (секция goals) | 4 | LoseCount | u8 | 1 | 0 |
+| `GOAL` (секция goals) | 5 | CondKind | u8 | 16 | 0 |
+| `GOAL` (секция goals) | 6 | CondKpi | u8 | 16 | 0 |
+| `GOAL` (секция goals) | 7 | CondValue | i32 | 16 | 0 |
+| `GOAL` (секция goals) | 8 | CondHoldHours | i32 | 16 | 0 |
+| `GOAL` (секция goals) | 9 | HeldHours | i32 | 16 | 0 |
+| `GOAL` (секция goals) | 10 | HoursElapsed | i32 | 1 | 0 |
+| `GOAL` (секция goals) | 11 | Outcome | u8 | 1 | 0 |
+| `GOAL` (секция goals) | 12 | OutcomeTick | i64 | 1 | -1 |
+| `GOAL` (секция goals) | 13 | LoseIndex | i32 | 1 | -1 |
 | `SKIM` (demand.model = residents) | 1 | Skim | i32 | NC * NC * 3 * P | 0 |
 | `SKIM` (demand.model = residents) | 2 | K | i32 | NC * NC * P | 0 |
 | `SKIM` (demand.model = residents) | 3 | LsRef | i32 | 1 | 0 |

@@ -122,6 +122,11 @@ internal static class CityPhase
             Demand.AggregateExec.OnDayBoundary(w, c);   // отложенное SetTripExecution: micro -> aggregate калибрует K по только что законченным суткам
         }
 
+        if (c.Goals != null && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            c.Goals.OnHourEnd(w, c);   // цели сценария (ADR-0038): раз в игровой час, после показателей, прогрессии и границы суток
+        }
+
 #if DEBUG
         if (w.Tick % 100 == 0)
         {
