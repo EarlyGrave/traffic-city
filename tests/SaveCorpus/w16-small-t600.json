@@ -1,0 +1,8 @@
+{
+  "world_version": 16,
+  "tick": 600,
+  "state_hash": "e06fdb817de31b23",
+  "hash_after_load": "e06fdb817de31b23",
+  "continue_ticks": 200,
+  "hash_after_continue": "5c564bdc3d9ef2c8"
+}

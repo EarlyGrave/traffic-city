@@ -31,7 +31,8 @@ public class ScenarioLoaderTests
 
     private static readonly float[] _tourX = { 0f, 100f };
     private static readonly float[] _tourZ = { 0f, 200f };
-    private static readonly float[] _onlyCar = { 1f, 0f };
+    private static readonly float[] _carBus = { 1f, 0f };
+    private static readonly float[] _onlyCar = { 1f, 0f, 0f, 0f, 0f, 0f, 0f };   // VC1: base-каталог - 7 типов (car, bus, van, truck, ambulance, fire, utility)
     private static readonly float[] _carThreeBusOne = { 3f, 1f };
 
     private static string Minimal(string extra = "", string version = "2") =>
@@ -69,7 +70,7 @@ public class ScenarioLoaderTests
         string path = ScenarioLocator.Resolve(name, ScenariosDir());
         LoadedScenario s = ScenarioLoader.LoadInfo(path);
         Assert.Equal(name, s.Name);
-        Assert.Equal(2, s.Desc.VehicleTypes.Length);
+        Assert.Equal(7, s.Desc.VehicleTypes.Length);
         Assert.True(s.Desc.City.Enabled);
         Assert.True(s.Desc.Demand.TargetVehicles > 0);
         Assert.True(s.Desc.Capacities.MaxVehicles > s.Desc.Demand.TargetVehicles);
@@ -165,7 +166,7 @@ public class ScenarioLoaderTests
         Assert.Equal(CitySignals.ArterialXArterial, d.City.Signals);
         Assert.Equal(MinorControl.Yield, d.City.MinorControl);
         Assert.Equal(2400, d.Demand.SpawnRampTicks);
-        Assert.Equal(_onlyCar, d.Demand.TypeMix);
+        Assert.Equal(_carBus, d.Demand.TypeMix);   // сценарий с inline-типами: car, bus
         Assert.Equal(DemandModel.Gravity, d.Demand.Model);
         Assert.Equal(500f, d.Demand.ZoneSize);
         Assert.Equal(600f, d.Demand.MinTripLength);
