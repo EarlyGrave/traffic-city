@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| RA-спека (age-groups.md) | локал | local/ra-spec | docs/design/age-groups.md, docs/design/zoning-demand.md (§2.4, §3, §6 пометки) | 2026-10-30 |
+| AP-спека (asset-pipeline.md) | локал | local/ap-spec | docs/design/asset-pipeline.md, docs/adr/0045-* | 2026-10-30 |
