@@ -117,6 +117,11 @@ public enum RejectReason : int
     OutOfBounds = 15,           // вне tools.world_bounds
     BudgetRule = 16,            // экономика (4.2): ставки политики за пределами, выключение бюджета, политика без бюджета
     Locked = 17,                // прогрессия (progression.md §4.3): признак или профиль ещё не открыт вехой; в превью Value = веха, которая откроет (-1 - не откроется)
+
+    // Рельеф (terrain.md §4, TR3).
+    TooSteep = 18,              // уклон оси > max_grade профиля и подгонка высоты нового конца не помогла; в превью Value = уклон, ‰
+    NeedsBridge = 19,           // насыпь выше max_fill, мокрый отсчёт или узел в воде без флага Bridge; в превью Value: -1 мост ниже воды + просвет, -2 мост длиннее max_bridge_m
+    TooDeep = 20,               // ось ниже земли больше max_cut
 }
 
 /// <summary>Какая ёмкость исчерпана: <c>SimEvent.A</c> для <see cref="SimEventKind.CapacityExhausted"/>.</summary>

@@ -55,8 +55,11 @@ public static class BuildRoadFlags
     /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030, RP7): <see cref="BuildRoadCmd.Profile"/> обязателен.</summary>
     public const byte Mirrored = 8;
 
+    /// <summary>Строить мостом (terrain.md §4.5, TR3): без штампа рельефа под пролётом.</summary>
+    public const byte Bridge = 16;
+
     /// <summary>Биты, которые ядро понимает (остальные дают <see cref="RejectReason.NotSupported"/>; T5: AutoSplit и Curve).</summary>
-    public const byte Supported = NoConnectors | AutoSplit | Curve | Mirrored;
+    public const byte Supported = NoConnectors | AutoSplit | Curve | Mirrored | Bridge;
 }
 
 /// <summary>Бит0 <see cref="RemoveRoadCmd.Flags"/>: не удалять осиротевшие узлы.</summary>
@@ -223,6 +226,8 @@ public enum IssueCode : ushort
     ZoneLotsLost = 112,           // резерв ADR-0011
     ZoneBuildingsAbandoned = 114, // PaintZone: здания другого вида уйдут в Abandoned; Value = сколько
     ZoneNothingToPaint = 115,     // PaintZone: под прямоугольником нет ни одного участка (Info)
+    Earthwork = 116,              // TR3: земляные работы под дорогой (Info); Value = объём, м³
+    BridgeAuto = 117,             // TR3: участок пойдёт мостом сам (terrain.auto_bridge, Info); Value = длина моста, м
     SetbackShort = 113,           // RP7: отступ соседнего рукава меньше h + corner_radius нового профиля (ADR-0028: рукава не перестраиваются); Value = нехватка, мм
 }
 

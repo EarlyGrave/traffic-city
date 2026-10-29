@@ -23,6 +23,10 @@ internal sealed partial class NetworkStore
     public readonly Vec2[] SegmentPoints;    // осевые полилинии сегментов (между отступами от узлов)
     public readonly Vec2[] LanePoints;
     public readonly float[] LanePointS;
+    public float[]? LanePointY;              // TR3 (terrain.md §4.2): высота точки полосы, м; только при рельефе, производное (LaneElevation), вне хэша и сейва
+    public float[]? SegmentPointY;           // то же для SegmentPoints
+    public float[]? LaneGrade;               // уклон полосы по ходу (Δh / Segment.Length); connector'ы 0
+    internal RoadTerrainState? TerrainState; // TR3: служебное состояние дорог на рельефе (RoadTerrain), только при рельефе
     public readonly float[] LanePieceHeading; // курс отрезка k->k+1 полилинии (atan2); производные данные, в хэш не входят (ADR-0010)
     public readonly ZoneData[] Zones;
     public readonly int[] ZoneLanes;         // полосы появления зон подряд; диапазон зоны - ZoneData.FirstSpawnLane/SpawnLaneCount
@@ -288,7 +292,11 @@ internal sealed partial class NetworkStore
         gridOriginX,
         gridOriginZ,
         new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount),
-        new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount));
+        new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount),
+        LanePointY != null ? new ReadOnlySpan<float>(LanePointY, 0, LanePointCount) : default,
+        LaneGrade != null ? new ReadOnlySpan<float>(LaneGrade, 0, LaneCount) : default,
+        new ReadOnlySpan<Vec2>(SegmentPoints, 0, SegmentPointCount),
+        SegmentPointY != null ? new ReadOnlySpan<float>(SegmentPointY, 0, SegmentPointCount) : default);
 
     /// <summary>Раздел профилей хэша (только режим профилей, ADR-0030): каталог, <c>Segment.Profile</c> и <c>Lane.Width</c> всех слотов.</summary>
     private void AddProfileStateToHash(ref Fnv1a64 h)

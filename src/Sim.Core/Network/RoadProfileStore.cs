@@ -42,6 +42,9 @@ internal sealed class RoadProfileStore
     /// <summary>Ось → край профиля, мм (<c>WidthMm / 2</c>).</summary>
     public readonly int[] EdgeMm;
 
+    /// <summary>Предел уклона профиля, ‰ (TR3, <c>max_grade_pct</c>, terrain.md §4.3); 0 - по виду дороги из <c>terrain.max_grade_pct</c>. Не в хэше; сейв - <c>TERR</c> 20 (только с рельефом).</summary>
+    public readonly int[] MaxGradePm;
+
     /// <summary>Те же данные плоскими blittable-записями для <c>NetworkView</c> (клиент, FFI); заполняются в конструкторе, дальше только читаются.</summary>
     public readonly RoadProfileData[] ViewProfiles;
     public readonly RoadElemData[] ViewElems;
@@ -89,6 +92,7 @@ internal sealed class RoadProfileStore
         WalkLMm = new int[Count];
         WalkRMm = new int[Count];
         EdgeMm = new int[Count];
+        MaxGradePm = new int[Count];
         ElemKind = new RoadElemKind[elems];
         ElemDir = new byte[elems];
         ElemOffsetMm = new int[elems];
@@ -107,6 +111,7 @@ internal sealed class RoadProfileStore
             Kind[i] = ps[i].Kind;
             WidthMm[i] = ps[i].WidthMm;
             EdgeMm[i] = ps[i].WidthMm / 2;
+            MaxGradePm[i] = ps[i].MaxGradePm;
             FirstElem[i] = ei;
             ElemCount[i] = el.Length;
             FirstLane[i] = li;

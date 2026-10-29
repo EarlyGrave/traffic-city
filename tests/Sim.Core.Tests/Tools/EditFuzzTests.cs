@@ -16,7 +16,7 @@ public sealed class EditFuzzTests
     private static readonly RejectReason[] _allowed =
     {
         RejectReason.None, RejectReason.Busy, RejectReason.CreatesTrap, RejectReason.NodeLimit, RejectReason.NotSupported, RejectReason.InvalidHandle, RejectReason.Capacity, RejectReason.InvalidArgument,
-        RejectReason.TooShort,
+        RejectReason.TooShort, RejectReason.TooSteep, RejectReason.NeedsBridge, RejectReason.TooDeep,
     };
 
     [Theory]
@@ -64,6 +64,16 @@ public sealed class EditFuzzTests
         Run(21, threads: 1, commands: 50, roundTrips: true, peds: true);
     }
 
+    // TR3: те же правки на рельефе (terrain-demo: уклон, яма с озером, река через город) - штамп, Lock, мосты и высоты полос согласованы, сейв и потоки не влияют.
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 3)]
+    public void NodeEdits_Fuzz_OnTerrain_KeepDerivedConsistent_AndSaveRoundTrips(int seed, int threads)
+    {
+        ulong hash = Run(seed, threads, commands: 60, roundTrips: true, terrain: true);
+        Assert.NotEqual(0UL, hash);
+    }
+
     [Fact]
     public void NodeEdits_Fuzz_HashIsThreadIndependent()
     {
@@ -90,9 +100,16 @@ public sealed class EditFuzzTests
         Assert.True(c4 > 0, "пакет использовался");
     }
 
-    private static ulong Run(int seed, int threads, int commands, bool roundTrips, bool peds = false, Action<World>? setup = null, Action<World>? probe = null)
+    private static ulong Run(int seed, int threads, int commands, bool roundTrips, bool peds = false, Action<World>? setup = null, Action<World>? probe = null, bool terrain = false)
     {
-        using Simulation sim = ToolsFixture.Small(300, threads, buses: !peds, peds: peds);
+        ScenarioDesc desc = ToolsFixture.SmallDesc(buses: !peds, peds);
+        if (terrain)
+        {
+            desc.Terrain = Terrain.TerrainFixtures.DemoTerrain();
+        }
+
+        using Simulation sim = Simulation.Create(in desc, new SimRuntimeOptions { WorkerThreads = threads });
+        sim.Step(300);
         setup?.Invoke(sim.World);
         World w = sim.World;
         NetworkStore n = w.Net;

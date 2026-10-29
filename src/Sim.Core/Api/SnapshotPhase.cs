@@ -419,7 +419,7 @@ internal sealed class SnapshotJob : IRangeJob
 
         ref VehicleRenderData r = ref buf[i];
         r.X = x;
-        r.Y = 0f; // этап 1: плоский мир (Node.Elevation = 0)
+        r.Y = net.LanePointY != null ? LaneElevation.YOn(net, lane, fp, s) : 0f;   // TR3: высота полосы под носом (без рельефа - 0, как раньше)
         r.Z = z;
         r.Heading = heading;
         r.Speed = speed;
