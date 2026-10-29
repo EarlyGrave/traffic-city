@@ -632,6 +632,7 @@ public partial class SimHost : Node3D
         }
 
         RefreshCityHud(f, delta);
+        RefreshCityPanel(f, delta);
         UpdateSaveFlow(f);
         if (_timeAuto && _dayTicks > 0)
         {

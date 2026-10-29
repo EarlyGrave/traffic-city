@@ -55,6 +55,9 @@ public static class UiActions
     public static readonly StringName QuickSave = "quick_save";
     public static readonly StringName QuickLoad = "quick_load";
 
+    /// <summary>C: панель «Город» (UI16).</summary>
+    public static readonly StringName CityPanel = "city_panel";
+
     /// <summary>F10: настройки.</summary>
     public static readonly StringName Settings = "open_settings";
 
@@ -68,7 +71,7 @@ public static class UiActions
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
         TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
         GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, ToolZones, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
-        QuickSave, QuickLoad, Settings, Cancel,
+        QuickSave, QuickLoad, CityPanel, Settings, Cancel,
     };
 
     /// <summary>Добавить действия, которых ещё нет в <see cref="InputMap"/> (повторный вызов ничего не меняет; ремап из файла настроек не затирается).</summary>
@@ -113,6 +116,7 @@ public static class UiActions
 
         Add(QuickSave, Code(Key.F5));
         Add(QuickLoad, Code(Key.F9));
+        Add(CityPanel, Phys(Key.C));
         Add(Settings, Code(Key.F10));
 
         Add(Cancel, Code(Key.Escape));
