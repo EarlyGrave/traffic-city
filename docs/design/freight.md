@@ -53,7 +53,7 @@
   ячейка сетки = **вариант**. Новый вариант — код (новое поведение), параметры варианта — данные (правило `modding.md` §3).
 - **Запись варианта** — новый контент пакета `zones.json` (`content.zones`, `format_version` 1, `ModLimits.MaxZoneVariants` 16): `id`
   (`<пакет>:zone/<имя>`), `rev`, `kind`, `density`, `milestone`, `cut_class`, `shifts` (≤ 3 × `{start_slot, slots}`), `spread_slots`,
-  `car_own_pct` (жильё), `road_min` (`street|arterial`), `job_weight`, `noise`, `dirt` (0–10), `freight` (§2.6.1). Пакет с той же
+  `car_own_pct` (жильё; у пожилых RA — × `elderly_car_pct`, `age-groups.md` §2.3), `road_min` (`street|arterial`), `job_weight`, `noise`, `dirt` (0–10), `freight` (§2.6.1). Пакет с той же
   `(kind, density)` заменяет запись (по `rev`, как типы). Ядро — POD `ZoneVariantDesc` (без массивов: `Shift0..2`, как `CityOutsideDesc`),
   таблица `ZoneVariants[13]` по индексу `VariantOf(kind, density)`; строк в ядре нет.
 - **Тип здания** (`buildings.json`) получает необязательные поля: `zone` (id варианта; без него — строка прежнего набора R/C/I),
