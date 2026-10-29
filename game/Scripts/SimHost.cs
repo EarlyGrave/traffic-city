@@ -395,6 +395,10 @@ public partial class SimHost : Node3D
                     _ => TrafficCity.Tools.NodesMode.Control,
                 };
             }
+            else if (a == "--bus-tool" && i + 1 < args.Length)
+            {
+                _busToolArg = args[++i];
+            }
             else if (a == "--zones-tool" && i + 1 < args.Length)
             {
                 _zonesToolArg = args[++i];

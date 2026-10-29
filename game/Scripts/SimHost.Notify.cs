@@ -173,9 +173,13 @@ public partial class SimHost : IUiEventSource
         {
             SelectSegment(_frame.Network.View, subject.Index);
         }
+        else if (subject.Kind == NotifySubjectKind.BusRoute && ShowBusRoute(subject.Index))
+        {
+            // инспектор линии (UI11) - строка опций инструмента «Транспорт» с выбранной линией
+        }
         else if (subject.Kind == NotifySubjectKind.BusRoute)
         {
-            // отдельного инспектора линии пока нет: открываем инспектор сегмента первой остановки (иначе - ближайшего к месту события)
+            // линия снята или инструмента нет: инспектор сегмента первой остановки (иначе - ближайшего к месту события)
             int seg = BusRouteSegment(_frame.Network.View, subject.Index);
             if (seg < 0 && subject.HasPoint)
             {
