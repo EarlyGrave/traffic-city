@@ -183,6 +183,9 @@ internal static class WorldLoader
             case "PROG":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Progression.Enabled;
                 break;
+            case "TERR":
+                expected = c.Desc.Terrain.Enabled;
+                break;
             case "CBGT":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Economy.CityBudget;
                 break;
@@ -409,6 +412,7 @@ internal static class WorldLoader
             w.City.RestoreDerived(w);   // геометрия участков, ячейки, точки доступа, компоненты - тем же кодом, что в Create
         }
 
+        w.Terrain?.Dirty.Reset(w.Terrain.Version);   // кольцо грязи - производное: клиент с версией старше сейва перестраивает всё (Lock - нули до TR3)
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         for (int lane = 0; lane < w.Net.LaneCount; lane++)
         {

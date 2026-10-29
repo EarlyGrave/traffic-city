@@ -40,6 +40,12 @@ internal sealed class LoadContext
     public int ProgProfileIdx;
     public int ProgAreas;
     public int LandUseCount;        // w10 (visual-style.md §8): число полигонов землепользования (блок LUSE обязателен при > 0)
+    public int TerrCellMm;          // w12 (terrain.md §8): скаляры TERR до выделения хранилища (столбец 7)
+    public float TerrOriginX;
+    public float TerrOriginZ;
+    public int TerrSamplesX;
+    public int TerrSamplesZ;
+    public int TerrBaseCm;
 
     // каталог профилей (RPRF, PreWorld): столбцы по группам, собираются в RoadProfilesDesc в After блока
     public int RprfModuleMm;

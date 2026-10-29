@@ -37,6 +37,7 @@ internal sealed class World : IDisposable
     public readonly Sim.Core.Tools.ToolScratch ToolScratch = new();   // scratch инструментов: границы мира, кэш связности превью (вне хэша и сейва)
     public CityDesc Town;           // секции режима жителей (zoning-demand.md §16); нули, если Demand.Model != Residents
     public readonly ParkingDesc ParkCfg;     // секция parking (parking.md §14); нули, если режима нет (нужен demand.model = residents)
+    public readonly TerrainDesc TerrainCfg;   // параметры рельефа с дефолтами (PARM 242-255, Terrain.TerrainParams); без рельефа - чистые дефолты
 
     // ---- хранилища ----
     public readonly NetworkStore Net;
@@ -59,6 +60,7 @@ internal sealed class World : IDisposable
     public Sim.Core.Peds.PedWorld? Peds;                  // пешеходы, жители, переходы, остановки (ADR-0020); null без секции peds - ни одна ветка пешеходов не исполняется
     public CityWorld? City;
     public ProgressionState? Progression;        // вехи и разблокировки (ADR-0034, progression.md §4.4); null без progression.enabled - всё открыто, ни одна ветка не исполняется                      // участки, здания, жители, деньги, скимы (ADR-0011); null без demand.model = residents - ни одна ветка города не исполняется
+    public Sim.Core.Terrain.TerrainStore? Terrain;   // рельеф и вода (ADR-0036, terrain.md §2.1); null без terrain.enabled - ни одна ветка рельефа не исполняется
     public LodCells? Lod;                        // LOD-ячейки и состояние уровней (ADR-0013); null при Lod.Mode = Off - ни одна ветка LOD не исполняется
     public QueueMeso? Queue;                     // Q-meso (lod.meso_model = "queue", ADR-0019, sim-lod.md §13.9); null - ветки очереди не исполняются
     public readonly SignalMetrics SignalWait;    // ожидание у светофоров по манёврам (2.5, вне хэша)
@@ -211,6 +213,7 @@ internal sealed class World : IDisposable
         WorldGridOriginZ = desc.WorldGridOriginZ;
         Town = desc.Demand.Model == DemandModel.Residents ? desc.Town : default;
         ParkCfg = desc.Demand.Model == DemandModel.Residents && desc.Parking.Enabled ? desc.Parking : default;
+        TerrainCfg = Sim.Core.Terrain.TerrainParams.ConfigFor(in desc.Terrain);
         PedCfg = desc.Peds.Enabled ? Sim.Core.Peds.PedNetwork.WithDefaults(desc.Peds, desc.Transit.HeadwayTicks) : default;
 
         Net = new NetworkStore(c);

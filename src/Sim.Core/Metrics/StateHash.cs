@@ -350,6 +350,12 @@ internal static class StateHash
             }
         }
 
+        // 14. Рельеф и вода (terrain.md §8): только при terrain.enabled (hash_version прежний, как у парковки) - хэш прежних сценариев не меняется.
+        if (w.Terrain != null)
+        {
+            Terrain.TerrainHash.Add(ref h, w);
+        }
+
         return h.Value;
     }
 
