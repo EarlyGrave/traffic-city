@@ -208,3 +208,10 @@
 > `Sim.Host`. Облако чинит (агент 180, текст сообщения в адаптере) — локалу на заметку, если трогает `Sim.Host`.
 > **2026-10-28: `dev` снова зелёный (агент 180).** Тексты игроку для `ZoneBuildingsAbandoned` и `ZoneNothingToPaint`. **Локалу:** правка в
 > `game/Scripts/Tools/RejectMessages.cs` (2 строки, ваш захват `game/**` — таблицу линкует `Sim.Host.Tests`), при мерже оставить.
+
+> **2026-10-29: N3 влит (облако, агент 181, opus) — T5 целиком.** `UpgradeRoad` на занятом сегменте: сразу (перенос машин) или через дренаж
+> `ShrinkLanes` (превью: `Mechanism` 0/1/2, `DrainVehicles`, `IssueCode.DrainNeeded`; op в `Simulation.ToolOps` с `Kind=UpgradeRoad`; повторный
+> `UpgradeRoad` на прежние полосы во время дренажа — отмена). Undo апгрейда (`UpgradeRoadFlags.NoProfile`). `SplitRoad` (27) и `MergeAtNode` (35) с
+> переносом машин и обратными записями; `BuildRoad` + `AutoSplit` (бит 1) — врезка в середину сегмента (превью `SnapKind = 2`). **Кривые Безье**
+> (`BuildRoad` бит 2): `BuildRoadCmd.SetControl(x, z)`; **ломающее изменение для клиента:** float `Cx/Cz` убраны → `short CxDm/CzDm`, `Profile` —
+> свои байты (кривая + профиль вместе); радиус < 12 м → `TooSharp`. Клиент собирается, `Sim.Host.Tests` 52/52. Остатки — `player-tools.md` §4.4a/§4.5/§8.4.
