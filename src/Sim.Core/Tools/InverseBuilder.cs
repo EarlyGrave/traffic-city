@@ -15,6 +15,7 @@ internal struct InvCtx
     public bool Inactive;
     public int NodeA, NodeB, GenA, GenB;   // BuildRoad: существующие построенные узлы концов (до мутации) и их режим
     public NodeControl CtlA, CtlB;
+    public EntityRef Ref;                  // SplitRoad: разрезаемый сегмент; MergeAtNode: узел слияния (T5)
 }
 
 /// <summary>
@@ -37,6 +38,7 @@ internal static class InverseBuilder
         InverseLog log = w.Inv;
         var ctx = new InvCtx { Start = log.CmdCount, NodeA = -1, NodeB = -1 };
         log.BuiltSeg = -1;
+        log.BuiltNode = -1;
         if (!IsTool(cmd.Kind))
         {
             ctx.Inactive = true;
@@ -72,8 +74,18 @@ internal static class InverseBuilder
             case CommandKind.PaintZone:
                 BeginPaintZone(w, in cmd, ref ctx);
                 break;
+            case CommandKind.SplitRoad:
+                ctx.Ref = cmd.SplitRoad.Seg.Index >= 0 && w.Net.SegmentAlive(cmd.SplitRoad.Seg.Index)
+                    ? new EntityRef(cmd.SplitRoad.Seg.Index, w.Net.Segments[cmd.SplitRoad.Seg.Index].Generation)
+                    : EntityRef.None;
+                break;
+            case CommandKind.MergeAtNode:
+                ctx.Ref = cmd.MergeAtNode.Node.Index >= 0 && w.Net.NodeAlive(cmd.MergeAtNode.Node.Index)
+                    ? new EntityRef(cmd.MergeAtNode.Node.Index, w.Net.Nodes[cmd.MergeAtNode.Node.Index].Generation)
+                    : EntityRef.None;
+                break;
             default:
-                ctx.NoInverse = true;   // SplitRoad/MergeAtNode (T5) и автобусные (T9): обратных пока нет
+                ctx.NoInverse = true;   // автобусные (T9): обратных пока нет
                 break;
         }
 
@@ -103,6 +115,26 @@ internal static class InverseBuilder
             {
                 Add(log, ref ctx, Command.MakeSetNodeControl(new SetNodeControlCmd { Node = ctx.NodeB, Control = ctx.CtlB, NodeGen = ctx.GenB }));
             }
+        }
+
+        if (cmd.Kind == CommandKind.SplitRoad && log.BuiltNode >= 0)
+        {
+            // Разрез: обратная - слияние в новом узле (RestoreSeg - разрезанный сегмент, хост переведёт ссылки по SegmentRemapped).
+            var m = new MergeAtNodeCmd { Node = new EntityRef(log.BuiltNode, w.Net.Nodes[log.BuiltNode].Generation), RestoreSeg = ctx.Ref };
+            Add(log, ref ctx, Command.MakeMergeAtNode(in m));
+        }
+        else if (cmd.Kind == CommandKind.MergeAtNode && log.BuiltSeg >= 0)
+        {
+            // Слияние: обратная - разрез общего сегмента в точке бывшего узла (RestoreNode - бывший узел).
+            var sr = new SplitRoadCmd
+            {
+                Seg = new EntityRef(log.BuiltSeg, w.Net.Segments[log.BuiltSeg].Generation),
+                S = log.BuiltS,
+                RestoreNode = ctx.Ref,
+                RestoreSeg1 = log.MergedA,
+                RestoreSeg2 = log.MergedB,
+            };
+            Add(log, ref ctx, Command.MakeSplitRoad(in sr));
         }
 
         if (log.RecCount >= log.Recs.Length)
@@ -151,16 +183,8 @@ internal static class InverseBuilder
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone;
-
-    /// <summary>
-    /// <c>UpgradeRoad</c>, у которого обратной записи не будет: сегмент без профиля получает профиль (вернуть «без профиля» командой нельзя). Зеркало <c>BeginUpgradeRoad</c> для превью.
-    /// </summary>
-    public static bool UpgradeLacksInverse(World w, in Command cmd)
-    {
-        var chk = default(ToolCheck);
-        return ToolValidator.Check(w, in cmd, ref chk) == RejectReason.None && chk.Reshape != ReshapeMode.None && chk.Profile >= 0 && w.Net.Segments[chk.Seg].Profile < 0;
-    }
+        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
+        or CommandKind.SplitRoad or CommandKind.MergeAtNode;
 
     /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.
@@ -201,18 +225,32 @@ internal static class InverseBuilder
         }
 
         ref readonly SegmentData sd = ref w.Net.Segments[chk.Seg];
+        if (chk.CancelShrink)
+        {
+            // Отмена дренажа полос (T5): обратная - снова та правка, что ждала (redo), со скоростью до отмены.
+            int k = w.Ops.FindShrink(chk.Seg);
+            ToolOps.UnpackReshape(w.Ops.TargetGen[k], out int ab, out int ba, out RoadKind kind, out int profile, out bool mirrored);
+            var redo = new UpgradeRoadCmd
+            {
+                Seg = new EntityRef(chk.Seg, sd.Generation),
+                SpeedLimit = sd.SpeedLimit,
+                LanesAB = (byte)ab,
+                LanesBA = (byte)ba,
+                Kind = kind,
+                Profile = (ushort)(profile + 1),
+                Flags = (byte)(profile >= 0 ? (mirrored ? UpgradeRoadFlags.Mirrored : 0) : (sd.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
+            };
+            Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in redo));
+            return;
+        }
+
         if (chk.Reshape == ReshapeMode.None)
         {
             return;
         }
 
-        if (chk.Profile >= 0 && sd.Profile < 0)
-        {
-            ctx.NoInverse = true;
-            return;
-        }
-
-        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип. Флаги ReshapeMode.Swap на занятость не влияют: возврат проходит тот же валидатор.
+        // Прежние значения: профиль (с зеркальностью) или явные полосы и тип; сегмент без профиля, получающий профиль, возвращается с NoProfile (T5).
+        // Занятость на обратную не влияет: возврат проходит тот же валидатор (перенос машин или дренаж ShrinkLanes).
         var u = new UpgradeRoadCmd
         {
             Seg = new EntityRef(chk.Seg, sd.Generation),
@@ -221,7 +259,7 @@ internal static class InverseBuilder
             LanesBA = sd.LanesBA,
             Kind = sd.Kind,
             Profile = (ushort)(sd.Profile + 1),
-            Flags = (byte)(sd.Profile >= 0 && (sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0),
+            Flags = (byte)(sd.Profile >= 0 ? ((sd.Flags & SegmentFlags.Mirrored) != 0 ? UpgradeRoadFlags.Mirrored : 0) : (chk.Profile >= 0 ? UpgradeRoadFlags.NoProfile : 0)),
         };
         Add(w.Inv, ref ctx, Command.MakeUpgradeRoad(in u));
     }
@@ -291,7 +329,7 @@ internal static class InverseBuilder
         RemoveRoadCmd c = cmd.RemoveRoad;
         NetworkStore n = w.Net;
         InverseLog log = w.Inv;
-        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindSegment(c.Seg.Index) >= 0)
+        if (!n.ResolveSegment(in c.Seg) || w.Ops.FindAny(c.Seg.Index) >= 0)
         {
             return;   // команда будет отклонена
         }
@@ -321,12 +359,12 @@ internal static class InverseBuilder
         if ((sd.Flags & SegmentFlags.Curve) != 0)
         {
             b.Flags = BuildRoadFlags.Curve;
-            b.Cx = sd.Cx;
-            b.Cz = sd.Cz;
+            b.SetControl(sd.Cx, sd.Cz);   // T5: та же кривая (точность команды - 10 см)
         }
-        else if (sd.Profile >= 0)
+
+        if (sd.Profile >= 0)
         {
-            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля (поле делит байты с Cz - кривые и профили вместе пока не поддержаны).
+            // Профиль и зеркальность возвращаются вместе с сегментом (RP7): иначе дорога вернулась бы без профиля.
             b.Profile = (ushort)(sd.Profile + 1);
             if ((sd.Flags & SegmentFlags.Mirrored) != 0)
             {

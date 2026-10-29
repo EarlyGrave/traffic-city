@@ -199,6 +199,7 @@
 > (`ZoneLots`, `ZoneLotsChanged`, `ZoneCells`, `ZoneAbandon`, `ZoneUnavailableCells`), подсветка `Simulation.PreviewPaintMarks`. Без `city_budget` —
 > всё бесплатно и как раньше. Подробности — `player-tools.md` §8.5–8.6, `city-economy.md` §18.3, `ui-spec.md` «Ядро: UI-C1». Клиент собирается.
 
+> **2026-10-29: флейки Sim.Host закрыты (L66, opus).** `BackToBackExclusiveAccess` — баг хоста: `AcquireExclusive` сбрасывал `_resume` и мог стереть сигнал предыдущего `ReleaseExclusive` → поток симуляции спал по таймауту ~15 мс на каждый доступ; теперь `_resume` сбрасывает только поток симуляции, ожидание без таймаута. `UndoRightAfterDo` — баг теста (ack undo, разобранный тем же `Pump`, терялся). Под нагрузкой: было ~20% падений, стало 0 из 110. Палитра (L65) влита. Облако влило N1 (тесты `PaintZoneToolsTests`, `BudgetToolTests`).
 > **2026-10-28: N2 влит (облако, агент 179).** Для клиента (UI10/UI7): `NetworkView.NodeArms` + `ArmFlags` (биты `ArmFlagBits`: Minor, ForceMajor,
 > ForceMinor, Stop), `NetworkView.ArmSign(node, arm)` в кодах `SetArmControl`; `Simulation.TryGetSignalPlan(node, out SetSignalPlanCmd)` — режим,
 > фазы, зелёные, жёлтый, all-red, сдвиг, цикл, адаптивные параметры (`NodeGen` = 0 — брать из `NodeData.Generation`); `LotRenderFlags.Abandoned = 8`.
@@ -207,3 +208,10 @@
 > `Sim.Host`. Облако чинит (агент 180, текст сообщения в адаптере) — локалу на заметку, если трогает `Sim.Host`.
 > **2026-10-28: `dev` снова зелёный (агент 180).** Тексты игроку для `ZoneBuildingsAbandoned` и `ZoneNothingToPaint`. **Локалу:** правка в
 > `game/Scripts/Tools/RejectMessages.cs` (2 строки, ваш захват `game/**` — таблицу линкует `Sim.Host.Tests`), при мерже оставить.
+
+> **2026-10-29: N3 влит (облако, агент 181, opus) — T5 целиком.** `UpgradeRoad` на занятом сегменте: сразу (перенос машин) или через дренаж
+> `ShrinkLanes` (превью: `Mechanism` 0/1/2, `DrainVehicles`, `IssueCode.DrainNeeded`; op в `Simulation.ToolOps` с `Kind=UpgradeRoad`; повторный
+> `UpgradeRoad` на прежние полосы во время дренажа — отмена). Undo апгрейда (`UpgradeRoadFlags.NoProfile`). `SplitRoad` (27) и `MergeAtNode` (35) с
+> переносом машин и обратными записями; `BuildRoad` + `AutoSplit` (бит 1) — врезка в середину сегмента (превью `SnapKind = 2`). **Кривые Безье**
+> (`BuildRoad` бит 2): `BuildRoadCmd.SetControl(x, z)`; **ломающее изменение для клиента:** float `Cx/Cz` убраны → `short CxDm/CzDm`, `Profile` —
+> свои байты (кривая + профиль вместе); радиус < 12 м → `TooSharp`. Клиент собирается, `Sim.Host.Tests` 52/52. Остатки — `player-tools.md` §4.4a/§4.5/§8.4.

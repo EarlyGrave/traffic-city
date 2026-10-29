@@ -237,7 +237,6 @@ public sealed partial class SimThreadHost : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         _paused.Reset();
-        _resume.Reset();
         Volatile.Write(ref _exclusiveRequested, 1);
         _wake.Set();
         while (!_paused.Wait(5))
@@ -304,11 +303,15 @@ public sealed partial class SimThreadHost : IDisposable
                 _wake.Reset();
                 if (Volatile.Read(ref _exclusiveRequested) == 1)
                 {
+                    // _resume сбрасывает только поток симуляции и до _paused.Set: освобождение (Set) всегда позже сброса и не теряется.
+                    // Раньше сброс делал AcquireExclusive следующего доступа - он затирал Set предыдущего освобождения, и поток
+                    // досыпал таймаут ожидания (~15 мс таймер Windows) на каждый доступ; под нагрузкой 1200 доступов не влезали в 30 с.
+                    _resume.Reset();
                     int gen = Volatile.Read(ref _exclusiveGen);
                     _paused.Set();
                     while (Volatile.Read(ref _exclusiveGen) == gen && Volatile.Read(ref _stop) == 0)
                     {
-                        _resume.Wait(5);
+                        _resume.Wait();
                     }
 
                     continue;

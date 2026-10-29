@@ -12,7 +12,10 @@ namespace Sim.Core.Network;
 /// </summary>
 internal sealed partial class NetworkBuilder
 {
-    public const int MaxVia = 12;                 // промежуточных точек оси сегмента
+    public const int MaxVia = 32;                 // промежуточных точек оси сегмента (T5: 12 -> 32 - кривая Безье до 32 точек)
+
+    /// <summary>Наибольшее число точек сэмплирования кривой Безье (player-tools.md §2).</summary>
+    public const int MaxCurvePoints = 32;
     public const int MaxLanesPerDirection = 8;
     private const int MaxAxis = MaxVia + 2;
 

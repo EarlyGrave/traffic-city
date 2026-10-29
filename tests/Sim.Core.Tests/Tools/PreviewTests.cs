@@ -294,7 +294,7 @@ public sealed class PreviewTests
         // Простые инструменты (режим узла и т.п.) всегда обратимы.
         Assert.True(InverseBuilder.HasInverse(CommandKind.SetTurnBan));
         Assert.True(InverseBuilder.HasInverse(CommandKind.UpgradeRoad));
-        Assert.False(InverseBuilder.HasInverse(CommandKind.SplitRoad));
+        Assert.True(InverseBuilder.HasInverse(CommandKind.SplitRoad));   // T5
     }
 
     private static bool HasIssue(PreviewIssue[] issues, int n, IssueCode code)

@@ -71,14 +71,14 @@ public struct BuildRoadCmd                 // 24 → 56 B (RP7: явная ра�
 {
     public float Ax, Az, Bx, Bz, SpeedLimit;
     public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags;   // бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve, бит3 Mirrored (RP7)
-    public float Cx, Cz;                   // контрольная точка квадратичной Безье (Curve), иначе 0
-    public ushort Profile;                 // RP7: индекс профиля + 1, 0 — без профиля; лежит на байтах Cz (offset 28), пока кривые не поддержаны
+    public short CxDm, CzDm;               // T5: контрольная точка Безье - смещение от середины хорды A-B, дм (SetControl / ControlX, ControlZ); было float Cx, Cz
+    public ushort Profile, Reserved;       // RP7: индекс профиля + 1, 0 — без профиля (T5: отдельные байты, offset 28)
     public EntityRef RestoreOf;            // сегмент, который команда восстанавливает (undo), или {-1,0}
     public EntityRef RestoreNodeA, RestoreNodeB;   // узлы концов, если их тоже пересоздать
 }
 public struct RemoveRoadCmd     { public EntityRef Seg; public int Flags; }                        // бит0 KeepNodes (не удалять осиротевшие узлы)
 public struct UpgradeRoadCmd    { public EntityRef Seg; public float SpeedLimit; public byte LanesAB, LanesBA; public RoadKind Kind; public byte Flags; public ushort Profile, R; } // 0 / 255 / бит0 KeepKind / Profile 0 — «не менять»; бит1 Mirrored (RP7), 16 → 20 B
-public struct SplitRoadCmd      { public EntityRef Seg; public float S; public EntityRef RestoreNode; } // S — по оси от NodeA, м
+public struct SplitRoadCmd      { public EntityRef Seg; public float S; public EntityRef RestoreNode, RestoreSeg1, RestoreSeg2; } // S — по полной оси от узла NodeA, м; T5: 20 -> 36 B
 public struct MergeAtNodeCmd    { public EntityRef Node; public EntityRef RestoreSeg; }
 public struct SetArmControlCmd  { public EntityRef Node; public byte ArmSlot; public byte Control; public ushort R; } // ArmSlot — номер рукава по часовой (intersections §1)
 public struct SetTurnBanCmd     { public EntityRef Node; public byte FromArm, ToArm, Banned, R; }
@@ -197,6 +197,50 @@ public struct PaintZoneCmd      { public float X0, Z0, X1, Z1; public byte ZoneK
   новый блок, `Relocate` уцелевших полос (номер в направлении сохраняется), перестройка узлов концов, старый блок освобождается. Дренажа нет: `Swap` требует пустого сегмента и пустых connector'ов
   его концов (`ToolOpsPhase.CountOn == 0`), иначе `Busy` — игрок повторяет позже; `ShrinkLanes` с `Draining` остаётся в T5. Ось (`SegmentPoints`, `Length`, отступы концов) не меняется (ADR-0028: рукава соседей не
   перестраиваются; нехватка отступа — `SetbackShort` в превью). Остановка автобуса на сегменте — `NotSupported`. Подробности и решения — `road-profiles.md` §14.
+- **Как реализовано в T5 (агент 181, ночь N3) — занятый сегмент.** `Busy` за занятость больше нет. Правка полос/типа (`ReshapeMode.Swap`, а также `InPlace` со сменой типа) на занятом сегменте:
+  1. **Сразу (перенос, `Mechanism 1`)**, если на убираемых полосах нет машин и перестройка узлов концов не уничтожит занятый connector (`NetworkBuilder.PlanReshapeEnds` — пробный план узла с
+     «пробным» блоком полос, сопоставление ровно как после `Relocate`). Машины уцелевших полос переезжают с полосой (номер в направлении, `S` и место в очереди сохраняются); плюс полосы — всегда так,
+     если connector'ы концов свободны.
+  2. **Иначе — операция `ShrinkLanes` (дренаж, `Mechanism 2`)**: скорость меняется сразу; убираемые полосы — `Closed | Draining` (въезд запрещён, MOBIL уводит машины, назначения на них
+     заменены, маршруты через них освобождены); когда они пусты, обречённые connector'ы концов закрываются (кроме выездов с убираемых полос) и ждут опустения; финал в фазе 1а — тот же
+     `ReshapeSegment` (`ReshapeEdit.TryFinish`). Застрявший дренаж — `DrainStalled`, как у сноса. Превью: `Mechanism = 2`, `DrainVehicles` и `IssueCode.DrainNeeded` (значение — машины).
+     Клиент видит операцию в `Simulation.ToolOps` (`Kind = UpgradeRoad`, `Target` — сегмент).
+  - Во время дренажа сегмент «занят» для других правок: `UpgradeRoad` к другим полосам, `RemoveRoad`, `SplitRoad` — `Busy`. `UpgradeRoad`, возвращающий **прежние** полосы и профиль
+    (обычно это обратная запись — undo), **отменяет операцию**: флаги полос и connector'ов снимаются, скорость — из команды; её обратная — снова та же правка (redo).
+  - **Формат сейва не менялся**: цель операции упакована в существующий столбец `ToolOpTargetGen` (`ToolOps.PackReshape`: полосы A→B/B→A, тип, `Mirrored`, профиль + 1); поколение не нужно —
+    сегмент под операцией не удаляется. `SaveValidator.ValidateOps` проверяет вид `ShrinkLanes` (сегмент жив, не сносится, одна операция на сегмент, цель распаковывается).
+  - Обратные: `UpgradeRoad(прежнее)`; сегмент без профиля, получивший профиль, возвращается новым битом `UpgradeRoadFlags.NoProfile` (4) — «снять профиль, полосы и тип из команды»
+    (запись `NoInverse` для этого случая больше не пишется). Флаги игрока (`BusOnly`, `NoLaneChangeOut`) **убранных** полос undo не возвращает (остаток).
+  - Попутно исправлено: в `Swap` старые уцелевшие полосы держали устаревший `FirstNext` — перенос второго узла переписывал освобождённую дыру `LaneNext` (неканонический сейв);
+    `BuildRoad`, отклонённый `Busy` на построенном узле, не пересобирал граф после освобождения слота сегмента.
+
+### 4.4a Как реализовано в T5 (агент 181, ночь N3): разрез и слияние
+- **Без «коробки» и дренажа** (отступление от §4.4): `SplitRoad`, `MergeAtNode` и `BuildRoad` + `AutoSplit` выполняются сразу (`Mechanism 1`), операция `SplitBox` и препятствие в фазе 5
+  не понадобились (`Rules/BehaviourPhase.cs` не тронут). Общий механизм — `Network/ChainEdit.cs`: «цепочка» от дальнего узла A до дальнего узла B (сегменты и connector'ы промежуточного
+  узла), координата `u` вдоль неё. Новые сегменты строятся рядом со старыми (новые слоты; отступы дальних концов — прежние, у нового узла — `NodeSetback`), затем все машины переносятся по
+  `u` с сохранением направления и номера полосы: на полосах сегментов — точно (тест: позиция в мире ±1 см), машины в «коробке» разреза — на connector'ы нового узла (±0.5 м, прямая вместо
+  кривой), машины на connector'ах сливаемого узла — на общий сегмент. Смена полосы, шедшая в момент правки, завершается мгновенно. Маршруты, проходящие через старые участки (и пройденные шаги окна),
+  освобождаются; назначения и поездки переносятся по `u`; полосы зон — на первый новый сегмент (повторы убираются); участки города — на ближайший новый сегмент по середине фасада.
+- **Дальние узлы**: connector'ы и рукава переводятся на новые полосы и сегменты до перестройки — пары полос те же, перестройка обходится без исчезновений; знаки рукавов, запреты манёвров
+  и план светофора переносятся по сегменту рукава (`NodeArms` переписан). Старые сегменты и узел слияния освобождаются (`SegmentRemoved`, `NodeRemoved`, `SegmentCreated`, `NodeCreated`).
+- **Handle'ы**: «первая половина сохраняет handle» не сделано — обе половины (и общий сегмент слияния) новые. Перенумерация (`SegmentRemapped`/`NodeRemapped`) выдаётся только для
+  восстанавливаемого: `SplitRoadCmd` получил `RestoreSeg1`, `RestoreSeg2` (половины, 20 → 36 Б), `MergeAtNodeCmd.RestoreSeg`; так undo/redo цепочки «разрез → слияние → разрез»
+  возвращает каждой команде стека её половину (раньше бы все ссылки на половины слились в общий сегмент). Хост: `UndoStack.OldGeneration` знает `SplitRoad`/`MergeAtNode`.
+- **Обратные**: `SplitRoad` → `MergeAtNode(новый узел, RestoreSeg = разрезанный)`; `MergeAtNode` → `SplitRoad(общий, S = расстояние до бывшего узла, RestoreNode, RestoreSeg1/2)`.
+  Порядок общего сегмента: от сегмента, входящего в узел (`NodeB == узел`), если второй из него выходит, — так разрез + слияние возвращают исходную ориентацию.
+- **Проверки** (`ToolValidator.Chain.cs`): `SplitRoad` — `S` по полной оси от узла A; половины не короче минимума построителя (`TooShort`); рядом с точкой нет узла (`InvalidArgument`);
+  остановка на сегменте и Q-meso — `NotSupported`; операция — `Busy`. `MergeAtNode` — узел степени 2 без светофора, знаков, запретов и зоны, режим `None`; сегменты с одинаковыми типом,
+  скоростью, профилем (зеркальность — по направлению цепочки), полосами и флагами полос; иначе `InvalidArgument`. Стоимость — 0.
+- **`AutoSplit`** (`BuildRoadFlags` бит1 теперь поддержан): конец без узла в `SnapRadius`, но в `SnapRadius` от оси сегмента — разрез в проекции (ближайший сегмент, ничья — меньший индекс),
+  дорога строится к узлу разреза; превью — `SnapKind = 2`, `SnapA/SnapB` = разрезаемый сегмент. Машины в «коробке» будущего узла — `Busy` (перестройка узла под третий рукав не должна ждать).
+  Undo такой постройки сносит дорогу, но узел разреза остаётся (слияние в той же записи упёрлось бы в ещё не закончившийся дренаж) — остаток.
+- **Кривые Безье (`BuildRoadFlags.Curve`, бит2) — сделаны.** Раскладка `BuildRoadCmd` исправлена (REPORT-stage4 техдолг 8): контрольная точка хранится смещением от середины хорды
+  исходных концов команды в дециметрах — `short CxDm, CzDm` (offset 24, 26; ±3276.7 м, шаг 10 см), `Profile` — отдельно (offset 28), `Reserved` (30); задаётся `SetControl(x, z)`,
+  читается `ControlX/ControlZ`. Кривая и профиль работают вместе. Ось — сэмплы квадратичной Безье между узлами концов после привязки (`NetworkBuilder.SampleQuadratic`):
+  `n = clamp(ceil((|AC| + |CB|) / 8 м), 2, 32)` — **отступление от §2** (там по хорде: у крутой петли хорда короткая и перегиб прятался бы от проверки радиуса); `NetworkBuilder.MaxVia` 12 → 32.
+  Длина и стоимость — по ломаной (`curve_factor_pct`), радиус кривизны ломаной (описанная окружность соседних троек) < 12 м — `TooSharp` (`ToolValidator.MinCurveRadiusM`, конфигурации
+  `min_curve_radius_m` пока нет). Сегмент получает `SegmentFlags.Curve` и `Cx/Cz` (мировые; ставит `ToolsTouched = 1`), превью отдаёт ту же ось в `axis` (`AxisPointCount` = n).
+  Обратная сноса кривой — `BuildRoad(Curve, та же точка)`. Половины разрезанной кривой — ломаные без флага `Curve` (рисуются по точкам полос); слияние кривых — пока ось не длиннее `MaxVia`.
 
 ### 4.6 Пешеходы (после мержа 3.1; правка `pedestrians.md` §2 — задача T11)
 Сеть пешеходов остаётся производной, но индексы её рёбер меняются при перестройке. Правило: при закрытии — тротуары и переходы цели
@@ -351,7 +395,10 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 - Буфер: `InverseLog` (`Tools/InverseLog.cs`), `tools.inverse_capacity` (по умолчанию 4096 команд, записей - `CommandQueueCapacity`); вне хэша и сейва. Запись фиксируется только для применённой команды; `Tag` записи = `Tag` прямой команды.
 - Обратные строит `InverseBuilder` (`Begin` до мутации, `End` после - индекс нового сегмента `BuildRoad` известен только тогда). Сейчас: `BuildRoad` -> `RemoveRoad(новый сегмент)` + `SetNodeControl(прежний режим)` для существующих построенных концов; переоткрытие -> `RemoveRoad`;
   `RemoveRoad` -> `BuildRoad(RestoreOf, RestoreNodeA/B для осиротевших)` + `SetLaneFlags` + режим/план узлов концов + знак и запреты рукава у выживающего узла; `SetArmControl` -> прежний знак + режим узла;
-  `SetTurnBan`, `SetLaneFlags`, `SetNodeControl`, `SetSignalPlan` - прежнее значение. `UpgradeRoad/SplitRoad/MergeAtNode` (T5) и автобусные (T9) при применении дают запись `NoInverse`.
+  `SetTurnBan`, `SetLaneFlags`, `SetNodeControl`, `SetSignalPlan` - прежнее значение. Автобусные (T9) при применении дают запись `NoInverse`; `UpgradeRoad/SplitRoad/MergeAtNode` - с T5 (§4.4a, §4.5).
+- Известное ограничение T8 (вскрыл фаззер T5 на новых последовательностях, сид 2 `UndoFuzz_WithSplitMerge`): обратная `BuildRoad` ставит `SetNodeControl(прежний)` на узел, ещё ждущий дренажа сноса
+  (рукавов на один больше), и режим нормализуется (`Yield` → `RightHandRule`), после финала дренажа он не возвращается. В фаззере `UndoFuzz_Equivalent` разрез и слияние выключены (`Pick(chain: false)`,
+  последовательности прежние), отдельный `UndoFuzz_WithSplitMerge_Equivalent` идёт без сида 2.
 - План узла возвращается отдельной `SetSignalPlan`, только если он не равен плану по умолчанию для нынешних осей (снимок плана привязан к числу осей, а дренаж асинхронен).
 - `BuildRoad(RestoreOf = H)`: `H` жив и в дренаже - переоткрытие; `H` жив и не в дренаже - `InvalidHandle`; `H` мёртв - пересоздание в новом слоте: `SegmentRemapped`/`NodeRemapped` (`A` = старый индекс, `B` = новый; `Tag` = тег команды), запись scratch-таблицы `old -> new` с точным старым поколением;
   таблица применяется к командам той же фазы 1 (`CommandRefs.Remap`) и очищается в её конце. Хост берёт старое поколение из команды-источника (по `Tag` события), новое - из `NetworkView.SegmentRef/NodeRef`.
@@ -462,7 +509,7 @@ public ReadOnlySpan<Command> InverseCommands { get; }      // [First, First+Coun
 | T2 | Сеть с дырами: `HandlePool` для узлов/сегментов/остановок/маршрутов, `BlockArena` с лестницей и LIFO, `Alive`, производные по возрастанию индекса, `World.VerifyDerived`, `ToolsTouched` и хэш, сейв (столбцы, `world_version++`, миграция, корпус), `RefKind` в схеме + `SaveValidator`; `NetworkView` (`Alive`) | `Network/*`, `Util/HandlePool.cs`, `World/*`, `Save/*`, `Metrics/StateHash.cs` | TL1, T1–T4 сейва, `CanonicalLayoutTests` (без правок), новый тест арены | T1 |
 | T3 | `Relocate` + перестройка узла (§5): врезка в построенный узел (снять `NotSupported`), выжившие connector'ы, `NodeRebuild`-дренаж, перенос масок светофора / `SignalPlanReset`, `SetArmControl`, `SetTurnBan`, `SetLaneFlags` | `Network/Relocate.cs`, `Network/NetworkBuilder*.cs`, `Rules/Intersections/*`, `Api/CommandDispatcher.cs` | `Relocate_Complete`, `NodeRebuild_SignalPlanMapped`, I6 | T2 |
 | T4 | Дренаж и снос: `ToolOps`, закрытие (ворота `DenyClosed`, `SegCost +∞`, скан маршрутов, назначения, спавн/`ZoneLanes`, MOBIL `Draining`, остановки/маршруты `Suspended`), финал в 1a, `DrainStalled`, `RemoveRoad`, `BuildRoad(RestoreOf)` = переоткрытие; фаза 1 = 1a/1b/1c | `Network/ToolOps.cs`, `Api/CommandDispatcher.cs`, `Rules/Intersections/GatePhase.cs`, `Rules/Mobil.cs`, `Routing/RoutePhase.cs`, `Routing/Destinations.cs`, `Agents/Spawner.cs`, `Transit/*` | `RemoveBusyRoad_NoVehicleLost`, `DrainStall_NotForced`, TL5 на сносе | T3 |
-| T5 | `UpgradeRoad` (на месте / +полосы переносом / −полосы `ShrinkLanes`), `SplitRoad` + `AutoSplit` + `SplitBox` (препятствие в фазе 5), `MergeAtNode`, кривые Безье в `BuildRoad` | `Api/CommandDispatcher.cs`, `Network/*`, `Rules/BehaviourPhase.cs` | `Upgrade_Split_Merge_Relocation`, `EditFuzz_SaveLoadRoundTrip` (первая версия) | T4 |
+| T5 | `UpgradeRoad` (на месте / +полосы переносом / −полосы `ShrinkLanes`), `SplitRoad` + `AutoSplit` + `SplitBox` (препятствие в фазе 5), `MergeAtNode`, кривые Безье в `BuildRoad` | `Api/CommandDispatcher.cs`, `Network/*`, `Rules/BehaviourPhase.cs` | `Upgrade_Split_Merge_Relocation`, `EditFuzz_SaveLoadRoundTrip` (первая версия) | T4 — **сделано (ночь N3, агент 181), см. §4.4a, §4.5; без SplitBox (перенос вместо коробки)** |
 | T6 | Оверлей и граф под правки: дыры `+∞` для удалённых DirSeg, пакетная пересборка в 1c, асинхронная полная перестройка (раскладка синхронно + волна, плоский A* до конца), `AStar` с запрещённым сегментом; `routing.md` §9.3/§9.6 | `Routing/Overlay*.cs`, `Routing/AStar.cs`, `Routing/RoutePhase.cs` | H-T1…H-T3 оверлея после правок (матрицы = эталон после волны), 0 Б на волну | T5 |
 | T7 | Валидатор и превью: `ToolValidator` (общий с применением), `Preview`, стоимость из `tools.costs` (загрузчик + `scenario-format.md`), `axis`, кэш компонент (Tarjan), объезд, предупреждения; FFI-запись в `core-api.md` §12 | `src/Sim.Core/Tools/*`, `Api/Simulation.Tools.cs`, `src/Sim.Scenarios/ScenarioLoader.cs` | `Preview_DoesNotMutate`, `Connectivity_Preview` | T6 |
 | T8 | Обратные записи (`InverseBuilder`), `RestoreOf` и scratch-перенумерация в фазе 1, `*Remapped`; хост `UndoStack` (группы, глубина 100, remap) | `src/Sim.Core/Tools/InverseBuilder.cs`, `Api/*`, `src/Sim.Scenarios/Tools/UndoStack.cs` | `UndoFuzz_Equivalent` | T7 |
