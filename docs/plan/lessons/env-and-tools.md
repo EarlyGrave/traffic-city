@@ -126,3 +126,10 @@
 - **Окна Godot при замерах не должны всплывать поверх рабочего стола владельца** (решение владельца 2026-10-27): где пиксели не нужны — `--headless`; скриншоты/render-stats — `--resolution 1280x720 --position -3000,-3000` + `Start-Process -WindowStyle Hidden`, без fullscreen/always-on-top. Проверено VS1: за экраном + `-WindowStyle Hidden` рендерит, `Minimized` — чёрный кадр. Правило — в каждый бриф с запуском Godot.
 
 - **2026-10-28 (L58): worktree агента (`isolation: worktree`) создаётся от `main`, а не от `dev`.** Агент разбил устаревший `lessons.md` и потерял ~30 уроков. В брифе писать явно: `git checkout -B local/<задача> dev`; при приёмке проверять `git merge-base --is-ancestor dev <ветка>`.
+
+- **2026-10-29 (облако, оркестратор): в облачном клоне git-хуки были не подключены.** `core.hooksPath` пуст — `scripts/bootstrap.sh`
+  в контейнере никто не запускал, а SessionStart доставляет только .NET SDK. Итог: агенты 189, 191, 192 коммитили без pre-commit
+  (format/build/test) и без commit-msg; «коммит прошёл» ничего не доказывал (TR9 закоммитил через 5 минут после старта).
+  Решение: `git config core.hooksPath .githooks` в начале облачной сессии (настройка общая для всех worktree); SessionStart-хук
+  дополнен этим шагом. Проверка на старте: `git config --get core.hooksPath` → `.githooks`.
+- **`git lfs` и `core.hooksPath=.githooks` (2026-10-29).** Git LFS пишет свои хуки в `.githooks/` как untracked-файлы (`post-checkout`, `post-commit`, `post-merge`, `pre-push`), а хуки из `.git/hooks` при `core.hooksPath` не запускаются. Решение: трекаемые обёртки в `.githooks/` (вызывают `git lfs <хук>` только если `git-lfs` в PATH, иначе молча `exit 0`); проверка — `test-hooks.sh`. Сырые сгенерированные файлы не коммитить.

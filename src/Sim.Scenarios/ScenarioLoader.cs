@@ -34,6 +34,12 @@ public sealed class LoadedScenario
     /// <summary>Строковые id вех секции <c>progression</c> (индекс = веха ядра); пусто без прогрессии. Тексты и названия вех клиент берёт по id (progression.md §4.1).</summary>
     public string[] MilestoneIds { get; init; } = [];
 
+    /// <summary>Предупреждения загрузчика (не ошибки): напр. секции, которые ядро пока не исполняет (<c>terrain.water.sources</c>, <c>terrain.stamps</c>).</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>Штампы рельефа (<c>terrain.stamps</c>, terrain.md §9.2), разобранные и проверенные; ядро их пока не исполняет (в <see cref="Desc"/> не входят).</summary>
+    public IReadOnlyList<TerrainStampDesc> TerrainStamps { get; init; } = [];
+
     /// <summary>Таймлайн команд (<c>timeline</c>, modding.md §3.5); пустой, если ключа нет. В <see cref="Desc"/> не входит.</summary>
     public IReadOnlyList<TimelineEntry> Timeline { get; }
 
@@ -83,7 +89,9 @@ public static partial class ScenarioLoader
         overrides ??= DefaultOverrides;
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
-        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides);
+        return Parse(
+            text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides,
+            rel => ReadBytes(Path.Combine(dir, rel)));
     }
 
     /// <summary>Поиск <c>content/</c> игры: вверх от <paramref name="startDir"/> и от текущего каталога (как <see cref="ScenarioLocator"/> ищет <c>scenarios/</c>).</summary>
@@ -102,7 +110,8 @@ public static partial class ScenarioLoader
 
     /// <summary>Разбор с каталогами пакетов для <c>format_version: 3</c> (<c>null</c> - v3 отвергается).</summary>
     public static LoadedScenario Parse(
-        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null)
+        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null,
+        Func<string, byte[]>? readRelativeBytes = null)
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
@@ -206,6 +215,8 @@ public static partial class ScenarioLoader
         ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
         ProgressionDesc progression = ParseProgression(root.OptObject(ProgressionKey), residents, roadProfiles, out string[] milestoneIds);
         ToolsDesc tools = ParseTools(root.OptObject("tools"));
+        var warnings = new List<string>();
+        TerrainDesc terrain = ParseTerrain(root.OptObject(TerrainKey), tools, readRelativeBytes, warnings, out TerrainStampDesc[] stamps);
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
         {
@@ -233,8 +244,9 @@ public static partial class ScenarioLoader
             VehicleTypes = types,
             RoadProfiles = roadProfiles,
             Progression = progression,
+            Terrain = terrain,
         };
-        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds };
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds, Warnings = warnings, TerrainStamps = stamps };
     }
 
     // ---------------------------------------------------------------- units
@@ -251,6 +263,18 @@ public static partial class ScenarioLoader
         try
         {
             return File.ReadAllText(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new ScenarioException($"cannot read '{path}': {e.Message}", e);
+        }
+    }
+
+    private static byte[] ReadBytes(string path)
+    {
+        try
+        {
+            return File.ReadAllBytes(path);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

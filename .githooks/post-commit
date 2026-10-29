@@ -1,0 +1,6 @@
+#!/bin/sh
+# Обёртка git-lfs: без git-lfs в PATH хук молча пропускается.
+if command -v git-lfs >/dev/null 2>&1; then
+  exec git lfs post-commit "$@"
+fi
+exit 0
