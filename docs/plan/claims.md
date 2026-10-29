@@ -5,4 +5,3 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| Y3 въезд с края и работа «Москвы» | локал | local/yuryev-y3 | src/Sim.Core/** (City, Agents, Save, Api), src/Sim.Scenarios/**, src/Sim.Host/** (API) | 2026-10-29 |
