@@ -94,8 +94,8 @@ public partial class SimHost
 
             return null;
         };
-        _ui.UndoRequested += DoUndo;
-        _ui.RedoRequested += DoRedo;
+        _ui.Toolbar.UndoRequested += DoUndo;
+        _ui.Toolbar.RedoRequested += DoRedo;
         _tools.ActionCompleted += OnToolAction;
         if (_ui.Router.Tool is UiPlaceholderTool { Id: "roads" })
         {
@@ -129,7 +129,7 @@ public partial class SimHost
             _shownUndoMeta = nu;
             _shownRedoMeta = nr;
             // сумму возврата за undo (city-economy §8.3 UndoCredits) хост пока не отдаёт клиенту - в тултипе её нет
-            _ui.SetUndoRedo(_shownUndo, _shownRedo, _shownUndo > 0 ? RejectMessages.ActionLabel(nu) : string.Empty, _shownRedo > 0 ? RejectMessages.ActionLabel(nr) : string.Empty);
+            _ui.Toolbar.SetUndoRedo(_shownUndo, _shownRedo, _shownUndo > 0 ? RejectMessages.ActionLabel(nu) : string.Empty, _shownRedo > 0 ? RejectMessages.ActionLabel(nr) : string.Empty);
         }
 
         if (ProcessNodesTool() || ProcessZonesTool() || ProcessBusTool() || !ReferenceEquals(_ui.Router.Tool, _roadTool))

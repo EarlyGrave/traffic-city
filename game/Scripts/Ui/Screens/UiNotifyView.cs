@@ -22,7 +22,7 @@ public sealed class UiNotifyView
         public double Age;
     }
 
-    private readonly UiRoot _ui;
+    private readonly IUiContext _ui;
     private readonly VBoxContainer _toastBox;
     private readonly Button _notesButton;
     private readonly PanelContainer _listPanel;
@@ -32,7 +32,7 @@ public sealed class UiNotifyView
     private bool _listDirty;
     private int _shownBadge = -1;
 
-    public UiNotifyView(UiRoot ui, VBoxContainer toastBox, Button notesButton, Control listParent)
+    public UiNotifyView(IUiContext ui, VBoxContainer toastBox, Button notesButton, Control listParent)
     {
         _ui = ui;
         _toastBox = toastBox;
@@ -274,7 +274,7 @@ public sealed class UiNotifyView
             extent = 80f;
         }
 
-        _ui.GetNodeOrNull<RtsCamera>("../CameraRig")?.Focus(pos, Math.Max(extent, 40f));
+        _ui.Host?.GetNodeOrNull<RtsCamera>("../CameraRig")?.Focus(pos, Math.Max(extent, 40f));
         Source.SelectSubject(in s);
         return true;
     }

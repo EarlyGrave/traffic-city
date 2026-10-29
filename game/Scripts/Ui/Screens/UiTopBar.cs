@@ -121,11 +121,11 @@ public sealed class UiTopBar
     }
 
     /// <summary>Каждый кадр: подхватить хост, обновить изменившееся.</summary>
-    public void Update(Node anchor)
+    public void Update(SimHost? host)
     {
         if (_host == null)
         {
-            _host = anchor.GetNodeOrNull<SimHost>("../SimHost");
+            _host = host;
             if (_host == null)
             {
                 return;
