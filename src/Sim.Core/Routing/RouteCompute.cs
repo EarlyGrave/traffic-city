@@ -3,8 +3,11 @@ using Sim.Core.Network;
 
 namespace Sim.Core.Routing;
 
-/// <summary>Вход запроса маршрута (ровно аргументы <see cref="Router.Build"/>).</summary>
-internal readonly record struct RouteQuery(int StartLane, float StartS, int DestLane, float DestS);
+/// <summary>
+/// Вход запроса маршрута (ровно аргументы <see cref="Router.Build"/>). <c>Access</c> - права машины на момент запроса (биты <c>VehicleAccess</c>,
+/// vehicle-classes.md §2.3): параллельные запросы получают их без общих записей.
+/// </summary>
+internal readonly record struct RouteQuery(int StartLane, float StartS, int DestLane, float DestS, byte Access);
 
 /// <summary>На какой стадии закончился <see cref="RouteCompute.Run"/>.</summary>
 internal enum QueryStage : byte
@@ -45,7 +48,7 @@ internal static class RouteCompute
         System.Diagnostics.Debug.Assert(ReferenceEquals(s.Searcher.Overlay, ov), "scratch собран под другой оверлей");
         r = default;
         OverlaySearcher se = s.Searcher;
-        SearchStatus st = se.Query(q.StartLane, q.StartS, q.DestLane, q.DestS, s.Plan, out int pl);
+        SearchStatus st = se.Query(q.StartLane, q.StartS, q.DestLane, q.DestS, s.Plan, out int pl, q.Access);
         r.QueryWork = se.LastWork;
         r.Expanded = se.LastExpanded;
         if (st != SearchStatus.Found)
@@ -71,8 +74,8 @@ internal static class RouteCompute
             return;
         }
 
-        int layoutDest = s.Sp == 0 ? q.DestLane : FirstLane(net, s.Dirs[s.Nd - 1]);
-        int n = RouteLayout.LayoutLanes(net, g, new ReadOnlySpan<int>(s.Dirs, 0, s.Nd), s.Nd, q.StartLane, layoutDest, s.Steps);
+        int layoutDest = s.Sp == 0 ? q.DestLane : FirstLane(net, s.Dirs[s.Nd - 1], q.Access);
+        int n = RouteLayout.LayoutLanes(net, g, new ReadOnlySpan<int>(s.Dirs, 0, s.Nd), s.Nd, q.StartLane, layoutDest, s.Steps, q.Access, lastIsDest: s.Sp == 0);
         if (n < 0)
         {
             r.Stage = QueryStage.LayoutFail;
@@ -85,6 +88,23 @@ internal static class RouteCompute
 
     public static int FirstLane(NetworkStore net, int dirSeg) =>
         (dirSeg & 1) == 0 ? net.Segments[dirSeg >> 1].FirstLaneAB : net.Segments[dirSeg >> 1].FirstLaneBA;
+
+    /// <summary>Младшая по <c>LaneNo</c> полоса DirSeg, разрешённая правам <paramref name="access"/> (нет такой - первая): цель окна раскладки (vehicle-classes.md §2.3).</summary>
+    public static int FirstLane(NetworkStore net, int dirSeg, byte access)
+    {
+        ref readonly SegmentData sd = ref net.Segments[dirSeg >> 1];
+        int first = (dirSeg & 1) == 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
+        int cnt = (dirSeg & 1) == 0 ? sd.LanesAB : sd.LanesBA;
+        for (int k = 0; k < cnt; k++)
+        {
+            if ((access & ~net.Lanes[first + k].Deny) != 0)
+            {
+                return first + k;
+            }
+        }
+
+        return first;
+    }
 
     // Снимает элементы стека s.Stk[0..s.Sp) в s.Dirs, пока там меньше target DirSeg: уровень 0 - сразу, выше - ленивое развёртывание
     // (routing.md 9.5: глубина <= Levels, одно развёртывание <= UnpackCap элементов). Развёртывания считаются и при сбое.

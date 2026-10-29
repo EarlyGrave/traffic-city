@@ -205,7 +205,7 @@ internal static class SegmentClosure
             if ((uint)zone < (uint)n.ZoneCount && n.OpenZoneLaneCount(zone) > 0)
             {
                 int lane = n.OpenZoneLane(zone, i % n.OpenZoneLaneCount(zone));
-                int dest = Destinations.OppositeLane(n, lane);
+                int dest = Destinations.OppositeLane(n, lane, v.Access(i));
                 v.DestLane[i] = dest;
                 v.DestS[i] = n.Lanes[dest].Length * Destinations.ArrivalFraction;
                 if (v.Route[i] >= 0)

@@ -80,6 +80,15 @@ internal sealed class VehicleStore
     /// <summary>Q-meso (<c>Lod/QueueMeso.cs</c>): бит i = машина очереди полосы, фазы 5-6 её пропускают. Пустой - модели очереди нет (обход по всем слотам).</summary>
     public ulong[] QueueBits = Array.Empty<ulong>();
 
+    /// <summary>
+    /// Бит доступа класса по номеру типа (<c>World.TypeAccess</c>, 256 элементов; vehicle-classes.md §2.1): ссылка на ту же таблицу, чтобы правила полос
+    /// читали права машины через <see cref="Access"/>, не зная <c>World</c>. Без мира (тесты хранилища) - пустая.
+    /// </summary>
+    public byte[] TypeAccess = new byte[256];
+
+    /// <summary>Права машины <paramref name="i"/>: бит класса типа | <c>Emergency</c> (0x20), пока стоит <see cref="VehicleFlags.OnCall"/> (128 &gt;&gt; 2 = 0x20, без ветви).</summary>
+    public byte Access(int i) => (byte)(TypeAccess[Type[i]] | ((Flags[i] & (byte)VehicleFlags.OnCall) >> 2));
+
     public VehicleStore(int maxVehicles, bool lod = false)
     {
         Debug.Assert(maxVehicles >= 0);

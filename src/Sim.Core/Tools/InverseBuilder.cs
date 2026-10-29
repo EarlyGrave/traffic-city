@@ -27,7 +27,7 @@ internal static class InverseBuilder
     public static bool IsTool(CommandKind k) => k switch
     {
         CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan or CommandKind.SetLaneFlags
-            or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode
+            or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode
             or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop or CommandKind.RemoveBusStop
             or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams or CommandKind.PaintZone => true,
         _ => false,
@@ -63,6 +63,9 @@ internal static class InverseBuilder
                 break;
             case CommandKind.SetLaneFlags:
                 BeginLaneFlags(w, in cmd, ref ctx);
+                break;
+            case CommandKind.SetStreetAccess:
+                BeginStreetAccess(w, in cmd, ref ctx);
                 break;
             case CommandKind.SetNodeControl:
                 BeginNodeControl(w, in cmd, ref ctx);
@@ -297,7 +300,7 @@ internal static class InverseBuilder
 
     /// <summary>Есть ли у команды обратная запись вообще (иначе <see cref="InverseFlags.NoInverse"/>): зеркало ветвления <c>Begin</c>.</summary>
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
+        or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
         or CommandKind.SplitRoad or CommandKind.MergeAtNode or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop
         or CommandKind.RemoveBusStop or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams;
 
@@ -509,6 +512,12 @@ internal static class InverseBuilder
             }
         }
 
+        byte street = (byte)(sd.Deny & LaneDeny.StreetWritable);
+        if (street != 0)
+        {
+            Add(log, ref ctx, Command.MakeSetStreetAccess(new SetStreetAccessCmd { Seg = self, Deny = street, Mask = LaneDeny.StreetWritable }));   // VC2: запрет улицы возвращается
+        }
+
         EndNodeSettings(w, ref ctx, sd.NodeA, seg, freeA);
         EndNodeSettings(w, ref ctx, sd.NodeB, seg, freeB);
     }
@@ -652,6 +661,19 @@ internal static class InverseBuilder
         int lane = (f.Dir == 0 ? sd.FirstLaneAB : sd.FirstLaneBA) + f.LaneNo;
         byte prev = (byte)(n.Lanes[lane].Flags & f.Mask);
         Add(w.Inv, ref ctx, Command.MakeSetLaneFlags(new SetLaneFlagsCmd { Seg = new EntityRef(f.Seg.Index, sd.Generation), Dir = f.Dir, LaneNo = f.LaneNo, Flags = prev, Mask = f.Mask }));
+    }
+
+    private static void BeginStreetAccess(World w, in Command cmd, ref InvCtx ctx)
+    {
+        SetStreetAccessCmd a = cmd.SetStreetAccess;
+        NetworkStore n = w.Net;
+        if (!n.ResolveSegment(in a.Seg))
+        {
+            return;
+        }
+
+        ref readonly SegmentData sd = ref n.Segments[a.Seg.Index];
+        Add(w.Inv, ref ctx, Command.MakeSetStreetAccess(new SetStreetAccessCmd { Seg = new EntityRef(a.Seg.Index, sd.Generation), Deny = (byte)(sd.Deny & a.Mask), Mask = a.Mask }));
     }
 
     private static void BeginNodeControl(World w, in Command cmd, ref InvCtx ctx)

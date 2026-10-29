@@ -55,6 +55,13 @@ internal sealed partial class Overlay
     public readonly int[] ExitIdx;               // то же для выходов
     public readonly float[] CustomizedSegCost;   // [DirSegCap] SegCost, по которому считана ячейка (порог грязи)
 
+    /// <summary>
+    /// [CellCap] OR <c>RouteGraph.DirSegDeny</c> по DirSeg, начинающимся в ячейке (внутренние вершины и выходы: всё, что может лежать на пути матрицы); ячейка-предок
+    /// содержит узлы потомков, поэтому OR поднимается к предкам сам. Класс, у которого есть бит вне <c>CellDeny</c>, проходит ячейку матрицей; иначе поиск спускается
+    /// уровнем ниже (vehicle-classes.md §2.3, ADR-0039). Матрицы не пересчитываются. Производное, не в сейве.
+    /// </summary>
+    public readonly byte[] CellDeny;
+
     /// <summary>Как <see cref="RouteGraph.WeightsVersion"/> на момент последнего пересчёта весов (хэшируется).</summary>
     public int WeightsVersion;
 
@@ -113,6 +120,7 @@ internal sealed partial class Overlay
         ExitCap = new int[cells];
         MatrixFirst = new int[cells];
         Dirty = new byte[cells];
+        CellDeny = new byte[cells];
 
         _stamp = new uint[dirCap];
         _gv = new float[dirCap];
@@ -221,6 +229,7 @@ internal sealed partial class Overlay
 
         ov.CustomizeAll();
         ov.WeightsVersion = g.WeightsVersion;
+        ov.RecalcCellDeny();
         overlay = ov;
         return CreateStatus.Ok;
     }
@@ -273,6 +282,8 @@ internal sealed partial class Overlay
         {
             return LoadStatus.Ok;
         }
+
+        RecalcCellDeny();
 
         long eo = 0, xo = 0, mo = 0;
         for (int c = 0; c < CellCap; c++)
@@ -621,6 +632,7 @@ internal sealed partial class Overlay
         }
 
         MarkChanged(true);
+        RecalcCellDeny();
     }
 
     /// <summary>
@@ -662,5 +674,35 @@ internal sealed partial class Overlay
         Rebuilds++;
         CustomizeAll();
         WeightsVersion = _g.WeightsVersion;
+        RecalcCellDeny();
+    }
+
+    /// <summary>
+    /// Пересчёт <see cref="CellDeny"/> по <c>RouteGraph.DirSegDeny</c> (граф уже пересчитал маски): O(DirSeg · Levels + ячеек), главный поток, вне параллельных фаз,
+    /// без аллокаций. Вызывается после построения/перестройки раскладки и после правки масок (<c>AccessMasks.Refresh</c>).
+    /// </summary>
+    public void RecalcCellDeny()
+    {
+        Array.Clear(CellDeny);
+        if (_g.DenyUnion == 0)
+        {
+            return;
+        }
+
+        int n = Math.Min(_g.DirSegCount, _builtDirSegs);
+        for (int u = 0; u < n; u++)
+        {
+            byte d = _g.DirSegDeny[u];
+            int a = _g.StartNode[u];
+            if (d == 0 || a < 0 || a >= _builtNodes)
+            {
+                continue;
+            }
+
+            for (int l = 1; l <= Levels; l++)
+            {
+                CellDeny[CellOfNode(l, a)] |= d;
+            }
+        }
     }
 }

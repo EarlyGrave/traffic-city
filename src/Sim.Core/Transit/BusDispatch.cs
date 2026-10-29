@@ -52,7 +52,7 @@ internal static class BusDispatch
             return;
         }
 
-        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, w.Tick, out RouteHandle h) != BuildStatus.Ok)
+        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, w.Tick, out RouteHandle h, w.TypeAccess[br.VehicleType]) != BuildStatus.Ok)
         {
             return;
         }
