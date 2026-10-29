@@ -1663,6 +1663,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `TERR` (PARM.TerrainEnabled = 1) | 10 | WaterKind | u8 | SamplesX * SamplesZ | 0 |
 | `TERR` (PARM.TerrainEnabled = 1) | 11 | Version | i32 | 1 | 0 |
 | `TERR` (PARM.TerrainEnabled = 1) | 12 | OpSeq | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 20 | ProfileMaxGradePm | i32 | ProfileCount (0 в legacy) | 0 |
 | `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
 | `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
 | `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |
