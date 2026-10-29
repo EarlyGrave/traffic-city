@@ -6,4 +6,5 @@
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
 | Y4 нули старта с нуля | локал | local/yuryev-y4 | src/Sim.Core/City/**, src/Sim.Core/Api/CityDesc.cs, src/Sim.Scenarios/** (загрузчик) | 2026-10-29 |
-| YS спека сценариев и Юрьева | локал | local/yuryev-scenario-spec | docs/design/scenarios-mode.md, docs/adr/ | 2026-10-29 |
+| YS0 замер 30k/50k жителей | локал | local/ys0-perf | scenarios/ys0-*.json, perf/results/ys0/ | 2026-10-29 |
+| YS3 рельеф Юрьева 10 км | локал | local/ys3-terrain | tools/dem/**, scenarios/terrain/yuryev-10k*, scenarios/yuryev-10k-terrain.json | 2026-10-29 |
