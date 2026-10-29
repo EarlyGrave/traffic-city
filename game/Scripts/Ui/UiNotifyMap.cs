@@ -21,6 +21,8 @@ public enum NotifySubjectKind
     Segment,
     Node,
     Zone,
+    BusRoute,   // автобусная линия (индекс маршрута): инспектор сегмента первой остановки
+    Building,   // здание города: только точка, инспектор - ближайший сегмент
     Point,      // место события ядра без своего инспектора у клиента (линия, здание, остановка): только точка X/Z
 }
 
@@ -39,6 +41,8 @@ public readonly record struct NotifySubject(NotifySubjectKind Kind, int Index, i
         EntityKind.Segment => new(NotifySubjectKind.Segment, p.Index, p.Generation, p.X, p.Z, true),
         EntityKind.Node => new(NotifySubjectKind.Node, p.Index, p.Generation, p.X, p.Z, true),
         EntityKind.Zone => new(NotifySubjectKind.Zone, p.Index, 0, p.X, p.Z, true),
+        EntityKind.BusRoute => new(NotifySubjectKind.BusRoute, p.Index, p.Generation, p.X, p.Z, true),
+        EntityKind.Building => new(NotifySubjectKind.Building, p.Index, p.Generation, p.X, p.Z, true),
         _ => new(NotifySubjectKind.Point, p.Index, p.Generation, p.X, p.Z, true),
     };
 }
@@ -130,10 +134,10 @@ public static class UiNotifyMap
                 raw = Make(key, NotifySeverity.Info, "Новая политика вступила в силу", "смена политики", "смены политики", "смен политики", default);
                 return true;
             case SimEventKind.MilestoneReached:
-                raw = Make(key, NotifySeverity.Good, "Новая веха: № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
+                raw = Make(key, NotifySeverity.Good, "Новая веха: «" + MilestoneName(e.A) + "», жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
                 return true;
             case SimEventKind.MilestoneGated:
-                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
+                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи «" + MilestoneName(e.A) + "», но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
                 return true;
             case SimEventKind.BudgetWarning:
                 raw = Make((key * 1000) + e.A, e.A >= 2 ? NotifySeverity.Error : NotifySeverity.Warning, "Через " + e.B.ToString(CultureInfo.InvariantCulture) + " дн. казна уйдёт за кредитный лимит", "предупреждение о казне", "предупреждения о казне", "предупреждений о казне", default);
@@ -150,6 +154,21 @@ public static class UiNotifyMap
                 return false;
         }
     }
+
+    /// <summary>Названия вех M1-M6 (progression.md §3.2; ядро имён не хранит - таблица клиента, индекс события 0 = M1).</summary>
+    private static readonly string[] MilestoneNames =
+    {
+        "Город растёт",
+        "Час пик",
+        "Пробки — дело мэра",
+        "Транспортный город",
+        "Магистраль",
+        "Большой город",
+    };
+
+    /// <summary>Название вехи по индексу события (<c>SimEvent.A</c>); неизвестный индекс - «Веха N».</summary>
+    public static string MilestoneName(int index) =>
+        (uint)index < (uint)MilestoneNames.Length ? MilestoneNames[index] : "Веха " + (index + 1).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Текст записи: один раз - как есть, иначе «×N форма» по склонению числа.</summary>
     public static string Render(in NotifyRaw raw, int count) =>
