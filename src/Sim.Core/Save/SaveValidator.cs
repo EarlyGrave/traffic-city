@@ -75,6 +75,12 @@ internal static partial class SaveValidator
             return pst;
         }
 
+        pst = ValidateTerrainParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||

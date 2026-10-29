@@ -107,7 +107,7 @@ public class LayoutTests
     private static readonly string[] _notBlittableByDesign =
     {
         nameof(ScenarioDesc), nameof(NetworkDesc), nameof(DemandDesc), nameof(TransitDesc), nameof(BusRouteDesc), nameof(LodDesc), nameof(LodTourDesc), nameof(LoadOptions), nameof(CityDesc),
-        nameof(RoadProfileDesc), nameof(RoadProfilesDesc), nameof(ProgressionDesc),
+        nameof(RoadProfileDesc), nameof(RoadProfilesDesc), nameof(ProgressionDesc), nameof(TerrainDesc), nameof(TerrainWaterDesc), nameof(TerrainRiverDesc),
     };
 
     [Fact]
