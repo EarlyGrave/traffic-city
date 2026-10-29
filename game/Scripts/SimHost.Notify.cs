@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Godot;
 using Sim.Core.Api;
 using Sim.Core.Network;
+using Sim.Core.Util;
 using TrafficCity.Ui;
 
 namespace TrafficCity;
@@ -82,9 +83,75 @@ public partial class SimHost : IUiEventSource
                 position = new Vector3(net.Zones[subject.Index].Center.X, 0f, net.Zones[subject.Index].Center.Z);
                 extent = Math.Max(80f, net.Zones[subject.Index].HalfSize * 2f);
                 return true;
+            case NotifySubjectKind.BusRoute:
+                int seg = BusRouteSegment(net, subject.Index);
+                if (seg < 0)
+                {
+                    return false; // линия исчезла: «Показать» уйдёт на точку события
+                }
+
+                SegmentData bs = net.Segments[seg];
+                position = new Vector3((net.Nodes[bs.NodeA].Position.X + net.Nodes[bs.NodeB].Position.X) * 0.5f, 0f, (net.Nodes[bs.NodeA].Position.Z + net.Nodes[bs.NodeB].Position.Z) * 0.5f);
+                extent = Math.Max(80f, bs.Length);
+                return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>Сегмент первой остановки линии (для инспектора сегмента); -1 - линии/остановок/сегмента нет.</summary>
+    private static int BusRouteSegment(NetworkView net, int route)
+    {
+        if ((uint)route >= (uint)net.BusRoutes.Length || net.BusRoutes[route].StopCount <= 0 || (net.BusRoutes[route].Generation & 1) == 0)
+        {
+            return -1;
+        }
+
+        int first = net.BusRoutes[route].FirstStop;
+        if ((uint)first >= (uint)net.BusRouteStops.Length)
+        {
+            return -1;
+        }
+
+        int stop = net.BusRouteStops[first];
+        if ((uint)stop >= (uint)net.BusStops.Length || (uint)net.BusStops[stop].Lane >= (uint)net.Lanes.Length)
+        {
+            return -1;
+        }
+
+        int seg = net.Lanes[net.BusStops[stop].Lane].Segment;
+        return net.IsSegmentAlive(seg) && net.Segments[seg].NodeA >= 0 && net.Segments[seg].NodeB >= 0 ? seg : -1;
+    }
+
+    /// <summary>Ближайший живой сегмент к точке мира (расстояние до отрезка A-B); -1 - сети нет. Вызывается по клику «Показать», O(сегментов).</summary>
+    private static int NearestSegment(NetworkView net, float x, float z)
+    {
+        int best = -1;
+        float bestD = float.MaxValue;
+        for (int i = 0; i < net.Segments.Length; i++)
+        {
+            if (!net.IsSegmentAlive(i) || net.Segments[i].NodeA < 0 || net.Segments[i].NodeB < 0)
+            {
+                continue;
+            }
+
+            Vec2 a = net.Nodes[net.Segments[i].NodeA].Position;
+            Vec2 b = net.Nodes[net.Segments[i].NodeB].Position;
+            float dx = b.X - a.X;
+            float dz = b.Z - a.Z;
+            float len2 = (dx * dx) + (dz * dz);
+            float t = len2 > 1e-6f ? Math.Clamp((((x - a.X) * dx) + ((z - a.Z) * dz)) / len2, 0f, 1f) : 0f;
+            float px = a.X + (t * dx) - x;
+            float pz = a.Z + (t * dz) - z;
+            float d = (px * px) + (pz * pz);
+            if (d < bestD)
+            {
+                bestD = d;
+                best = i;
+            }
+        }
+
+        return best;
     }
 
     public void SelectSubject(in NotifySubject subject)
@@ -105,6 +172,29 @@ public partial class SimHost : IUiEventSource
         else if (subject.Kind == NotifySubjectKind.Segment)
         {
             SelectSegment(_frame.Network.View, subject.Index);
+        }
+        else if (subject.Kind == NotifySubjectKind.BusRoute)
+        {
+            // отдельного инспектора линии пока нет: открываем инспектор сегмента первой остановки (иначе - ближайшего к месту события)
+            int seg = BusRouteSegment(_frame.Network.View, subject.Index);
+            if (seg < 0 && subject.HasPoint)
+            {
+                seg = NearestSegment(_frame.Network.View, subject.X, subject.Z);
+            }
+
+            if (seg >= 0)
+            {
+                SelectSegment(_frame.Network.View, seg);
+            }
+        }
+        else if (subject.Kind == NotifySubjectKind.Building && subject.HasPoint)
+        {
+            // отдельного инспектора здания пока нет: инспектор ближайшего сегмента (улицы здания)
+            int seg = NearestSegment(_frame.Network.View, subject.X, subject.Z);
+            if (seg >= 0)
+            {
+                SelectSegment(_frame.Network.View, seg);
+            }
         }
     }
 }
