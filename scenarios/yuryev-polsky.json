@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "name": "yuryev-polsky",
   "seed": 1,
   "duration_s": 600,
@@ -542,15 +542,20 @@
   "zoning": {
     "auto": false,
     "growth": true,
-    "growth_step": "hour"
+    "growth_step": "hour",
+    "max_new_buildings_per_day": 180
   },
   "residents": {
     "initial_fill": 0,
-    "min_immigrants_per_day": 120
+    "min_immigrants_per_day": 2400
   },
   "economy": {
     "city_budget": true,
-    "initial_city_balance": 150000
+    "initial_city_balance": 400000,
+    "maint_road_per_lane_km_day": {
+      "street": 23,
+      "arterial": 46
+    }
   },
   "outside": {
     "outside_jobs_decay": 0.1,
@@ -874,5 +879,96 @@
     "auto_bridge": true,
     "max_brush_m": 96,
     "max_dab_m": 2
+  },
+  "packages": [
+    "yuryev_scratch"
+  ],
+  "transit": {
+    "bus_type": "yuryev_scratch:vehicle/bus"
+  },
+  "tools": {
+    "costs": {
+      "road_per_m_lane": {
+        "street": 10,
+        "arterial": 20
+      },
+      "curve_factor_pct": 120,
+      "node_signal": 500,
+      "arm_sign": 50,
+      "turn_ban": 100,
+      "bus_stop": 200,
+      "bus_route": 1000,
+      "demolish_refund_pct": 50,
+      "upgrade_refund_pct": 50
+    },
+    "inverse_capacity": 1024
+  },
+  "progression": {
+    "enabled": true,
+    "locked_features": [
+      "arterial_upgrade",
+      "curves",
+      "signals_fixed",
+      "signals_adaptive",
+      "bus_lines",
+      "bus_lanes",
+      "parking_fees"
+    ],
+    "locked_profiles": [],
+    "min_legs": 500,
+    "areas": [
+      {
+        "min_x": -1000,
+        "min_z": -1000,
+        "max_x": 1000,
+        "max_z": 1000
+      },
+      {
+        "min_x": -1800,
+        "min_z": -1800,
+        "max_x": 1800,
+        "max_z": 1800
+      },
+      {
+        "min_x": -2400,
+        "min_z": -2400,
+        "max_x": 2400,
+        "max_z": 2400
+      },
+      {
+        "min_x": -3040,
+        "min_z": -3040,
+        "max_x": 3040,
+        "max_z": 3040
+      }
+    ],
+    "milestones": [
+      {
+        "id": "m1",
+        "population": 100,
+        "unlock": [
+          "signals_fixed",
+          "curves"
+        ],
+        "grant": 20000
+      },
+      {
+        "id": "m2",
+        "population": 500,
+        "unlock": [
+          "arterial_upgrade"
+        ],
+        "grant": 30000
+      },
+      {
+        "id": "m3",
+        "population": 1500,
+        "unlock": [
+          "bus_lines"
+        ],
+        "area": 1,
+        "grant": 40000
+      }
+    ]
   }
 }

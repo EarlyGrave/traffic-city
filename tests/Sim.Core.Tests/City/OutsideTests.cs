@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Sim.Core.Api;
 using Sim.Core.City;
@@ -7,6 +8,7 @@ using Sim.Core.Tests.Fixtures;
 using Sim.Core.Tests.Gen;
 using Sim.Core.Tests.Tools;
 using Sim.Scenarios;
+using Sim.Scenarios.Mods;
 using Xunit.Abstractions;
 
 namespace Sim.Core.Tests.City;
@@ -140,7 +142,7 @@ public sealed class OutsideTests
         ScenarioDesc d = Yuryev();
         using Simulation a = Make(in d);
         PaintResidential(a, 6);
-        a.Step(3 * Day);
+        a.Step(18 * Hour);   // до полуночи суток 1: дома R строятся до первого суточного прохода, въезд идёт после него (старт 06:00, construct_days 0)
         int transit = 0;
         for (int i = 0; i < 200 && transit == 0; i++)
         {
@@ -164,7 +166,7 @@ public sealed class OutsideTests
         ScenarioDesc d = Yuryev();
         using Simulation sim = Make(in d);
         PaintResidential(sim, 6);
-        sim.Step((3 * Day) + (6 * Hour));
+        sim.Step(20 * Hour);
         long bytes = AllocationProbe.Measure(() => sim.Step(Hour + 200));
         Assert.Equal(0, bytes);
     }
@@ -175,7 +177,8 @@ public sealed class OutsideTests
         string json = File.ReadAllText(YuryevPath);
         static byte[] Bytes(string file) => File.ReadAllBytes(Path.Combine(GenFixture.RepoRoot(), "scenarios", file));
         static string Text(string file) => File.ReadAllText(Path.Combine(GenFixture.RepoRoot(), "scenarios", file));
-        CityDesc t = ScenarioLoader.Parse(json, Text, "t", null, null, Bytes).Desc.Town;
+        IReadOnlyList<PackageSearchDir> dirs = ScenarioLoader.DefaultSearchDirs(Path.Combine(GenFixture.RepoRoot(), "scenarios"));
+        CityDesc t = ScenarioLoader.Parse(json, Text, "t", dirs, null, Bytes).Desc.Town;
         Assert.Equal(1, t.Outside.Count);
         Assert.Equal(0, t.Outside.C0.Node);
         Assert.Equal(2000, t.Outside.C0.Jobs);
@@ -183,8 +186,8 @@ public sealed class OutsideTests
         Assert.Equal(65536, t.Outside.C0.ShareQ16);
         Assert.Equal(1, t.Outside.ArrivalByCar);
         Assert.Equal(1, t.Zoning.GridFromBounds);
-        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"node\": 0,", "\"node\": 999,"), Text, "t", null, null, Bytes));
-        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"immigrant_share\": 1.0", "\"immigrant_share\": 0.5"), Text, "t", null, null, Bytes));
-        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"model\": \"residents\"", "\"model\": \"uniform\""), Text, "t", null, null, Bytes));
+        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"node\": 0,", "\"node\": 999,"), Text, "t", dirs, null, Bytes));
+        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"immigrant_share\": 1.0", "\"immigrant_share\": 0.5"), Text, "t", dirs, null, Bytes));
+        Assert.Throws<ScenarioException>(() => ScenarioLoader.Parse(json.Replace("\"model\": \"residents\"", "\"model\": \"uniform\""), Text, "t", dirs, null, Bytes));
     }
 }
