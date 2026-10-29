@@ -32,8 +32,6 @@ public static class UiActions
     public static readonly StringName TimePause = "time_pause";
     public static readonly StringName TimeFaster = "time_faster";
     public static readonly StringName TimeSlower = "time_slower";
-    public static readonly StringName TimeOfDayNext = "time_of_day_next";
-    public static readonly StringName TimeOfDayPrev = "time_of_day_prev";
 
     // сетка и снап (RP10)
     public static readonly StringName GridSnapToggle = "grid_snap_toggle";
@@ -44,6 +42,7 @@ public static class UiActions
     public static readonly StringName ToolRoads = "tool_roads";
     public static readonly StringName ToolBulldoze = "tool_bulldoze";
     public static readonly StringName ToolZones = "tool_zones";
+    public static readonly StringName ToolTransit = "tool_transit";
     public static readonly StringName RoadsPrevProfile = "roads_profile_prev";
     public static readonly StringName RoadsNextProfile = "roads_profile_next";
     public static readonly StringName RoadsReplace = "roads_replace";
@@ -69,8 +68,8 @@ public static class UiActions
     {
         CamForward, CamBack, CamLeft, CamRight, CamRotateLeft, CamRotateRight, CamFast,
         InfoToggle, InfoLayer1, InfoLayer2, InfoLayer3, SignalsOverlay, PerfHud, RenderPresetToggle, PedModeCycle,
-        TimePause, TimeFaster, TimeSlower, TimeOfDayNext, TimeOfDayPrev,
-        GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, ToolZones, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
+        TimePause, TimeFaster, TimeSlower,
+        GridSnapToggle, GridShowToggle, SnapOverride, ToolRoads, ToolBulldoze, ToolZones, ToolTransit, RoadsPrevProfile, RoadsNextProfile, RoadsReplace, RoadsMirror, Undo, Redo,
         QuickSave, QuickLoad, CityPanel, Settings, Cancel,
     };
 
@@ -97,8 +96,6 @@ public static class UiActions
         Add(TimePause, Code(Key.Space));
         Add(TimeFaster, Code(Key.Equal), Code(Key.Plus), Code(Key.KpAdd));
         Add(TimeSlower, Code(Key.Minus), Code(Key.KpSubtract));
-        Add(TimeOfDayNext, Phys(Key.T));
-        Add(TimeOfDayPrev, Phys(Key.T, shift: true));
 
         Add(GridSnapToggle, Phys(Key.G));
         Add(GridShowToggle, Phys(Key.G, shift: true));
@@ -107,6 +104,7 @@ public static class UiActions
         Add(ToolRoads, Phys(Key.R));
         Add(ToolBulldoze, Phys(Key.X));
         Add(ToolZones, Phys(Key.Z));
+        Add(ToolTransit, Phys(Key.T));
         Add(RoadsPrevProfile, Phys(Key.Bracketleft));
         Add(RoadsNextProfile, Phys(Key.Bracketright));
         Add(RoadsReplace, Phys(Key.U));
@@ -123,7 +121,7 @@ public static class UiActions
     }
 
     /// <summary>
-    /// Нажатие пары «действие / то же с Shift» (G и Shift+G, T и Shift+T): сравнение модификаторов точное, иначе голая клавиша
+    /// Нажатие пары «действие / то же с Shift» (G и Shift+G): сравнение модификаторов точное, иначе голая клавиша
     /// срабатывала бы и при Shift.
     /// </summary>
     public static bool Pressed(InputEvent e, StringName action) => e.IsActionPressed(action, false, true);

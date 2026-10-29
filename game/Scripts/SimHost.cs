@@ -152,6 +152,7 @@ public partial class SimHost : Node3D
 
     public override void _Ready()
     {
+        TrafficCity.Ui.UiSettingsPage.TimeOfDayRequested += SetTimeOfDay;
         _camera = GetNodeOrNull<RtsCamera>("../CameraRig");
         _hud = GetNodeOrNull<PerfHud>("../Hud/PerfHud");
         _status = GetNodeOrNull<Label>("../Hud/Status");
@@ -264,7 +265,7 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Аргументы после <c>--</c>: <c>--scenario имя</c>; для скриншотов и замеров: <c>--cam x z расстояние [наклон° [поворот°]]</c>,
     /// <c>--select-node id|signal [--node-preset adaptive|fixed|flash] [--nodes-tool control|arms|bans|lanes]</c> (панель узла, инструмент «Узлы»), <c>--warmup-ticks N</c> (прогнать симуляцию до первого кадра), <c>--hud</c> (показать HUD), <c>--ped-mode auto|heat|agents</c>, <c>--info traffic|peds|zones</c> (сразу в информационном режиме),
-    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; клавиша T/Shift+T), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов),
+    /// <c>--time-of-day HH:MM|ч|auto</c> (свет суток, VS10; auto - по calendar.day_s при residents, тик 0 = 00:00; выбор в настройках), <c>--pose overview|mid|close|lod0</c> (фиксированная поза замера), <c>--render-stats файл.json [--stats-frame K]</c>, <c>--demolish-test N [--demolish-ticks M]</c> (снести N сегментов после прогрева, проверка мёртвых слотов),
     /// RP10: <c>--grid</c> (сетка 8 м показана сразу), <c>--no-snap</c>, <c>--snap-demo x z</c> (превью снапа в точке + строка <c>[snap]</c> в журнале), <c>--prof-res</c> (сценарий <c>*-res</c> с профилями фикстуры; Shift+G - сетка, G - снап).
     /// S10 (ADR-0024): <c>--threads N</c> (потоки симуляции; по умолчанию min(4, max(1, ядер/2 - 2))), <c>--lockstep</c> (кадр ждёт тик симуляции; включается сам при <c>--render-stats</c> и <c>--write-movie</c>),
     /// <c>--frame-timing</c> (перцентили времени кадра главного потока в журнал при выходе), <c>--max-fps N</c>, <c>--time-scale X</c> (скорость игры со старта), <c>--no-view-margin</c> (вид ядра без запаса на 2 тика).
@@ -863,6 +864,17 @@ public partial class SimHost : Node3D
         }
     }
 
+    /// <summary>Час суток из настроек: null - по игровому времени (при календаре), иначе фиксированный час.</summary>
+    private void SetTimeOfDay(float? hour)
+    {
+        _timeAuto = hour == null;
+        if (hour is float h)
+        {
+            RenderPreset.SetHour(GetParent(), h);
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
+        }
+    }
+
     /// <summary>Пресет рендера (F4, настройки): только render-часть; LOD-пороги и лимиты слоёв читаются при старте.</summary>
     public void SetRenderPreset(string preset)
     {
@@ -966,13 +978,6 @@ public partial class SimHost : Node3D
                 {
                     _signals.Node.Visible = _signalsOn;
                 }
-            }
-            else if (UiActions.Pressed(@event, UiActions.TimeOfDayNext) || UiActions.Pressed(@event, UiActions.TimeOfDayPrev))
-            {
-                // ручной час суток: T - +1 ч, Shift+T - -1 ч (выключает привязку к игровому времени)
-                _timeAuto = false;
-                RenderPreset.SetHour(GetParent(), RenderPreset.Hour + (UiActions.Pressed(@event, UiActions.TimeOfDayPrev) ? -1f : 1f));
-                GD.Print(string.Create(CultureInfo.InvariantCulture, $"[time] {RenderPreset.Hour:0.0} h"));
             }
             else if (@event.IsActionPressed(UiActions.RenderPresetToggle))
             {
