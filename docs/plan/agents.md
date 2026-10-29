@@ -257,3 +257,4 @@
 | 180 | host-msg-fix (облако, worktree) | sonnet | Красный тест ToolAdapterTests.RejectMessages_CoverAllCodes после N1 | done, merged (тексты ZoneBuildingsAbandoned/ZoneNothingToPaint в game/Scripts/Tools/RejectMessages.cs; тесты 1257+503+52 зелёные) |
 | 181 | n3-t5 (облако, worktree) | opus | ночь N3: T5 полный UpgradeRoad + SplitRoad | wip |
 | 182 | n4-ev1 (облако, worktree) | opus | ночь N4: EV1 события с местом | wip |
+| 183 | n5-pg12 (облако, worktree) | opus | ночь N5: PG1+PG2 прогрессия — поверхность, сейв v11, кольцо KPI | wip |
