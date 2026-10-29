@@ -190,7 +190,8 @@ public class ToolPayloadSizesTests
     }
 
     [Theory]
-    [InlineData(16)]   // T5: AutoSplit и Curve реализованы (SplitMergeTests, CurveTests); неизвестный бит - NotSupported
+    [InlineData(16)]   // TR3: Bridge без рельефа - NotSupported (на рельефе - RoadTerrainTests)
+    [InlineData(32)]   // T5: AutoSplit и Curve реализованы (SplitMergeTests, CurveTests); неизвестный бит - NotSupported
     public void BuildRoad_NewFlags_AreNotSupported(byte flags)
     {
         using Simulation sim = Simulation.Create(WorldSaveFixtures.Small(), new SimRuntimeOptions());

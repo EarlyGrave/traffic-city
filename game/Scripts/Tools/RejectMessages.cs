@@ -34,6 +34,9 @@ public static class RejectMessages
         RejectReason.OutOfBounds => "За границей карты",
         RejectReason.BudgetRule => "Бюджет не допускает такой политики",
         RejectReason.Locked => "Ещё не открыто",
+        RejectReason.TooSteep => "Слишком крутой уклон",
+        RejectReason.NeedsBridge => "Здесь нужен мост",
+        RejectReason.TooDeep => "Слишком глубокая выемка",
         _ => "Не получилось",
     };
 
@@ -49,6 +52,9 @@ public static class RejectMessages
         RejectReason.Unreachable => "Проверьте связь дорог",
         RejectReason.Locked => "Откроется на одной из следующих вех города",
         RejectReason.InsufficientFunds => "Поднимите налоги, снесите лишнее или сократите линии",
+        RejectReason.TooSteep => "Ведите дорогу вдоль склона или серпантином",
+        RejectReason.NeedsBridge => "Начните и закончите на берегу, включите мост, сократите пролёт до 300 м",
+        RejectReason.TooDeep => "Обойдите холм: тоннелей пока нет",
         _ => string.Empty,
     };
 
@@ -94,6 +100,8 @@ public static class RejectMessages
             IssueCode.ZoneBuildingsAbandoned => string.Create(CultureInfo.InvariantCulture, $"Здания другого вида опустеют: {value}"),
             IssueCode.ZoneNothingToPaint => "Здесь нечего красить. Выделите участки у дороги",
             IssueCode.SetbackShort => "Мало места от соседней дороги до перекрёстка",
+            IssueCode.Earthwork => string.Create(CultureInfo.InvariantCulture, $"Земляные работы: {value} м³"),
+            IssueCode.BridgeAuto => string.Create(CultureInfo.InvariantCulture, $"Будет мост: {value} м"),
             _ => "Есть замечание",
         };
     }

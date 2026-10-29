@@ -86,6 +86,9 @@ public static class SegmentFlags
 
     /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030): элементы читаются в обратном порядке, forward ↔ backward. Только в режиме профилей.</summary>
     public const byte Mirrored = 4;
+
+    /// <summary>Мост (terrain.md §4.5, TR3): рельеф под пролётом не штампуется, высота оси - линейная между узлами.</summary>
+    public const byte Bridge = 8;
 }
 
 /// <summary>Биты <see cref="LaneData.Flags"/>.</summary>

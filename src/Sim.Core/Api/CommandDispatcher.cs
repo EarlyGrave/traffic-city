@@ -32,6 +32,7 @@ internal static partial class CommandDispatcher
         }
 
         w.Inv.ClearRemap();
+        RoadTerrain.Sync(w);   // TR3: высоты полос и Lock после правок сети этого тика (без рельефа - ничего)
         ToolCosts.Purge(w);   // E4: просроченные undo-кредиты не доживают до сейва
     }
 
@@ -235,6 +236,7 @@ internal static partial class CommandDispatcher
     private static void BuildRoad(World w, in Command cmd)
     {
         // Общий валидатор превью и применения (player-tools.md §7.1): аргументы, привязка, границы, длина, рукава, ловушка, ёмкости - до первой мутации.
+        RoadTerrain.Sync(w);   // TR3: Lock и высоты полос - по сети после предыдущих команд тика (валидатор читает их)
         var chk = default(ToolCheck);
         RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
         if (why != RejectReason.None)
@@ -330,6 +332,11 @@ internal static partial class CommandDispatcher
             return;
         }
 
+        if (w.Terrain != null)
+        {
+            ApplyRoadTerrain(w, in chk, seg);
+        }
+
         w.Emit(SimEventKind.SegmentCreated, cmd.Tag, seg);
         w.Inv.BuiltSeg = seg;
         EmitRestoreRemaps(w, in cmd, seg);
@@ -363,6 +370,28 @@ internal static partial class CommandDispatcher
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    // TR3 (terrain.md §4.1, §4.4): высоты новых узлов концов (после подгонки валидатора), флаг моста, штамп коридора и площадок, синхронизация производных.
+    private static void ApplyRoadTerrain(World w, in ToolCheck chk, int seg)
+    {
+        ref SegmentData sd = ref w.Net.Segments[seg];
+        if (chk.SnapKindA == SnapKind.NewNode)
+        {
+            w.Net.Nodes[sd.NodeA].Elevation = RoadTerrain.Meters(chk.ElevACm);
+        }
+
+        if (chk.SnapKindB == SnapKind.NewNode)
+        {
+            w.Net.Nodes[sd.NodeB].Elevation = RoadTerrain.Meters(chk.ElevBCm);
+        }
+
+        if (chk.Bridge)
+        {
+            sd.Flags |= SegmentFlags.Bridge;
+        }
+
+        RoadTerrain.OnRoadBuilt(w, seg);
     }
 
     // AutoSplit (T5): концы на оси сегментов - сначала разрезы (узлы разреза - концы новой дороги; индексы второго сегмента первый разрез не трогает).

@@ -296,6 +296,16 @@ public class RoadProfileTests
         Assert.Throws<ScenarioException>(() => ScenarioLoader.ParseRoadProfiles(text.Replace("\"width_m\": 16", "\"width_m\": 12")));
     }
 
+    [Fact]
+    public void Loader_MaxGradePct_ToPermille_DefaultZero()
+    {
+        string text = File.ReadAllText(FixturePath);
+        RoadProfilesDesc d = ScenarioLoader.ParseRoadProfiles(text.Replace("\"width_m\": 16", "\"width_m\": 16, \"max_grade_pct\": 7.5"));
+        Assert.Equal(75, d.Profiles[0].MaxGradePm);   // TR3, terrain.md §4.3
+        Assert.Equal(0, ScenarioLoader.ParseRoadProfiles(text).Profiles[0].MaxGradePm);
+        Assert.Throws<ScenarioException>(() => ScenarioLoader.ParseRoadProfiles(text.Replace("\"width_m\": 16", "\"width_m\": 16, \"max_grade_pct\": 101")));
+    }
+
     // ---- сеть по профилям ----
 
     private static ScenarioDesc Cross(RoadProfilesDesc cat, string main, string side, bool mirroredSide = false)

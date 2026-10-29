@@ -1,3 +1,4 @@
+using System;
 using Sim.Core.Api;
 using Sim.Core.City;
 using Sim.Core.Network;
@@ -112,7 +113,7 @@ internal static class ToolCosts
         {
             // Отмена сноса: без кредита это обычная стройка (снос уже вернул долю цены), цена - как нового сегмента той же геометрии.
             ref readonly SegmentData sd = ref w.Net.Segments[c.Seg];
-            c.Cost = ToolValidator.RoadCost(in w.ToolsCfg.Costs, sd.Kind, w.Builder.FullAxisLength(c.Seg), sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0);
+            c.Cost = ToolValidator.RoadCost(in w.ToolsCfg.Costs, sd.Kind, w.Builder.FullAxisLength(c.Seg), sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0, (sd.Flags & SegmentFlags.Bridge) != 0);
         }
 
         if ((cmd.Flags & CommandFlags.Inverse) != 0)
@@ -205,9 +206,11 @@ internal static class ToolCosts
             TargetOf(w, in cmd, out ti, out tg);
         }
 
-        if (tg != 0 && ti >= 0)
+        // Земляные работы (TR3, terrain.md §4.4) undo не возвращает: кредит - только за дорогу.
+        long credit = cost > 0 ? Math.Max(0, cost - c.EarthworkCost) : cost;
+        if (tg != 0 && ti >= 0 && credit != 0)
         {
-            Record(b, ti, tg, cost, w.Tick + window);
+            Record(b, ti, tg, credit, w.Tick + window);
         }
     }
 

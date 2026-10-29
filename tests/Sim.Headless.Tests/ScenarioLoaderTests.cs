@@ -575,6 +575,12 @@ public class ScenarioLoaderTests
         Assert.Equal(10L, d.Tools.Costs.RoadPerMLaneStreet);
         Assert.Equal(20L, d.Tools.Costs.RoadPerMLaneArterial);
         Assert.Equal(50, d.Tools.Costs.DemolishRefundPct);
+        Assert.Equal(2L, d.Tools.Costs.EarthworkPerM3);   // TR3
+        Assert.Equal(60L, d.Tools.Costs.BridgePerMLane);
+
+        d = Load(Minimal("\"tools\": { \"costs\": { \"earthwork_per_m3\": 5, \"bridge_per_m_lane\": 90 } }"));
+        Assert.Equal(5L, d.Tools.Costs.EarthworkPerM3);
+        Assert.Equal(90L, d.Tools.Costs.BridgePerMLane);
 
         d = Load(Minimal("\"tools\": { \"costs\": { \"road_per_m_lane\": { \"street\": 7 }, \"turn_ban\": 3, \"demolish_refund_pct\": 80 }, "
             + "\"world_bounds\": { \"min_x\": -100, \"min_z\": -200, \"max_x\": 300, \"max_z\": 400 } }"));

@@ -105,7 +105,7 @@ internal static class ToolPreview
 
         if (v != RejectReason.None)
         {
-            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ, v == RejectReason.Locked ? c.LockMilestone : 0);
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ, v == RejectReason.Locked ? c.LockMilestone : c.RejectValue);
         }
         else
         {
@@ -120,6 +120,7 @@ internal static class ToolPreview
             {
                 case CommandKind.BuildRoad:
                     BuildRoadWarnings(w, in cmd, in c, ref r, ref iw);
+                    TerrainInfo(in c, ref iw);
                     break;
                 case CommandKind.RemoveRoad:
                     RemoveRoadWarnings(w, in c, flags, ref r, ref iw);
@@ -210,6 +211,22 @@ internal static class ToolPreview
     }
 
     // ---------------------------------------------------------------- BuildRoad
+
+    // Рельеф (TR3): объём земляных работ (Info, м³) и автоматический мост (Info, длина, м).
+    private static void TerrainInfo(in ToolCheck c, ref IssueWriter iw)
+    {
+        float cx = (c.AX + c.BX) * 0.5f;
+        float cz = (c.AZ + c.BZ) * 0.5f;
+        if (c.EarthworkM3 > 0)
+        {
+            iw.Add(IssueCode.Earthwork, IssueSeverity.Info, EntityKind.None, -1, 0, cx, cz, (int)Math.Min(c.EarthworkM3, int.MaxValue));
+        }
+
+        if (c.BridgeAuto)
+        {
+            iw.Add(IssueCode.BridgeAuto, IssueSeverity.Info, EntityKind.None, -1, 0, cx, cz, DetMath.ToIntSat(MathF.Round(c.LengthM)));
+        }
+    }
 
     private static void BuildRoadWarnings(World w, in Command cmd, in ToolCheck c, ref PreviewResult r, ref IssueWriter iw)
     {

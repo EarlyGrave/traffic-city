@@ -412,6 +412,7 @@ internal static class WorldLoader
             w.City.RestoreDerived(w);   // геометрия участков, ячейки, точки доступа, компоненты - тем же кодом, что в Create
         }
 
+        RoadTerrain.RestoreDerived(w);       // TR3: высоты полос и Lock сети - функция сохранённого состояния, без Version++
         w.Terrain?.Dirty.Reset(w.Terrain.Version);   // кольцо грязи - производное: клиент с версией старше сейва перестраивает всё (Lock - нули до TR3)
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         for (int lane = 0; lane < w.Net.LaneCount; lane++)
