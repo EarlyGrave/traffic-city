@@ -5,3 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
+| BL-спека (building-lifecycle.md) | локал | local/bl-spec | docs/design/building-lifecycle.md, docs/adr/0040-* | 2026-10-30 |
