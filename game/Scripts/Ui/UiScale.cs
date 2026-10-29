@@ -5,28 +5,29 @@ namespace TrafficCity.Ui;
 
 /// <summary>
 /// Масштаб UI (ui-spec.md §11): <c>content_scale_mode = canvas_items</c>, множитель = база x пользовательский.
-/// База = высота окна / 768, в диапазоне 1.0-1.5 (доля экрана остаётся той же); пользовательский 75-150 % с шагом 5 %.
+/// Фиксированный пиксельный размер (решение владельца 2026-10-29): база = 1.0 при любом разрешении окна, эталон — размер UI
+/// на высоте <see cref="RefHeight"/> = 768 px; на большом экране UI занимает меньшую долю. Пользовательский 50-150 % с шагом 5 %.
 /// Масштабируется только 2D-канва (UI), 3D-мир рендерится в полном разрешении окна.
 /// </summary>
 public sealed class UiScale
 {
+    /// <summary>Эталонная высота: размер UI на ней (база 1.0) сохраняется при любом разрешении.</summary>
     public const float RefHeight = 768f;
-    public const float BaseMin = 1.0f;
-    public const float BaseMax = 1.5f;
-    public const int UserMinPercent = 75;
+    public const int UserMinPercent = 50;
     public const int UserMaxPercent = 150;
     public const int UserStepPercent = 5;
 
-    /// <summary>Пользовательский множитель, % (75-150).</summary>
+    /// <summary>Пользовательский множитель, % (50-150).</summary>
     public int UserPercent { get; private set; } = 100;
 
-    /// <summary>База от высоты окна.</summary>
+    /// <summary>База: всегда 1.0 (UI не растёт с разрешением).</summary>
     public float Base { get; private set; } = 1f;
 
     /// <summary>Итоговый множитель, который получает <see cref="Window.ContentScaleFactor"/>.</summary>
     public float Factor => Base * (UserPercent / 100f);
 
-    public static float BaseFor(int windowHeightPx) => Math.Clamp(windowHeightPx / RefHeight, BaseMin, BaseMax);
+    /// <summary>База не зависит от высоты окна (фиксированный пиксельный размер).</summary>
+    public static float BaseFor(int windowHeightPx) => 1f;
 
     /// <summary>Ограничить процент диапазоном и шагом 5 %.</summary>
     public static int Snap(int percent)

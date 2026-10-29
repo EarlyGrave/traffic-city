@@ -7,7 +7,7 @@ public readonly record struct KitPalette(Color Accent, Color Selected, Color Too
 
 /// <summary>
 /// Токены UI-кита «Пластилин» (docs/design/ui-kit.md) — единственный источник цветов, отступов, радиусов, контура, тени,
-/// кеглей и длительностей анимаций. Значения в логических пикселях при масштабе 100 %; масштаб 75–150 % даёт
+/// кеглей и длительностей анимаций. Значения в логических пикселях при масштабе 100 %; масштаб 50–150 % даёт
 /// <c>content_scale_factor</c> окна (<see cref="UiScale"/>). Цвета UI — sRGB.
 /// </summary>
 public static class Tokens

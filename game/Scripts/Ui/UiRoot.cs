@@ -10,7 +10,7 @@ namespace TrafficCity.Ui;
 /// (<see cref="UiTheme"/>), масштабом (<see cref="UiScale"/>) и роутером состояния (<see cref="UiRouter"/>).
 /// Экраны (полосы, док, меню) создаются по <see cref="UiScreenRegistry"/>; корень раздаёт им ввод, Esc (по <see cref="UiScreen.EscPriority"/>),
 /// обновления и смену состояния, а наружу (SimHost) отдаёт узкий фасад. Новый экран сюда не дописывается.
-/// Аргументы запуска (после <c>--</c>): <c>--ui-state overview|build|info|inspect</c>, <c>--ui-scale 75..150</c> (пользовательский множитель, %),
+/// Аргументы запуска (после <c>--</c>): <c>--ui-state overview|build|info|inspect</c>, <c>--ui-scale 50..150</c> (пользовательский множитель, %),
 /// <c>--ui-cb 0..2</c> (палитра для дальтоников на запуск), <c>--no-ui</c> (скрыть слой: замер вклада UI), <c>--ui-shot</c> (<see cref="UiShot"/>);
 /// аргументы экранов - у самих экранов.
 /// </summary>

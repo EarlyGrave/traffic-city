@@ -7,7 +7,7 @@ namespace TrafficCity.Ui.Kit;
 /// Витрина UI-кита (F1, F2): все компоненты Kit во всех состояниях (кнопки, тулбар, сегменты, слайдер, список, панель, карточка,
 /// плитки KPI, бейджи, подсказка, диалог, тосты), переключатели палитры и масштаба.
 /// Запуск: сцена <c>res://Scripts/Ui/Kit/KitGallery.tscn</c>; аргументы после <c>--</c>: <c>--kit-palette 0..2</c>,
-/// <c>--ui-scale 75..150</c>, <c>--ui-shot файл.png [--ui-shot-frame K]</c> (кадр окна в PNG и выход, как у <see cref="UiRoot"/>).
+/// <c>--ui-scale 50..150</c>, <c>--ui-shot файл.png [--ui-shot-frame K]</c> (кадр окна в PNG и выход, как у <see cref="UiRoot"/>).
 /// Масштаб витрины = пользовательский процент (без базы от высоты окна), чтобы 100 % и 150 % сравнивались на одном окне.
 /// Тема и дерево строятся разово (старт и клик по переключателю), в кадре ничего не выделяется.
 /// </summary>
@@ -15,7 +15,7 @@ public sealed partial class KitGallery : Control
 {
     private static readonly string[] _variationTitles = { "Основная", "Вторичная", "Призрачная", "Иконка", "Переключатель", "Опасная" };
     private static readonly string[] _stateTitles = { "обычная", "наведение", "нажата", "выбрана", "заблок.", "фокус" };
-    private static readonly int[] _scales = { 75, 100, 125, 150 };
+    private static readonly int[] _scales = { 50, 75, 100, 125, 150 };
 
     private static readonly string[] _toolTitles =
     {

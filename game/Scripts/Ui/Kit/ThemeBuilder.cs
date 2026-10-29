@@ -9,7 +9,7 @@ namespace TrafficCity.Ui.Kit;
 /// (без размытия, StyleBoxFlat рисует тень только с размытием); нажатие — верх уходит на 3 px вниз, тень 1 px.
 /// Выбранное состояние (заливка <c>selected</c>, у иконки — <c>tool-active</c>) есть у переключаемых вариантов: Toggle, Icon, Ghost и базовый Button;
 /// у Primary/Secondary/Danger нажатие — только просадка без смены цвета.
-/// Масштаб 75–150 % — <c>content_scale_factor</c> окна (<see cref="UiScale"/>), тема в логических пикселях.
+/// Масштаб 50–150 % — <c>content_scale_factor</c> окна (<see cref="UiScale"/>), тема в логических пикселях.
 /// </summary>
 public static class ThemeBuilder
 {

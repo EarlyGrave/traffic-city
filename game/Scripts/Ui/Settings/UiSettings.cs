@@ -26,7 +26,7 @@ public sealed class UiSettings
     private const string Section = "ui";
     private static UiSettings? _current;
 
-    /// <summary>Масштаб UI, % (75-150, шаг 5).</summary>
+    /// <summary>Масштаб UI, % (50-150, шаг 5).</summary>
     public int ScalePercent { get; set; } = 100;
 
     public ColorblindMode Colorblind { get; set; } = ColorblindMode.Normal;
