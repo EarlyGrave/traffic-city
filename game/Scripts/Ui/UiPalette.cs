@@ -13,24 +13,26 @@ public static class UiPalette
     public const float DefaultPanelAlpha = 0.95f;
 
     /// <summary>Фон панели: беж инфо-режима (светлый) - тот же тон, что у мира в инфо-режиме.</summary>
-    public static readonly Color PanelSolid = Palette.InfoBgLight;
+    public static readonly Color PanelSolid = Kit.Tokens.Surface;
 
-    public static readonly Color PanelBorder = Palette.Asphalt.Lerp(Palette.Ground, 0.45f);
+    public static readonly Color PanelBorder = Kit.Tokens.Ink;
 
     /// <summary>Заливка кнопки в покое / при наведении / нажатой.</summary>
-    public static readonly Color Button = Palette.Ground;
+    public static readonly Color Button = Kit.Tokens.SurfaceAlt;
 
-    public static readonly Color ButtonHover = Palette.LaneLine;
-    public static readonly Color ButtonPressed = Palette.Asphalt.Lerp(Palette.Ground, 0.55f);
+    public static readonly Color ButtonHover = Kit.Tokens.Hover(Kit.Tokens.SurfaceAlt);
+    public static readonly Color ButtonPressed = Kit.Tokens.DisabledFill;
 
     /// <summary>Текст: основной ≥ 4.5:1 к <see cref="PanelSolid"/> (проверка скриншотами, ui-spec.md §11).</summary>
-    public static readonly Color Text = Palette.Srgb("#262A30");
+    public static readonly Color Text = Kit.Tokens.Ink;
 
-    public static readonly Color TextSecondary = Palette.Srgb("#5A5E66");
-    public static readonly Color TextDisabled = TextSecondary with { A = 0.55f };
-    public static readonly Color TextOnAccent = Palette.Srgb("#FFFFFF");
+    public static readonly Color TextSecondary = Kit.Tokens.InkSecondary;
+    public static readonly Color TextDisabled = Kit.Tokens.DisabledInk;
 
-    /// <summary>Акцент: активный инструмент, включённый переключатель.</summary>
+    /// <summary>Текст на светлом акценте «Пластилина» — тот же <c>ink</c>.</summary>
+    public static readonly Color TextOnAccent = Kit.Tokens.Ink;
+
+    /// <summary>Акцент: активный инструмент, включённый переключатель (= <c>selected</c> кита).</summary>
     public static Color Accent { get; private set; } = AccentFor(ColorblindMode.Normal);
 
     /// <summary>Семантика: никогда не только цветом (рядом всегда текст или значок).</summary>
@@ -51,6 +53,7 @@ public static class UiPalette
     /// <summary>Режим палитры для дальтоников (UI12): подменяет акцент и семантику; смысл всегда дублируется текстом или буквой.</summary>
     public static void SetColorblind(ColorblindMode mode)
     {
+        Kit.Tokens.SetPalette(mode);
         Accent = AccentFor(mode);
         Warning = WarningFor(mode);
         Error = ErrorFor(mode);
@@ -59,7 +62,7 @@ public static class UiPalette
         SignalYellow = mode == ColorblindMode.DeuteranopiaProtanopia ? Palette.Srgb("#7A5A00") : Palette.Srgb("#9A6200");
     }
 
-    public static Color AccentFor(ColorblindMode mode) => mode == ColorblindMode.Tritanopia ? Palette.Srgb("#B0306E") : Palette.Srgb("#2F6FE0");
+    public static Color AccentFor(ColorblindMode mode) => Kit.Tokens.Palettes[(int)mode].Selected;
 
     public static Color WarningFor(ColorblindMode mode) => mode switch
     {
