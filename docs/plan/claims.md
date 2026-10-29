@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| LP-спека (lots-polygons.md) | локал | local/lp-spec | docs/design/lots-polygons.md, docs/adr/0042-* | 2026-10-30 |
+| FR-спека (правка zoning-demand.md, fr-zones) | локал | local/fr-spec | docs/design/zoning-demand.md, docs/design/freight.md, docs/adr/0043-* | 2026-10-30 |
