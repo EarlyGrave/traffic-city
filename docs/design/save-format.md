@@ -158,6 +158,7 @@ xxh64 каждого блока и подвала, каталог столбцо
 | `CBGT` | C | 1 | (v9, ADR-0025, city-economy.md §12) есть ⇔ `demand.model = residents` и `economy.city_budget` (`PARM.CityBudget = 1`): действующая и ожидающая политики по полям (`TaxRBp`, `TaxCBp`, `TaxIBp`, `LandTaxBpDay`, `Fare`, `Flags`, `R0`, `R1`; u16), `HasPending`, `LandValue` (`NC`), `IncomeEwma`, `ExpenseEwma`, `Carry` (17 видов потоков), `DebtDays`, `OverLimitDays`, `Insolvent`, кольцо `UndoCredits` (64 записи по полям), суточные пары `FareEvadedDay`, `DebtEvictionsDay`. Производные `MaintRoadDay`, `MaintBusDay`, `VotDsQ8` не сохраняются (`CityWorld.RestoreDerived`) |
 | `PARK` | C | `HighWater` объектов | (v10, ADR-0026, parking.md §2.1, §13) есть ⇔ `demand.model = residents` и `parking.model = resource` (`PARM.ParkingEnabled = 1`): пул объектов стоянки (`HighWater`, `FreeList`, `Generation`; слот 0 - `Overflow`, всегда жив) и поля (`Kind`, `Flags`, `Lot`, `Building`, `BuildingGen`, `Capacity`, `Assigned`, `Occupied`, `Reserved`, `Fee`); мёртвые слоты - канон (`Lot`, `Building` = -1, остальное 0). Точка въезда (`AccessLane/AccessS`), точка пешехода, положение, компоненты, `WalkMm`, `HomeAway`, окрестности участков и обратные ссылки участок -> обочина, здание -> стоянка не сохраняются (`ParkingBuild.RefreshAll` в `LotBuilder.RestoreDerived`). `ParkSearchQueue` добавит K3 |
 | `LUSE` | C | `Count` полигонов | (v10, ADR-0027) есть ⇔ `PARM.LandUseCount > 0`: полигоны парков и воды генератора - четыре вершины (`P0X`..`P3Z`, f32), `Kind`, `Flags` (`LandUseMarks`); `Load` кладёт их в `World.LandUse` (`Simulation.LandUse`, `LandUseVersion = 1`), поэтому участки, нарезаемые после `Load` (`BuildRoad`), обходят парки и воду так же, как в `Create`. Сейвы до v10 полигонов не несут (в файле нет seed-параметров `city.landuse`): после миграции `LandUse` пусто, как было до этой версии |
+| `TERR` | C | `SamplesX · SamplesZ` отсчётов | (v12, ADR-0036, terrain.md §2.1, §8) есть ⇔ `PARM.TerrainEnabled = 1`: сетка рельефа - `CellMm` (4000/8000/16000), `OriginX/OriginZ` (клетка мировой сетки от `WorldGridOrigin`, валидатор сверяет побитово с расчётом `Create`), `SamplesX/SamplesZ`, `BaseCm`, `HeightUnitMm` (= 10); массивы `Ground`, `Water` (u16, см над базой), `WaterKind` (u8: 0 суша, 1 стоячая вода, 2 источник; 3 - резерв течения, отклоняется; `WaterKind = 0` ⇔ `Water = 0`); `Version`, `OpSeq`. `Lock` и кольцо грязи - производные: после `Load` замков нет, кольцо пусто с `DroppedVersion = Version`. Резерв: тег `WSRC` и столбцы `TERR` 13+ (источники и течение воды, terrain.md §3.4) |
 
 Блоки хоста (флаг `host`, id со строчной первой буквой, ядро не разбирает): `meta` (имя города, время создания/изменения
 по часам хоста, сыгранные тики, имя сценария, версия игры), `thmb` (превью PNG), `camr` (камера), `mod?` (состояние модов,
@@ -347,6 +348,7 @@ public sealed partial class Simulation
   `continue_ticks` (200), `hash_after_continue`.
 - Состав на каждую `world_version`: `small` (явная сеть фикстур, ~100 машин, единицы КБ) и `s1k-t2400` (≈ 0.5 МБ сжатый); с v2 ещё `s1k-peds-t2400` (≤ 1 МБ сжатый); с v3 `s1k-res-t24000`; с v5 `small-drain-t600` (сохранение посреди дренажа: операция сноса, закрытые полосы); с v4 `small-edited-t600` (малый мир без оверлея, дороги построены и освобождены: дыры в пулах и аренах, `ToolsTouched = 1`).
   Файлы w2 без пешеходов (`w2-small-t600`, `w2-s1k-t2400`) несут те же `state_hash` и `hash_after_continue`, что `w1-*` (миграция 1 → 2 поведение не меняет).
+  С v12 (TR1, рельеф) бюджет 32 МБ не растёт: в текущей версии пересоздаётся только подмножество (`small-t600`, `s1k-t2400`, новый `terrain-demo-t600` - малый город на рельефе с морем, озером и рекой); остальные случаи покрыты файлами w11, они мигрируют 11 → 12 без смены поведения (флаг `Current` у случая в `SaveCorpusTests`, тест `Corpus_W11Files_AreKeptAndMigrate_ToNoTerrain`). Тесты, которым нужен конкретный «старый» случай (`ResCorpusTests` - `w11-s1k-res-d3`), читают файл w11.
   s10k в корпус не кладём (≈ 2.5 МБ на версию) — его round-trip строится в тесте.
 - Файлы прошлых версий **не меняются и не удаляются**. Для текущей версии `hash_after_*` проверяются строго и
   обновляются вместе с golden-хэшами при смене поведения (как `HotPathGoldenHashTests`). Для прошлых — загрузка + миграция +
@@ -446,6 +448,7 @@ s10k с цифрами размера и времени. Клиентские к
 | 9 | ADR-0025, казна города (`docs/design/city-economy.md` §12, задача E1). Блок `CBGT` (только при `PARM.CityBudget = 1`); столбцы `PARM` 191-218 (секция `economy`: `CityBudget`, ставки, плата за проезд, вклад в казну, процент, кредит, содержание, цена земли, ценность времени, буферы, пределы политики), `BLDG` 21 `PayrollEwma`, `CNTR` 154-156 (`FareEvaded`, `DebtEvictions`, `InsufficientFunds`), `LEDG` 3-5 длиной 17 (виды потоков 13-16: `Interest`, `Dividend`, `Leakage`, `Refund`); `hash_version` 4: раздел хэша казны (политики, цена земли, переносы, долг, кредиты undo, потоки 13-16, фонд оплаты, счётчики) - только при бюджете, виды 13-16 вне бюджета в хэш не входят. Окно версии открыто до E8: E2-E5 вправе дописывать столбцы с дефолтом в `MigrationV9` и перегенерировать корпус w9 | `MigrationV9` (`Save/MigrationV9.cs`): бюджет выключен - `PARM` 191-218 = дефолты `economy` (нули у мира без жителей), `CityBudget = 0`; потоки 13-16 = 0 (столбцы `LEDG` 3-5 дополняются нулями), `PayrollEwma = 0`, счётчики 0; блоков не создаёт; w1-w8 продолжаются тем же хэшем |
 | 10 | ADR-0026, парковка как ресурс (`docs/design/parking.md` §13, задача K1) и землепользование в сейве (ADR-0027, долг VS8). Блоки `PARK` (только при `PARM.ParkingEnabled = 1`) и `LUSE` (только при `PARM.LandUseCount > 0`); столбцы `PARM` 219 (`LandUseCount`), 220-238 (секция `parking`: режим, ходьба, кандидаты, повторы, обочина, гараж) и 239 (`MaxParking`), `BTYP` 10-12 (`ParkingCapacity`, `ParkingAccess`, `ParkingFee`), `RESD` 41-49 (`HomeFac`, `HomeFacGen`, `CarFac`, `CarFacGen`, `CarLot`, `CarWalkMm`, `LegStage`, `LegWaitFrom`, `LegParkWait`), `VEHC` 42-44 (`ParkFac`, `ParkFacGen`, `ParkSearchTick`), `TRIP` 12-13 (`ParkRef`, `ParkGen`), `CNTR` 157-172 (счётчики parking.md §11); `hash_version` 4 без изменений: раздел хэша парковки (`ParkingHash`) и поля заявок пишутся только в режиме. `AccessLane/AccessS` и точки пешехода объектов - производные от участка (отличие от parking.md §2.1: сохранять индексы полос значило бы заводить `RefKind` и перенос при правках сети). Окно версии открыто до K8: K2-K7 вправе дописывать столбцы с дефолтом в `MigrationV10` и перегенерировать корпус w10 | `MigrationV10` (`Save/MigrationV10.cs`): `PARM` 219-239 = нули (режима нет), `BTYP` 10-12 = нули, `RESD` 41-49 (`HomeFac`, `CarFac`, `CarLot` = -1, остальное 0), `VEHC` 42-44 (`ParkFac`, `ParkSearchTick` = -1), `TRIP` 12-13 = 0, `CNTR` 157-172 = 0; блоков `PARK` и `LUSE` не создаёт; w1-w9 продолжаются тем же хэшем |
 | 11 | ADR-0034, прогрессия и показатели города (`docs/design/progression.md` §2.4, §4.4, задачи PG1-PG2). Блоки `CKPI` (всегда при `demand.model = residents`: кольцо 24 игровых часов `KpiHour` в физическом порядке с головой и заполненностью, текущий час, отметки `VehicleTicksTotal/MovingVehicleTicksTotal` начала часа, суточное кольцо баланса 32) и `PROG` (только при `PARM.ProgressionEnabled = 1`: вехи - порог, грант, кредитные дни, область, флаги, ворота G0/G1, маска признаков, диапазон профилей, тик взятия; индексы профилей, области, `MinLegs`, закрытые на старте признаки, размер каталога профилей; состояние - взято, открытые признаки и битсет профилей, бонус кредита, стадия области, `GatedNotified`); столбцы `PARM` 240 (`ProgressionEnabled`), `CNTR` 173 (`LockedRejects`), `CBGT` 31 (`WarnLevel`, уровень предупреждения PG5). `hash_version` 4 без изменений: раздел хэша прогрессии (состояние, `CKPI`, `LockedRejects`) пишется только при прогрессии, без неё кольцо показателей - наблюдатель вне хэша; `WarnLevel` в хэш войдёт с PG5 | `MigrationV11` (`Save/MigrationV11.cs`): `PARM` 240 = 0 (прогрессии нет, `PROG` не создаётся), `CNTR` 173 = 0, `CBGT` 31 = 0; у мира с жителями создаётся блок `CKPI` с пустыми кольцами («собираем данные») и отметками начала часа = текущим `CNTR` 7-8 (первый час не берёт всю историю); w1-w10 продолжаются тем же хэшем |
+| 12 | ADR-0036, рельеф и вода (`docs/design/terrain.md` §2, §3.2, §8, задача TR1). Блок `TERR` (только при `PARM.TerrainEnabled = 1`: сетка, `Ground`, `Water`, `WaterKind`, `Version`, `OpSeq`); столбцы `PARM` 241 (`TerrainEnabled`), 242-255 (уклоны улиц и магистралей, срезка/подсыпка, откос берега, просвет и длина моста, `TerrainAutoBridge`, кисть и мазок, лимиты отсчётов за тик и заливки, `LotsMaxSlopePct`, `GradeMaxBoostPm`; без рельефа - строго дефолты). `hash_version` 4 без изменений: раздел хэша 14 (геометрия сетки, база, версии, xxh64 трёх массивов, `Elevation` живых узлов) пишется только при рельефе | `MigrationV12` (`Save/MigrationV12.cs`): `PARM` 241 = 0 (рельефа нет, `TERR` не создаётся), 242-255 - дефолты; w1-w11 продолжаются тем же хэшем |
 
 Решение по 2.5 S2 (и S3: столбец `SpillTicks`, дефолт 0): `world_version` остаётся 1. Правило ADR-0012 п.6 («новое поле = новый столбец с дефолтом, `world_version++`») защищает **выпущенные** сейвы; корпуса и сейвов игроков ещё нет (тот же довод, что у `MANI`/`QMSO`), поэтому миграция `1 → 2` была бы кодом без входных данных. Дефолты столбцов (приложение A) приведены на случай, когда версия всё же будет поднята после выпуска первых сейвов: столбец Adaptive отсутствует → слот грузится как `Fixed` без автомата (`Machine = 0`), `ArmLeftHead = -1`, дефолты `RulesDesc.Signal*` = значения `WorldBuilder.WithDefaults`. Сейвы, записанные до 2.5 S2 (только отладочные), не поддерживаются - допустимо до первого релиза. Первый выпущенный сейв закрывает «окно»: любое следующее изменение схемы - `world_version++` и миграция.
 
@@ -714,6 +717,21 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 238 | ParkingGaragePermits | u8 | 1 | 0 |
 | `PARM` | 239 | MaxParking | i32 | 1 | 0 |
 | `PARM` | 240 | ProgressionEnabled | u8 | 1 | 0 |
+| `PARM` | 241 | TerrainEnabled | u8 | 1 | 0 |
+| `PARM` | 242 | TerrainMaxGradeStreetPm | i32 | 1 | 80 |
+| `PARM` | 243 | TerrainMaxGradeArterialPm | i32 | 1 | 60 |
+| `PARM` | 244 | TerrainMaxCutCm | i32 | 1 | 1000 |
+| `PARM` | 245 | TerrainMaxFillCm | i32 | 1 | 600 |
+| `PARM` | 246 | TerrainBankSlopePm | i32 | 1 | 500 |
+| `PARM` | 247 | TerrainBridgeClearanceCm | i32 | 1 | 200 |
+| `PARM` | 248 | TerrainMaxBridgeM | i32 | 1 | 300 |
+| `PARM` | 249 | TerrainAutoBridge | u8 | 1 | 1 |
+| `PARM` | 250 | TerrainMaxBrushM | i32 | 1 | 96 |
+| `PARM` | 251 | TerrainMaxDabCm | i32 | 1 | 200 |
+| `PARM` | 252 | TerrainMaxSamplesPerTick | i32 | 1 | 32768 |
+| `PARM` | 253 | TerrainMaxFloodSamples | i32 | 1 | 65536 |
+| `PARM` | 254 | LotsMaxSlopePct | i32 | 1 | 15 |
+| `PARM` | 255 | GradeMaxBoostPm | i32 | 1 | 1100 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -1632,6 +1650,18 @@ s10k с цифрами размера и времени. Клиентские к
 | `PROG` (PARM.ProgressionEnabled = 1) | 30 | CreditDaysBonus | i32 | 1 | 0 |
 | `PROG` (PARM.ProgressionEnabled = 1) | 31 | AreaStage | i32 | 1 | 0 |
 | `PROG` (PARM.ProgressionEnabled = 1) | 32 | GatedNotified | u64 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 1 | CellMm | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 2 | OriginX | f32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 3 | OriginZ | f32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 4 | SamplesX | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 5 | SamplesZ | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 6 | BaseCm | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 7 | HeightUnitMm | i32 | 1 | 10 |
+| `TERR` (PARM.TerrainEnabled = 1) | 8 | Ground | u16 | SamplesX * SamplesZ | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 9 | Water | u16 | SamplesX * SamplesZ | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 10 | WaterKind | u8 | SamplesX * SamplesZ | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 11 | Version | i32 | 1 | 0 |
+| `TERR` (PARM.TerrainEnabled = 1) | 12 | OpSeq | i32 | 1 | 0 |
 | `MANI` | 1 | Kind | u8 | ManifestCount | 0 |
 | `MANI` | 2 | SavedIndex | i32 | ManifestCount | 0 |
 | `MANI` | 3 | IdOffset | u32 | ManifestCount | 0 |
