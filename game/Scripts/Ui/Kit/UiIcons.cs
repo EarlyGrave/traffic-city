@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Godot;
 
 namespace TrafficCity.Ui.Kit;
@@ -16,6 +16,7 @@ public static class UiIcons
     };
 
     private static readonly Dictionary<string, Texture2D> _cache = new();
+    private static bool _warned;
 
     public static Texture2D Glyph(string name) => Load("res://assets/ui/icons/toolbar/glyph/" + name + ".png");
 
@@ -25,7 +26,19 @@ public static class UiIcons
     {
         if (!_cache.TryGetValue(path, out Texture2D? tex))
         {
-            tex = GD.Load<Texture2D>(path);
+            tex = ResourceLoader.Exists(path) ? ResourceLoader.Load<Texture2D>(path) : null;
+            if (tex == null)
+            {
+                // Нет импорта (.godot/imported пуст после свежего клона): читаем PNG напрямую.
+                if (!_warned)
+                {
+                    _warned = true;
+                    GD.PushWarning("UiIcons: ресурс не импортирован, PNG грузится напрямую. Запустите godot --headless --path game --import. " + path);
+                }
+
+                Image img = Image.LoadFromFile(ProjectSettings.GlobalizePath(path));
+                tex = ImageTexture.CreateFromImage(img);
+            }
             _cache[path] = tex;
         }
 
