@@ -272,4 +272,4 @@
 | L68 | ready-city (локал, worktree) | sonnet | Новая игра → game-city через ReadyCity с экраном загрузки, имена вех в тостах (клиентская таблица), «Показать» для линий/зданий → инспектор сегмента | done: 1 коммит, ~137k токенов, 34 вызова, 10 мин, переделок 0; в игре не проверено |
 | L69 | ui16-city (локал, worktree) | opus | UI16 панель города: KPI, графики час/день, вехи, замки инструментов и профилей, клавиша C | done: 1 коммит, ~166k токенов, 53 вызова, 15 мин, переделок 0; 2 скриншота, C/Esc/разблокировка вживую не проверены; заявка ядру: профили вехи, имена вех |
 | 195 | tr3-roads-on-terrain (облако, worktree) | opus | TR3: дороги на рельефе — высоты узлов, уклон, насыпи/выемки, мосты, блокировка кисти (terrain.md §4, §12) | в работе |
-| 196 | lfs-hook-wrappers (облако, worktree) | haiku | обёртки git-lfs в .githooks (pre-push, post-checkout, post-commit, post-merge) | в работе |
+| 196 | lfs-hook-wrappers (облако, worktree) | haiku | обёртки git-lfs в .githooks (pre-push, post-checkout, post-commit, post-merge) | готово: 51bc6bf, ~81k токенов, 15 вызовов, 20 мин (pre-commit ~17 мин); test-hooks 63/63 |
