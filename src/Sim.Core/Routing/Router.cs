@@ -147,6 +147,7 @@ internal sealed class Router
         c.PathfindQueries++;
         c.PathfindWork += r.QueryWork;
         c.PathfindExpandedNodes += r.Expanded;
+        c.DenyDescends += r.DenyDescends;
         c.PlanUnpacks += r.Unpacks;
         c.UnpackWork += r.UnpackWork;
         WorkThisTick += r.QueryWork + r.UnpackWork;

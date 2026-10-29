@@ -41,6 +41,7 @@ internal static class GateRules
     public const float StopLineTolerance = 1.5f;   // м: StoppedAtLine при Length - S <= MinGap + 1.5 (§5.4 п. 2)
     public const float InversionGapTime = 1.0f;    // с: зазор при инверсии приоритета (§5.4 п. 4c)
     public const float DefaultYieldGapTime = 3f;   // с
+    public const float DefaultEmergencyRedSpeed = 15f / 3.6f;   // м/с: порог проезда спецмашины на вызове на красный (vehicle-classes.md §2.4)
     public const int DefaultMaxYieldWaitTicks = 400;
 
     public static bool IsGranted(VehicleStore v, int i) => (v.GateState[i] & Granted) != 0;

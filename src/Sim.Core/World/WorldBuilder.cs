@@ -918,6 +918,11 @@ internal static class WorldBuilder
             r.SignalArrowGapTicks = Rules.Intersections.SignalStore.DefaultArrowGapTicks;
         }
 
+        if (!(r.EmergencyRedSpeed > 0f))
+        {
+            r.EmergencyRedSpeed = Rules.Intersections.GateRules.DefaultEmergencyRedSpeed;
+        }
+
         return r;
     }
 

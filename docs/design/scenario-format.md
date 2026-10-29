@@ -81,6 +81,7 @@
     "gravity_exponent": number,         // вес ∝ w_i·w_j / d^α, α. Дефолт 1.0
     "weight_jitter": number,            // веса зон = 1 ± U(-j, j) по PRNG Zones. Дефолт 0.5
     "external_share": number,           // доля поездок с началом ИЛИ концом на краю карты. Дефолт 0.3
+    "special_on_call": bool,            // VC3: машины класса special от OD-генератора едут на вызове всю поездку (тест, калибровка). Дефолт false
     "min_trip_m": number,               // отбрасывать OD-пары ближе этого (по центрам зон). Дефолт 600
     "od_pairs": [ { "from": int, "to": int, "weight": number } ]   // необязательно: явные пары вместо модели
   },
@@ -114,6 +115,7 @@
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
     "yield_gap_s": 3.0,
+    "emergency_red_speed_kmh": 15,      // VC3: порог проезда спецмашины на вызове на красный, 0-50 км/ч (0 = полная остановка у линии)
     "max_yield_wait_s": 20,             // инверсия приоритета у ворот (intersections.md §5.4)
     "signal_min_green_s": 7, "signal_max_green_s": 24, "signal_gap_s": 2.5,          // Adaptive (intersections.md §6.5), 2.5
     "signal_arrow_trigger_s": 4, "signal_arrow_min_s": 3, "signal_arrow_max_s": 6, "signal_arrow_gap_s": 2,

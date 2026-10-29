@@ -29,6 +29,7 @@ internal struct QueryResult
     public float Cost;       // OverlaySearcher.PlanCost
     public int QueryWork;    // OverlaySearcher.LastWork
     public int Expanded;     // OverlaySearcher.LastExpanded
+    public int DenyDescends; // раскрытий ячеек из-за запрета класса за запрос (прирост OverlaySearcher.DenyDescends)
     public int Unpacks;      // развёртываний, включая неудавшееся
     public int UnpackWork;
     public int StepCount;
@@ -48,7 +49,9 @@ internal static class RouteCompute
         System.Diagnostics.Debug.Assert(ReferenceEquals(s.Searcher.Overlay, ov), "scratch собран под другой оверлей");
         r = default;
         OverlaySearcher se = s.Searcher;
+        long deny0 = se.DenyDescends;
         SearchStatus st = se.Query(q.StartLane, q.StartS, q.DestLane, q.DestS, s.Plan, out int pl, q.Access);
+        r.DenyDescends = (int)(se.DenyDescends - deny0);
         r.QueryWork = se.LastWork;
         r.Expanded = se.LastExpanded;
         if (st != SearchStatus.Found)

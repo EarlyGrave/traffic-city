@@ -280,10 +280,13 @@ internal sealed class QueueMeso
         }
     }
 
-    /// <summary>Въезд на полосу (после <c>LodTransitions.SetLevel</c>): обычная полоса, не автобус - в очередь.</summary>
+    /// <summary>
+    /// Въезд на полосу (после <c>LodTransitions.SetLevel</c>): обычная полоса, не автобус и не спецмашина на вызове - в очередь. На вызове машина кинематическая, как автобус
+    /// (vehicle-classes.md §2.4 п. 6). Флаг, поставленный уже внутри очереди, машину из неё не вынимает (позиция в очереди синтезируется): она выходит в свой черёд, как все.
+    /// </summary>
     public void OnEnterLane(int lane, int i)
     {
-        if (_net.Lanes[lane].Kind != LaneKind.Normal || (_v.Flags[i] & (byte)VehicleFlags.IsBus) != 0 || IsQ(i))
+        if (_net.Lanes[lane].Kind != LaneKind.Normal || (_v.Flags[i] & (byte)(VehicleFlags.IsBus | VehicleFlags.OnCall)) != 0 || IsQ(i))
         {
             return;
         }

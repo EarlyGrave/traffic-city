@@ -227,7 +227,7 @@ internal static class GatePhase
                     if (v.Lane[x] == lane)   // ghost: её допуск ведёт основная полоса
                     {
                         int gc = v.GrantConnector[x];
-                        if (!revoking && gc >= 0 && w.LaneSignals[gc] == (byte)LaneSignal.Red)
+                        if (!revoking && gc >= 0 && w.LaneSignals[gc] == (byte)LaneSignal.Red && (v.Flags[x] & (byte)VehicleFlags.OnCall) == 0)   // VC3: допуск спецмашины на вызове не снимается
                         {
                             ref readonly VehicleTypeDesc t = ref w.Types[v.Type[x]];
                             float d = net.LaneLength[lane] - v.S[x] - GateRules.StopLineOffset;
@@ -1070,6 +1070,7 @@ internal static class GatePhase
         }
 
         // 1. Сигнал.
+        bool onRedGrant = false;   // VC3: спецмашина на вызове допущена на красный (п. 1) - в п. 4b конфликты для неё Yield
         int slot = nd.Signal;
         bool fixedSignal = nd.Control == NodeControl.Signal && slot >= 0 && slot < w.Signals.Count && IsColored(w.Signals.Mode[slot]);
         if (fixedSignal)
@@ -1091,6 +1092,10 @@ internal static class GatePhase
                 {
                     return GateDeny.Signal;
                 }
+            }
+            else if ((v.Flags[i] & (byte)VehicleFlags.OnCall) != 0 && vi <= w.Rules.EmergencyRedSpeed)
+            {
+                onRedGrant = true;   // красный: машина на вызове сбросила скорость до порога - сигнал её не держит (vehicle-classes.md §2.4 п. 2)
             }
             else
             {
@@ -1198,7 +1203,7 @@ internal static class GatePhase
                 }
 
                 // 4b. Подъезжающие: первая недопущенная на входной полосе чужого connector'а.
-                ConflictRel rel = ce.Rel;
+                ConflictRel rel = onRedGrant ? ConflictRel.Yield : ce.Rel;   // VC3: на красном спецмашина сама ищет окно (gap acceptance) при любом Rel таблицы
                 int y = occ.LaneHead[inLane];
                 while (y != -1 && GateRules.IsGranted(v, y))
                 {
@@ -1315,6 +1320,11 @@ internal static class GatePhase
         if (nd.Control == NodeControl.Signal)
         {
             RecordSignalGrant(w, gw, i, g, lane);
+        }
+
+        if (onRedGrant)
+        {
+            gw.OnCallRedGrants++;
         }
 
         v.GateState[i] = GateRules.Granted;

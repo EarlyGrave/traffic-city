@@ -154,7 +154,7 @@ internal sealed class GateWorker
 
     public int Candidates;
     public long TryGrantCalls, TryGrantEntries;
-    public long Grants, DeniedExit, PriorityInversions, BoxWaitTicks, GateWaitTicksTotal, StarveDenials, CarCrossDelayTicks;
+    public long Grants, DeniedExit, PriorityInversions, BoxWaitTicks, GateWaitTicksTotal, StarveDenials, CarCrossDelayTicks, OnCallRedGrants;
     public long LeftWaitMax, ArterialGrants, ArterialStops;
     public readonly SignalMetrics Signal = new();
     public bool SignalDirty;
@@ -177,6 +177,7 @@ internal sealed class GateWorker
         w.Counters.Grants += Grants;
         w.Counters.GateDeniedExit += DeniedExit;
         w.Counters.PriorityInversions += PriorityInversions;
+        w.Counters.OnCallRedGrants += OnCallRedGrants;
         w.Counters.BoxWaitTicks += BoxWaitTicks;
         w.Counters.GateWaitTicksTotal += GateWaitTicksTotal;
         w.Counters.StarveDenials += StarveDenials;
@@ -210,7 +211,7 @@ internal sealed class GateWorker
 
         Candidates = 0;
         TryGrantCalls = TryGrantEntries = 0;
-        Grants = DeniedExit = PriorityInversions = BoxWaitTicks = GateWaitTicksTotal = StarveDenials = CarCrossDelayTicks = 0;
+        Grants = DeniedExit = PriorityInversions = BoxWaitTicks = GateWaitTicksTotal = StarveDenials = CarCrossDelayTicks = OnCallRedGrants = 0;
         LeftWaitMax = ArterialGrants = ArterialStops = 0;
     }
 }

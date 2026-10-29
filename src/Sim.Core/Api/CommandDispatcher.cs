@@ -49,6 +49,9 @@ internal static partial class CommandDispatcher
             case CommandKind.SelectVehicle:
                 SelectVehicle(w, in cmd);
                 break;
+            case CommandKind.SetOnCall:
+                SetOnCall(w, in cmd);
+                break;
             case CommandKind.ClearSelection:
                 ClearSelection(w);
                 Applied(w, in cmd);
@@ -730,6 +733,39 @@ internal static partial class CommandDispatcher
         ClearSelection(w);
         w.Selected = h;
         w.Vehicles.Flags[h.Index] |= (byte)VehicleFlags.Selected;
+        Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// <c>SetOnCall</c> (VC3, vehicle-classes.md §2.4): флаг <see cref="VehicleFlags.OnCall"/> у машины типа класса <c>Special</c>; иное - отказ (приоритет только у спецмашин, ЖКХ получает его лишь
+    /// флагом вызова от диспетчера). Права (<c>Access</c>) меняются сразу, спланированный маршрут не пересчитывается.
+    /// </summary>
+    private static void SetOnCall(World w, in Command cmd)
+    {
+        var h = new VehicleHandle(cmd.SetOnCall.Index, cmd.SetOnCall.Generation);
+        if (!w.Vehicles.IsAlive(h))
+        {
+            w.Counters.InvalidHandleOps++;
+            Rejected(w, in cmd, RejectReason.InvalidHandle);
+            return;
+        }
+
+        int i = h.Index;
+        if (w.Types[w.Vehicles.Type[i]].Category != VehicleCategory.Special)
+        {
+            Rejected(w, in cmd, RejectReason.InvalidArgument);
+            return;
+        }
+
+        if (cmd.SetOnCall.OnCall != 0)
+        {
+            w.Vehicles.Flags[i] |= (byte)VehicleFlags.OnCall;
+        }
+        else
+        {
+            w.Vehicles.Flags[i] &= unchecked((byte)~(byte)VehicleFlags.OnCall);
+        }
+
         Applied(w, in cmd);
     }
 

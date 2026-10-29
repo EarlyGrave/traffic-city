@@ -126,6 +126,7 @@ public struct RulesDesc
     public int SignalArrowMinTicks;        // 3 с -> 60
     public int SignalArrowMaxTicks;        // 6 с -> 120
     public int SignalArrowGapTicks;        // 2 с -> 40
+    public float EmergencyRedSpeed;        // VC3: порог проезда спецмашины на вызове на красный, м/с; <= 0 -> 4.17 (15 км/ч)
 }
 
 // ---- city (scenario-format.md §2.1 "city") ----
@@ -246,6 +247,7 @@ public struct DemandDesc
     public float MinTripLength;            // м
     public ZoneDesc[] Zones;               // необязательные явные зоны (иначе ZoneGenerator)
     public OdPairDesc[] OdPairs;           // необязательные явные пары вместо модели
+    public bool SpecialOnCall;             // VC3: машины класса special от OD-генератора едут на вызове всю поездку (тест и калибровка; по умолчанию false)
 }
 
 // ---- transit ----

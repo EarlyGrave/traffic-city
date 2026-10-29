@@ -31,13 +31,13 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams(), VehicleClassParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
         Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns()),
         Extend(WorldState(), PedWorldState(), CityWorldState()),
-        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters(), ProgressionCounters()),
+        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters(), ProgressionCounters(), VehicleClassCounters()),
         NetworkCounts(),
         Nodes(),
         Extend(Segments(), new[] { SegmentProfileColumn(), SegmentDenyColumn() }),
