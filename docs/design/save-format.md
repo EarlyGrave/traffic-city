@@ -1084,6 +1084,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NSEG` | 14 | Cx | f32 | SegmentCount | 0 |
 | `NSEG` | 15 | Cz | f32 | SegmentCount | 0 |
 | `NSEG` | 16 | Profile | i32 | SegmentCount | -1 |
+| `NSEG` | 17 | Deny | u8 | SegmentCount | 0 |
 | `NLAN` | 1 | Kind | u8 | LaneCount | 0 |
 | `NLAN` | 2 | LaneNo | u8 | LaneCount | 0 |
 | `NLAN` | 3 | Direction | u8 | LaneCount | 0 |
@@ -1103,6 +1104,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `NLAN` | 17 | ConflictGroup | i32 | LaneCount | -1 |
 | `NLAN` | 18 | Generation | i32 | LaneCount | 0 |
 | `NLAN` | 19 | Width | f32 | LaneCount | 0 |
+| `NLAN` | 20 | Deny | u8 | LaneCount | 0 |
 | `NARM` | 1 | NodeArms | i32 | NodeArmCount | 0 |
 | `NARM` | 2 | ArmFlags | u8 | NodeArmCount | 0 |
 | `NARM` | 3 | ArmDirX | f32 | NodeArmCount | 0 |

@@ -290,7 +290,7 @@ internal static partial class SaveValidator
 
             if ((uint)sd.NodeA >= (uint)nodes || (uint)sd.NodeB >= (uint)nodes || !Fin(sd.Length) || sd.Length <= 0f || !Fin(sd.SpeedLimit) || sd.SpeedLimit <= 0f ||
                 (byte)sd.Kind > (byte)RoadKind.Arterial || sd.LanesAB > NetworkBuilder.MaxLanesPerDirection || sd.LanesBA > NetworkBuilder.MaxLanesPerDirection ||
-                sd.PointCount < 2 || sd.FirstPoint < 0 || (long)sd.FirstPoint + sd.PointCount > segPts)
+                sd.PointCount < 2 || sd.FirstPoint < 0 || (long)sd.FirstPoint + sd.PointCount > segPts || (sd.Deny & ~LaneDeny.StreetWritable) != 0)
             {
                 return Bad(c, i, 3);
             }
@@ -316,7 +316,8 @@ internal static partial class SaveValidator
             }
 
             if ((l.Flags & ~(LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut | LaneFlags.Closed | LaneFlags.Draining)) != 0 ||
-                (n.ToolsTouched == 0 && (l.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0))
+                (n.ToolsTouched == 0 && (l.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0) ||
+                (l.Deny & ~LaneDeny.Known) != 0 || ((l.Flags & LaneFlags.BusOnly) != 0) != (l.Deny == LaneDeny.BusLane))   // VC2: зеркало BusOnly = (Deny == 0x1D)
             {
                 return Bad(c, i, 4);
             }

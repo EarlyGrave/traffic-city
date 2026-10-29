@@ -171,6 +171,13 @@ internal static partial class SaveSchema
     private static ColumnDef LaneWidthColumn() =>
         Col.Field<LaneData>(19, "Width", w => w.Net.Lanes, _laneN, "LaneCount", nameof(LaneData.Width));
 
+    // ---- NSEG 17 / NLAN 20 (w16, vehicle-classes.md §5): маски запрета классов ТС улицы и полосы; зеркало BusOnly - в Flags ----
+    private static ColumnDef SegmentDenyColumn() =>
+        Col.Field<SegmentData>(17, "Deny", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Deny));
+
+    private static ColumnDef LaneDenyColumn() =>
+        Col.Field<LaneData>(20, "Deny", w => w.Net.Lanes, _laneN, "LaneCount", nameof(LaneData.Deny));
+
     // ---- LOTS 11-15 (w8, road-profiles.md §4.4): участки на мировой сетке; объявлены сразу, чтобы RP5 не поднимал версию ----
     private static ColumnDef[] LotGridColumns() => new[]
     {
