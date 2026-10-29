@@ -494,6 +494,64 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
   `population` не растёт строго; вех > 32, ворот > 2, областей > 8; `min_* > max_*`; `area` вне областей.
 - `id` вех - только у загрузчика и клиента (`LoadedScenario.MilestoneIds`, индекс = веха ядра); ядро получает POD `ProgressionDesc` (`Api/Progression.cs`).
 
+### 2.11 Секция `terrain` (этап 6, TR2, ADR-0036, `docs/design/terrain.md` §9)
+
+Необязательна. Нет секции или `"enabled": false` - рельефа нет: состояние, хэш и сейв побитово прежние (TR-I1). Ключ `enabled` по умолчанию `true`
+(пустая `"terrain": {}` - плоский рельеф 0 м, протяжённость из `tools.world_bounds` либо bbox сети + `margin_m`). Загрузчик (`ScenarioLoader.Terrain.cs`)
+читает файлы и base64, переводит единицы в целые ядра и заполняет `ScenarioDesc.Terrain` (`TerrainDesc`); ядро файлов не читает. Все ошибки - с JSON-путём
+(`$.terrain.water.rivers[0].width_m: value 0 out of range [0.01, 10000]`), неизвестные ключи - ошибка.
+
+```jsonc
+"terrain": {
+  "enabled": true,                    // дефолт true
+  "cell_m": 8,                        // 4 | 8 | 16; дефолт 8
+  "margin_m": 1024,                   // поле вокруг bbox сети без extent и world_bounds; 0/нет - 1024
+  "extent": { "min_x": -3040, "min_z": -3040, "max_x": 3040, "max_z": 3040 },   // нет - tools.world_bounds, иначе bbox ± margin_m
+  "source": "heightmap",              // "flat" (дефолт) | "heightmap" | "noise" (пока ошибка: генератор TR7)
+  "flat_m": 0,                        // source = flat: высота всех отсчётов, 0..655.35 м
+  "heightmap": {                      // обязателен при source = heightmap, иначе ошибка
+    "file": "terrain/yuryev-polsky-32m.r16",   // ИЛИ "data_b64" (ровно одно из двух); путь от каталога сценария
+    "data_b64": "…",                  // те же байты в base64 (тесты, малые карты)
+    "size": [191, 191],               // отсчётов по X и Z, >= 2; размер данных строго size[0]·size[1]·2 байт
+    "cell_m": 32,                     // шаг исходной сетки, м; кратен terrain.cell_m (до 256 м)
+    "origin_m": [-3040, -3040],       // мир отсчёта (0, 0); дефолт [0, 0]
+    "base_m": 120.0,                  // абсолютная высота нуля, м; дефолт 0
+    "unit_m": 0.01                    // единица значений, м (целое число мм: 0.001..1); дефолт 0.01
+  },
+  "water": {
+    "sea_level_m": null,              // абсолютный уровень, м; null/нет - моря нет
+    "lakes": [ { "x": 0, "z": 0, "level_m": 100.6 } ],
+    "rivers": [ { "points": [[-100, 450], [300, 490]], "width_m": 16, "depth_m": 2, "flow_m3s": null } ],
+    "sources": [ { "id": 1, "kind": "inflow", "x": -100, "z": 450, "flow_m3s": 2.5, "target_level_m": null, "radius_m": 20 } ]
+  },
+  "stamps": [ { "kind": "ridge", "closed": true, "points": [[250, 50], [350, 50], [350, 150], [250, 150]],
+                "height_m": 2, "crest_m": 2, "slope": 2.0, "gaps": [ { "x": 300, "z": 50, "width_m": 16 } ] } ],
+  "max_grade_pct": { "street": 8, "arterial": 6 },        // %, 0.1..100
+  "max_cut_m": 10, "max_fill_m": 6,                       // 0.01..655.35 м
+  "bank_slope": 0.5,                                      // высота/заложение, 0.001..10 (0.5 = 1:2)
+  "bridge_clearance_m": 2, "max_bridge_m": 300, "auto_bridge": true,
+  "max_brush_m": 96,                                      // 1..12·cell_m
+  "max_dab_m": 2, "max_samples_per_tick": 32768, "max_flood_samples": 65536,
+  "grade_max_boost": 1.1                                  // потолок множителя скорости под гору, 1.0..2.0
+}
+```
+
+- **Высоты.** `.r16` - сырой `u16` little-endian, строка за строкой по Z (индекс `iz·size[0] + ix`), значение = `(h − base_m) / unit_m`; в base64 те же байты.
+  Высота над `base_m` не больше 655.35 м (`ushort` в сантиметрах), иначе ошибка с индексом отсчёта. Развёртка 32 → 8 м - в ядре (terrain.md §9.1).
+- **Единицы ядра.** `max_grade_pct` → ‰ (×10), `*_m` → см, `bank_slope` и `grade_max_boost` → ‰ (×1000). Ноль в `TerrainDesc` значит «дефолт», поэтому явные
+  значения параметров обязаны быть > 0; чтобы взять дефолт, ключ не пишут.
+- **Вода.** Уровни абсолютные, должны лежать в `[base_m, base_m + 655.35]` (у `flat` база 0). Реки: `points` >= 2, `width_m`, `depth_m` > 0.
+  `rivers[].flow_m3s` (`null` или >= 0) и `water.sources[]` (`id` уникален, `kind` = `spring` | `inflow` | `sink`, точка внутри протяжённости, если она известна из
+  `extent`/`world_bounds`, `flow_m3s`/`radius_m` >= 0 или `null`, `target_level_m` число или `null`) только проверяются и передаются в `TerrainDesc` (`NaN` = `null`);
+  течение не исполняется (terrain.md §3.4). Предупреждения - в `LoadedScenario.Warnings`: `water.sources: течение не реализовано, источники игнорируются`.
+- **Штампы** (`ridge` - вал, `pit` - выемка; `closed`, `gaps[]`, `crest_m` дефолт 0, `slope` дефолт 2.0) разбираются и проверяются в `LoadedScenario.TerrainStamps`,
+  но **ядро их пока не исполняет** (в `TerrainDesc` для них поля нет; предупреждение `terrain.stamps: …`). Остаток для TR7/TR8: поле в `TerrainDesc` и применение
+  после воды в порядке массива (terrain.md §9.2).
+- **Пока не читается.** `source = "noise"` и блок `noise` (генератор TR7) - ошибка пути. `lots.max_slope_pct` и цены рельефа в `tools.costs` ждут своих задач
+  (TR6, TR3/TR5): секции `lots` в загрузчике ещё нет.
+- Загрузка из строки (`ScenarioLoader.Parse` без `readRelativeBytes`) принимает только `data_b64`; `file` даёт ошибку «reading binary files is not available».
+- Пример - `scenarios/terrain-demo.json` (сеть `demo-grid`, сетка 5×5 по 160 м inline, озеро, река, источник, замкнутый вал с проёмом).
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
 В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.
