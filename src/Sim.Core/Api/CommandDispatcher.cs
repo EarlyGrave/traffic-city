@@ -113,11 +113,15 @@ internal static partial class CommandDispatcher
                 UpgradeRoad(w, in cmd);
                 break;
             case CommandKind.SplitRoad:
+                SplitRoad(w, in cmd);
+                break;
+            case CommandKind.MergeAtNode:
+                MergeAtNode(w, in cmd);
+                break;
             case CommandKind.InsertBusStop:
             case CommandKind.RemoveBusStop:
             case CommandKind.RemoveBusRoute:
             case CommandKind.SetBusRouteParams:
-            case CommandKind.MergeAtNode:
                 // Инструменты игрока (player-tools.md): номера и payload закреплены в T1, тела - T3..T9.
                 Rejected(w, in cmd, RejectReason.NotSupported);
                 break;
@@ -201,6 +205,11 @@ internal static partial class CommandDispatcher
         bool noConnectors = (b.Flags & BuildRoadFlags.NoConnectors) != 0;
         var a = new Vec2(b.Ax, b.Az);
         var z = new Vec2(b.Bx, b.Bz);
+        if (!SplitEnds(w, in cmd, in chk, ref a, ref z))
+        {
+            return;
+        }
+
         if (!noConnectors)
         {
             // Врезка в построенный узел (4.3, T3): рукав добавляет перестройка узла.
@@ -219,22 +228,37 @@ internal static partial class CommandDispatcher
         w.Builder.ResetCreated();
         NetworkStatus st;
         int seg;
-        if (chk.Profile >= 0)
+        Span<Vec2> curve = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+        if (chk.Profile >= 0 || chk.Curve)
         {
-            // Дорога по профилю (RP7): концы прилипают или создаются, полосы и тип берутся из профиля; отступы - по рукавам, уже стоящим в узлах.
+            // Дорога по профилю (RP7) и/или кривая (T5): концы прилипают или создаются, полосы и тип - из профиля; ось кривой - сэмплы Безье между узлами концов; отступы - по рукавам узлов.
             st = w.Builder.AddNode(a, NodeControl.None, out int pa);
+            seg = -1;
             if (st == NetworkStatus.Ok)
             {
                 st = w.Builder.AddNode(z, NodeControl.None, out int pb);
-                seg = -1;
                 if (st == NetworkStatus.Ok)
                 {
-                    st = w.Builder.AddProfileSegment(pa, pb, ReadOnlySpan<Vec2>.Empty, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg);
+                    scoped ReadOnlySpan<Vec2> via = ReadOnlySpan<Vec2>.Empty;
+                    var cp = new Vec2(b.ControlX, b.ControlZ);
+                    if (chk.Curve)
+                    {
+                        int np = NetworkBuilder.SampleQuadratic(w.Net.Nodes[pa].Position, cp, w.Net.Nodes[pb].Position, curve);
+                        via = curve[1..(np - 1)];
+                    }
+
+                    st = chk.Profile >= 0
+                        ? w.Builder.AddProfileSegment(pa, pb, via, chk.Profile, chk.Mirrored, b.SpeedLimit, out seg)
+                        : w.Builder.AddSegment(pa, pb, via, b.LanesAB, b.LanesBA, b.SpeedLimit, b.Kind, out seg);
+                    if (st == NetworkStatus.Ok && chk.Curve)
+                    {
+                        ref SegmentData sd = ref w.Net.Segments[seg];
+                        sd.Flags |= SegmentFlags.Curve;
+                        sd.Cx = cp.X;
+                        sd.Cz = cp.Z;
+                        w.Net.ToolsTouched = 1;   // флаг Curve и контрольная точка - в хэше и сейве только с правками
+                    }
                 }
-            }
-            else
-            {
-                seg = -1;
             }
         }
         else
@@ -291,6 +315,37 @@ internal static partial class CommandDispatcher
         GrowOverlay(w, rebuilt);
         w.City?.LotGen.OnRoadBuilt(w, seg);   // Z6: участки вдоль нового сегмента (после пересборки сети пешеходов)
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    // AutoSplit (T5): концы на оси сегментов - сначала разрезы (узлы разреза - концы новой дороги; индексы второго сегмента первый разрез не трогает).
+    private static bool SplitEnds(World w, in Command cmd, in ToolCheck chk, ref Vec2 a, ref Vec2 z)
+    {
+        for (int e = 0; e < 2; e++)
+        {
+            int seg = e == 0 ? chk.SplitSegA : chk.SplitSegB;
+            if (seg < 0)
+            {
+                continue;
+            }
+
+            NetworkStatus st = ChainEdit.Split(w, seg, e == 0 ? chk.SplitSA : chk.SplitSB, cmd.Tag, out int node, out _, out _);
+            if (st != NetworkStatus.Ok)
+            {
+                RejectNetwork(w, in cmd, st);
+                return false;
+            }
+
+            if (e == 0)
+            {
+                a = w.Net.Nodes[node].Position;
+            }
+            else
+            {
+                z = w.Net.Nodes[node].Position;
+            }
+        }
+
+        return true;
     }
 
     // Пересоздание по RestoreOf (player-tools.md §8.2): событие и запись scratch-таблицы old -> new для сегмента и пересозданных узлов концов.
@@ -369,6 +424,7 @@ internal static partial class CommandDispatcher
         }
 
         w.Net.Version++;
+        NetworkEdit.RefreshDerived(w, pedsChanged: false);   // слот сегмента мог поднять HighWater: граф и оверлей - по новому числу слотов (T5: ловил фаззер)
         Rejected(w, in cmd, RejectOf(bad));
         return false;
     }

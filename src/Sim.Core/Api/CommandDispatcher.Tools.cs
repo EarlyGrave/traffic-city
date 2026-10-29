@@ -164,9 +164,10 @@ internal static partial class CommandDispatcher
     }
 
     /// <summary>
-    /// <c>UpgradeRoad</c> (RP7, player-tools.md §4.5): скорость, тип, полосы и профиль сегмента. Ось не меняется; сегмент и его handle сохраняются. Новый блок полос (другое число полос) - перенос ссылок
-    /// <c>Relocate</c> и перестройка узлов концов, только на пустом сегменте (<c>Busy</c> иначе); те же полосы - правка геометрии на месте. После правки участки вдоль дороги пересчитываются
-    /// (<c>LotBuilder.OnRoadsChanged</c>: клетки под новой проезжей частью - <c>Lost</c>).
+    /// <c>UpgradeRoad</c> (RP7, T5; player-tools.md §4.5): скорость, тип, полосы и профиль сегмента. Ось не меняется; сегмент и его handle сохраняются. Новый блок полос (другое число полос) -
+    /// перенос ссылок <c>Relocate</c> (машины уцелевших полос переезжают с полосой) и перестройка узлов концов; те же полосы - правка геометрии на месте. Занятый сегмент, у которого убираемые
+    /// полосы или исчезающие connector'ы концов заняты, получает операцию <c>ShrinkLanes</c> (дренаж, финал - фаза 1а); скорость меняется сразу. Команда во время дренажа, возвращающая
+    /// прежние полосы, отменяет операцию (undo). После правки участки вдоль дороги пересчитываются (<c>LotBuilder.OnRoadsChanged</c>).
     /// </summary>
     private static void UpgradeRoad(World w, in Command cmd)
     {
@@ -178,34 +179,47 @@ internal static partial class CommandDispatcher
             return;
         }
 
+        int seg = chk.Seg;
+        NetworkStore n = w.Net;
+        if (chk.CancelShrink)
+        {
+            int k = w.Ops.FindShrink(seg);
+            ToolOps.UnpackReshape(w.Ops.TargetGen[k], out int tab, out int tba, out _, out _, out _);
+            w.Builder.CancelShrink(w, seg, tab, tba);
+            w.Ops.RemoveAt(k);
+            w.Builder.ReshapeSegment(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);   // None или Speed
+            NetworkEdit.RefreshDerived(w, pedsChanged: false);
+            w.Work.ToolCommandsApplied++;
+            AppliedPaid(w, in cmd, in chk);
+            return;
+        }
+
         if (chk.Reshape == ReshapeMode.None)
         {
             AppliedPaid(w, in cmd, in chk);
             return;
         }
 
-        int seg = chk.Seg;
-        NetworkStore n = w.Net;
-        NetworkStatus st = w.Builder.ReshapeSegment(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
-        if (chk.Reshape == ReshapeMode.Speed)
+        if (chk.Drain > 0)
         {
-            NetworkEdit.RefreshDerived(w, pedsChanged: false);
-        }
-        else
-        {
-            NetworkEdit.RefreshDerived(w);
-            if (w.City != null)
+            // Дренаж: скорость - сразу, полосы и тип - в финале операции.
+            n.ToolsTouched = 1;
+            if (n.Segments[seg].SpeedLimit != chk.Speed)
             {
-                int lost = w.City.LotGen.OnRoadsChanged(w, w.City);
-                if (lost > 0)
-                {
-                    w.Emit(SimEventKind.ZoneLotsLost, cmd.Tag, seg, lost);
-                }
-
-                w.City.LotGen.RestoreDerived(w);
+                w.Builder.ReshapeSegment(w, seg, ReshapeMode.Speed, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
             }
+
+            int packed = ToolOps.PackReshape(chk.LanesAB, chk.LanesBA, chk.Kind, chk.Profile, chk.Mirrored);
+            w.Ops.TryAdd(ToolOpKind.ShrinkLanes, seg, packed, 0, w.Tick, chk.Drain, out _);
+            w.Builder.BeginShrink(w, seg, chk.LanesAB, chk.LanesBA);
+            NetworkEdit.RefreshDerived(w, pedsChanged: false);
+            w.Work.ToolOpsStarted++;
+            w.Work.ToolCommandsApplied++;
+            AppliedPaid(w, in cmd, in chk);
+            return;
         }
 
+        NetworkStatus st = ReshapeEdit.Apply(w, seg, chk.Reshape, chk.Profile, chk.Mirrored, chk.LanesAB, chk.LanesBA, chk.Speed, chk.Kind, cmd.Tag);
         if (st != NetworkStatus.Ok)
         {
             Rejected(w, in cmd, RejectOf(st));   // ёмкость при перестройке узла: пробное планирование валидатора её исключает
@@ -215,5 +229,83 @@ internal static partial class CommandDispatcher
         n.ToolsTouched = 1;
         w.Work.ToolCommandsApplied++;
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>
+    /// <c>SplitRoad</c> (T5, player-tools.md §4.4): узел в точке полной оси (м от узла A), сегмент заменяется двумя половинами; машины переносятся по координате (в «коробке» узла - на его
+    /// connector'ы), connector'ы концов сохраняются. Перенумерация (<c>SegmentRemapped</c>/<c>NodeRemapped</c>) - только для <c>RestoreSeg1/2</c> и <c>RestoreNode</c> (undo слияния).
+    /// </summary>
+    private static void SplitRoad(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        SplitRoadCmd c = cmd.SplitRoad;
+        NetworkStatus st = ChainEdit.Split(w, chk.Seg, c.S, cmd.Tag, out int node, out int seg1, out int seg2);
+        if (st != NetworkStatus.Ok)
+        {
+            Rejected(w, in cmd, RejectOf(st));
+            return;
+        }
+
+        // Перенумерация (player-tools.md §8.2) - только для восстанавливаемого (undo слияния): ссылки хоста на прежние половины и узел переводятся на новые.
+        NetworkStore n = w.Net;
+        RestoreRemap(w, in cmd, EntityKind.Node, in c.RestoreNode, new EntityRef(node, n.Nodes[node].Generation));
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg1, new EntityRef(seg1, n.Segments[seg1].Generation));
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg2, new EntityRef(seg2, n.Segments[seg2].Generation));
+
+        w.Inv.BuiltNode = node;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>
+    /// <c>MergeAtNode</c> (T5, player-tools.md §4.4): два сегмента узла степени 2 сливаются в один, узел освобождается; машины на сегментах и connector'ах узла переносятся.
+    /// Перенумерация - только для <c>RestoreSeg</c> (undo разреза): ссылки на половины остаются ссылками на мёртвые сегменты, их вернёт обратная <c>SplitRoad</c> (<c>RestoreSeg1/2</c>).
+    /// </summary>
+    private static void MergeAtNode(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why, chk.CapKind);
+            return;
+        }
+
+        NetworkStore n = w.Net;
+        ChainEdit.TwoSegments(n, chk.Node, out int s1, out int s2);
+        w.Inv.MergedA = new EntityRef(s1, n.Segments[s1].Generation);
+        w.Inv.MergedB = new EntityRef(s2, n.Segments[s2].Generation);
+        NetworkStatus st = ChainEdit.Merge(w, chk.Node, cmd.Tag, out int merged, out float splitS);
+        if (st != NetworkStatus.Ok)
+        {
+            Rejected(w, in cmd, RejectOf(st));
+            return;
+        }
+
+        MergeAtNodeCmd c = cmd.MergeAtNode;
+        RestoreRemap(w, in cmd, EntityKind.Segment, in c.RestoreSeg, new EntityRef(merged, n.Segments[merged].Generation));
+        w.Inv.BuiltSeg = merged;
+        w.Inv.BuiltS = splitS;
+        w.Work.ToolCommandsApplied++;
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    // Пересоздание по Restore*: событие *Remapped и запись scratch-таблицы old -> new (player-tools.md §8.2).
+    private static void RestoreRemap(World w, in Command cmd, EntityKind kind, in EntityRef old, in EntityRef now)
+    {
+        if (old.Generation == 0)
+        {
+            return;
+        }
+
+        w.Inv.AddRemap(kind, in old, in now);
+        w.Emit(kind == EntityKind.Node ? SimEventKind.NodeRemapped : SimEventKind.SegmentRemapped, cmd.Tag, old.Index, now.Index);
     }
 }
