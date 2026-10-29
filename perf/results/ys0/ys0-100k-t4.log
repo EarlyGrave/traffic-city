@@ -1,0 +1,1 @@
+bench ys0-100k: 6000 ticks, tick p50/p95/p99/max = 1.5309/2.484/3.6787/47.7812 ms, alloc 0 B/tick, stuck 287 -> perf/results/ys0/ys0-100k-t4.json

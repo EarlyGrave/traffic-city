@@ -1,0 +1,144 @@
+{
+  "format_version": 2,
+  "name": "ys0-100k",
+  "seed": 20261024,
+  "duration_s": 3600,
+  "vehicle_types_file": "vehicle-types.json",
+  "road_profiles_file": "road-profiles.json",
+  "city": {
+    "enabled": true,
+    "size_m": [
+      3040,
+      3040
+    ],
+    "scale": 3.33,
+    "block_m": 152,
+    "arterial_every": 4,
+    "arterial_speed_kmh": 60,
+    "street_speed_kmh": 40,
+    "lane_width_m": 3.5,
+    "irregular_nodes": 133,
+    "irregular_jitter_m": 40,
+    "node_jitter_m": 0,
+    "removed_street_share": 0.15,
+    "connector_samples": 8,
+    "signals": "arterial_x_arterial",
+    "minor_control": "yield",
+    "profiles": {
+      "street": "street_2",
+      "arterial": "arterial_4"
+    }
+  },
+  "vehicles": {
+    "count": 120000,
+    "spawn_ramp_s": 300,
+    "type_mix": {
+      "car": 1.0
+    }
+  },
+  "demand": {
+    "zone_m": 508,
+    "model": "residents",
+    "gravity_exponent": 1.0,
+    "weight_jitter": 0.5,
+    "external_share": 0.3,
+    "min_trip_m": 600
+  },
+  "transit": {
+    "bidirectional": true,
+    "routes": 111,
+    "headway_s": 300,
+    "stops_per_route": [
+      8,
+      14
+    ],
+    "stop_spacing_m": 400,
+    "stop_kind": "mixed",
+    "bus_type": "bus",
+    "dwell_base_s": 8,
+    "dwell_per_passenger_s": 1.5,
+    "passenger_rate_per_min": 2
+  },
+  "peds": {
+    "count": 0,
+    "residents": 0,
+    "source": "city"
+  },
+  "lod": {
+    "cell_m": 1016
+  },
+  "calendar": {
+    "day_s": 3600
+  },
+  "residents": {
+    "initial_fill": 0.234,
+    "max_immigrants_per_day": 0.03,
+    "r_bias": 200
+  },
+  "choice": {
+    "asc_freq_s": 850
+  },
+  "rules": {
+    "min_physical_gap_m": 0.5,
+    "stuck_threshold_s": 60,
+    "stuck_speed_mps": 0.1,
+    "gridlock_stuck_share": 0.05,
+    "gridlock_min_stuck": 10,
+    "gridlock_hold_s": 60,
+    "mobil_every_ticks": 10,
+    "signal_yellow_s": 3,
+    "signal_all_red_s": 1,
+    "yield_gap_s": 3.0,
+    "max_yield_wait_s": 20
+  },
+  "routing": {
+    "levels": 2,
+    "cell_m": 1016,
+    "fanout": 4,
+    "window_steps": 16,
+    "pathfind_budget_per_tick": 256,
+    "work_budget_per_tick": 300000,
+    "customize_budget_per_tick": 50000,
+    "customize_eps": 0.05,
+    "cost_recalc_s": 30,
+    "timed_drift": 0.15,
+    "timed_drift_abs_s": 20
+  },
+  "capacities": {
+    "max_vehicles": 120000,
+    "max_nodes": 22400,
+    "max_segments": 41600,
+    "max_lanes": 384000,
+    "max_lane_points": 2560000,
+    "max_zones": 2048,
+    "max_bus_routes": 768,
+    "max_bus_stops": 12288,
+    "max_bus_stops_per_route": 32,
+    "max_routes": 256000,
+    "max_plan_steps": 5120000,
+    "max_pending_trips": 168000,
+    "command_queue": 1024,
+    "events": 4096,
+    "max_signalized_nodes": 1280,
+    "max_connectors": 358400,
+    "max_conflicts": 2150400,
+    "max_peds": 15600,
+    "max_residents": 1,
+    "max_ped_path_steps": 64,
+    "max_lots": 192000,
+    "max_buildings": 144000,
+    "max_city_residents": 1280000,
+    "skim_obs_capacity": 131072
+  },
+  "economy": {
+    "city_budget": true,
+    "credit_days": 20,
+    "initial_city_balance_per_resident": 20,
+    "maint_road_per_lane_km_day": {
+      "street": 23,
+      "arterial": 46
+    },
+    "maint_bus_day": 62,
+    "maint_stop_day": 5
+  }
+}
