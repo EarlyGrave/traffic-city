@@ -93,10 +93,35 @@ internal static class Growth
         ClearYesterday(c);
         Market m = c.Market;
         m.Sync(c);
+        if (c.Cfg.Zoning.GrowthStep != 0)
+        {
+            RemoveAbandoned(w, c);   // спрос, въезд и рост идут по часам (Hourly)
+            return;
+        }
+
         UpdateDemand(c, m);
         RemoveAbandoned(w, c);
+        Grow(w, c, m, 1);
+    }
+
+    /// <summary>
+    /// <c>zoning.growth_step = "hour"</c>: спрос, въезд и рост зданий на сдвиге игрового часа (последний тик часа, в том числе в сутки 0); лимиты суток делятся на 24 с округлением вверх.
+    /// Остальной дневной проход (фирмы, жители, снос) остаётся суточным.
+    /// </summary>
+    public static void Hourly(World w, CityWorld c)
+    {
+        Market m = c.Market;
+        m.Sync(c);
+        UpdateDemand(c, m);
+        Grow(w, c, m, 24);
+    }
+
+    /// <summary>Въезд и рост с лимитами суток, делёнными на <paramref name="parts"/> (1 - суточный шаг, 24 - часовой).</summary>
+    private static void Grow(World w, CityWorld c, Market m, int parts)
+    {
         int pop = c.Residents.AliveCount;
-        long cap = ((long)c.Cfg.Residents.MaxImmigrantsPerDayQ16 * pop) >> 16;
+        long cap = Math.Max(c.Cfg.Residents.MinImmigrantsPerDay, ((long)c.Cfg.Residents.MaxImmigrantsPerDayQ16 * pop) >> 16);
+        cap = (cap + parts - 1) / parts;
         int want = (int)Math.Min(Math.Max(1L, cap), Math.Max(0, c.DemandR));
         if (c.DemandR > 0 && want > 0)
         {
@@ -105,7 +130,7 @@ internal static class Growth
 
         if (c.Cfg.Zoning.Growth)
         {
-            Build(w, c, m);
+            Build(w, c, m, parts);
         }
     }
 
@@ -265,10 +290,10 @@ internal static class Growth
     // ------------------------------------------------------------------ рост
 
     /// <summary>Новые здания (§8.3): для каждой зоны с положительным спросом - лучшие по баллу доступности пустые участки, не больше <c>max_new_buildings_per_day</c> в сумме.</summary>
-    private static void Build(World w, CityWorld c, Market m)
+    private static void Build(World w, CityWorld c, Market m, int parts)
     {
         CityDesc cfg = c.Cfg;
-        int maxNew = Math.Max(1, cfg.Zoning.MaxNewBuildingsPerDay);
+        int maxNew = Math.Max(1, (cfg.Zoning.MaxNewBuildingsPerDay + parts - 1) / parts);
         long freeHousing = m.TotalFree;
         long needR = c.DemandR - freeHousing;
         long needC = c.DemandC;

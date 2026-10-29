@@ -22,7 +22,7 @@ namespace Sim.Core.Tests.Save;
 public sealed class SaveCorpusTests
 {
     private const int ContinueTicks = 200;
-    // w12 (TR1): бюджет не растёт - пересоздаётся только подмножество Current (small, s1k, terrain-demo), остальные случаи покрыты файлами w11 (мигрируют без смены поведения).
+    // w13 (Y4): PARM 256-258, поведение прежнее - пересоздаются те же Current (small, s1k, terrain-demo), остальные покрыты файлами w11. w12 (TR1): бюджет не растёт - пересоздаётся только подмножество Current (small, s1k, terrain-demo), остальные случаи покрыты файлами w11 (мигрируют без смены поведения).
     private const int SubsetSinceVersion = 12;
     private const long BudgetBytes = 32L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ; w11 (ADR-0034, PG1): 32 МБ - полный набор w11 (+5,7 МБ) и файл прогрессии
     private const long PedsFileBudgetBytes = 1024L * 1024;

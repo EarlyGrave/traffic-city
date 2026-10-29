@@ -83,6 +83,11 @@ internal static class CityPhase
         }
 
         DayPass(w, c, false);
+        if (c.Cfg.Zoning.GrowthStep != 0 && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            Growth.Hourly(w, c);   // рост по часам (zoning.growth_step = "hour"), до сдвига кольца показателей
+        }
+
         c.Kpi.OnTickEnd(w);   // показатели (progression.md §2.2): на последнем тике игрового часа час уходит в кольцо - до границы суток
         if ((w.Tick + 1) % c.DayTicks == 0)
         {

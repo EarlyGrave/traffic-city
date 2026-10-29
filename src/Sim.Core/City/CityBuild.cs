@@ -62,7 +62,8 @@ internal static class CityBuild
         CityResidentsDesc r = t.Residents;
         CityEconomyDesc e = t.Economy;
         CityChoiceDesc ch = t.Choice;
-        bool ok = cal.DayTicks >= CityWorld.SlotsPerDay && cal.DayTicks <= MaxDayTicks && cal.DayTicks % CityWorld.SlotsPerDay == 0;
+        bool ok = cal.DayTicks >= CityWorld.SlotsPerDay && cal.DayTicks <= MaxDayTicks && cal.DayTicks % CityWorld.SlotsPerDay == 0 && cal.StartHour is >= 0 and < 24;
+        ok &= r.MinImmigrantsPerDay is >= 0 and <= MaxBigCount && e.InitialCityBalance is >= 0 and <= 1_000_000_000;
         ok &= z.LotFrontageMm is >= 5_000 and <= 1_000_000 && z.LotDepthMm is >= 5_000 and <= 1_000_000 && z.NodeClearMm is >= 0 and <= 1_000_000;
         ok &= z.MaxNewBuildingsPerDay is >= 0 and <= MaxBigCount && z.MaxPaintM2 >= 1;
         ok &= Q16(z.CCenterShareQ16) && Q16(z.IEdgeShareQ16) && Q16(z.UnzonedShareQ16);
@@ -103,6 +104,28 @@ internal static class CityBuild
         return true;
     }
 
+    /// <summary>Сетка города при Create: по границам мира (<c>zoning.grid_from_bounds</c>: <c>tools.world_bounds</c>, иначе протяжённость рельефа), иначе по bbox начальной сети.</summary>
+    private static bool CreateGrid(World w, out CityGrid grid)
+    {
+        float cellM = w.LodCfg.CellM;
+        if (w.Town.Zoning.GridFromBounds != 0)
+        {
+            ToolsDesc t = w.ToolsCfg;
+            if (t.HasWorldBounds)
+            {
+                return CityGrid.TryCreate(t.BoundsMinX, t.BoundsMinZ, t.BoundsMaxX, t.BoundsMaxZ, cellM, out grid);
+            }
+
+            if (w.Terrain != null)
+            {
+                Terrain.TerrainStore s = w.Terrain;
+                return CityGrid.TryCreate(s.OriginX, s.OriginZ, s.OriginX + ((s.SamplesX - 1) * s.CellM), s.OriginZ + ((s.SamplesZ - 1) * s.CellM), cellM, out grid);
+            }
+        }
+
+        return CityGrid.TryCreate(w.Net, cellM, out grid);
+    }
+
     private static bool Q16(int v) => v is >= 0 and <= 65536;
 
     /// <summary>
@@ -117,7 +140,7 @@ internal static class CityBuild
         }
 
         CityGrid grid = savedGrid;
-        if (create && !CityGrid.TryCreate(w.Net, w.LodCfg.CellM, out grid))
+        if (create && !CreateGrid(w, out grid))
         {
             return CreateStatus.InvalidCity;
         }
@@ -125,6 +148,12 @@ internal static class CityBuild
         if (grid.Cells < 1 || Skims.EntriesFor(grid.Cells, w.Town.Choice.SkimPeriods) > Skims.MaxSkimEntries)
         {
             return CreateStatus.NotSupported;   // s1m-res: двухуровневый ским - этап 4.1 (zoning-demand.md §5.1)
+        }
+
+        if (create && w.Town.Calendar.StartHour > 0)
+        {
+            w.Tick = (long)w.Town.Calendar.StartHour * w.Town.Calendar.DayTicks / 24;   // calendar.start_hour: мир стартует в середине суток (сутки 0)
+            w.SegmentLoadsTick = w.Tick - 1;   // нагрузки сегментов "посчитаны" на тике до старта: пересчёт весов на первом тике (Tick кратен периоду) читает нули, как и в мире с нулевого тика
         }
 
         w.City = new CityWorld(in w.Town, in grid, in w.Caps, w);

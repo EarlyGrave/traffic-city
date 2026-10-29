@@ -394,6 +394,12 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res-econ.json` (E2) - `s1k-res` с `economy.city_budget = true` и содержанием сети и автобусов (`maint_*`, подбор на s1k ≈ 90% дохода казны). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
 `peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
 
+Ключи старта с нуля (`new-game-scratch.md` §2.2, задача Y4, `world_version` 13); все необязательны, без них поведение, хэш и сейвы прежние:
+`calendar.start_hour` (целое 0-23, дефолт 0) - игровой час начала: `Tick` при `Create` = `start_hour · DayTicks / 24`, сутки 0; `zoning.growth_step` (`"day"` дефолт | `"hour"`) - при `"hour"` спрос, въезд и рост зданий идут на сдвиге
+игрового часа (в том числе в сутки 0) с лимитами суток, делёнными на 24 с округлением вверх (`max_new_buildings_per_day`, пол въезда), остальной дневной проход (фирмы, жители, снос) остаётся суточным; `zoning.grid_from_bounds` (`bool`, дефолт `false`) -
+сетка города строится по `tools.world_bounds` (иначе по протяжённости рельефа; без обоих - ошибка), а не по bbox начальной сети (Y3 включит её для сценариев с `outside`); `residents.min_immigrants_per_day` (целое >= 0, дефолт 0) - пол суточного въезда:
+`cap = max(min, max_immigrants_per_day · N)`; `economy.initial_city_balance` (целое >= 0, дефолт 0) - абсолютный вклад в казну сверх `initial_city_balance_per_resident · N` (действует при `city_budget = true`).
+
 **Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
 `access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
 `curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,

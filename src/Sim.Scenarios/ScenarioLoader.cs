@@ -217,6 +217,11 @@ public static partial class ScenarioLoader
         ToolsDesc tools = ParseTools(root.OptObject("tools"));
         var warnings = new List<string>();
         TerrainDesc terrain = ParseTerrain(root.OptObject(TerrainKey), tools, readRelativeBytes, warnings, out TerrainStampDesc[] stamps);
+        if (town.Zoning.GridFromBounds != 0 && !tools.HasWorldBounds && !terrain.Enabled)
+        {
+            throw new ScenarioException("$.zoning.grid_from_bounds: requires tools.world_bounds (or terrain) to take the city grid from");
+        }
+
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
         {

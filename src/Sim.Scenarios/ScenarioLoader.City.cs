@@ -100,6 +100,8 @@ public static partial class ScenarioLoader
             throw new ScenarioException($"{r.ChildPath("day_s")}: day_s * 20 must be a multiple of 288 (a slot is 1/288 of a day; 3600 s gives 250 ticks)");
         }
 
+        t.Calendar.StartHour = r.Int("start_hour", 0, min: 0, max: 23);
+
         r.Finish();
     }
 
@@ -117,6 +119,14 @@ public static partial class ScenarioLoader
         z.Growth = r.Bool("growth", true);
         z.MaxNewBuildingsPerDay = r.Int("max_new_buildings_per_day", 20, min: 0, max: 1_000_000);
         z.MaxPaintM2 = r.Int("max_paint_m2", 250_000, min: 1);
+        string step = r.Str("growth_step", "day");
+        z.GrowthStep = step switch
+        {
+            "day" => (byte)0,
+            "hour" => (byte)1,
+            _ => throw new ScenarioException($"{r.ChildPath("growth_step")}: expected \"day\" or \"hour\", got \"{step}\""),
+        };
+        z.GridFromBounds = (byte)(r.Bool("grid_from_bounds", false) ? 1 : 0);
         if (r.Has("auto"))
         {
             System.Text.Json.JsonValueKind kind = r.Raw("auto").ValueKind;
@@ -164,6 +174,7 @@ public static partial class ScenarioLoader
         d.MaxRelocatePerDayQ16 = Frac16(r, "max_relocate_per_day", 0.005);
         d.MaxJobSwitchPerDayQ16 = Frac16(r, "max_jobswitch_per_day", 0.005);
         d.MaxImmigrantsPerDayQ16 = Frac16(r, "max_immigrants_per_day", 0.01);
+        d.MinImmigrantsPerDay = r.Int("min_immigrants_per_day", 0, min: 0, max: 1_000_000);
         d.PlanSlot = r.Int("plan_slot", 36, min: 0, max: 287);
         d.ShopSlots = r.Int("shop_slots", 6, min: 1, max: 288);
         d.HomeMinSlots = r.Int("home_min_slots", 2, min: 0, max: 288);
@@ -212,6 +223,7 @@ public static partial class ScenarioLoader
         e.LandTaxBpDay = r.Int("land_tax_bp_day", 15, min: 0, max: e.MaxLandBp);
         e.BusFare = r.Int("bus_fare", 2, min: 0, max: e.MaxFare);
         e.InitialCityBalancePerResident = r.Int("initial_city_balance_per_resident", 60, min: 0, max: 100_000_000);
+        e.InitialCityBalance = r.Int("initial_city_balance", 0, min: 0, max: 1_000_000_000);
         e.InterestBpDay = r.Int("interest_bp_day", 3, min: 0, max: 10_000);
         e.CreditDays = r.Int("credit_days", 60, min: 0, max: 3650);
         JsonObjectReader? maint = r.OptObject("maint_road_per_lane_km_day");
