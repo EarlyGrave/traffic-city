@@ -25,8 +25,9 @@ public static class BenchCommand
     public const int ExitUsage = 2;
 
     public const string Usage =
-        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--stuck-report] [--spike-report] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>] [--warmup-days D] [--window am_peak]\n" +
+        "Usage: Sim.Headless bench --scenario <name|path> --ticks N --out <file.json> [--warmup-ticks M] [--warmup-until-full] [--warmup-max-ticks K] [--repeat R] [--phases] [--stuck-report] [--spike-report] [--threads N] [--view all|focus|x0,z0,x1,z1] [--seed S] [--signal-mode adaptive|fixed] [--signal-coordination alternate|legacy|none] [--scenarios-dir <dir>] [--packages-dir <dir>] [--warmup-days D] [--window am_peak] [--ready-city]\n" +
         "  --warmup-days D      residents scenarios: warm up D whole game days (then up to the window start, if any) instead of --warmup-ticks; JSON gets warmup_days\n" +
+        "  --ready-city         residents scenarios: warm up like a new game (micro 1.25 days up to 06:00 of day 1, progression.md 7.3) and then up to the window start\n" +
         "  --window am_peak     residents scenarios: measure the morning peak, 6000 ticks (the default of --ticks here) from 6 slots before the earliest shift start; JSON gets window,\n" +
         "                       compare refuses to mix values\n" +
         "  --phases             time each of the 10 tick phases (core-api 7) via Simulation.OnPhaseEnd; JSON gets perf.phase_ms\n" +
@@ -50,10 +51,10 @@ public static class BenchCommand
     public const int AmPeakWindowTicks = 6000;
 
     /// <summary>Прогрев городом: целые сутки и окно (<see cref="AmPeak"/> или null). Без жителей игнорируется.</summary>
-    internal readonly record struct CityWindow(int WarmupDays, string? Window);
+    internal readonly record struct CityWindow(int WarmupDays, string? Window, bool ReadyCity = false);
 
     private static readonly string[] _allowed = { "--scenario", "--ticks", "--out", "--warmup-ticks", "--repeat", "--scenarios-dir", "--warmup-max-ticks", "--threads", "--view", "--seed", "--signal-mode", "--signal-coordination", "--warmup-days", "--window", "--packages-dir" };
-    private static readonly string[] _flags = { "--warmup-until-full", "--phases", "--stuck-report", "--spike-report" };
+    private static readonly string[] _flags = { "--warmup-until-full", "--phases", "--stuck-report", "--spike-report", "--ready-city" };
 
     /// <summary>Куда печатать разбор stuck-машин на конец окна (<c>--stuck-report</c>); null - не печатать.</summary>
     private static TextWriter? _stuckReportSink;
@@ -109,7 +110,7 @@ public static class BenchCommand
                 return ExitUsage;
             }
 
-            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec, new CityWindow(warmupDays, window));
+            r = MeasureRepeated(sc, ticks, warmup, repeat, a.Has("--warmup-until-full") ? Math.Max(warmup, warmupMax) : 0, a.Has("--phases"), threads, viewSpec, new CityWindow(warmupDays, window, a.Has("--ready-city")));
         }
         catch (ScenarioException e)
         {
@@ -229,10 +230,15 @@ public static class BenchCommand
         var timeline = new TimelineRunner(sc.Timeline);   // команды сценария в абсолютных тиках симуляции, в том числе в прогреве
         int target = sc.Desc.Demand.TargetVehicles;
         int warmedUp;
-        if (sim.HasCity && (cityWindow.WarmupDays > 0 || cityWindow.Window != null))
+        if (sim.HasCity && (cityWindow.WarmupDays > 0 || cityWindow.Window != null || cityWindow.ReadyCity))
         {
             // Город: целые сутки прогрева и выход на начало окна утреннего пика (тик внутри суток); рампы OD-генератора нет.
-            long start = ((long)cityWindow.WarmupDays * sim.CityDayTicks) + (cityWindow.Window == AmPeak ? sim.CityAmPeakStartTickOfDay : 0);
+            if (cityWindow.ReadyCity)
+            {
+                Sim.Scenarios.Game.ReadyCity.Advance(sim, Sim.Scenarios.Game.ReadyCityOptions.Default);   // микро до 06:00 суток 1 (progression.md §7.3)
+            }
+
+            long start = ((long)Math.Max(cityWindow.WarmupDays, cityWindow.ReadyCity ? 1 : 0) * sim.CityDayTicks) + (cityWindow.Window == AmPeak ? sim.CityAmPeakStartTickOfDay : 0);
             while (sim.Tick < start)
             {
                 timeline.Step(sim, (int)Math.Min(sim.CityDayTicks, start - sim.Tick));

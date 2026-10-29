@@ -17,6 +17,7 @@ public static class Program
         "\n" +
         "Commands:\n" +
         "  run              run a scenario and print counters (--scenario <name|path> --ticks N [--every K]; see run --help)\n" +
+        "  ready-city       prepare a new-game city (progression.md 7.3) and run it by days (see ready-city --help)\n" +
         "  bench            run a scenario and write perf JSON\n" +
         "  hash             print the state hash every K ticks (--scenario <name|path> --ticks N [--every K]; see hash --help)\n" +
         "  save             run a scenario and write a save container (--scenario <name|path> --ticks N --out <file>; see save --help)\n" +
@@ -93,6 +94,8 @@ public static class Program
                 return HasHelp(args) ? Help(RenderCompare.Usage) : RenderCompare.RunCompare(args, Console.Out, Console.Error);
             case "render-update-baseline":
                 return HasHelp(args) ? Help(RenderCompare.UpdateUsage) : RenderCompare.RunUpdate(args, Console.Out, Console.Error);
+            case "ready-city":
+                return HasHelp(args) ? Help(ReadyCityCommand.Usage) : ReadyCityCommand.Run(args, Console.Out, Console.Error);
             case "run":
                 return HasHelp(args) ? Help(RunCommand.Usage) : RunCommand.Run(args, Console.Out, Console.Error);
             default:
