@@ -48,6 +48,7 @@ public static class RejectMessages
         RejectReason.CreatesTrap => "Добавьте выезд или сделайте двустороннюю",
         RejectReason.Unreachable => "Проверьте связь дорог",
         RejectReason.Locked => "Откроется на одной из следующих вех города",
+        RejectReason.InsufficientFunds => "Поднимите налоги, снесите лишнее или сократите линии",
         _ => string.Empty,
     };
 

@@ -178,17 +178,17 @@ public sealed class CityKpiTests
         CityBudget b = c.Budget!;
         b.IncomeEwma = 1000;
         b.ExpenseEwma = 900;
-        Assert.Equal(-1, CityKpi.DaysToLimit(c));   // тренд >= 0
+        Assert.Equal(-1, CityKpi.DaysToLimit(c, 0));   // тренд >= 0
         b.ExpenseEwma = 1300;   // дефицит 300 в сутки
-        long room = c.Ledger.City + b.CreditLimit(in c.Cfg.Economy);
+        long room = c.Ledger.City + b.CreditLimit(in c.Cfg.Economy, 0);
         Assert.True(room > 0);
-        Assert.Equal((int)((room + 299) / 300), CityKpi.DaysToLimit(c));
+        Assert.Equal((int)((room + 299) / 300), CityKpi.DaysToLimit(c, 0));
         Assert.True(sim.GetCityKpi(out CityKpiInfo k));
         Assert.Equal(-300, k.TrendPerDay);
-        Assert.Equal(CityKpi.DaysToLimit(c), k.DaysToLimit);
+        Assert.Equal(CityKpi.DaysToLimit(c, 0), k.DaysToLimit);
         b.IncomeEwma = 0;
         b.ExpenseEwma = 1;
-        Assert.Equal(c.Ledger.City <= 0 ? 0 : (int)Math.Min(int.MaxValue, c.Ledger.City), CityKpi.DaysToLimit(c));
+        Assert.Equal(c.Ledger.City <= 0 ? 0 : (int)Math.Min(int.MaxValue, c.Ledger.City), CityKpi.DaysToLimit(c, 0));
     }
 
     [Fact]

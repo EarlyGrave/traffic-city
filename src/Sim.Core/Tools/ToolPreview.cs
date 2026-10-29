@@ -105,7 +105,7 @@ internal static class ToolPreview
 
         if (v != RejectReason.None)
         {
-            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ);
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, c.IssueKind, c.IssueIndex, c.IssueGen, c.IssueX, c.IssueZ, v == RejectReason.Locked ? c.LockMilestone : 0);
         }
         else
         {
@@ -149,13 +149,20 @@ internal static class ToolPreview
     {
         var iw = new IssueWriter(issues);
         RejectReason v = Zoning.Check(w, in cmd.PaintZone, out ZonePlan plan);
+        int lockMs = -1;
+        if (v is not (RejectReason.InvalidArgument or RejectReason.NotSupported))
+        {
+            RejectReason lk = Progression.Check(w, in cmd, out lockMs);   // PG3: замок зонирования - тем же вызовом, что в применении
+            v = lk != RejectReason.None ? lk : v;
+        }
+
         r.Verdict = v;
         PaintZoneCmd p = cmd.PaintZone;
         float cx = (p.X0 + p.X1) * 0.5f;
         float cz = (p.Z0 + p.Z1) * 0.5f;
         if (v != RejectReason.None)
         {
-            iw.Add((IssueCode)(int)v, IssueSeverity.Error, EntityKind.None, -1, 0, cx, cz);
+            iw.Add((IssueCode)(int)v, IssueSeverity.Error, EntityKind.None, -1, 0, cx, cz, v == RejectReason.Locked ? lockMs : 0);
         }
         else
         {

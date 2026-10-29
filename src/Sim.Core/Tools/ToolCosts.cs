@@ -126,7 +126,7 @@ internal static class ToolCosts
             }
         }
 
-        if (c.Cost > 0 && city.Ledger.City - c.Cost < -b.CreditLimit(in city.Cfg.Economy))
+        if (c.Cost > 0 && city.Ledger.City - c.Cost < -b.CreditLimit(in city.Cfg.Economy, Progression.CreditDaysBonus(w)))
         {
             return RejectReason.InsufficientFunds;
         }

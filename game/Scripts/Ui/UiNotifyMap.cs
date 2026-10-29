@@ -59,7 +59,7 @@ public readonly record struct NotifyRaw(
 /// <summary>
 /// Таблица «событие ядра -> короткий русский текст» (чистый C#, без Godot: юнит-тестируется). Только события, которые ядро уже выдаёт.
 /// Не показываются (шум, не для игрока): VehicleSpawned, TripCompleted, VehicleUnstuck, BusStopArrived, CommandApplied, *Created/*Removed/*Remapped, NodeRebuilt, ToolOpFinished.
-/// Номера 59-62 зарезервированы облаком под прогрессию: сюда не попадают, пока не появятся в <see cref="SimEventKind"/>.
+/// Прогрессия (59-62): веха, веха ждёт трафика, предупреждение о казне, жалоба жителей (с местом - «Показать»).
 /// </summary>
 public static class UiNotifyMap
 {
@@ -129,6 +129,19 @@ public static class UiNotifyMap
             case SimEventKind.PolicyApplied:
                 raw = Make(key, NotifySeverity.Info, "Новая политика вступила в силу", "смена политики", "смены политики", "смен политики", default);
                 return true;
+            case SimEventKind.MilestoneReached:
+                raw = Make(key, NotifySeverity.Good, "Новая веха: № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", жителей " + e.B.ToString(CultureInfo.InvariantCulture), "новая веха", "новые вехи", "новых вех", default);
+                return true;
+            case SimEventKind.MilestoneGated:
+                raw = Make(key, NotifySeverity.Info, "Жителей хватает для вехи № " + (e.A + 1).ToString(CultureInfo.InvariantCulture) + ", но трафик не в норме", "веха ждёт трафика", "вехи ждут трафика", "вех ждут трафика", default);
+                return true;
+            case SimEventKind.BudgetWarning:
+                raw = Make((key * 1000) + e.A, e.A >= 2 ? NotifySeverity.Error : NotifySeverity.Warning, "Через " + e.B.ToString(CultureInfo.InvariantCulture) + " дн. казна уйдёт за кредитный лимит", "предупреждение о казне", "предупреждения о казне", "предупреждений о казне", default);
+                return true;
+            case SimEventKind.Complaint:
+                string what = ComplaintText((ComplaintKind)e.A);
+                raw = Make((key * 1000) + e.A, NotifySeverity.Warning, what, "жалоба: " + what, "жалобы: " + what, "жалоб: " + what, NotifySubject.FromPlace(in e.Place));
+                return true;
             case SimEventKind.BusRouteCreated:
                 raw = Make(key, NotifySeverity.Info, "Создана автобусная линия", "новая линия", "новые линии", "новых линий", default);
                 return true;
@@ -192,7 +205,19 @@ public static class UiNotifyMap
         RejectReason.Unreachable => "нет пути от соседней остановки",
         RejectReason.OutOfBounds => "за границей карты",
         RejectReason.BudgetRule => "ставки вне допустимых",
+        RejectReason.Locked => "ещё не открыто",
         _ => "отказ ядра",
+    };
+
+    /// <summary>Жалоба жителей (progression.md §6.1) по виду.</summary>
+    public static string ComplaintText(ComplaintKind k) => k switch
+    {
+        ComplaintKind.LongWait => "Жители: стоим в пробке больше получаса",
+        ComplaintKind.NoParking => "Жители: негде припарковаться",
+        ComplaintKind.LongCommute => "Жители: на работу больше часа",
+        ComplaintKind.TourCancelled => "Жители: не смогли выехать",
+        ComplaintKind.LongStopWait => "Жители: долго ждали автобус",
+        _ => "Жалоба жителей",
     };
 
     /// <summary>Проблема автобусной линии (EV1): <paramref name="value"/> - <c>SimEvent.B</c>.</summary>

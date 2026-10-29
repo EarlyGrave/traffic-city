@@ -35,23 +35,10 @@ public sealed partial class Simulation
             info.NextPopulation = m.Population;
             KpiHour s = c.Kpi.SumWindow(in _w.Counters, true);
             bool enough = s.LegsAll >= p.MinLegs;
-            info.NextGateMask = GateMiss(c.Kpi, in m.G0, in s, enough, out info.NextGateValue0) | (GateMiss(c.Kpi, in m.G1, in s, enough, out info.NextGateValue1) << 1);
+            info.NextGateMask = City.Progression.GateMiss(c.Kpi, in m.G0, in s, enough, out info.NextGateValue0) | (City.Progression.GateMiss(c.Kpi, in m.G1, in s, enough, out info.NextGateValue1) << 1);
         }
 
         return true;
-    }
-
-    private static int GateMiss(CityKpi k, in KpiGate g, in KpiHour s, bool enough, out int value)
-    {
-        if (g.Kpi == KpiKind.None)
-        {
-            value = -1;
-            return 0;
-        }
-
-        value = k.Value(g.Kpi, in s);
-        bool ok = enough && value >= 0 && (g.IsMin != 0 ? value >= g.Value : value <= g.Value);
-        return ok ? 0 : 1;
     }
 
     /// <summary>Веха <paramref name="index"/>: описание и тик взятия (-1 - не взята); false - прогрессии нет или индекс вне диапазона.</summary>
@@ -139,7 +126,7 @@ public sealed partial class Simulation
         info.Balance = c.Ledger.City;
         info.HasBudget = c.Budget != null ? 1 : 0;
         info.TrendPerDay = c.Budget != null ? c.Budget.IncomeEwma - c.Budget.ExpenseEwma : 0;
-        info.DaysToLimit = CityKpi.DaysToLimit(c);
+        info.DaysToLimit = CityKpi.DaysToLimit(c, City.Progression.CreditDaysBonus(_w));
         info.Population = c.Residents.AliveCount;
         info.DaysFilled = k.DaysFilled;
         return true;
@@ -203,11 +190,13 @@ public sealed partial class Simulation
         return n;
     }
 
-    /// <summary>Жалобы жителей с порядковым номером больше <paramref name="sinceSeq"/> (PG4, progression.md §6.2). Пока не реализовано: 0.</summary>
+    /// <summary>
+    /// Жалобы жителей с порядковым номером больше <paramref name="sinceSeq"/> от старых к новым (PG4, progression.md §6.2): кольцо последних 64; возвращает число записанных.
+    /// Номер новой жалобы - <c>SimEvent.B</c> события <see cref="SimEventKind.Complaint"/>. Без режима жителей - 0.
+    /// </summary>
     public int CopyComplaints(Span<ComplaintInfo> dst, int sinceSeq)
     {
-        _ = dst;
-        _ = sinceSeq;
-        return _disposed ? 0 : 0;
+        CityWorld? c = _disposed ? null : _w.City;
+        return c == null ? 0 : c.Kpi.Complaints.Copy(dst, sinceSeq);
     }
 }

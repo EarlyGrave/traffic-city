@@ -110,6 +110,18 @@ public sealed class SaveCorpusTests
         using (sim!)
         {
             Assert.Equal(fileVersion, rep.FileWorldVersion);
+            if (Regenerating && !current)
+            {
+                // Файл старой версии не пересоздаётся (его пишет только старый код): при осознанной смене хэша (PG5: WarnLevel в разделе казны) обновляются ожидания .json.
+                ulong load = sim!.ComputeStateHash();
+                sim.Step(cont);
+                string text = File.ReadAllText(Path.ChangeExtension(path, ".json"))
+                    .Replace("\"hash_after_load\": \"" + j.GetProperty("hash_after_load").GetString() + "\"", $"\"hash_after_load\": \"{load:x16}\"", StringComparison.Ordinal)
+                    .Replace("\"hash_after_continue\": \"" + j.GetProperty("hash_after_continue").GetString() + "\"", $"\"hash_after_continue\": \"{sim.ComputeStateHash():x16}\"", StringComparison.Ordinal);
+                File.WriteAllText(Path.ChangeExtension(path, ".json"), text);
+                return;
+            }
+
             Assert.True(sim!.ComputeStateHash() == Hex(j, "hash_after_load"), Regen($"{name}: хэш после загрузки не равен записанному"));
 
             // Повторный сейв: для текущей версии побайтно равен файлу, для старых - после миграции стабилен (save -> load -> save).

@@ -35,6 +35,7 @@ internal struct ToolCheck
     public bool Reopen;                     // BuildRoad(RestoreOf) = отмена сноса
     public long Cost;                       // > 0 трата, < 0 возврат; при city_budget - эффективная (undo-кредит учтён, ToolCosts.Resolve)
     public int CreditSlot;                  // запись UndoCredits, которую погасит применение (-1 - нет)
+    public int LockMilestone;               // RejectReason.Locked (PG3): веха, которая откроет (-1 - не откроется); превью - PreviewIssue.Value
 
     // Профили (RP7): итоговые значения команды после разбора (-1 - без профиля).
     public int Profile;
@@ -104,9 +105,24 @@ internal static partial class ToolValidator
             CommandKind.SetBusRouteParams => CheckSetBusRouteParams(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
+        c.LockMilestone = -1;
+        if (c.Reason is not (RejectReason.InvalidArgument or RejectReason.InvalidHandle or RejectReason.NotSupported or RejectReason.UnknownKind))
+        {
+            // Прогрессия (PG3, progression.md §4.3): замок - после структурных проверок, до геометрии и денег; undo (бит Inverse) замок не проверяет.
+            RejectReason lk = City.Progression.Check(w, in cmd, out c.LockMilestone);
+            if (lk != RejectReason.None)
+            {
+                c.Reason = lk;
+            }
+        }
+
         if (c.Reason == RejectReason.None)
         {
             c.Reason = ToolCosts.Resolve(w, in cmd, ref c);   // E4: цена с undo-кредитом и InsufficientFunds - одно место для превью и применения
+            if (c.Reason == RejectReason.None && c.Cost > 0 && w.City?.Budget is { Insolvent: not 0 })
+            {
+                c.Reason = RejectReason.InsufficientFunds;   // мягкое банкротство (PG5, progression.md §5): платное закрыто до выхода на границе суток; возвраты и бесплатное - открыты
+            }
         }
         else
         {
@@ -721,9 +737,14 @@ internal static partial class ToolValidator
         return v;
     }
 
-    /// <summary>Границы мира: <c>tools.world_bounds</c> или bounding box живых узлов + 2 км (кэш по версии сети). Пустая сеть - без ограничения.</summary>
+    /// <summary>Границы мира: открытые области прогрессии (PG3) в пересечении с <c>tools.world_bounds</c> или bounding box живых узлов + 2 км (кэш по версии сети). Пустая сеть - без ограничения.</summary>
     public static bool InBounds(World w, Vec2 p)
     {
+        if (!City.Progression.InOpenArea(w, p))
+        {
+            return false;   // прогрессия (PG3): точка вне открытых областей карты
+        }
+
         ToolsDesc t = w.ToolsCfg;
         if (t.HasWorldBounds)
         {

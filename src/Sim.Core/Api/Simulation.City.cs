@@ -252,7 +252,7 @@ public sealed partial class Simulation
             Balance = c.Ledger.City,
             IncomeEwma = b.IncomeEwma,
             ExpenseEwma = b.ExpenseEwma,
-            CreditLimit = b.CreditLimit(in c.Cfg.Economy),
+            CreditLimit = b.CreditLimit(in c.Cfg.Economy, City.Progression.CreditDaysBonus(_w)),
             MaintRoadDay = b.MaintRoadDay,
             MaintBusDay = b.MaintBusDay,
             FareEvadedYesterday = b.FareEvadedDay[y],
