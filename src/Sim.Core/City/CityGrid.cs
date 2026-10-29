@@ -68,6 +68,18 @@ internal readonly struct CityGrid
             maxZ = MathF.Max(maxZ, p.Z);
         }
 
+        return TryCreate(minX, minZ, maxX, maxZ, cellM, out grid);
+    }
+
+    /// <summary>Сетка по заданному прямоугольнику (границы мира, <c>zoning.grid_from_bounds</c>): начало - минимум, число ячеек - округление вверх.</summary>
+    public static bool TryCreate(float minX, float minZ, float maxX, float maxZ, float cellM, out CityGrid grid)
+    {
+        grid = default;
+        if (!float.IsFinite(cellM) || cellM <= 0f || !float.IsFinite(minX + minZ + maxX + maxZ))
+        {
+            return false;
+        }
+
         double nx = Math.Max(1.0, Math.Ceiling((maxX - minX) / cellM));
         double nz = Math.Max(1.0, Math.Ceiling((maxZ - minZ) / cellM));
         if (nx * nz > MaxCells)

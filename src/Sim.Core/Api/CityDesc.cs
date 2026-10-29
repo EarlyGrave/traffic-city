@@ -65,6 +65,7 @@ public struct BuildingTypeDesc
 public struct CityCalendarDesc
 {
     public int DayTicks;            // calendar.day_s * 20; дефолт 72 000
+    public int StartHour;           // calendar.start_hour: игровой час начала (0..23), Tick при Create = StartHour * DayTicks / 24; дефолт 0
 }
 
 /// <summary>Участки и рост (<c>zoning</c>).</summary>
@@ -80,6 +81,8 @@ public struct CityZoningDesc
     public int IEdgeShareQ16;       // доля крайних ячеек под I
     public int UnzonedShareQ16;     // доля участков без зоны
     public int MaxPaintM2;          // предел площади PaintZone, м2; дефолт 250 000
+    public byte GrowthStep;         // zoning.growth_step: 0 = "day" (дефолт), 1 = "hour": спрос, въезд и рост зданий - на сдвиге игрового часа с лимитами /24
+    public byte GridFromBounds;     // zoning.grid_from_bounds: 1 = сетка города по tools.world_bounds (иначе по рельефу), а не по начальной сети; дефолт 0
 }
 
 /// <summary>Жители (<c>residents</c>).</summary>
@@ -95,6 +98,7 @@ public struct CityResidentsDesc
     public int MaxRelocatePerDayQ16;
     public int MaxJobSwitchPerDayQ16;
     public int MaxImmigrantsPerDayQ16;
+    public int MinImmigrantsPerDay; // residents.min_immigrants_per_day: пол суточного въезда, cap = max(min, rate * N); дефолт 0
     public int PlanSlot;            // plan_slot, дефолт 36
     public int ShopSlots;           // shop_slots, дефолт 6
     public int HomeMinSlots;        // home_min_slots, дефолт 2
@@ -129,6 +133,7 @@ public struct CityEconomyDesc
     public int LandTaxBpDay;                    // land_tax_bp_day: земельный налог в сутки, б.п. цены места
     public int BusFare;                         // bus_fare: плата за автобусную ногу
     public int InitialCityBalancePerResident;   // initial_city_balance_per_resident: вклад в казну на жителя
+    public int InitialCityBalance;              // initial_city_balance: абсолютный вклад в казну сверх вклада на жителя; дефолт 0
     public int InterestBpDay;                   // interest_bp_day: процент на долг в сутки, б.п.
     public int CreditDays;                      // credit_days: лимит кредита в днях сглаженного дохода
     public int MaintRoadStreetPerLaneKmDay;     // maint_road_per_lane_km_day.street

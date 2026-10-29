@@ -101,7 +101,7 @@ internal static class BudgetFlows
     /// <summary>Вклад в казну при <c>Create</c> (в конце <c>CityInit.Run</c>) и <c>Enable</c>: <c>initial_city_balance_per_resident * Alive</c> от <c>External</c> (§3).</summary>
     internal static void Endow(CityWorld c)
     {
-        long amount = (long)c.Cfg.Economy.InitialCityBalancePerResident * c.Residents.AliveCount;
+        long amount = ((long)c.Cfg.Economy.InitialCityBalancePerResident * c.Residents.AliveCount) + c.Cfg.Economy.InitialCityBalance;
         c.Ledger.Transfer(c.Ledger.ExternalAccount, c.Ledger.CityAccount, amount, FlowKind.Endowment);
     }
 

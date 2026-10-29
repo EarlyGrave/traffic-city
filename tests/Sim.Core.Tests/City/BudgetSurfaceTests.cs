@@ -78,7 +78,7 @@ public sealed class BudgetSurfaceTests
         Assert.Equal(16, (int)RejectReason.BudgetRule);
         Assert.Equal(16, System.Runtime.CompilerServices.Unsafe.SizeOf<BudgetPolicy>());
         Assert.Equal(64, System.Runtime.CompilerServices.Unsafe.SizeOf<Command>());
-        Assert.Equal(12, SaveSchema.WorldVersion);   // w11 - прогрессия (PG1, ADR-0034), w12 - рельеф (TR1, ADR-0036)
+        Assert.Equal(13, SaveSchema.WorldVersion);   // w11 - прогрессия (PG1, ADR-0034), w12 - рельеф (TR1, ADR-0036), w13 - старт с нуля (Y4)
     }
 
     [Fact]
