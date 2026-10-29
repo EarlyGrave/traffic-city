@@ -5,5 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| YS0 замер 30k/50k жителей | локал | local/ys0-perf | scenarios/ys0-*.json, perf/results/ys0/ | 2026-10-29 |
 | Y3 въезд с края и работа «Москвы» | локал | local/yuryev-y3 | src/Sim.Core/** (City, Agents, Save, Api), src/Sim.Scenarios/**, src/Sim.Host/** (API) | 2026-10-29 |
