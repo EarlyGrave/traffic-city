@@ -147,6 +147,8 @@ public struct CityServicesDesc
     public int DisorderIllPct;      // disorder_ill_pct (SR3); дефолт 125
     public int FireRiskPct;         // fire_risk_pct (SR4); дефолт 10
     public int SmolderS;            // smolder_s (SR4); дефолт 120
+    public int FireCap;             // fire_cap (SR4, решение 10.1 Б): потолок одновременных очагов (ожидающие + горящие), не больше max_fires; дефолт 32
+    public int FireSpreadPpm;       // fire_spread_ppm (SR4): шанс за минуту огня перекинуться на дом той же клетки 128 м, ppm; дефолт 30 000 (3 %)
     public int AnnexBuyPct;         // annex_buy_pct (SR5); дефолт 150
     public int IllLightPpm;         // incidence_ppm.adult[0] (SR3); дефолт 3 000
     public int IllInpatientPpm;     // incidence_ppm.adult[1]; дефолт 600
@@ -170,6 +172,8 @@ public struct CityServicesDesc
         DisorderIllPct = 125,
         FireRiskPct = 10,
         SmolderS = 120,
+        FireCap = 32,
+        FireSpreadPpm = 30_000,
         AnnexBuyPct = 150,
         IllLightPpm = 3_000,
         IllInpatientPpm = 600,

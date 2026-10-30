@@ -227,6 +227,7 @@ public static class UiNotifyMap
         ComplaintKind.HighRent => "Жители: дорогая квартплата",
         ComplaintKind.NoCare => "Жители: не попасть к врачу",
         ComplaintKind.NoAmbulance => "Жители: скорая не приехала",
+        ComplaintKind.Fire => "Жители: пожар в доме",
         _ => "Жалоба жителей",
     };
 

@@ -115,7 +115,7 @@ internal sealed class ServiceTable
     /// </summary>
     public static bool IsValid(in CityServicesDesc s, int typeCount, int vehicleTypeCount)
     {
-        bool ok = s.MaxServiceSites is >= 1 and <= 65_536 && s.MaxCalls is >= 0 and <= 1 << 20 && s.MaxFires is >= 0 and <= 65_536;
+        bool ok = s.MaxServiceSites is >= 1 and <= 65_536 && s.MaxCalls is >= 0 and <= 1 << 20 && s.MaxFires is >= 0 and <= 65_536 && s.FireCap is >= 0 and <= 65_536 && s.FireSpreadPpm is >= 0 and <= 1_000_000;
         ok &= s.DisorderIllPct is >= 0 and <= 1_000 && s.FireRiskPct is >= 0 and <= 1_000 && s.SmolderS is >= 0 and <= 86_400 && s.AnnexBuyPct is >= 0 and <= 1_000;
         ok &= s.IllLightPpm is >= 0 and <= 1_000_000 && s.IllInpatientPpm is >= 0 and <= 1_000_000 && s.IllCriticalPpm is >= 0 and <= 1_000_000;
         ok &= s.IllDaysLight is >= 1 and <= 31 && s.IllDaysInpatient is >= 1 and <= 31 && s.IllDaysCritical is >= 1 and <= 31;
@@ -465,6 +465,7 @@ internal sealed class CityServices
     public readonly ServiceTable Table;
     public readonly SiteStore Sites;
     public readonly CrewStore Crews;
+    public readonly FireStore Fires;                    // SR4 (services.md §2.7): пул пожаров max_fires; пуст без режима
     public readonly RingBuffer<ServiceCall>[] Normal;   // [запись]
     public readonly RingBuffer<ServiceCall>[] Urgent;   // [запись]
 
@@ -491,6 +492,7 @@ internal sealed class CityServices
         // без режима станций не больше бригад (у депо >= 1 бригады): предел max_service_sites не меняет поведение BL
         Sites = new SiteStore(mode ? cfg.Services.MaxServiceSites : crews);
         Crews = new CrewStore(crews);
+        Fires = new FireStore(mode ? cfg.Services.MaxFires : 0);
         int n = Table.Count;
         Pct = new byte[n];
         PctPending = new byte[n];

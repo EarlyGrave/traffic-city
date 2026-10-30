@@ -127,6 +127,11 @@ internal static class Economy
             return;   // building-lifecycle.md §2.2: износ, потолок, пороги; заброшенное - без экономики фирмы
         }
 
+        if (c.Services is { Table.Explicit: true } && b.State[bi] == (byte)BuildingState.Active)
+        {
+            Fires.Roll(w, c, bi, in t);   // возгорание (services.md §2.7): бросок хэшем в стадии «здания»
+        }
+
         if (b.State[bi] == (byte)BuildingState.Active && t.Kind == LotZone.Service)
         {
             Utilities.StationDay(c, bi);   // суточный расход станции (services.md §2.4, только в режиме city.services)

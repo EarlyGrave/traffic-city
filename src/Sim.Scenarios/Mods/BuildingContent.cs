@@ -118,6 +118,7 @@ internal static class BuildingContent
         t.CeilDropBpDay = (ushort)r.Int("ceil_drop_bp_day", ceilDrop, min: 0, max: 10_000);
         t.DemolishCost = r.Int("demolish_cost", demolish, min: 0, max: 100_000_000);
         t.BuildCost = r.Int("build_cost", 0, min: 0, max: 100_000_000);
+        t.FirePpm = r.Int("fire_ppm", 0, min: 0, max: 1_000_000);
         if (kind == LotZone.Service)
         {
             string svc = r.Str("service");

@@ -118,6 +118,44 @@ public sealed partial class Simulation
         return n;
     }
 
+    /// <summary>Очагов сейчас (ожидающих момента и горящих); 0 - без режима <c>city.services</c> или огня нет.</summary>
+    public int ActiveFireCount => _disposed ? 0 : _w.City?.Services?.Fires.Used() ?? 0;
+
+    /// <summary>Горящие здания для маркеров (§2.7, SR4): по слотам пула пожаров; ожидающие момента не выдаются. Возвращает число записанных.</summary>
+    public int GetFires(Span<FireInfo> dst)
+    {
+        CityWorld? c = _disposed ? null : _w.City;
+        CityServices? sv = c?.Services;
+        if (c == null || sv == null)
+        {
+            return 0;
+        }
+
+        FireStore f = sv.Fires;
+        long smolder = (long)c.Cfg.Services.SmolderS * TicksPerSecond;
+        int n = 0;
+        for (int i = 0; i < f.Capacity && n < dst.Length; i++)
+        {
+            int bi = f.Building[i];
+            if (f.State[i] != FireState.Burning || !c.Buildings.Pool.IsAlive(bi, f.Gen[i]))
+            {
+                continue;
+            }
+
+            int lot = c.Buildings.Lot[bi];
+            ref FireInfo o = ref dst[n++];
+            o.X = c.Lots.X[lot];
+            o.Z = c.Lots.Z[lot];
+            o.Building = bi;
+            o.AgeTicks = (int)Math.Clamp(_w.Tick - f.StartTick[i], 0, int.MaxValue);
+            o.CondStart = f.CondStart[i];
+            o.Cond = c.Buildings.Cond[bi];
+            o.Smoldering = _w.Tick - f.StartTick[i] < smolder ? (byte)1 : (byte)0;
+        }
+
+        return n;
+    }
+
     private bool Call(CityWorld c, int bi, int gen, long tick, byte kind, byte svc, byte enRoute, bool urgent, ref ServiceCallInfo o)
     {
         if (!c.Buildings.Pool.IsAlive(bi, gen))

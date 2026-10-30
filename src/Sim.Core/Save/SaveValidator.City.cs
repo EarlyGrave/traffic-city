@@ -182,7 +182,8 @@ internal static partial class SaveValidator
 
         byte f = b.LifeFlags[i];
         return b.Signif[i] >= 0 && b.ArrivalsDay[2 * i] >= 0 && b.ArrivalsDay[(2 * i) + 1] >= 0 && b.Cond[i] <= b.Ceil[i] && b.Ceil[i] <= CityLife.Full && b.BornDay[i] >= 0 && b.BornDay[i] <= city.Day
-            && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified | BuildingLifeFlags.Requested)) == 0
+            && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified | BuildingLifeFlags.Requested | BuildingLifeFlags.Burning)) == 0
+            && ((f & BuildingLifeFlags.Burning) == 0 || city.Services is { Table.Explicit: true })
             && ((f & BuildingLifeFlags.Demolishing) == 0 || b.State[i] == (byte)BuildingState.Abandoned);
     }
 
@@ -341,6 +342,11 @@ internal static partial class SaveValidator
         int bcap = b.Pool.Capacity;
         int rcap = city.Residents.Pool.Capacity;
         LoadStatus st0 = ValidateSites(c, city, sv);
+        if (st0 == LoadStatus.Ok)
+        {
+            st0 = ValidateFires(c, city, sv);
+        }
+
         if (st0 != LoadStatus.Ok)
         {
             return st0;
@@ -488,6 +494,61 @@ internal static partial class SaveValidator
         }
 
         return LoadStatus.Ok;
+    }
+
+    // Пожары (services.md §2.7, §5): состояние 0..2, свободный слот пуст; занятый - здание в пределах пула, не больше fire_cap записей, одна запись на здание; горящая запись живого
+    // здания <=> бит Burning у него (и обратно: битов не больше, чем горящих записей живых зданий). Запись мёртвого здания допустима: освободится на ближайшем секундном шаге.
+    private static LoadStatus ValidateFires(LoadContext c, CityWorld city, CityServices sv)
+    {
+        FireStore f = sv.Fires;
+        BuildingStore b = city.Buildings;
+        int used = 0;
+        int burning = 0;
+        for (int i = 0; i < f.Capacity; i++)
+        {
+            if (f.State[i] == FireState.Free)
+            {
+                if (f.Building[i] != -1 || f.Gen[i] != 0 || f.StartTick[i] != 0 || f.CondStart[i] != 0 || f.Retry[i] != 0)
+                {
+                    return Bad(c, i, 177);
+                }
+
+                continue;
+            }
+
+            int bi = f.Building[i];
+            if (f.State[i] > FireState.Burning || (uint)bi >= (uint)b.Pool.Capacity || f.Gen[i] < 0 || f.StartTick[i] < 0 || f.CondStart[i] > CityLife.Full || ++used > city.Cfg.Services.FireCap)
+            {
+                return Bad(c, i, 177);
+            }
+
+            for (int j = 0; j < i; j++)
+            {
+                if (f.State[j] != FireState.Free && f.Building[j] == bi && f.Gen[j] == f.Gen[i])
+                {
+                    return Bad(c, i, 177);
+                }
+            }
+
+            if (b.Pool.IsAlive(bi, f.Gen[i]))
+            {
+                bool bit = (b.LifeFlags[bi] & BuildingLifeFlags.Burning) != 0;
+                if (bit != (f.State[i] == FireState.Burning))
+                {
+                    return Bad(c, i, 177);
+                }
+
+                burning += bit ? 1 : 0;
+            }
+        }
+
+        int bits = 0;
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            bits += b.Pool.IsAlive(i) && (b.LifeFlags[i] & BuildingLifeFlags.Burning) != 0 ? 1 : 0;
+        }
+
+        return bits == burning ? LoadStatus.Ok : Bad(c, 0, 177);
     }
 
     /// <summary>«Место» в поле жителя: -1, живое здание или код существующего внешнего подключения (ADR-0037).</summary>

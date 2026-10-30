@@ -11,6 +11,7 @@ internal static class BuildingLifeFlags
     public const byte Requested = 2;
     public const byte Demolishing = 4;
     public const byte WornNotified = 8;
+    public const byte Burning = 64;   // горит (services.md §2.7, SR4): ⇔ запись FireStore в состоянии «горит»
 }
 
 /// <summary>
@@ -180,6 +181,11 @@ internal static class CityLife
         NeighborhoodFields f = c.Fields!;
         int lot = b.Lot[bi];
         int cell = f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]);
+        if ((b.LifeFlags[bi] & BuildingLifeFlags.Burning) != 0)
+        {
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.FireRisk, 6 * ((t.Capacity + 7) / 8));   // горящее здание даёт пожарную опасность клетке, как H3 (services.md §2.7)
+        }
+
         if (b.State[bi] == (byte)BuildingState.Active)
         {
             int lv = Level(b.Signif[bi]);
@@ -528,7 +534,7 @@ internal static class CityLife
         w.Counters.BuildingsResettled++;
     }
 
-    /// <summary>Биты <see cref="BuildingRenderData.R1"/> (§3, снапшот): <c>Requested 2</c>, <c>Demolishing 4</c>; <c>Monument 1</c>, <c>Boost 8</c> - резерв.</summary>
+    /// <summary>Биты <see cref="BuildingRenderData.R1"/> (§3, снапшот): <c>Requested 2</c>, <c>Demolishing 4</c>, <c>Burning 16</c> (SR4: горит); <c>Monument 1</c>, <c>Boost 8</c> - резерв.</summary>
     public static ushort RenderFlags(CityWorld c, int bi) =>
-        (ushort)(c.Buildings.LifeFlags[bi] & (BuildingLifeFlags.Requested | BuildingLifeFlags.Demolishing));
+        (ushort)((c.Buildings.LifeFlags[bi] & (BuildingLifeFlags.Requested | BuildingLifeFlags.Demolishing)) | ((c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Burning) != 0 ? 16 : 0));
 }

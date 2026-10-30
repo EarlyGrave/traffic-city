@@ -180,6 +180,7 @@ internal static class CityHash
                 AddServices(ref h, sv);   // режим city.services (services.md §5): станции, все кольца, бригады со станцией
                 AddServiceBudget(ref h, sv, lg, bud, in k);   // SR2: поток ServiceUpkeep, ползунки, расходы, отклик
                 AddIllness(ref h, c, sv, in k);   // SR3: болезнь жителей, пациенты бригад, CareEwma
+                AddFires(ref h, sv, in k);   // SR4: пул пожаров, счётчики
             }
             else
             {
@@ -348,6 +349,32 @@ internal static class CityHash
         h.Add(k.IcuAdmitted);
         h.Add(k.IcuOverflow);
         h.Add(k.ResidentsLostNoAmbulance);
+    }
+
+    /// <summary>SR4 (services.md §2.7, только в режиме): пул пожаров (состояние, здание, поколение, начало, <c>Cond</c> в начале, срок повторного вызова), счётчики пожара.</summary>
+    private static void AddFires(ref Fnv1a64 h, CityServices sv, in SimCounters k)
+    {
+        FireStore f = sv.Fires;
+        for (int i = 0; i < f.Capacity; i++)
+        {
+            h.Add(f.State[i]);
+            if (f.State[i] == FireState.Free)
+            {
+                continue;
+            }
+
+            h.Add(f.Building[i]);
+            h.Add(f.Gen[i]);
+            h.Add(f.StartTick[i]);
+            h.Add(f.CondStart[i]);
+            h.Add(f.Retry[i]);
+        }
+
+        h.Add(k.FiresStarted);
+        h.Add(k.FiresOut);
+        h.Add(k.BuildingsBurned);
+        h.Add(k.FiresSpread);
+        h.Add(k.FiresCapped);
     }
 
     private static void AddRing(ref Fnv1a64 h, RingBuffer<ServiceCall> ring)

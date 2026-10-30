@@ -196,7 +196,7 @@ internal static class Utilities
     {
         CityServices? sv = c.Services;
         BuildingStore b = c.Buildings;
-        if (sv == null || sv.Table.Utility < 0 || b.State[bi] != (byte)BuildingState.Active || (b.LifeFlags[bi] & BuildingLifeFlags.Requested) != 0)
+        if (sv == null || sv.Table.Utility < 0 || b.State[bi] != (byte)BuildingState.Active || (b.LifeFlags[bi] & (BuildingLifeFlags.Requested | BuildingLifeFlags.Burning)) != 0)
         {
             return;
         }
@@ -237,6 +237,8 @@ internal static class Utilities
         {
             return;
         }
+
+        Fires.Step(w, c, sv);   // пожары (services.md §2.7): загорание, потеря Cond, перекидывание, повторный вызов - до таймеров бригад
 
         long now = w.Tick;
         for (int k = 0; k < u.Capacity; k++)
@@ -279,7 +281,7 @@ internal static class Utilities
             return tick;
         }
 
-        long next = AnyCalls(sv) ? tick : long.MaxValue;
+        long next = AnyCalls(sv) || sv.Fires.Used() > 0 ? tick : long.MaxValue;
         for (int k = 0; k < u.Capacity; k++)
         {
             if (u.State[k] is not (CrewState.Free or CrewState.Idle or CrewState.OffDuty))
@@ -453,13 +455,18 @@ internal static class Utilities
         return true;
     }
 
-    /// <summary>Цель вызова годна: ремонт - живое, то же поколение, <c>Active</c>, <c>50 % &lt;= Cond &lt; Ceil</c>; прочие виды - живое здание того же поколения.</summary>
+    /// <summary>Цель вызова годна: ремонт - живое, то же поколение, <c>Active</c>, <c>50 % &lt;= Cond &lt; Ceil</c>; пожар - живое, то же поколение, горит (<c>Burning</c>); прочие виды - живое здание того же поколения.</summary>
     private static bool ValidTarget(CityWorld c, int kind, int bi, int gen)
     {
         BuildingStore b = c.Buildings;
         if (!b.Pool.IsAlive(bi, gen))
         {
             return false;
+        }
+
+        if (kind == (int)ServiceCallKind.Fire)
+        {
+            return (b.LifeFlags[bi] & BuildingLifeFlags.Burning) != 0;   // огонь ещё горит (потушен, сгорело - вызов снят)
         }
 
         return kind != (int)ServiceCallKind.Repair || (b.State[bi] == (byte)BuildingState.Active && b.Cond[bi] >= CityLife.AbandonBp && b.Cond[bi] < b.Ceil[bi]);
@@ -473,7 +480,7 @@ internal static class Utilities
         return dl > 0 && now - callTick > (long)dl * Simulation.TicksPerSecond;
     }
 
-    /// <summary>Опоздание вызова: счётчики; последствия по виду - critical: исход §10.3 (<see cref="Illness.Lose"/>, SR3); fire - SR4.</summary>
+    /// <summary>Опоздание вызова: счётчики; последствия по виду - critical: исход §10.3 (<see cref="Illness.Lose"/>, SR3); fire - горит дальше, очаг сам вызовет пожарных повторно (<see cref="Fires.Step"/>, SR4).</summary>
     private static void OnLate(World w, CityWorld c, CityServices sv, int rec, int kind, int refIdx, int refGen)
     {
         sv.RecCallsLate[rec]++;
@@ -663,7 +670,7 @@ internal static class Utilities
     /// Работа на месте: без режима - <c>repair_minutes</c> игрового времени (BL); в режиме - <c>onsite_s · onsite_q</c> (§2.4: <c>onsite_q = 100 / pct</c> × эффект апгрейдов <c>onsite_pct</c>).
     /// Не меньше одного тика.
     /// </summary>
-    private static long WorkTicks(CityWorld c, CityServices sv, int k)
+    private static long WorkTicks(World w, CityWorld c, CityServices sv, int k)
     {
         if (!sv.Table.Explicit)
         {
@@ -673,7 +680,13 @@ internal static class Utilities
         int site = sv.Crews.Site[k];
         int rec = sv.Sites.Svc[site];
         int ci = sv.Table.CallOf(rec, sv.Crews.Kind[k]);
-        long baseTicks = (ci >= 0 ? sv.Table.Calls[ci].OnsiteS : 0) * (long)Simulation.TicksPerSecond;
+        int onsiteS = ci >= 0 ? sv.Table.Calls[ci].OnsiteS : 0;
+        if (sv.Crews.Kind[k] == (byte)ServiceCallKind.Fire)
+        {
+            onsiteS = Fires.OnsiteS(w, sv, sv.Crews.Target[k], sv.Crews.TargetGen[k], onsiteS);   // §2.7: 60 + горело_с / 4, не больше 300 с
+        }
+
+        long baseTicks = onsiteS * (long)Simulation.TicksPerSecond;
         int up = sv.Table.UpgradeEffect(in sv.Table.LevelRow(rec, sv.Sites.Level[site]), sv.Sites.UpgradeMask[site], ServiceUpgradeEffect.OnsitePct);
         return Math.Max(1L, baseTicks * up / Math.Max(1, (int)sv.Pct[rec]));
     }
@@ -704,7 +717,7 @@ internal static class Utilities
                 }
 
                 u.State[k] = CrewState.Working;
-                u.DueTick[k] = w.Tick + WorkTicks(c, sv, k);
+                u.DueTick[k] = w.Tick + WorkTicks(w, c, sv, k);
                 return;
             }
 
@@ -758,7 +771,7 @@ internal static class Utilities
         }
     }
 
-    /// <summary>Конец работы: действие вызова (ремонт - до потолка из фонда, дефицит - субсидия, если включена; прочие виды - SR3/SR4), заявка снята, обратная поездка.</summary>
+    /// <summary>Конец работы: действие вызова (ремонт - до потолка из фонда, дефицит - субсидия, если включена; пожар - тушение, критический - пациент на борт), заявка снята, обратная поездка.</summary>
     private static void FinishWork(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
@@ -782,6 +795,10 @@ internal static class Utilities
 
             w.Counters.RepairsDone++;
             w.Counters.RepairDelayTicksTotal += w.Tick - u.ReqTick[k];
+        }
+        else if (u.Kind[k] == (byte)ServiceCallKind.Fire && ValidTarget(c, u.Kind[k], bi, u.TargetGen[k]))
+        {
+            Fires.Extinguish(w, c, sv, bi, u.TargetGen[k]);   // потушено (SR4, §2.7): Ceil -= ущерб / 2
         }
         else if (u.Kind[k] == (byte)ServiceCallKind.Critical && !Illness.Waiting(c, u.Ref[k], u.RefGen[k]))
         {

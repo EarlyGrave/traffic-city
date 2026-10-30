@@ -177,6 +177,12 @@ public struct SimCounters
     public long IcuAdmitted;              // критических доставлено в реанимацию
     public long IcuOverflow;              // из них сверх мест (days x2)
     public long ResidentsLostNoAmbulance; // критических без скорой или не успели: житель уезжает (заглушка §10.3/§10.4)
+    // --- пожар (services.md §2.7, SR4): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long FiresStarted;             // очагов начато (возгорание по броску и перекидывание)
+    public long FiresOut;                 // потушено пожарной
+    public long BuildingsBurned;          // сгорело дотла (Cond = 0 при огне)
+    public long FiresSpread;              // из начатых - перекинулось на соседний дом (решение 10.1 Б)
+    public long FiresCapped;              // возгораний и перекидываний, отброшенных потолком fire_cap / пулом max_fires
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>
