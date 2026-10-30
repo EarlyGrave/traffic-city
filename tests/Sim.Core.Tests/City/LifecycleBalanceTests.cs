@@ -145,9 +145,7 @@ public sealed class LifecycleBalanceTests
     public static string Format(string name, Outcome o) =>
         string.Create(CultureInfo.InvariantCulture, $"{name}: type={o.Type} neigh={o.Neighbours} demolish={o.DemolishCost} rubble={o.Rubble} days={o.Days} landLoss={o.Loss} ratio={(double)o.Loss / o.DemolishCost:F2}");
 
-    private const string BalanceSkip = "Тест 6 §7 не достижим ручками калибровки: земельная часть вреда на 1-2 порядка меньше 1.5 x demolish_cost (docs/plan/reports/L106.md §7); ждёт решения владельца";
-
-    [Theory(Skip = BalanceSkip)]
+    [Theory]
     [InlineData(LotZone.Residential, false)]
     [InlineData(LotZone.Residential, true)]
     [InlineData(LotZone.Commercial, false)]

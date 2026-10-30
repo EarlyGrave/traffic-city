@@ -90,15 +90,15 @@ public struct BuildingTypeDesc
         {
             case LotZone.Residential:
                 decay = (ushort)(high ? 60 : 30);
-                demolish = high ? 12_000 : 1_500;
+                demolish = high ? 300 : 30;
                 break;
             case LotZone.Commercial:
                 decay = (ushort)(high ? 60 : 40);
-                demolish = high ? 12_000 : 2_000;
+                demolish = high ? 150 : 10;
                 break;
             case LotZone.Industrial:
                 decay = (ushort)(high ? 100 : 60);
-                demolish = high ? 18_000 : 2_500;
+                demolish = high ? 900 : 150;
                 break;
             default:
                 decay = 0;
@@ -355,12 +355,12 @@ public struct CityDesc
     /// <summary>7 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность + депо ЖКХ); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8, DecayBpDay = 30, CeilDropBpDay = 8, DemolishCost = 1_500 },
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 12_000 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public, DecayBpDay = 40, CeilDropBpDay = 8, DemolishCost = 2_000 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 12_000 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12, DecayBpDay = 60, CeilDropBpDay = 8, DemolishCost = 2_500 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40, DecayBpDay = 100, CeilDropBpDay = 12, DemolishCost = 18_000 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8, DecayBpDay = 30, CeilDropBpDay = 8, DemolishCost = 30 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 300 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public, DecayBpDay = 40, CeilDropBpDay = 8, DemolishCost = 10 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 150 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12, DecayBpDay = 60, CeilDropBpDay = 8, DemolishCost = 150 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40, DecayBpDay = 100, CeilDropBpDay = 12, DemolishCost = 900 },
         new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 6, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 5_000, BuildCost = 20_000, ServiceKind = ServiceKind.Utility, Vehicles = 16, VehicleType = BaseUtilityVehicle },
     };
 
