@@ -224,37 +224,37 @@ public struct CityServicesDesc
             ul[0],
             new ServiceLevelDesc
             {
-                Type = t, Roles = ServiceRole.Light, LotMinF = 2, LotMinD = 2, Milestone = 0, BuildCost = 15_000, UpkeepDay = 800, CapacityDay = 60, OpenSlot = 96, CloseSlot = 216, StaySlots = 6,
+                Type = t, Roles = ServiceRole.Light, LotMinF = 2, LotMinD = 2, Milestone = 0, BuildCost = 15_000, UpkeepDay = 250, CapacityDay = 60, OpenSlot = 96, CloseSlot = 216, StaySlots = 6,
                 DispatchVehicle = -1, FirstUpgrade = 0, UpgradeCount = 1,
             },
             new ServiceLevelDesc
             {
-                Type = t + 1, Roles = ServiceRole.Light | ServiceRole.Inpatient, LotMinF = 4, LotMinD = 4, Milestone = 2, BuildCost = 60_000, UpkeepDay = 3_000, CapacityDay = 150, Beds = 20,
+                Type = t + 1, Roles = ServiceRole.Light | ServiceRole.Inpatient, LotMinF = 4, LotMinD = 4, Milestone = 2, BuildCost = 60_000, UpkeepDay = 900, CapacityDay = 150, Beds = 20,
                 OpenSlot = 84, CloseSlot = 240, StaySlots = 12, DispatchVehicle = -1, FirstUpgrade = 1, UpgradeCount = 1,
             },
             new ServiceLevelDesc
             {
-                Type = t + 2, Roles = ServiceRole.Light | ServiceRole.Inpatient | ServiceRole.Critical, LotMinF = 6, LotMinD = 5, Milestone = 3, BuildCost = 180_000, UpkeepDay = 8_000, CapacityDay = 300,
-                Beds = 60, Icu = 15, OpenSlot = 0, CloseSlot = 288, StaySlots = 12, DispatchVehicle = CityDesc.BaseAmbulanceVehicle, Units = 4, PerUnitDay = 300, FirstUpgrade = 2, UpgradeCount = 2,
+                Type = t + 2, Roles = ServiceRole.Light | ServiceRole.Inpatient | ServiceRole.Critical, LotMinF = 6, LotMinD = 5, Milestone = 3, BuildCost = 180_000, UpkeepDay = 2_400, CapacityDay = 300,
+                Beds = 60, Icu = 15, OpenSlot = 0, CloseSlot = 288, StaySlots = 12, DispatchVehicle = CityDesc.BaseAmbulanceVehicle, Units = 4, PerUnitDay = 80, FirstUpgrade = 2, UpgradeCount = 2,
             },
             new ServiceLevelDesc
             {
-                Type = t + 3, Roles = ServiceRole.Fire, LotMinF = 3, LotMinD = 3, Milestone = 0, BuildCost = 25_000, UpkeepDay = 400, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 2,
-                PerUnitDay = 100, FirstUpgrade = 4, UpgradeCount = 0,
+                Type = t + 3, Roles = ServiceRole.Fire, LotMinF = 3, LotMinD = 3, Milestone = 0, BuildCost = 25_000, UpkeepDay = 300, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 2,
+                PerUnitDay = 60, FirstUpgrade = 4, UpgradeCount = 0,
             },
             new ServiceLevelDesc
             {
-                Type = t + 4, Roles = ServiceRole.Fire, LotMinF = 5, LotMinD = 4, Milestone = 3, BuildCost = 80_000, UpkeepDay = 1_200, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 5,
-                PerUnitDay = 100, FirstUpgrade = 4, UpgradeCount = 1,
+                Type = t + 4, Roles = ServiceRole.Fire, LotMinF = 5, LotMinD = 4, Milestone = 3, BuildCost = 80_000, UpkeepDay = 900, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 5,
+                PerUnitDay = 60, FirstUpgrade = 4, UpgradeCount = 1,
             },
         };
         upgrades = new[]
         {
-            new ServiceUpgradeDesc { Cost = 5_000, UpkeepDay = 200, Effect = ServiceUpgradeEffect.VisitCapacity, Value = 30 },
-            new ServiceUpgradeDesc { Cost = 25_000, UpkeepDay = 800, Effect = ServiceUpgradeEffect.Beds, Value = 15 },
-            new ServiceUpgradeDesc { Cost = 30_000, UpkeepDay = 600, Effect = ServiceUpgradeEffect.Units, Value = 2 },
-            new ServiceUpgradeDesc { Cost = 50_000, UpkeepDay = 1_500, Effect = ServiceUpgradeEffect.Icu, Value = 10 },
-            new ServiceUpgradeDesc { Cost = 20_000, UpkeepDay = 500, Effect = ServiceUpgradeEffect.OnsitePct, Value = 75 },
+            new ServiceUpgradeDesc { Cost = 5_000, UpkeepDay = 60, Effect = ServiceUpgradeEffect.VisitCapacity, Value = 30 },
+            new ServiceUpgradeDesc { Cost = 25_000, UpkeepDay = 250, Effect = ServiceUpgradeEffect.Beds, Value = 15 },
+            new ServiceUpgradeDesc { Cost = 30_000, UpkeepDay = 160, Effect = ServiceUpgradeEffect.Units, Value = 2 },
+            new ServiceUpgradeDesc { Cost = 50_000, UpkeepDay = 400, Effect = ServiceUpgradeEffect.Icu, Value = 10 },
+            new ServiceUpgradeDesc { Cost = 20_000, UpkeepDay = 150, Effect = ServiceUpgradeEffect.OnsitePct, Value = 75 },
         };
         calls = new[]
         {

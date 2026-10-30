@@ -126,13 +126,20 @@ public sealed class ServicesModeTests
             ["fire_risk_pct"] = 20,
             ["incidence_ppm"] = new JsonObject { ["adult"] = new JsonArray(1000, 200, 100) },
             ["ill_days"] = new JsonArray(2, 4, 6),
+            ["fire_ppm"] = new JsonObject { ["residential"] = 70, ["commercial"] = 80, ["industrial"] = 90 },
         });
         CityServicesDesc s = sc.Desc.Town.Services;
         Assert.True(s.Enabled);
         Assert.Equal((64, 512, 20, 1000, 200, 100, 2, 4, 6), (s.MaxServiceSites, s.MaxCalls, s.FireRiskPct, s.IllLightPpm, s.IllInpatientPpm, s.IllCriticalPpm, s.IllDaysLight, s.IllDaysInpatient, s.IllDaysCritical));
-        ServiceRecordDesc r = Assert.Single(s.Records);
-        Assert.Equal(ServiceFund.Utility, r.Fund);
-        Assert.Equal(ServiceCallKind.Repair, Assert.Single(s.Calls).Kind);
+        // SR6: встроенный набор v2 - утилита, медицина, пожарные; типы служб дописаны к таблице ядра
+        Assert.Equal(3, s.Records.Length);
+        Assert.Equal(ServiceFund.Utility, s.Records[0].Fund);
+        Assert.Equal(ServiceCallKind.Repair, s.Calls[0].Kind);
+        Assert.Equal(ServiceCallKind.Critical, s.Calls[1].Kind);
+        Assert.Equal(ServiceCallKind.Fire, s.Calls[2].Kind);
+        Assert.Equal(CityDesc.BaseBuildingTypes().Length + CityDesc.BaseServiceBuildingTypes().Length, sc.Desc.Town.BuildingTypes.Length);
+        BuildingTypeDesc[] types = sc.Desc.Town.BuildingTypes;
+        Assert.Equal((70, 70, 80, 80, 90, 90, 0), (types[0].FirePpm, types[1].FirePpm, types[2].FirePpm, types[3].FirePpm, types[4].FirePpm, types[5].FirePpm, types[6].FirePpm));
         Assert.Equal(CreateStatus.Ok, CityBuild.Validate(sc.Desc));
     }
 
