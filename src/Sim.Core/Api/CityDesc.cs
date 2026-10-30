@@ -76,6 +76,7 @@ public struct BuildingTypeDesc
     public ushort DecayBpDay;       // buildings.json: decay_bp_day, износ в сутки, б.п.
     public ushort CeilDropBpDay;    // buildings.json: ceil_drop_bp_day, падение потолка в сутки, б.п.
     public int DemolishCost;        // buildings.json: demolish_cost, цена сноса из казны
+    public int FirePpm;             // buildings.json: fire_ppm, возгорание в сутки, ppm (services.md §2.7, только в режиме city.services; 0 - не горит и не заражается огнём)
 
     // ---- службы (building-lifecycle.md §2.10): только Kind = Service ----
     public int BuildCost;           // buildings.json: build_cost, цена постройки из казны (BuildService)

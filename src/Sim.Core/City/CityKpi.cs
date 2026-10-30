@@ -180,6 +180,13 @@ internal sealed class CityKpi
         Complaints.Add(ComplaintKind.NoAmbulance, building, gen, 1);
     }
 
+    /// <summary>Дом загорелся (services.md §2.7): случаи K4 <paramref name="incidents"/> (жителей/работников) и жалоба <c>Fire</c> у здания.</summary>
+    public void OnFire(int building, int gen, int incidents)
+    {
+        Cur[0].IncBuildingWorn += incidents;
+        Complaints.Add(ComplaintKind.Fire, building, gen, incidents);
+    }
+
     // ------------------------------------------------------------------ фаза 9r
 
     /// <summary>Фаза 9r, каждый тик: на последнем тике игрового часа час уходит в кольцо (дельты счётчиков движения - здесь).</summary>

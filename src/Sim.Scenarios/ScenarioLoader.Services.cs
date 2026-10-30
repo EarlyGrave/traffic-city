@@ -27,6 +27,8 @@ public static partial class ScenarioLoader
         d.DisorderIllPct = r.Int("disorder_ill_pct", d.DisorderIllPct, min: 0, max: 1_000);
         d.FireRiskPct = r.Int("fire_risk_pct", d.FireRiskPct, min: 0, max: 1_000);
         d.SmolderS = r.Int("smolder_s", d.SmolderS, min: 0, max: 86_400);
+        d.FireCap = r.Int("fire_cap", d.FireCap, min: 0, max: 65_536);
+        d.FireSpreadPpm = r.Int("fire_spread_ppm", d.FireSpreadPpm, min: 0, max: 1_000_000);
         d.AnnexBuyPct = r.Int("annex_buy_pct", d.AnnexBuyPct, min: 0, max: 1_000);
         JsonObjectReader? inc = r.OptObject("incidence_ppm");
         if (inc != null)

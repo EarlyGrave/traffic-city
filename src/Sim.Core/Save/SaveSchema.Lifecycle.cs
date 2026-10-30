@@ -58,7 +58,7 @@ internal static partial class SaveSchema
         PresentText = "PARM.LifecycleEnabled = 1",
     };
 
-    // ---- BTYP 13-19 ----
+    // ---- BTYP 13-20 (20 - FirePpm, SR4) ----
     private static ColumnDef[] LifecycleBuildingTypeColumns() => new[]
     {
         PreField<BuildingTypeDesc, ushort>(13, "DecayBpDay", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.DecayBpDay, static (ref BuildingTypeDesc t, ushort v) => t.DecayBpDay = v),
@@ -68,9 +68,10 @@ internal static partial class SaveSchema
         PreField<BuildingTypeDesc, byte>(17, "ServiceKind", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => (byte)t.ServiceKind, static (ref BuildingTypeDesc t, byte v) => t.ServiceKind = (ServiceKind)v),
         PreField<BuildingTypeDesc, byte>(18, "Vehicles", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.Vehicles, static (ref BuildingTypeDesc t, byte v) => t.Vehicles = v),
         PreField<BuildingTypeDesc, byte>(19, "VehicleType", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.VehicleType, static (ref BuildingTypeDesc t, byte v) => t.VehicleType = v),
+        PreField<BuildingTypeDesc, int>(20, "FirePpm", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.FirePpm, static (ref BuildingTypeDesc t, int v) => t.FirePpm = v),
     };
 
-    // ---- CNTR 176-194 (185-188 - вызовы служб, SR2; 189-194 - болезнь и визиты, SR3) ----
+    // ---- CNTR 176-199 (185-188 - вызовы служб, SR2; 189-194 - болезнь и визиты, SR3; 195-199 - пожар, SR4) ----
     private static ColumnDef[] LifecycleCounters() => new[]
     {
         Col.Scalar<long>(176, "BuildingsCrumbled", w => w.Counters.BuildingsCrumbled, (c, v) => c.W.Counters.BuildingsCrumbled = v),
@@ -92,5 +93,10 @@ internal static partial class SaveSchema
         Col.Scalar<long>(192, "IcuAdmitted", w => w.Counters.IcuAdmitted, (c, v) => c.W.Counters.IcuAdmitted = v),
         Col.Scalar<long>(193, "IcuOverflow", w => w.Counters.IcuOverflow, (c, v) => c.W.Counters.IcuOverflow = v),
         Col.Scalar<long>(194, "ResidentsLostNoAmbulance", w => w.Counters.ResidentsLostNoAmbulance, (c, v) => c.W.Counters.ResidentsLostNoAmbulance = v),
+        Col.Scalar<long>(195, "FiresStarted", w => w.Counters.FiresStarted, (c, v) => c.W.Counters.FiresStarted = v),
+        Col.Scalar<long>(196, "FiresOut", w => w.Counters.FiresOut, (c, v) => c.W.Counters.FiresOut = v),
+        Col.Scalar<long>(197, "BuildingsBurned", w => w.Counters.BuildingsBurned, (c, v) => c.W.Counters.BuildingsBurned = v),
+        Col.Scalar<long>(198, "FiresSpread", w => w.Counters.FiresSpread, (c, v) => c.W.Counters.FiresSpread = v),
+        Col.Scalar<long>(199, "FiresCapped", w => w.Counters.FiresCapped, (c, v) => c.W.Counters.FiresCapped = v),
     };
 }

@@ -61,6 +61,11 @@ public enum SimEventKind : int
 
     // Цели сценария (scenarios-mode.md §2.3, ADR-0038).
     ScenarioOutcome = 68,        // A = исход (GoalOutcome: 1 победа, 2 поражение), B = индекс условия поражения (-1 при победе); на последнем тике часа, один раз
+
+    // Пожар (services.md §2.7, SR4): место - здание (EntityKind.Building).
+    FireStarted = 69,            // A = индекс здания, B = 1 если перекинулось с соседнего дома, 0 - возгорание; Place = здание
+    FireOut = 70,                // A = индекс здания, B = ущерб (потеря Cond, б.п.); Place = здание: потушено пожарной
+    BuildingBurned = 71,         // A = индекс здания; Place = здание: сгорело дотла (Cond = 0)
 }
 
 /// <summary>Проблема автобусной линии: <c>SimEvent.A</c> для <see cref="SimEventKind.BusLineProblem"/>.</summary>

@@ -13,7 +13,7 @@ namespace Sim.Core.Metrics;
 /// </summary>
 internal sealed class Complaints
 {
-    public const int Kinds = 11;            // 1-6 прежние, 7 - резерв BL3 (HighRent), 8-9 - BL2, 10-11 - SR3 (NoCare, NoAmbulance)
+    public const int Kinds = 12;            // 1-6 прежние, 7 - резерв BL3 (HighRent), 8-9 - BL2, 10-11 - SR3 (NoCare, NoAmbulance), 12 - SR4 (Fire)
     public const int Capacity = 256;        // [Старт] мест на вид за час; переполнение - в «прочее» (KPI его видит, жалобы - нет)
     public const int PerKind = 2;
     public const int PerHour = 6;

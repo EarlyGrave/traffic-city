@@ -340,3 +340,15 @@ public struct ServiceCallInfo
     public byte EnRoute;                // 0 - ждёт в кольце, 1 - машина в пути к цели, 2 - на месте
     public byte Urgent;                 // 1 - срочное кольцо (или вызов срочного вида)
 }
+
+/// <summary>Горящее здание для маркера на карте (<see cref="Simulation.GetFires"/>, services.md §7 C3, §2.7).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct FireInfo
+{
+    public float X, Z;                  // центр участка, м
+    public int Building;                // слот здания
+    public int AgeTicks;                // тиков с начала огня
+    public ushort CondStart;            // Cond в начале, б.п.
+    public ushort Cond;                 // Cond сейчас, б.п.
+    public byte Smoldering;             // 1 - тлеет (smolder_s), 0 - открытый огонь
+}

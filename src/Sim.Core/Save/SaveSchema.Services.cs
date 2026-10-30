@@ -11,10 +11,11 @@ namespace Sim.Core.Save;
 //   блок SERV (есть <=> city.lifecycle) - станции, кольца вызовов по записям, бригады (переехали из LIFE 4-17). Миграции нет (режим прототипа): MigrationV18.
 //   Отклонение от спеки: SERV есть и без режима служб - бригады ЖКХ BL живут в нём (без режима одна встроенная запись utility).
 //   SR2 (окно w18, без смены версии): SERV 29-38 (вид вызова бригады, ползунки, расходы, счётчики вызовов записей, переменная часть станций, RespEwma), CNTR 185-188, LEDG потоки длиной 23.
+//   SR4 (окно w18, без смены версии): SERV 42-47 (пул пожаров FireStore), PARM 314-315 (fire_cap, fire_spread_ppm), BTYP 20 (FirePpm), CNTR 195-199; бит здания Burning (LifeFlags 64).
 //   SR3 (окно w18, без смены версии): SERV 39-41 (пациент бригады Ref/RefGen, CareEwma), RESD 50 (Ill), CNTR 189-194; флаг жителя CareRefused (64), тур Care (3).
 internal static partial class SaveSchema
 {
-    // ---- PARM 300-313 ----
+    // ---- PARM 300-315 ----
     private static ColumnDef[] ServicesParams() => new[]
     {
         Col.Flag(300, "ServicesEnabled", w => w.Town.Services.Enabled, (c, v) => c.Desc.Town.Services.Enabled = v),
@@ -31,6 +32,8 @@ internal static partial class SaveSchema
         Col.Scalar<int>(311, "ServicesIllDaysLight", w => w.Town.Services.IllDaysLight, (c, v) => c.Desc.Town.Services.IllDaysLight = v),
         Col.Scalar<int>(312, "ServicesIllDaysInpatient", w => w.Town.Services.IllDaysInpatient, (c, v) => c.Desc.Town.Services.IllDaysInpatient = v),
         Col.Scalar<int>(313, "ServicesIllDaysCritical", w => w.Town.Services.IllDaysCritical, (c, v) => c.Desc.Town.Services.IllDaysCritical = v),
+        Col.Scalar<int>(314, "ServicesFireCap", w => w.Town.Services.FireCap, (c, v) => c.Desc.Town.Services.FireCap = v),
+        Col.Scalar<int>(315, "ServicesFireSpreadPpm", w => w.Town.Services.FireSpreadPpm, (c, v) => c.Desc.Town.Services.FireSpreadPpm = v),
     };
 
     // ---- SVCR: записи служб (PreWorld, плоские таблицы services.md §2.2; группы - записи, уровни, апгрейды, вызовы, поводы визита) ----
@@ -127,6 +130,12 @@ internal static partial class SaveSchema
         Col.Array<int>(39, "CrewRef", w => Sv(w).Crews.Ref, static w => Sv(w).Crews.Capacity, "max_service_vehicles", "-1"),
         Col.Array<int>(40, "CrewRefGen", w => Sv(w).Crews.RefGen, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
         Col.Array<ushort>(41, "SvcCareEwma", w => Sv(w).CareEwma, static w => Sv(w).CareEwma.Length, "cells (0 без city.services)"),
+        Col.Array<byte>(42, "FireState", w => Sv(w).Fires.State, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
+        Col.Array<int>(43, "FireBuilding", w => Sv(w).Fires.Building, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)", "-1"),
+        Col.Array<int>(44, "FireGen", w => Sv(w).Fires.Gen, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
+        Col.Array<long>(45, "FireStartTick", w => Sv(w).Fires.StartTick, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
+        Col.Array<ushort>(46, "FireCondStart", w => Sv(w).Fires.CondStart, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
+        Col.Array<long>(47, "FireRetry", w => Sv(w).Fires.Retry, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
     })
     {
         Present = static w => w.City?.Services != null,

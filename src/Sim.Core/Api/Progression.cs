@@ -47,6 +47,7 @@ public enum ComplaintKind : byte
     Blight = 9,             // вред заброшки в квартале (§2.4, стадии H2-H3)
     NoCare = 10,            // больному второй день подряд нет места у врача (services.md §2.6, режим city.services)
     NoAmbulance = 11,       // критический больной без скорой или скорая не успела: житель уехал (§2.5, заглушка §10.3/§10.4)
+    Fire = 12,              // дом загорелся (services.md §2.7, режим city.services)
 }
 
 /// <summary>Флаги вехи (<see cref="MilestoneDesc.Flags"/>).</summary>

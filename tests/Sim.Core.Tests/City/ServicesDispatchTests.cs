@@ -368,7 +368,7 @@ public sealed class ServicesDispatchTests
         int t2 = Target(c, near, 2_000, nearest: true, skip: t1);
         int t3 = Target(c, near, 2_000, nearest: true, skip: t1, skip2: t2);
         sim.Step((20 - (int)(sim.World.Tick % 20)) % 20);   // вызовы - перед тиком выезда (фаза 9r видит Tick % 20 == 0)
-        Call(sim, ServiceCallKind.Fire, t1);       // обычный: первым в очереди
+        Assert.True(Fires.Start(sim.World, c, t1));   // SR4: вызов fire бывает только к горящему зданию; обычный: первым в очереди
         Call(sim, ServiceCallKind.Critical, t2);   // срочный
         Call(sim, ServiceCallKind.Critical, t3);
         Assert.Equal(3, sim.GetServiceCalls(new ServiceCallInfo[8]));
@@ -515,7 +515,7 @@ public sealed class ServicesDispatchTests
         int t1 = Target(c, lot, 1_500);
         int t2 = Target(c, lot, 800);
         Call(sim, ServiceCallKind.Critical, t1);
-        Call(sim, ServiceCallKind.Fire, t2);
+        Assert.True(Fires.Start(sim.World, c, t2));   // SR4: вызов fire бывает только к горящему зданию
         Call(sim, ServiceCallKind.Critical, t2);
         return sim;
     }
