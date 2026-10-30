@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| RA1 (city.age, биты возраста, сейв) | локал | local/ra1 | Api/{CityDesc,CityInfo,Simulation.City}.cs, City/{CityResidents,CityInit,Market,CityPhase}.cs, Sim.Scenarios/ScenarioLoader.City.cs, Save/* | 2026-10-30 |
+| RA2 (план дня по группе, пенсия) | локал | local/ra2 | City/{DayPlan,CityPhase}.cs, Demand/Choice.cs, Api/CityInfo.cs | 2026-10-30 |
