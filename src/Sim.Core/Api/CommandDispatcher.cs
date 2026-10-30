@@ -147,6 +147,9 @@ internal static partial class CommandDispatcher
             case CommandKind.BuildService:
                 BuildService(w, in cmd);
                 break;
+            case CommandKind.SetServiceBudget:
+                Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.Utilities.SetBudget(w, in cmd));
+                break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;

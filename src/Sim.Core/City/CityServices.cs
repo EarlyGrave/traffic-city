@@ -13,6 +13,7 @@ internal static class CrewState
     public const byte ToSite = 2;    // едет к цели
     public const byte Working = 3;   // работает на месте до DueTick
     public const byte Return = 4;    // едет назад на станцию
+    public const byte OffDuty = 5;   // на станции, не на линии (ползунок бюджета ниже 100 %, services.md §2.4; только в режиме city.services)
 }
 
 /// <summary>
@@ -208,6 +209,77 @@ internal sealed class ServiceTable
 
         return false;
     }
+
+    /// <summary>Индекс вызова вида <paramref name="kind"/> записи в <see cref="Calls"/> или -1.</summary>
+    public int CallOf(int rec, int kind)
+    {
+        if ((uint)rec >= (uint)Records.Length)
+        {
+            return -1;
+        }
+
+        ref readonly ServiceRecordDesc r = ref Records[rec];
+        for (int i = 0; i < r.CallCount; i++)
+        {
+            if ((int)Calls[r.FirstCall + i].Kind == kind)
+            {
+                return r.FirstCall + i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Флаги вызова вида <paramref name="kind"/> записи (0 - вызова нет).</summary>
+    public byte CallFlagsOf(int rec, int kind)
+    {
+        int i = CallOf(rec, kind);
+        return i >= 0 ? Calls[i].Flags : (byte)0;
+    }
+
+    /// <summary>Уровень станции: строка <see cref="Levels"/> записи <paramref name="rec"/> уровня <paramref name="level"/> (1..4).</summary>
+    public ref readonly ServiceLevelDesc LevelRow(int rec, int level) => ref Levels[Records[rec].FirstLevel + Math.Clamp(level, 1, Records[rec].LevelCount) - 1];
+
+    /// <summary>Роль, нужная вызову вида <paramref name="kind"/> (services.md §2.2): <c>repair</c>, <c>critical</c>, <c>fire</c>.</summary>
+    public static ServiceRole RoleOf(int kind) => (ServiceCallKind)kind switch
+    {
+        ServiceCallKind.Repair => ServiceRole.Repair,
+        ServiceCallKind.Critical => ServiceRole.Critical,
+        ServiceCallKind.Fire => ServiceRole.Fire,
+        _ => ServiceRole.None,
+    };
+
+    /// <summary>
+    /// Сумма эффекта <paramref name="effect"/> включённых апгрейдов уровня (биты <paramref name="mask"/>); для <see cref="ServiceUpgradeEffect.OnsitePct"/> - произведение процентов
+    /// (100 - апгрейдов нет).
+    /// </summary>
+    public int UpgradeEffect(in ServiceLevelDesc l, byte mask, ServiceUpgradeEffect effect)
+    {
+        bool mul = effect == ServiceUpgradeEffect.OnsitePct;
+        int v = mul ? 100 : 0;
+        for (int i = 0; i < l.UpgradeCount && i < CityServicesDesc.MaxUpgrades; i++)
+        {
+            ref readonly ServiceUpgradeDesc u = ref Upgrades[l.FirstUpgrade + i];
+            if ((mask & (1 << i)) != 0 && u.Effect == effect)
+            {
+                v = mul ? v * u.Value / 100 : v + u.Value;
+            }
+        }
+
+        return v;
+    }
+
+    /// <summary>Σ <c>upkeep_day</c> включённых апгрейдов уровня.</summary>
+    public long UpgradeUpkeep(in ServiceLevelDesc l, byte mask)
+    {
+        long v = 0;
+        for (int i = 0; i < l.UpgradeCount && i < CityServicesDesc.MaxUpgrades; i++)
+        {
+            v += (mask & (1 << i)) != 0 ? Upgrades[l.FirstUpgrade + i].UpkeepDay : 0;
+        }
+
+        return v;
+    }
 }
 
 /// <summary>
@@ -293,6 +365,7 @@ internal sealed class CrewStore
     public readonly int[] VehicleGen;
     public readonly long[] DueTick;     // micro: таймаут поездки / конец работы; агрегат: прибытие / конец работы
     public readonly long[] ReqTick;     // тик вызова (задержка)
+    public readonly byte[] Kind;        // вид вызова в работе (ServiceCallKind; 0 - нет): сроки, действие на месте, OnCall; в хэше и сейве - только в режиме city.services
     public readonly RingBuffer<int> Arrivals;   // CrewArrivals: бригады, чьи машины прибыли в этом тике
 
     public CrewStore(int crews)
@@ -307,6 +380,7 @@ internal sealed class CrewStore
         VehicleGen = new int[Capacity];
         DueTick = new long[Capacity];
         ReqTick = new long[Capacity];
+        Kind = new byte[Capacity];
         Array.Fill(Site, -1);
         Array.Fill(Target, -1);
         Array.Fill(SiteLot, -1);
@@ -341,6 +415,7 @@ internal sealed class CrewStore
         VehicleGen[k] = 0;
         DueTick[k] = 0;
         ReqTick[k] = 0;
+        Kind[k] = 0;
     }
 }
 
@@ -357,7 +432,20 @@ internal sealed class CityServices
     public readonly RingBuffer<ServiceCall>[] Normal;   // [запись]
     public readonly RingBuffer<ServiceCall>[] Urgent;   // [запись]
 
-    public CityServices(in CityDesc cfg, BuildingTypes types, int maxBuildings)
+    // SR2 (services.md §2.3-§2.4, §2.9): ползунок бюджета, расходы, отклик. Pct/PctPending, SvcCostDay, RespEwma - в хэше только в режиме city.services.
+    public readonly byte[] Pct;               // [запись] действующий ползунок 50..150 %, дефолт 100
+    public readonly byte[] PctPending;        // [запись] ожидающий (с границы суток)
+    public readonly long[] SvcCostDay;        // [запись * 2 + сутки & 1] расход записи за сутки (панель бюджета)
+    public readonly long[] SiteVarDay;        // [станция * 2 + сутки & 1] переменная часть расхода станции: Σ per_call обслуженных вызовов (SR3 - и per_visit)
+    public readonly long[] RecCallsQueued;    // [запись] вызовов поставлено в кольца
+    public readonly long[] RecCallsDone;      // [запись] прибытий к цели
+    public readonly long[] RecRespTicks;      // [запись] Σ отклика (прибытие - вызов), тики
+    public readonly long[] RecCallsLate;      // [запись] опозданий сверх deadline_s (в ожидании, в пути, без станции)
+    public readonly ushort[] RespEwma;        // [запись * клеток + клетка] отклик, с; EWMA >> 3; 0 - нет данных; только в режиме (иначе пусто)
+    public readonly int Cells;                // клеток сетки охвата (NeighborhoodFields, 128 м); 0 - без режима
+    internal readonly int[] IdleScratch;      // [станция] первая свободная бригада на линии при разборе колец; производное, вне сейва
+
+    public CityServices(in CityDesc cfg, BuildingTypes types, int maxBuildings, int cells)
     {
         Table = new ServiceTable(in cfg, types);
         int crews = cfg.Lifecycle.MaxServiceVehicles;
@@ -366,6 +454,20 @@ internal sealed class CityServices
         // без режима станций не больше бригад (у депо >= 1 бригады): предел max_service_sites не меняет поведение BL
         Sites = new SiteStore(mode ? cfg.Services.MaxServiceSites : crews);
         Crews = new CrewStore(crews);
+        int n = Table.Count;
+        Pct = new byte[n];
+        PctPending = new byte[n];
+        Array.Fill(Pct, (byte)100);
+        Array.Fill(PctPending, (byte)100);
+        SvcCostDay = new long[2 * n];
+        SiteVarDay = new long[2 * Sites.Capacity];
+        RecCallsQueued = new long[n];
+        RecCallsDone = new long[n];
+        RecRespTicks = new long[n];
+        RecCallsLate = new long[n];
+        Cells = mode ? Math.Max(0, cells) : 0;
+        RespEwma = new ushort[n * Cells];
+        IdleScratch = new int[Sites.Capacity];
         int calls = mode ? (cfg.Services.MaxCalls > 0 ? cfg.Services.MaxCalls : Math.Max(maxBuildings / 8, 256)) : Math.Max(1, maxBuildings);
         Normal = new RingBuffer<ServiceCall>[Table.Count];
         Urgent = new RingBuffer<ServiceCall>[Table.Count];

@@ -58,6 +58,7 @@ public enum FlowKind : byte
     CrewWages = 19,     // Utility -> External: зарплата бригад
     Restoration = 20,   // City -> External: капремонт (резерв BL4)
     UtilitySubsidy = 21, // City -> Utility: субсидия ЖКХ из казны (флаг политики UtilitySubsidy)
+    ServiceUpkeep = 22,  // fund -> External: суточный расход станции службы (services.md §2.4, режим city.services)
 }
 
 /// <summary>Здание для клиента: 24 байта (zoning-demand.md §13). Индекс в массиве = слот пула зданий; мёртвый слот - <c>Kind = 0</c>.</summary>
@@ -300,4 +301,37 @@ public struct CityBudgetInfo
     public ushort R0;
     public BudgetPolicy Policy;          // действующая
     public BudgetPolicy PendingPolicy;   // ожидающая границы суток (если HasPending)
+}
+
+/// <summary>Работа записи службы (<see cref="Simulation.GetServiceStats"/>, services.md §2.3-§2.4): вызовы, отклик, машины, ползунок и расход.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct ServiceStats
+{
+    public long CallsQueued;            // вызовов поставлено за всё время
+    public long CallsDone;              // прибытий к цели
+    public long CallsLate;              // опозданий (дольше deadline_s или некому ехать)
+    public long RespTicksTotal;         // Σ отклика, тики
+    public long AvgRespTicks;           // средний отклик, тики (0 - вызовов не было)
+    public long CostToday;              // расход записи за текущие сутки (SvcCostDay)
+    public long CostYesterday;          // за прошлые сутки
+    public int Stations;                // работающих станций
+    public int UnitsOnLine;             // машин на линии (не снятых, OffDuty не в счёте)
+    public int UnitsBusy;               // в выезде (к цели, на месте, назад)
+    public int UnitsMax;                // слотов машин всего (гараж)
+    public int Waiting;                 // вызовов в кольцах (обычное + срочное)
+    public byte Pct;                    // действующий ползунок, %
+    public byte PctPending;             // ожидающий (с границы суток)
+}
+
+/// <summary>Вызов для маркера на карте (<see cref="Simulation.GetServiceCalls"/>, services.md §7 C3): цель, вид, запись, ждёт или едет.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct ServiceCallInfo
+{
+    public float X, Z;                  // центр участка цели, м
+    public int Building;                // слот здания цели
+    public int AgeTicks;                // тиков с постановки вызова
+    public byte Kind;                   // ServiceCallKind
+    public byte Svc;                    // индекс записи
+    public byte EnRoute;                // 0 - ждёт в кольце, 1 - машина в пути к цели, 2 - на месте
+    public byte Urgent;                 // 1 - срочное кольцо (или вызов срочного вида)
 }

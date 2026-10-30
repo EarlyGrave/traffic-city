@@ -27,6 +27,8 @@ public enum ServiceKind : byte
 {
     None = 0,
     Utility = 1,
+    Medicine = 2,   // SR2 (services.md §3): станции записей с ролью critical; машины - уровня записи
+    Fire = 3,       // SR2: роль fire
 }
 
 /// <summary>Исполнитель ног (zoning-demand.md §4, §9): агенты (micro, дефолт) или агрегат (скимы и загрузка ячеек).</summary>

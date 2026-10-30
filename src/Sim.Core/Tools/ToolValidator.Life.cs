@@ -123,12 +123,14 @@ internal static partial class ToolValidator
             return RejectReason.ZoneRule;
         }
 
-        if (city.Types.Rows[type].ServiceKind != ServiceKind.Utility)
+        // Без режима city.services - только депо ЖКХ (BL); в режиме - любая станция записи таблицы (services.md §2.3, SR2)
+        bool ok = city.Services.Table.Explicit ? city.Services.Table.RecOf(type) >= 0 : city.Types.Rows[type].ServiceKind == ServiceKind.Utility;
+        if (!ok)
         {
-            return RejectReason.NotSupported;   // станции без выезда ЖКХ (медицина, пожарные) - с SR5
+            return RejectReason.NotSupported;
         }
 
-        if (city.Services.Crews.FreeSlots() < city.Types.Rows[type].Vehicles || !city.Services.CanAllocSite(city.Buildings))
+        if (city.Services.Crews.FreeSlots() < Utilities.CrewsFor(city, type) || !city.Services.CanAllocSite(city.Buildings))
         {
             return RejectReason.Capacity;
         }
