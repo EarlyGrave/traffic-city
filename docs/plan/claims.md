@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| BL2 значимость и поля квартала | локал | local/bl2 | City/{TripLegs,BudgetFlows,Market,CityLife*}.cs, Api/Progression.cs, Save/* | 2026-10-30 |
+| BL3 ЖКХ: депо, бригады, ремонт, фонд | локал | local/bl3 | City/*, Agents/ArrivalPhase.cs, Lod/QueueMeso.cs, Agents/Spawner.cs, City/Ledger.cs, Api/*, Save/*, content/base/* | 2026-10-30 |

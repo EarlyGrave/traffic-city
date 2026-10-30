@@ -323,3 +323,5 @@
 | **Волна «Спеки этапа 7» (BL, SR, LP, FR, RA, AP; L96–L101)** | opus ×6 | **1 323 176** (≈220 тыс. на спеку) | н/д | 2026-10-30 |
 - L102 (opus, BL1 жизнь здания, ядро ч.1): режим city.lifecycle, износ/потолок/пороги, заброшка стоит, рассыпание, DemolishBuilding(39), w17; LifecycleTests 15/15, хэши без режима прежние; local/bl1 влит в dev. Отчёт: reports/L102.md
 | BL1 (L102) | opus | 176 112 | н/д | 2026-10-30 |
+- L103 (sonnet, BL2 значимость и поля квартала): ArrivalsDay/Signif, поля 128 м, LV_lot, H1-H3, снос значимого; LifecycleSignifTests+LifecycleTests 30/30, хэши без режима прежние; local/bl2 влит. Отчёт: reports/L103.md
+| BL2 (L103) | sonnet | 253 064 | н/д | 2026-10-30 |
