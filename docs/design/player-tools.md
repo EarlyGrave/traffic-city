@@ -58,6 +58,8 @@
 | 23 | `PaintZone` — номер **закреплён** (3.2 Z1: перечисление и диспетчер есть, `Zoning.Apply` - заглушка `NotSupported`, тело - Z6); payload `PaintZoneCmd` ниже | — | — |
 | 39 | `DemolishBuilding` (BL1; только в режиме `city.lifecycle`; цена `demolish_cost` из казны, снос на ближайшем суточном проходе) | флаг `Demolishing` + `Abandon` | нет (необратима) |
 | 40 | `RestoreBuilding` (BL4; капремонт `Cond = Ceil = 100 %`, цена `Capacity · restore_per_unit · (2 − Cond/10 000)`; < 50 % отклоняется) | на месте | нет |
+| 43 | `UpgradeService` (SR5; уровень +1 станции, до 3 участков-пристроек, выкуп соседей) | уровень станции, пристройки | та же команда с `Inverse` (понижение в окне `undo_refund_s`, выкуп не возвращается) |
+| 44 | `SetServiceUpgrade` (SR5; локальный апгрейд уровня вкл/выкл) | бит маски станции | `SetServiceUpgrade` с обратным `On` |
 | 42 | `BuildService` (BL3; депо ЖКХ на пустой участок, цена `build_cost`) | новое здание вида `Service` | `DemolishBuilding` созданного (возврат по `undo_refund_s`) |
 | 24 | `SetTripExecution` (3.2 Z1: номер закреплён за ядром жителей; `NotSupported` до Z5) | на месте (граница суток) | прежний режим |
 
