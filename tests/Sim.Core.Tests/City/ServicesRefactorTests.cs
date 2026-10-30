@@ -40,10 +40,16 @@ public sealed class ServicesRefactorTests
         0x24f6ef3c855ac412UL, 0x379bbedf0b009658UL, 0xafd7c2b29245f948UL, 0x628a8721dd2d4f2fUL, 0x4a91245f2bd086c7UL, 0x912a11e9d167bb03UL, 0x057b2a9849472378UL, 0x10fbb716febd9024UL,
     };
 
-    internal static ulong[] Run(string scenario, TripExecution exec, int depots)
+    /// <summary>Сценарий с депо и заранее изношенной частью зданий; <paramref name="mode"/> - секция <c>city.services</c> со встроенной записью <c>utility</c>.</summary>
+    internal static Simulation Make(string scenario, TripExecution exec, int depots, bool mode = false, int threads = 1)
     {
         ScenarioDesc d = LifecycleCalibrationTests.Load(scenario, exec);
-        using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = 1 });
+        if (mode)
+        {
+            EnableServices(ref d);
+        }
+
+        Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         sim.Step(20);
         Assert.Equal(depots, LifecycleCalibrationTests.PlaceDepots(sim, depots));
         CityWorld c = sim.World.City!;
@@ -57,7 +63,24 @@ public sealed class ServicesRefactorTests
             }
         }
 
-        int step = c.DayTicks / 8;
+        return sim;
+    }
+
+    /// <summary>Режим <c>city.services</c> с одной записью <c>utility</c> - той же, что ядро строит без секции (= <c>content/base/services.json</c>).</summary>
+    internal static void EnableServices(ref ScenarioDesc d)
+    {
+        BuildingTypeDesc[] types = d.Town.BuildingTypes is { Length: > 0 } bt ? bt : CityDesc.BaseBuildingTypes();
+        int depot = Array.FindIndex(types, t => t.ServiceKind == ServiceKind.Utility);
+        Assert.True(depot >= 0);
+        CityServicesDesc s = CityServicesDesc.Default();
+        CityServicesDesc.BaseRecords(depot, types[depot].VehicleType, out s.Records, out s.Levels, out s.Calls);
+        d.Town.Services = s;
+    }
+
+    internal static ulong[] Run(string scenario, TripExecution exec, int depots)
+    {
+        using Simulation sim = Make(scenario, exec, depots);
+        int step = sim.World.City!.DayTicks / 8;
         var h = new ulong[Points];
         for (int k = 0; k < Points; k++)
         {
