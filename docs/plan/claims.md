@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| BL4 капремонт и API жизни здания | локал | local/bl4 | City/*, City/Progression.Rules.cs, Api/*, Tools/*, Save/* | 2026-10-30 |
+| BL5 сценарии, калибровка, эталоны жизни здания | локал | local/bl5 | scenarios/*, Sim.Scenarios, City/* (параметры), perf/*, tests/SaveCorpus, docs | 2026-10-30 |

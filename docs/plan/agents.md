@@ -327,3 +327,5 @@
 | BL2 (L103) | sonnet | 253 064 | н/д | 2026-10-30 |
 - L104 (opus, BL3 ЖКХ): депо/бригады/очередь ремонтов/счёт Utility/тариф/субсидия; LifecycleUtilityTests 19/19, Headless 605/605, Host 57/57; local/bl3 влит. Для BL5: при тарифе 100 уходят 136 из ~3900 жителей s1k-res за 3 дня (нулевой доход). Отчёт: reports/L104.md
 | BL3 (L104) | opus | 229 876 | н/д | 2026-10-30 |
+- L105 (sonnet, BL4 капремонт + API): RestoreBuilding(40), TryGetBuildingLife, GetUtilityInfo; LifecycleRestoreTests 14/14; окно w17 закрыто; local/bl4 влит. Feature.Restoration не добавлена (сдвигает хэш Features). Отчёт: reports/L105.md
+| BL4 (L105) | sonnet | н/д | н/д | 2026-10-30 |
