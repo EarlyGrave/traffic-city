@@ -171,6 +171,9 @@ CityKpi: KpiHour[24] Ring, int Head; KpiHour Current; long VehTicksAtHourStart, 
 | 10 | `ParkingFees` | будущая команда K5 |
 | 11–63 | резерв | — |
 
+Блок BL (`building-lifecycle.md`): снос (`DemolishBuilding`), депо ЖКХ (`BuildService`), тариф и капремонт (`RestoreBuilding`) признаков не получили и доступны с M0 в сценариях с `city.lifecycle`
+(признак `Restoration` не заведён: он сдвигает `Features` в хэше прогрессии); `Monuments` отложен.
+
 Снос (`RemoveRoad`), `SplitRoad`/`MergeAtNode` и не-инструменты (`SpawnTrip`, `SelectVehicle`, `SetTripExecution`, …) замков не имеют.
 Профиль: `BuildRoad.Profile` / `UpgradeRoad.Profile` (индекс + 1) должен быть открыт в битсете.
 
@@ -240,6 +243,9 @@ CityKpi: KpiHour[24] Ring, int Head; KpiHour Current; long VehTicksAtHourStart, 
 | 3 `LongCommute` | нога к работе закрыта с `dur ≥ max(commute_min, ratio · Get-ским свободного потока)`; [Старт] `commute_min` 60 игровых мин, `ratio` 2.0 | `TripLegs.CompleteLeg` | дом жителя | «На работу больше часа» |
 | 4 `TourCancelled` | тур снят по дедлайну `WaitDepart` (`ResToursCancelled++`) | `TripLegs` | дом жителя | «Не смогли выехать» |
 | 5 `LongStopWait` | посадка после ожидания ≥ [Старт] 20 игровых мин (только `peds`-агенты) | `Peds/Stops.cs` | остановка | «Долго ждали автобус на …» |
+
+Режим `city.lifecycle` добавляет ещё четыре вида (`ComplaintKind` 6–9): `BuildingWorn` (дом ветшает: один раз при пересечении 90 % вниз и случаи K4 при `Cond` < 70 %), `HighRent` (житель уехал из-за тарифа ЖКХ),
+`HeritageLost` (снесено значимое здание), `Blight` (вред заброшки в квартале, стадии H2–H3); случаи — в `IncBuildingWorn`.
 
 Все пять — события, которые ядро уже распознаёт; новое — только запись места. Случай считается всегда (KPI), жалоба — после фильтра §6.2.
 

@@ -47,6 +47,10 @@
 проезд; `Maintenance` — содержание дорог и автобусов; `Subsidy` — резерв (не используется в 4.2); `Construction` — стройка игрока
 (в 3.2 — стройка зданий, остаётся на `External`, см. §17 т. 3).
 
+**Режим `city.lifecycle`** (`building-lifecycle.md` §2.10, BL3–BL4) дописывает счёт `Utility` (фонд ЖКХ, рядом с `City`; `SumAll` и CZ2 его включают) и потоки
+`UtilityFee = 17` (житель/фирма → `Utility`), `Repair = 18` (`Utility` → `External`), `CrewWages = 19` (`Utility` → `External`), `Restoration = 20` (`City` → `External`, капремонт),
+`UtilitySubsidy = 21` (`City` → `Utility`, флаг политики); `FlowKindCount = 22`. Снос игроком и очистка рассыпавшегося идут потоком `Construction` (из `City`).
+
 **Перенос остатков (`Ledger.TransferPct`).** Пропорциональный сбор `amount = base · rate / D` считается с глобальным переносом
 по виду потока: `Carry[kind] += base · rate; amount = Carry[kind] / D; Carry[kind] -= amount · D`. `D` = 10 000 (базисные пункты).
 `Carry` — `long[17]`, состояние (сейв, хэш). Сумма за день точна до одного `D`, плательщики чередуют округление в фиксированном
@@ -88,6 +92,9 @@
 | `Leakage` | дневной проход жителя | житель → `External` | `(Account − res_buffer_days · IncomeEwma) >> payout_shift`, если > 0 |
 | `Construction` | применение команды инструмента (фаза 1) | `City` → `External` | цена `tools.costs` (§8) |
 | `Refund` | снос, понижение, undo (фаза 1) | `External` → `City` | §8 |
+| `UtilityFee` | дневной проход жителя и фирмы (только `city.lifecycle`) | житель/фирма → `Utility` | `TransferPct(R0 · места, 100 б.п.)`: житель — 1 место, фирма — `Capacity`; `R0` = тариф, стартово 30 (сотые доли в сутки) |
+| `Repair`, `CrewWages` | окончание ремонта; граница суток | `Utility` → `External` | `(Ceil − Cond) · Capacity · repair_per_unit / 10 000` (10); `crew_day_cost` (60) на бригаду |
+| `Restoration`, `UtilitySubsidy` | команда `RestoreBuilding`; выезд при пустом фонде и флаге политики | `City` → `External`; `City` → `Utility` | `Capacity · restore_per_unit · (2 − Cond/10 000)`; дефицит фонда |
 | `Endowment` | `Create` или `Enable` | `External` → `City` | `initial_city_balance_per_resident · Alive` |
 
 Порядок внутри дневного прохода фирмы (по возрастанию индекса здания, 3.2): прибыль вчера → `Tax` → `Rent` (в счёт сегодняшнего дня)

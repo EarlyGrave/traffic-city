@@ -56,6 +56,9 @@
 | 34 | `SetBusRouteParams` (интервал, тип ТС) | на месте | прежний |
 | 35 | `MergeAtNode` (узел степени 2 с одинаковыми сегментами) | перенос с тишиной узла | `SplitRoad(RestoreOf)` |
 | 23 | `PaintZone` — номер **закреплён** (3.2 Z1: перечисление и диспетчер есть, `Zoning.Apply` - заглушка `NotSupported`, тело - Z6); payload `PaintZoneCmd` ниже | — | — |
+| 39 | `DemolishBuilding` (BL1; только в режиме `city.lifecycle`; цена `demolish_cost` из казны, снос на ближайшем суточном проходе) | флаг `Demolishing` + `Abandon` | нет (необратима) |
+| 40 | `RestoreBuilding` (BL4; капремонт `Cond = Ceil = 100 %`, цена `Capacity · restore_per_unit · (2 − Cond/10 000)`; < 50 % отклоняется) | на месте | нет |
+| 42 | `BuildService` (BL3; депо ЖКХ на пустой участок, цена `build_cost`) | новое здание вида `Service` | `DemolishBuilding` созданного (возврат по `undo_refund_s`) |
 | 24 | `SetTripExecution` (3.2 Z1: номер закреплён за ядром жителей; `NotSupported` до Z5) | на месте (граница суток) | прежний режим |
 
 Не инструменты (обратных нет, `InverseRecord.Flags.NoInverse`): `SpawnTrip`, `SpawnBus`, `SelectVehicle`, `ClearSelection`,

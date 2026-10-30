@@ -100,7 +100,9 @@
 **Здания (сделано в Z1/M10, 3.2).** `buildings.json` (`format_version: 1`, корень `{ "format_version": 1, "buildings": [...] }`): `name` (id `<пакет>:building/<имя>`), `rev`, `kind` (`residential|commercial|industrial`),
 `density` (`low|high`), `capacity` (1..2 000), `shop_capacity` (только `commercial`), `shift_start_slot` (0..287), `shift_slots` (1..288 у C/I), `construct_days`, `attract` (только `commercial`, дефолт 1.0), `visual.model`.
 Пределы - `ModLimits.MaxBuildingTypes = 512`, `MaxBuildingCapacity = 2000`. Ядру уходит `BuildingTypeDesc` (строки только дописываются, `VisualRow` = индекс в каталоге); сейв хранит копию в блоке `BTYP`.
-`base` поставляет 6 типов (R/C/I x low/high; значения = `CityDesc.BaseBuildingTypes()`). `MANI` вид 2 пока не пишется. Подробнее - `zoning-demand.md` §17.
+Жизнь здания (`building-lifecycle.md` §6.1, только в режиме `city.lifecycle`): `decay_bp_day`, `ceil_drop_bp_day` (износ и падение потолка в сутки, б.п.), `demolish_cost` (цена сноса), для депо службы —
+`kind: "service"`, `service: "utility"`, `build_cost`, `vehicles` (бригад на депо), `vehicle_type` (тип ТС пакета; id или имя). Без этих ключей берутся значения по виду и плотности (`BuildingTypeDesc.LifeDefaults`).
+`base` поставляет 7 типов (R/C/I x low/high и `utility_depot`; значения = `CityDesc.BaseBuildingTypes()`). `MANI` вид 2 пока не пишется. Подробнее - `zoning-demand.md` §17.
 Пропы - только визуал, в симуляцию и сейв не попадают, пока ядро не размещает объекты; непустой `props` даёт `UnsupportedContent`.
 
 ### 3.4 Сценарии `format_version: 3`
