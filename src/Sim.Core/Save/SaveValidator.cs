@@ -917,7 +917,7 @@ internal static partial class SaveValidator
 
     // ResidentRef: 0 - нет; > 0 - житель + 1; < 0 - бригада ЖКХ -(k + 1) (building-lifecycle.md §2.10, BL3).
     private static bool TripRefOk(World w, int r) =>
-        r == 0 || (w.City != null && (r > 0 ? r <= w.City.Residents.Capacity : w.City.Utility != null && -(long)r <= w.City.Utility.Capacity));
+        r == 0 || (w.City != null && (r > 0 ? r <= w.City.Residents.Capacity : w.City.Services != null && -(long)r <= w.City.Services.Crews.Capacity));
 
     public static LoadStatus ValidateQueues(LoadContext c)
     {

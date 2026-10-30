@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled || desc.Town.Services.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -54,6 +54,16 @@ internal static class CityBuild
         if (desc.Town.Outside.Count > 0 && desc.Parking.Enabled)
         {
             return CreateStatus.InvalidCity;   // внешние подключения пока без парковки как ресурса (ADR-0037, Y3): нога к узлу не резервирует место
+        }
+
+        if (desc.Town.Services.Enabled)
+        {
+            // службы (services.md §6): только поверх city.lifecycle; таблицы записей - в пределах типов зданий и ТС
+            int types = desc.Town.BuildingTypes is { Length: > 0 } bt ? bt.Length : CityDesc.BaseBuildingTypes().Length;
+            if (!desc.Town.Lifecycle.Enabled || !ServiceTable.IsValid(in desc.Town.Services, types, desc.VehicleTypes?.Length ?? 0))
+            {
+                return CreateStatus.InvalidCity;
+            }
         }
 
         return IsValid(in desc.Town) ? CreateStatus.Ok : CreateStatus.InvalidCity;

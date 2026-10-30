@@ -94,7 +94,7 @@ public class VehicleClassesTests
     public void Save_OnCallFlag_OnlyOnSpecialType()
     {
         byte[] save = SaveBytes();
-        Assert.Equal(17, Simulation.CurrentWorldVersion);
+        Assert.True(Simulation.CurrentWorldVersion >= 17);
 
         // Контроль: спецмашина на вызове грузится.
         byte[] ok = PatchFirstVehicle(save, 4, (byte)VehicleFlags.OnCall);

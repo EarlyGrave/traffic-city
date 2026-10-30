@@ -198,6 +198,12 @@ internal static class WorldLoader
             case "LIFE":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Lifecycle.Enabled;
                 break;
+            case "SERV":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Lifecycle.Enabled;   // службы (services.md §5): бригады ЖКХ и без режима
+                break;
+            case "SVCR":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Services.Enabled;
+                break;
             case "PEDS":
             case "PPTH":
             case "RESI":

@@ -3,7 +3,7 @@ using Sim.Core.Api;
 namespace Sim.Core.Save;
 
 // world_version 17 (building-lifecycle.md §5, задачи BL1-BL2; окно w17 открыто до BL4): жизнь здания.
-//   PARM 280-299 (секция city.lifecycle; 289-298 - ЖКХ, BL3; 299 - restore_per_unit, BL4), BLDG 22-27 (Cond, Ceil, BornDay, LifeFlags, Signif, ArrivalsDay; без режима - нули), LIFE 1-2 (поля квартала, BL2), LIFE 3-17 (фонд Utility, очередь заявок, бригады, BL3),
+//   PARM 280-299 (секция city.lifecycle; 289-298 - ЖКХ, BL3; 299 - restore_per_unit, BL4), BLDG 22-27 (Cond, Ceil, BornDay, LifeFlags, Signif, ArrivalsDay; без режима - нули), LIFE 1-2 (поля квартала, BL2), LIFE 3 (фонд Utility, BL3; очередь и бригады 4-17 - в SERV с w18),
 //   BTYP 13-19 (DecayBpDay, CeilDropBpDay, DemolishCost, BuildCost, ServiceKind, Vehicles, VehicleType),
 //   CNTR 176-184 (BuildingsCrumbled, BuildingsDemolished, BuildingsResettled, RepairsDone, RepairDelayTicksTotal, RepairNoDepot, CrewTimeouts, TariffLeaves, Restorations); LEDG потоки длиной 22; CKPI 38-39 (IncBuildingWorn, SaveSchema.Progression). Миграции нет (режим прототипа): MigrationV17.
 internal static partial class SaveSchema
@@ -45,27 +45,13 @@ internal static partial class SaveSchema
     };
 
     // ---- LIFE (BL2): поля квартала, оба буфера (building-lifecycle.md §2.6); есть <=> режим city.lifecycle ----
-    private static BlockDef LifeBlock() => new("LIFE", "жизнь зданий: поля квартала Heritage/Blight/Disorder/FireRisk на сетке lifecycle.cell_m, текущий и накопительный буферы (building-lifecycle.md §2.6); ЖКХ: фонд Utility, очередь заявок, бригады (§2.10)", new[]
+    private static BlockDef LifeBlock() => new("LIFE", "жизнь зданий: поля квартала Heritage/Blight/Disorder/FireRisk на сетке lifecycle.cell_m, текущий и накопительный буферы (building-lifecycle.md §2.6); ЖКХ: фонд Utility (§2.10)", new[]
     {
         Col.Array<int>(1, "FieldsCur", w => w.City!.Fields!.Cur, static w => w.City!.Fields!.Cur.Length, "4 * NC"),
         Col.Array<int>(2, "FieldsNext", w => w.City!.Fields!.Next, static w => w.City!.Fields!.Next.Length, "4 * NC"),
 
-        // ЖКХ (BL3, §2.10): фонд, очередь заявок (FIFO, голова при загрузке = 0), бригады; кольцо CrewArrivals пусто на границе тиков и не хранится
+        // ЖКХ (BL3, §2.10): фонд. Очередь заявок и бригады (бывшие 4-17) с world_version 18 - в блоке SERV (services.md §5, SR1); id 4-17 не переиспользуются
         Col.Scalar<long>(3, "Utility", w => w.City!.Ledger.Utility, (c, v) => c.W.City!.Ledger.Utility = v),
-        RingCount<City.RepairRequest>(4, "QueueCount", w => w.City!.Utility!.Queue),
-        Col.RingField<City.RepairRequest>(5, "QueueBuilding", w => w.City!.Utility!.Queue, "QueueCount", nameof(City.RepairRequest.Building)),
-        Col.RingField<City.RepairRequest>(6, "QueueGen", w => w.City!.Utility!.Queue, "QueueCount", nameof(City.RepairRequest.Gen)),
-        Col.RingField<City.RepairRequest>(7, "QueueTick", w => w.City!.Utility!.Queue, "QueueCount", nameof(City.RepairRequest.Tick)),
-        Col.Array<int>(8, "CrewDepot", w => w.City!.Utility!.Depot, static w => w.City!.Utility!.Capacity, "max_service_vehicles", "-1"),
-        Col.Array<int>(9, "CrewDepotGen", w => w.City!.Utility!.DepotGen, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
-        Col.Array<byte>(10, "CrewState", w => w.City!.Utility!.State, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
-        Col.Array<int>(11, "CrewTarget", w => w.City!.Utility!.Target, static w => w.City!.Utility!.Capacity, "max_service_vehicles", "-1"),
-        Col.Array<int>(12, "CrewTargetGen", w => w.City!.Utility!.TargetGen, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
-        Col.Array<int>(13, "CrewSiteLot", w => w.City!.Utility!.SiteLot, static w => w.City!.Utility!.Capacity, "max_service_vehicles", "-1"),
-        Col.Array<int>(14, "CrewVehicle", w => w.City!.Utility!.Vehicle, static w => w.City!.Utility!.Capacity, "max_service_vehicles", "-1"),
-        Col.Array<int>(15, "CrewVehicleGen", w => w.City!.Utility!.VehicleGen, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
-        Col.Array<long>(16, "CrewDueTick", w => w.City!.Utility!.DueTick, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
-        Col.Array<long>(17, "CrewReqTick", w => w.City!.Utility!.ReqTick, static w => w.City!.Utility!.Capacity, "max_service_vehicles"),
     })
     {
         Present = static w => w.City?.Fields != null,

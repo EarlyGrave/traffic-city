@@ -183,6 +183,8 @@ ADR-0015). Хост сам решает `critical` для своих блоко�
 С v17 (блок BL, `building-lifecycle.md` §5; без миграции, режим прототипа) режим `city.lifecycle` добавляет столбцы `PARM` 280-299, `BLDG` 22-27, `BTYP` 13-19, `CNTR` 176-184, блок `LIFE` (⇔ режим: поля квартала, очередь заявок, бригады, фонд),
 счёт `Utility` и потоки 17-21 в `LEDG`; без режима столбцы нулевые, хэши прежние. Окно v17 закрыто в BL4; калибровка BL5 (`reports/L106.md`) схему не меняла - сменились только дефолты параметров и базовых типов зданий (значения лежат в сейве, старые сейвы v17 грузятся со своими числами).
 
+С v18 (службы, `services.md` §5, задача SR1; без миграции, режим прототипа, окно открыто до SR5): очередь заявок и бригады ЖКХ переехали из `LIFE` (id 4-17 выбыли) в новый блок `SERV` (⇔ `city.lifecycle`: станции, кольца вызовов по записям, бригады со ссылкой на станцию); секция `city.services` - столбцы `PARM` 300-313 и блок `SVCR` (PreWorld, ⇔ `PARM.ServicesEnabled = 1`: таблицы записей служб). Хэш без `city.services` - побитово прежний (ЖКХ пишется как в BL).
+
 Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
 ## 4. Версии и миграции
@@ -783,6 +785,20 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 297 | LifecycleMaxUtilityTariff | i32 | 1 | 0 |
 | `PARM` | 298 | LifecycleUtilityTariff | i32 | 1 | 0 |
 | `PARM` | 299 | LifecycleRestorePerUnit | i32 | 1 | 0 |
+| `PARM` | 300 | ServicesEnabled | u8 | 1 | 0 |
+| `PARM` | 301 | ServicesMaxServiceSites | i32 | 1 | 0 |
+| `PARM` | 302 | ServicesMaxCalls | i32 | 1 | 0 |
+| `PARM` | 303 | ServicesMaxFires | i32 | 1 | 0 |
+| `PARM` | 304 | ServicesDisorderIllPct | i32 | 1 | 0 |
+| `PARM` | 305 | ServicesFireRiskPct | i32 | 1 | 0 |
+| `PARM` | 306 | ServicesSmolderS | i32 | 1 | 0 |
+| `PARM` | 307 | ServicesAnnexBuyPct | i32 | 1 | 0 |
+| `PARM` | 308 | ServicesIllLightPpm | i32 | 1 | 0 |
+| `PARM` | 309 | ServicesIllInpatientPpm | i32 | 1 | 0 |
+| `PARM` | 310 | ServicesIllCriticalPpm | i32 | 1 | 0 |
+| `PARM` | 311 | ServicesIllDaysLight | i32 | 1 | 0 |
+| `PARM` | 312 | ServicesIllDaysInpatient | i32 | 1 | 0 |
+| `PARM` | 313 | ServicesIllDaysCritical | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -835,6 +851,46 @@ s10k с цифрами размера и времени. Клиентские к
 | `BTYP` (demand.model = residents) | 17 | ServiceKind | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 18 | Vehicles | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 19 | VehicleType | u8 | Rows.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 1 | RecFund | u8 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 2 | RecRev | u16 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 3 | RecFirstLevel | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 4 | RecLevelCount | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 5 | RecFirstCall | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 6 | RecCallCount | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 7 | RecFirstVisit | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 8 | RecVisitCount | i32 | Records.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 9 | LevelType | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 10 | LevelRoles | u8 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 11 | LevelLotMinF | u8 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 12 | LevelLotMinD | u8 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 13 | LevelMilestone | u8 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 14 | LevelBuildCost | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 15 | LevelUpkeepDay | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 16 | LevelCapacityDay | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 17 | LevelBeds | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 18 | LevelIcu | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 19 | LevelOpenSlot | i16 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 20 | LevelCloseSlot | i16 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 21 | LevelStaySlots | i16 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 22 | LevelDispatchVehicle | i16 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 23 | LevelUnits | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 24 | LevelPerUnitDay | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 25 | LevelFirstUpgrade | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 26 | LevelUpgradeCount | i32 | Levels.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 27 | UpgradeCost | i32 | Upgrades.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 28 | UpgradeUpkeepDay | i32 | Upgrades.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 29 | UpgradeMilestone | u8 | Upgrades.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 30 | UpgradeEffect | u8 | Upgrades.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 31 | UpgradeValue | i32 | Upgrades.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 32 | CallKind | u8 | Calls.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 33 | CallFlags | u8 | Calls.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 34 | CallOnsiteS | i32 | Calls.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 35 | CallDeadlineS | i32 | Calls.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 36 | CallPerCall | i32 | Calls.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 37 | VisitReason | u8 | Visits.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 38 | VisitMinRole | u8 | Visits.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 39 | VisitPerVisit | i32 | Visits.Length | 0 |
+| `SVCR` (PARM.ServicesEnabled = 1) | 40 | VisitMaxCostS | i32 | Visits.Length | 0 |
 | `WRLD` | 1 | Tick | i64 | 1 | 0 |
 | `WRLD` | 2 | NetVersion | i32 | 1 | 0 |
 | `WRLD` | 3 | TargetVehicles | i32 | 1 | 0 |
@@ -1669,20 +1725,34 @@ s10k с цифрами размера и времени. Клиентские к
 | `LIFE` (PARM.LifecycleEnabled = 1) | 1 | FieldsCur | i32 | 4 * NC | 0 |
 | `LIFE` (PARM.LifecycleEnabled = 1) | 2 | FieldsNext | i32 | 4 * NC | 0 |
 | `LIFE` (PARM.LifecycleEnabled = 1) | 3 | Utility | i64 | 1 | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 4 | QueueCount | i32 | 1 | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 5 | QueueBuilding | i32 | QueueCount | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 6 | QueueGen | i32 | QueueCount | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 7 | QueueTick | i64 | QueueCount | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 8 | CrewDepot | i32 | max_service_vehicles | -1 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 9 | CrewDepotGen | i32 | max_service_vehicles | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 10 | CrewState | u8 | max_service_vehicles | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 11 | CrewTarget | i32 | max_service_vehicles | -1 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 12 | CrewTargetGen | i32 | max_service_vehicles | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 13 | CrewSiteLot | i32 | max_service_vehicles | -1 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 14 | CrewVehicle | i32 | max_service_vehicles | -1 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 15 | CrewVehicleGen | i32 | max_service_vehicles | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 16 | CrewDueTick | i64 | max_service_vehicles | 0 |
-| `LIFE` (PARM.LifecycleEnabled = 1) | 17 | CrewReqTick | i64 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 1 | SiteBuilding | i32 | max_service_sites | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 2 | SiteGen | i32 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 3 | SiteSvc | u8 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 4 | SiteLevel | u8 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 5 | SiteUpgradeMask | u8 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 6 | SiteUnitsMax | u8 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 7 | SiteDuty | u8 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 8 | SiteBedsUsed | i32 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 9 | SiteIcuUsed | i32 | max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 10 | SiteBedRelease | i32 | 16 * max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 11 | SiteIcuRelease | i32 | 16 * max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 12 | CallCount | i32 | 2 * records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 13 | CallTarget | i32 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 14 | CallTargetGen | i32 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 15 | CallRef | i32 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 16 | CallRefGen | i32 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 17 | CallTick | i64 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 18 | CallKind | u8 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 19 | CallSvc | u8 | sum(CallCount) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 20 | CrewSite | i32 | max_service_vehicles | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 21 | CrewState | u8 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 22 | CrewTarget | i32 | max_service_vehicles | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 23 | CrewTargetGen | i32 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 24 | CrewSiteLot | i32 | max_service_vehicles | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 25 | CrewVehicle | i32 | max_service_vehicles | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 26 | CrewVehicleGen | i32 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 27 | CrewDueTick | i64 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 28 | CrewReqTick | i64 | max_service_vehicles | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |

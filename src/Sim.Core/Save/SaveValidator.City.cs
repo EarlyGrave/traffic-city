@@ -310,12 +310,13 @@ internal static partial class SaveValidator
         return LoadStatus.Ok;
     }
 
-    // ЖКХ (building-lifecycle.md §2.10, BL3): фонд только при службе; заявки очереди; состояния бригад; машины бригад <-> бригады; Requested у цели бригады в пути/на работе.
+    // Службы (building-lifecycle.md §2.10, services.md §5; BL3, SR1): фонд только при службах; станции; вызовы колец; состояния бригад; машины бригад <-> бригады;
+    // Requested у цели бригады в пути/на работе.
     private static LoadStatus ValidateUtility(LoadContext c, World w, CityWorld city)
     {
-        UtilityService? u = city.Utility;
+        CityServices? sv = city.Services;
         VehicleStoreView veh = new(w);
-        if (u == null)
+        if (sv == null)
         {
             if (city.Ledger.Utility != 0)
             {
@@ -335,15 +336,29 @@ internal static partial class SaveValidator
 
         BuildingStore b = city.Buildings;
         int bcap = b.Pool.Capacity;
-        for (int i = 0; i < u.Queue.Count; i++)
+        LoadStatus st0 = ValidateSites(c, city, sv);
+        if (st0 != LoadStatus.Ok)
         {
-            ref readonly RepairRequest q = ref u.Queue.At(i);
-            if ((uint)q.Building >= (uint)bcap || q.Gen < 0 || q.Tick < 0 || q.Tick > w.Tick)
+            return st0;
+        }
+
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            for (int u2 = 0; u2 < 2; u2++)
             {
-                return Bad(c, i, 62);
+                Util.RingBuffer<ServiceCall> ring = u2 == 0 ? sv.Normal[r] : sv.Urgent[r];
+                for (int i = 0; i < ring.Count; i++)
+                {
+                    ref readonly ServiceCall q = ref ring.At(i);
+                    if ((uint)q.Target >= (uint)bcap || q.TargetGen < 0 || q.Tick < 0 || q.Tick > w.Tick || q.Svc != r || !sv.Table.HasCall(r, (Api.ServiceCallKind)q.Kind))
+                    {
+                        return Bad(c, i, 62);
+                    }
+                }
             }
         }
 
+        CrewStore u = sv.Crews;
         for (int k = 0; k < u.Capacity; k++)
         {
             byte st = u.State[k];
@@ -354,7 +369,7 @@ internal static partial class SaveValidator
 
             if (st == CrewState.Free)
             {
-                if (u.Depot[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1)
+                if (u.Site[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1)
                 {
                     return Bad(c, k, 63);
                 }
@@ -363,7 +378,7 @@ internal static partial class SaveValidator
             }
 
             bool busy = st is CrewState.ToSite or CrewState.Working;
-            if ((uint)u.Depot[k] >= (uint)bcap || u.DepotGen[k] < 0 || u.Target[k] < -1 || u.Target[k] >= bcap || u.TargetGen[k] < 0 ||
+            if ((uint)u.Site[k] >= (uint)sv.Sites.Capacity || sv.Sites.Building[u.Site[k]] < 0 || u.Target[k] < -1 || u.Target[k] >= bcap || u.TargetGen[k] < 0 ||
                 u.SiteLot[k] < -1 || u.SiteLot[k] >= city.Lots.Count || u.DueTick[k] < 0 || u.ReqTick[k] < 0 || u.ReqTick[k] > w.Tick ||
                 (st == CrewState.Idle && (u.Target[k] != -1 || u.Vehicle[k] != -1)) || (busy && u.Target[k] == -1))
             {
@@ -396,6 +411,59 @@ internal static partial class SaveValidator
             if (k >= u.Capacity || u.Vehicle[k] != v || u.VehicleGen[k] != veh.Generation(v))
             {
                 return Bad(c, v, 67);
+            }
+        }
+
+        return LoadStatus.Ok;
+    }
+
+    // Станции (services.md §5): свободный слот пуст; занятый - здание в пределах пула, живое здание станции - вида Service своей записи и уровня; Duty <= UnitsMax;
+    // BedsUsed = сумма BedRelease (так же Icu); живое здание - не больше одной станции.
+    private static LoadStatus ValidateSites(LoadContext c, CityWorld city, CityServices sv)
+    {
+        SiteStore s = sv.Sites;
+        BuildingStore b = city.Buildings;
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            int bi = s.Building[i];
+            if (bi < 0)
+            {
+                if (bi != -1 || s.Gen[i] != 0 || s.UnitsMax[i] != 0 || s.Duty[i] != 0 || s.BedsUsed[i] != 0 || s.IcuUsed[i] != 0)
+                {
+                    return Bad(c, i, 68);
+                }
+
+                continue;
+            }
+
+            long beds = 0;
+            long icu = 0;
+            for (int d = 0; d < SiteStore.ReleaseDays; d++)
+            {
+                beds += s.BedRelease[(i * SiteStore.ReleaseDays) + d];
+                icu += s.IcuRelease[(i * SiteStore.ReleaseDays) + d];
+            }
+
+            if (bi >= b.Pool.Capacity || s.Gen[i] < 0 || s.Svc[i] >= sv.Table.Count || s.Duty[i] > s.UnitsMax[i] || beds != s.BedsUsed[i] || icu != s.IcuUsed[i])
+            {
+                return Bad(c, i, 68);
+            }
+
+            if (b.Pool.IsAlive(bi, s.Gen[i]))
+            {
+                int type = b.Type[bi];
+                if (city.Types.Rows[type].Kind != LotZone.Service || sv.Table.RecOf(type) != s.Svc[i] || sv.Table.LevelOf(type) != s.Level[i])
+                {
+                    return Bad(c, i, 69);
+                }
+
+                for (int j = 0; j < i; j++)
+                {
+                    if (s.Building[j] == bi && s.Gen[j] == s.Gen[i])
+                    {
+                        return Bad(c, i, 69);
+                    }
+                }
             }
         }
 

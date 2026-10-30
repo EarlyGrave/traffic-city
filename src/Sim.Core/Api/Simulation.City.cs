@@ -488,7 +488,7 @@ public sealed partial class Simulation
 
     private static RepairState RepairStateOf(CityWorld c, int bi)
     {
-        UtilityService? u = c.Utility;
+        CrewStore? u = c.Services?.Crews;
         if (u == null || (c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested) == 0)
         {
             return RepairState.None;
@@ -513,7 +513,7 @@ public sealed partial class Simulation
     {
         info = default;
         CityWorld? c = _disposed ? null : _w.City;
-        UtilityService? u = c?.Utility;
+        CrewStore? u = c?.Services?.Crews;
         CityBudget? bud = c?.Budget;
         if (c == null || u == null || bud == null || !c.Cfg.Lifecycle.Enabled)
         {
@@ -529,7 +529,7 @@ public sealed partial class Simulation
         info.Tariff = bud.Policy.R0;
         info.PendingTariff = pend.R0;
         info.MaxTariff = c.Cfg.Lifecycle.MaxUtilityTariff;
-        info.QueueLength = u.Queue.Count;
+        info.QueueLength = c.Services!.UtilityQueue?.Count ?? 0;
         info.Crews = u.Crews();
         for (int k = 0; k < u.Capacity; k++)
         {
