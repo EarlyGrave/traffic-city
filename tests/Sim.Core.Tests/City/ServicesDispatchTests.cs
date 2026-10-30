@@ -59,6 +59,9 @@ public sealed class ServicesDispatchTests
             new ServiceCallDesc { Kind = ServiceCallKind.Critical, Flags = critFlags, OnsiteS = 60, DeadlineS = deadlineS, PerCall = 20 },
             new ServiceCallDesc { Kind = ServiceCallKind.Fire, Flags = 0, OnsiteS = 60, PerCall = 0 },
         };
+        s.IllLightPpm = 0;   // SR3: болезнь не мешает счёту вызовов диспетчера (её тесты - ServicesIllnessTests)
+        s.IllInpatientPpm = 0;
+        s.IllCriticalPpm = 0;
         d.Town.Services = s;
         Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         sim.Step(20);

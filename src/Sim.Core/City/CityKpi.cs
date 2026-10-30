@@ -166,6 +166,20 @@ internal sealed class CityKpi
         Complaints.Add(ComplaintKind.HighRent, building, gen, 1);
     }
 
+    /// <summary>Больному второй день подряд нет места у врача (services.md §2.6): случай K4 и жалоба <c>NoCare</c> у дома.</summary>
+    public void OnNoCare(int building, int gen)
+    {
+        Cur[0].IncBuildingWorn++;
+        Complaints.Add(ComplaintKind.NoCare, building, gen, 1);
+    }
+
+    /// <summary>Критический больной без скорой или скорая не успела (§2.5, заглушка §10.3/§10.4): житель уезжает - случай K4 и жалоба <c>NoAmbulance</c> у дома.</summary>
+    public void OnNoAmbulance(int building, int gen)
+    {
+        Cur[0].IncBuildingWorn++;
+        Complaints.Add(ComplaintKind.NoAmbulance, building, gen, 1);
+    }
+
     // ------------------------------------------------------------------ фаза 9r
 
     /// <summary>Фаза 9r, каждый тик: на последнем тике игрового часа час уходит в кольцо (дельты счётчиков движения - здесь).</summary>

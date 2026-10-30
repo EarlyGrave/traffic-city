@@ -11,6 +11,7 @@ internal static class ResidentFlags
     public const byte Leaving = 8;    // уедет из города при ближайшем AtHome
     public const byte InSeekQueue = 16;   // есть живая запись в очереди ищущих работу (Z4: без дублей)
     public const byte Arriving = 32;      // переселенец едет от внешнего подключения к дому (ADR-0037): работу не ищет, план дня не строит; клиенту - ResidentState.Arriving
+    public const byte CareRefused = 64;   // вчера больному не нашлось места у врача (services.md §2.6): второй отказ подряд - жалоба NoCare; только в режиме city.services
 }
 
 /// <summary>Стадии дневного прохода (<c>CityWorld.DayStage</c>, Z4): здания, жители, рынки и рост, затем покой до границы суток.</summary>
@@ -49,6 +50,7 @@ internal static class TourKind
     public const byte None = 0;
     public const byte Work = 1;       // Home -> Work -> Home
     public const byte Shop = 2;       // Home -> C -> Home
+    public const byte Care = 3;       // Home -> станция службы -> Home (services.md §2.6, больной лёгкой или стационарной тяжести)
 }
 
 /// <summary>Запись очереди ищущих работу (FIFO по <c>Seq</c>; хранится и в сейве, блок <c>RESD</c>).</summary>
@@ -118,6 +120,9 @@ internal sealed class CityResidents
     public readonly long[] LegWaitFrom;    // начало ожидания выезда (K2)
     public readonly int[] LegParkWait;     // тики ожидания места в этой ноге (K2)
 
+    // ---- болезнь (services.md §2.5, SR3): только в режиме city.services; без режима 0 и ни одна ветка не пишет ----
+    public readonly byte[] Ill;            // биты 0-4 - дней осталось, 5-6 - тяжесть (1 лёгкая, 2 стационар, 3 критическая), 7 - Treated; 0 - здоров
+
     /// <summary>Очередь ищущих работу (FIFO по <see cref="Seq"/>; наполняет и разбирает рынок Z4).</summary>
     public readonly RingBuffer<SeekEntry> SeekQueue;
 
@@ -168,6 +173,7 @@ internal sealed class CityResidents
         LegStage = new byte[capacity];
         LegWaitFrom = new long[capacity];
         LegParkWait = new int[capacity];
+        Ill = new byte[capacity];
         SeekQueue = new RingBuffer<SeekEntry>(capacity);
         for (int i = 0; i < capacity; i++)
         {
@@ -256,5 +262,6 @@ internal sealed class CityResidents
         LegStage[i] = 0;
         LegWaitFrom[i] = 0;
         LegParkWait[i] = 0;
+        Ill[i] = 0;
     }
 }

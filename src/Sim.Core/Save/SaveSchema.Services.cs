@@ -11,6 +11,7 @@ namespace Sim.Core.Save;
 //   блок SERV (есть <=> city.lifecycle) - станции, кольца вызовов по записям, бригады (переехали из LIFE 4-17). Миграции нет (режим прототипа): MigrationV18.
 //   Отклонение от спеки: SERV есть и без режима служб - бригады ЖКХ BL живут в нём (без режима одна встроенная запись utility).
 //   SR2 (окно w18, без смены версии): SERV 29-38 (вид вызова бригады, ползунки, расходы, счётчики вызовов записей, переменная часть станций, RespEwma), CNTR 185-188, LEDG потоки длиной 23.
+//   SR3 (окно w18, без смены версии): SERV 39-41 (пациент бригады Ref/RefGen, CareEwma), RESD 50 (Ill), CNTR 189-194; флаг жителя CareRefused (64), тур Care (3).
 internal static partial class SaveSchema
 {
     // ---- PARM 300-313 ----
@@ -123,10 +124,19 @@ internal static partial class SaveSchema
         Col.Array<long>(36, "SvcCallsQueued", w => Sv(w).RecCallsQueued, static w => Sv(w).RecCallsQueued.Length, "records"),
         Col.Array<long>(37, "SiteVarDay", w => Sv(w).SiteVarDay, static w => Sv(w).SiteVarDay.Length, "2 * max_service_sites"),
         Col.Array<ushort>(38, "SvcRespEwma", w => Sv(w).RespEwma, static w => Sv(w).RespEwma.Length, "records * cells (0 без city.services)"),
+        Col.Array<int>(39, "CrewRef", w => Sv(w).Crews.Ref, static w => Sv(w).Crews.Capacity, "max_service_vehicles", "-1"),
+        Col.Array<int>(40, "CrewRefGen", w => Sv(w).Crews.RefGen, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
+        Col.Array<ushort>(41, "SvcCareEwma", w => Sv(w).CareEwma, static w => Sv(w).CareEwma.Length, "cells (0 без city.services)"),
     })
     {
         Present = static w => w.City?.Services != null,
         PresentText = "PARM.LifecycleEnabled = 1",
+    };
+
+    // ---- RESD 50 (SR3): болезнь жителя (services.md §2.5; 0 - здоров и всегда 0 без city.services) ----
+    private static ColumnDef[] ServicesResidentColumns() => new[]
+    {
+        Col.Array<byte>(50, "Ill", w => w.City!.Residents.Ill, _resdHw, "HighWater", "0", _resdPool),
     };
 
     private delegate TF CallGet<out TF>(in ServiceCall q);

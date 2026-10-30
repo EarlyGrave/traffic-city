@@ -303,7 +303,7 @@ public struct CityBudgetInfo
     public BudgetPolicy PendingPolicy;   // ожидающая границы суток (если HasPending)
 }
 
-/// <summary>Работа записи службы (<see cref="Simulation.GetServiceStats"/>, services.md §2.3-§2.4): вызовы, отклик, машины, ползунок и расход.</summary>
+/// <summary>Работа записи службы (<see cref="Simulation.GetServiceStats"/>, services.md §2.3-§2.6): вызовы, отклик, машины, койки и приём, ползунок и расход.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct ServiceStats
 {
@@ -319,6 +319,11 @@ public struct ServiceStats
     public int UnitsBusy;               // в выезде (к цели, на месте, назад)
     public int UnitsMax;                // слотов машин всего (гараж)
     public int Waiting;                 // вызовов в кольцах (обычное + срочное)
+    public int BedsUsed;                // SR3: занято коек стационара (станции записи)
+    public int Beds;                    // коек всего (beds' с апгрейдами и ползунком)
+    public int IcuUsed;                 // занято мест реанимации (сверх мест - тоже в счёте)
+    public int Icu;                     // мест реанимации (icu')
+    public int VisitsToday;             // записей на приём за текущие сутки (VisitsDay станций)
     public byte Pct;                    // действующий ползунок, %
     public byte PctPending;             // ожидающий (с границы суток)
 }
