@@ -25,6 +25,10 @@ public static partial class ScenarioLoader
         d.LowlandCm = DetRound(r.Num("lowland_m", 2.0, min: 0, max: 100) * 100.0);
         d.WornRelocateQ16 = CityDesc.Q16(r.Num("worn_relocate", 0.05, min: 0, max: 1));
         d.RubbleCostPct = r.Int("rubble_cost_pct", d.RubbleCostPct, min: 0, max: 100);
+        d.CellM = r.Int("cell_m", d.CellM, min: 8, max: 4096);
+        d.SigShift = r.Int("sig_shift", d.SigShift, min: 1, max: 16);
+        d.HeritageLossRadiusM = r.Int("heritage_loss_radius_m", d.HeritageLossRadiusM, min: 0, max: 10_000);
+        d.LvBlightPermille = r.Int("lv_blight", d.LvBlightPermille, min: 0, max: 100);
         r.Finish();
         if (d.Enabled && !town.Economy.CityBudget)
         {

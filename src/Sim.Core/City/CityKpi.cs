@@ -145,6 +145,20 @@ internal sealed class CityKpi
         Complaints.Add(ComplaintKind.BuildingWorn, building, gen, incidents);
     }
 
+    /// <summary>Вред заброшки H3 (building-lifecycle.md §2.4): случаи K4 у жителей клетки и жалоба <c>Blight</c> у дома.</summary>
+    public void OnBlight(int building, int gen, int incidents)
+    {
+        Cur[0].IncBuildingWorn += incidents;
+        Complaints.Add(ComplaintKind.Blight, building, gen, incidents);
+    }
+
+    /// <summary>Снос значимого здания (§2.5): разовые случаи K4 жителей в радиусе и жалоба <c>HeritageLost</c> у участка.</summary>
+    public void OnHeritageLost(int building, int gen, int incidents)
+    {
+        Cur[0].IncBuildingWorn += incidents;
+        Complaints.Add(ComplaintKind.HeritageLost, building, gen, incidents);
+    }
+
     // ------------------------------------------------------------------ фаза 9r
 
     /// <summary>Фаза 9r, каждый тик: на последнем тике игрового часа час уходит в кольцо (дельты счётчиков движения - здесь).</summary>

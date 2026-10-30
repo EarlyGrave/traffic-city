@@ -112,13 +112,14 @@ internal static class CityHash
         c.Goals?.AddToHash(ref h);
         if (c.Cfg.Lifecycle.Enabled)
         {
-            AddLifecycle(ref h, c.Buildings, in w.Counters);
+            AddLifecycle(ref h, c, in w.Counters);
         }
     }
 
     /// <summary>Раздел жизни зданий (building-lifecycle.md §5): только в режиме <c>city.lifecycle</c>, без него ни одного нового байта. Поля живых слотов, затем счётчики.</summary>
-    private static void AddLifecycle(ref Fnv1a64 h, BuildingStore b, in SimCounters k)
+    private static void AddLifecycle(ref Fnv1a64 h, CityWorld c, in SimCounters k)
     {
+        BuildingStore b = c.Buildings;
         for (int i = 0; i < b.HighWater; i++)
         {
             if (b.Pool.IsAlive(i))
@@ -127,6 +128,19 @@ internal static class CityHash
                 h.Add((int)b.Ceil[i]);
                 h.Add(b.BornDay[i]);
                 h.Add(b.LifeFlags[i]);
+                h.Add(b.Signif[i]);
+                h.Add(b.ArrivalsDay[2 * i]);
+                h.Add(b.ArrivalsDay[(2 * i) + 1]);
+            }
+        }
+
+        NeighborhoodFields? f = c.Fields;
+        if (f != null)
+        {
+            for (int i = 0; i < f.Cur.Length; i++)
+            {
+                h.Add(f.Cur[i]);
+                h.Add(f.Next[i]);
             }
         }
 

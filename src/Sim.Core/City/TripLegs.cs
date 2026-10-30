@@ -791,6 +791,11 @@ internal static class TripLegs
             BudgetFlows.ChargeFare(w, c, r);   // плата за проезд на закрытии ноги, micro и aggregate по одному пути (city-economy.md §3)
         }
 
+        if (c.Cfg.Lifecycle.Enabled)
+        {
+            CityLife.OnArrival(c, res.LegDest[r]);   // значимость (building-lifecycle.md §2.6): прибытие в здание-цель, дом тоже
+        }
+
         res.Agent[r] = -1;
         res.AgentGen[r] = 0;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];

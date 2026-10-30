@@ -151,6 +151,18 @@ internal static partial class SaveValidator
             }
         }
 
+        NeighborhoodFields? nf = city.Fields;
+        if (nf != null)
+        {
+            for (int i = 0; i < nf.Cur.Length; i++)
+            {
+                if (nf.Cur[i] < 0 || nf.Next[i] < 0)
+                {
+                    return Bad(c, i, 1);   // LIFE: поля квартала неотрицательны
+                }
+            }
+        }
+
         return SimCountersLifeOk(c) ? LoadStatus.Ok : Bad(c, 0, 176);
     }
 
@@ -159,11 +171,11 @@ internal static partial class SaveValidator
     {
         if (!city.Cfg.Lifecycle.Enabled)
         {
-            return b.Cond[i] == 0 && b.Ceil[i] == 0 && b.BornDay[i] == 0 && b.LifeFlags[i] == 0;
+            return b.Cond[i] == 0 && b.Ceil[i] == 0 && b.BornDay[i] == 0 && b.LifeFlags[i] == 0 && b.Signif[i] == 0 && b.ArrivalsDay[2 * i] == 0 && b.ArrivalsDay[(2 * i) + 1] == 0;
         }
 
         byte f = b.LifeFlags[i];
-        return b.Cond[i] <= b.Ceil[i] && b.Ceil[i] <= CityLife.Full && b.BornDay[i] >= 0 && b.BornDay[i] <= city.Day
+        return b.Signif[i] >= 0 && b.ArrivalsDay[2 * i] >= 0 && b.ArrivalsDay[(2 * i) + 1] >= 0 && b.Cond[i] <= b.Ceil[i] && b.Ceil[i] <= CityLife.Full && b.BornDay[i] >= 0 && b.BornDay[i] <= city.Day
             && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified)) == 0
             && ((f & BuildingLifeFlags.Demolishing) == 0 || b.State[i] == (byte)BuildingState.Abandoned);
     }

@@ -108,6 +108,10 @@ public struct CityLifecycleDesc
     public int LowlandCm;           // lowland_m * 100: запас над уровнем воды для «низины»; дефолт 200
     public int WornRelocateQ16;     // worn_relocate: шанс переезда в сутки при Cond 50-60 %; дефолт 0.05
     public int RubbleCostPct;       // rubble_cost_pct: очистка рассыпавшегося, % demolish_cost; дефолт 10
+    public int CellM;               // cell_m: шаг сетки полей квартала, м (§2.6); дефолт 128
+    public int SigShift;            // sig_shift: утечка накопителя значимости (§2.6); дефолт 6
+    public int HeritageLossRadiusM; // heritage_loss_radius_m: радиус разового недовольства при сносе значимого (§2.5); дефолт 400
+    public int LvBlightPermille;    // lv_blight: ‰ цены земли на очко Blight (§2.6); дефолт 5
 
     /// <summary>Дефолты §2 с включённым режимом.</summary>
     public static CityLifecycleDesc Default() => new()
@@ -117,6 +121,10 @@ public struct CityLifecycleDesc
         LowlandCm = 200,
         WornRelocateQ16 = CityDesc.Q16(0.05),
         RubbleCostPct = 10,
+        CellM = 128,
+        SigShift = 6,
+        HeritageLossRadiusM = 400,
+        LvBlightPermille = 5,
     };
 }
 

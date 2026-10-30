@@ -1042,7 +1042,7 @@ internal sealed class Market
             TrySwitchJob(w, c, r);
         }
 
-        if (rd.MaxRelocatePerDayQ16 > 0 && (w.RngDemand.NextUInt() >> 16) < (uint)rd.MaxRelocatePerDayQ16)
+        if (rd.MaxRelocatePerDayQ16 > 0 && (w.RngDemand.NextUInt() >> 16) < (uint)CityLife.RelocateThreshold(c, rd.MaxRelocatePerDayQ16, res.Home[r]))
         {
             TryRelocate(w, c, r, false);
         }

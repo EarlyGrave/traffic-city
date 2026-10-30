@@ -409,7 +409,7 @@ public sealed class LifecycleTests
     {
         string dir = Path.Combine(GenFixture.RepoRoot(), "scenarios");
         JsonNode root = JsonNode.Parse(File.ReadAllText(Path.Combine(dir, "s1k-res-econ.json")))!;
-        root["city"]!["lifecycle"] = new JsonObject { ["abandoned_decay_pct"] = 300, ["lowland_m"] = 1.5, ["worn_relocate"] = 0.1, ["rubble_cost_pct"] = 20 };
+        root["city"]!["lifecycle"] = new JsonObject { ["abandoned_decay_pct"] = 300, ["lowland_m"] = 1.5, ["worn_relocate"] = 0.1, ["rubble_cost_pct"] = 20, ["cell_m"] = 64, ["sig_shift"] = 5, ["heritage_loss_radius_m"] = 250, ["lv_blight"] = 7 };
         LoadedScenario sc = ScenarioLoader.Parse(root.ToJsonString(), p => File.ReadAllText(Path.Combine(dir, p)), "bl1");
         CityLifecycleDesc l = sc.Desc.Town.Lifecycle;
         Assert.True(l.Enabled);
@@ -417,6 +417,7 @@ public sealed class LifecycleTests
         Assert.Equal(150, l.LowlandCm);
         Assert.Equal(CityDesc.Q16(0.1), l.WornRelocateQ16);
         Assert.Equal(20, l.RubbleCostPct);
+        Assert.Equal((64, 5, 250, 7), (l.CellM, l.SigShift, l.HeritageLossRadiusM, l.LvBlightPermille));
         Assert.Equal(CreateStatus.Ok, CityBuild.Validate(sc.Desc));
     }
 }

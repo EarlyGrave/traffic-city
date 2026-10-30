@@ -96,6 +96,15 @@ internal static class Economy
     /// </summary>
     public static void BuildingDay(World w, CityWorld c, int bi)
     {
+        BuildingDayCore(w, c, bi);
+        if (c.Cfg.Lifecycle.Enabled && c.Buildings.IsAlive(bi))
+        {
+            CityLife.Finish(c, bi, in c.Types.Rows[c.Buildings.Type[bi]]);   // значимость и поля квартала (building-lifecycle.md §2.6): состояние на сегодня окончательное
+        }
+    }
+
+    private static void BuildingDayCore(World w, CityWorld c, int bi)
+    {
         BuildingStore b = c.Buildings;
         if (!b.IsAlive(bi))
         {

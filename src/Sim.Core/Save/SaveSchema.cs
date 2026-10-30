@@ -76,6 +76,7 @@ internal static partial class SaveSchema
         LedgerBlock(),
         Extend(BudgetBlock(), ProgressionBudgetColumns()),
         ParkingBlock(),
+        LifeBlock(),
         LandUseBlock(),
         CityKpiBlock(),
         ProgressionBlock(),

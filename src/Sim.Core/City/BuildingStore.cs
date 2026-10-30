@@ -34,6 +34,8 @@ internal sealed class BuildingStore
     public readonly ushort[] Ceil;         // потолок состояния, б.п.
     public readonly int[] BornDay;         // игровые сутки создания
     public readonly byte[] LifeFlags;      // BuildingLifeFlags
+    public readonly int[] Signif;          // значимость: накопитель с утечкой (§2.6)
+    public readonly int[] ArrivalsDay;     // [2 * Capacity] прибытия за сутки, слот (i << 1) | (day & 1)
 
     /// <summary>Версия данных для клиента (<c>BuildingsVersion</c>): растёт при создании, смене состояния и сносе.</summary>
     public int Version;
@@ -62,6 +64,8 @@ internal sealed class BuildingStore
         Ceil = new ushort[capacity];
         BornDay = new int[capacity];
         LifeFlags = new byte[capacity];
+        Signif = new int[capacity];
+        ArrivalsDay = new int[2 * capacity];
         for (int i = 0; i < capacity; i++)
         {
             ResetSlot(i);
@@ -128,5 +132,8 @@ internal sealed class BuildingStore
         Ceil[i] = 0;
         BornDay[i] = 0;
         LifeFlags[i] = 0;
+        Signif[i] = 0;
+        ArrivalsDay[2 * i] = 0;
+        ArrivalsDay[(2 * i) + 1] = 0;
     }
 }

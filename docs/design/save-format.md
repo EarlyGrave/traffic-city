@@ -765,6 +765,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 282 | LifecycleLowlandCm | i32 | 1 | 0 |
 | `PARM` | 283 | LifecycleWornRelocateQ16 | i32 | 1 | 0 |
 | `PARM` | 284 | LifecycleRubbleCostPct | i32 | 1 | 0 |
+| `PARM` | 285 | LifecycleCellM | i32 | 1 | 0 |
+| `PARM` | 286 | LifecycleSigShift | i32 | 1 | 0 |
+| `PARM` | 287 | LifecycleHeritageLossRadiusM | i32 | 1 | 0 |
+| `PARM` | 288 | LifecycleLvBlightPermille | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -1491,6 +1495,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `BLDG` (demand.model = residents) | 23 | Ceil | u16 | HighWater | 0 |
 | `BLDG` (demand.model = residents) | 24 | BornDay | i32 | HighWater | 0 |
 | `BLDG` (demand.model = residents) | 25 | LifeFlags | u8 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 26 | Signif | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 27 | ArrivalsDay | i32 | 2 * HighWater | 0 |
 | `RESD` (demand.model = residents) | 1 | HighWater | i32 | 1 | 0 |
 | `RESD` (demand.model = residents) | 2 | FreeCount | i32 | 1 | 0 |
 | `RESD` (demand.model = residents) | 3 | FreeList | i32 | FreeCount | 0 |
@@ -1636,6 +1642,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARK` (PARM.ParkingEnabled = 1) | 12 | Occupied | i32 | HighWater | 0 |
 | `PARK` (PARM.ParkingEnabled = 1) | 13 | Reserved | i32 | HighWater | 0 |
 | `PARK` (PARM.ParkingEnabled = 1) | 14 | Fee | i32 | HighWater | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 1 | FieldsCur | i32 | 4 * NC | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 2 | FieldsNext | i32 | 4 * NC | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |

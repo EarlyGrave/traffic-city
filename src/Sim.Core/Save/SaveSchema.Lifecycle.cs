@@ -2,8 +2,8 @@ using Sim.Core.Api;
 
 namespace Sim.Core.Save;
 
-// world_version 17 (building-lifecycle.md §5, задача BL1; окно w17 открыто до BL4): жизнь здания.
-//   PARM 280-284 (секция city.lifecycle), BLDG 22-25 (Cond, Ceil, BornDay, LifeFlags; без режима - нули), BTYP 13-15 (DecayBpDay, CeilDropBpDay, DemolishCost),
+// world_version 17 (building-lifecycle.md §5, задачи BL1-BL2; окно w17 открыто до BL4): жизнь здания.
+//   PARM 280-288 (секция city.lifecycle), BLDG 22-27 (Cond, Ceil, BornDay, LifeFlags, Signif, ArrivalsDay; без режима - нули), LIFE 1-2 (поля квартала, BL2), BTYP 13-15 (DecayBpDay, CeilDropBpDay, DemolishCost),
 //   CNTR 176-178 (BuildingsCrumbled, BuildingsDemolished, BuildingsResettled), CKPI 38-39 (IncBuildingWorn, SaveSchema.Progression). Миграции нет (режим прототипа): MigrationV17.
 internal static partial class SaveSchema
 {
@@ -15,6 +15,10 @@ internal static partial class SaveSchema
         Col.Scalar<int>(282, "LifecycleLowlandCm", w => w.Town.Lifecycle.LowlandCm, (c, v) => c.Desc.Town.Lifecycle.LowlandCm = v),
         Col.Scalar<int>(283, "LifecycleWornRelocateQ16", w => w.Town.Lifecycle.WornRelocateQ16, (c, v) => c.Desc.Town.Lifecycle.WornRelocateQ16 = v),
         Col.Scalar<int>(284, "LifecycleRubbleCostPct", w => w.Town.Lifecycle.RubbleCostPct, (c, v) => c.Desc.Town.Lifecycle.RubbleCostPct = v),
+        Col.Scalar<int>(285, "LifecycleCellM", w => w.Town.Lifecycle.CellM, (c, v) => c.Desc.Town.Lifecycle.CellM = v),
+        Col.Scalar<int>(286, "LifecycleSigShift", w => w.Town.Lifecycle.SigShift, (c, v) => c.Desc.Town.Lifecycle.SigShift = v),
+        Col.Scalar<int>(287, "LifecycleHeritageLossRadiusM", w => w.Town.Lifecycle.HeritageLossRadiusM, (c, v) => c.Desc.Town.Lifecycle.HeritageLossRadiusM = v),
+        Col.Scalar<int>(288, "LifecycleLvBlightPermille", w => w.Town.Lifecycle.LvBlightPermille, (c, v) => c.Desc.Town.Lifecycle.LvBlightPermille = v),
     };
 
     // ---- BLDG 22-25 ----
@@ -24,6 +28,19 @@ internal static partial class SaveSchema
         Col.Array<ushort>(23, "Ceil", w => w.City!.Buildings.Ceil, _bldHw, "HighWater", "0", _bldPool),
         Col.Array<int>(24, "BornDay", w => w.City!.Buildings.BornDay, _bldHw, "HighWater", "0", _bldPool),
         Col.Array<byte>(25, "LifeFlags", w => w.City!.Buildings.LifeFlags, _bldHw, "HighWater", "0", _bldPool),
+        Col.Array<int>(26, "Signif", w => w.City!.Buildings.Signif, _bldHw, "HighWater", "0", _bldPool),
+        Col.Array<int>(27, "ArrivalsDay", w => w.City!.Buildings.ArrivalsDay, _bldPairN, "2 * HighWater"),
+    };
+
+    // ---- LIFE (BL2): поля квартала, оба буфера (building-lifecycle.md §2.6); есть <=> режим city.lifecycle ----
+    private static BlockDef LifeBlock() => new("LIFE", "жизнь зданий: поля квартала Heritage/Blight/Disorder/FireRisk на сетке lifecycle.cell_m, текущий и накопительный буферы (building-lifecycle.md §2.6)", new[]
+    {
+        Col.Array<int>(1, "FieldsCur", w => w.City!.Fields!.Cur, static w => w.City!.Fields!.Cur.Length, "4 * NC"),
+        Col.Array<int>(2, "FieldsNext", w => w.City!.Fields!.Next, static w => w.City!.Fields!.Next.Length, "4 * NC"),
+    })
+    {
+        Present = static w => w.City?.Fields != null,
+        PresentText = "PARM.LifecycleEnabled = 1",
     };
 
     // ---- BTYP 13-15 ----

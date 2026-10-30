@@ -42,6 +42,9 @@ public enum ComplaintKind : byte
     TourCancelled = 4,      // тур снят по дедлайну WaitDepart
     LongStopWait = 5,       // посадка после долгого ожидания на остановке
     BuildingWorn = 6,       // дом ветшает (building-lifecycle.md §2.2, режим city.lifecycle)
+    // 7 - HighRent (BL3, квартплата выше порога)
+    HeritageLost = 8,       // снесено значимое здание (§2.5)
+    Blight = 9,             // вред заброшки в квартале (§2.4, стадии H2-H3)
 }
 
 /// <summary>Флаги вехи (<see cref="MilestoneDesc.Flags"/>).</summary>

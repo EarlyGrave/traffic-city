@@ -83,7 +83,8 @@ internal static class CityBuild
         ok &= CityBudget.IsValid(in e);   // казна (city-economy.md §13)
         CityLifecycleDesc lf = t.Lifecycle;   // жизнь здания (building-lifecycle.md §5): только с казной
         ok &= !lf.Enabled || (e.CityBudget && lf.AbandonedDecayPct is >= 0 and <= 10_000 && lf.LowlandCm is >= 0 and <= 100_000 &&
-            lf.WornRelocateQ16 is >= 0 and <= 65_536 && lf.RubbleCostPct is >= 0 and <= 100);
+            lf.WornRelocateQ16 is >= 0 and <= 65_536 && lf.RubbleCostPct is >= 0 and <= 100 &&
+            lf.CellM is >= 8 and <= 4096 && lf.SigShift is >= 1 and <= 16 && lf.HeritageLossRadiusM is >= 0 and <= 10_000 && lf.LvBlightPermille is >= 0 and <= 100);
         ok &= ch.ThetaMode64 >= 0 && ch.ThetaDest64 >= 0 && ch.ThetaTime64 >= 0 && ch.ThetaFreq64 >= 0;
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;

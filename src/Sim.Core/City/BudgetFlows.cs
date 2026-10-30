@@ -129,6 +129,26 @@ internal static class BudgetFlows
         b.IncomeEwma = EstimateIncome(c, (c.Day + 1) & 1);
     }
 
+    /// <summary>
+    /// Земля участка (building-lifecycle.md §2.6): <c>LV[1 км] · (1000 + min(200, 10·h) − min(400, lv_blight · b)) / 1000</c>, где <c>h</c> и <c>b</c> - окно 3×3 полей <c>Heritage</c> и <c>Blight</c> (вес 2 у своей клетки).
+    /// Без режима <c>city.lifecycle</c> - ровно <c>LV[1 км]</c>, как раньше.
+    /// </summary>
+    internal static long LandAt(CityWorld c, CityBudget b, int lot)
+    {
+        long lv = b.LandValue[c.Lots.Cell[lot]];
+        NeighborhoodFields? f = c.Fields;
+        if (f == null)
+        {
+            return lv;
+        }
+
+        int cell = f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]);
+        long h = f.Window(cell, NeighborhoodFields.Heritage);
+        long bl = f.Window(cell, NeighborhoodFields.Blight);
+        long permille = 1000 + Math.Min(200L, 10 * h) - Math.Min(400L, c.Cfg.Lifecycle.LvBlightPermille * bl);
+        return lv * permille / 1000;
+    }
+
     /// <summary>Номинальный фонд оплаты фирмы в сутки: работники * ставка смены.</summary>
     private static long Payroll(CityWorld c, int bi) => (long)c.Buildings.Occupants[bi] * c.Cfg.Economy.WagePerShift;
 
@@ -147,7 +167,7 @@ internal static class BudgetFlows
         {
             if (res.Pool.IsAlive(r) && res.Home[r] >= 0)
             {
-                landBase += b.LandValue[c.Lots.Cell[bs.Lot[res.Home[r]]]];
+                landBase += LandAt(c, b, bs.Lot[res.Home[r]]);
             }
         }
 
@@ -158,7 +178,7 @@ internal static class BudgetFlows
                 ref readonly BuildingTypeDesc t = ref c.Types.Rows[bs.Type[i]];
                 if (t.Kind != LotZone.Residential)
                 {
-                    landBase += (long)b.LandValue[c.Lots.Cell[bs.Lot[i]]] * t.Capacity;
+                    landBase += LandAt(c, b, bs.Lot[i]) * t.Capacity;
                 }
             }
         }
@@ -219,7 +239,7 @@ internal static class BudgetFlows
             tax = c.Ledger.TransferPct(acct, c.Ledger.CityAccount, profit, rate, FlowKind.Tax);
         }
 
-        long landBase = (long)b.LandValue[c.Lots.Cell[bs.Lot[bi]]] * t.Capacity;
+        long landBase = LandAt(c, b, bs.Lot[bi]) * t.Capacity;
         long rent = c.Ledger.TransferPct(acct, c.Ledger.CityAccount, landBase, b.Policy.LandTaxBpDay, FlowKind.Rent);
         bs.CostDay[todaySlot] += rent;
         return tax;
@@ -263,7 +283,7 @@ internal static class BudgetFlows
         int home = res.Home[r];
         if (home >= 0)
         {
-            c.Ledger.TransferPct(acct, c.Ledger.CityAccount, b.LandValue[c.Lots.Cell[c.Buildings.Lot[home]]], b.Policy.LandTaxBpDay, FlowKind.Rent);
+            c.Ledger.TransferPct(acct, c.Ledger.CityAccount, LandAt(c, b, c.Buildings.Lot[home]), b.Policy.LandTaxBpDay, FlowKind.Rent);
         }
 
         long pay = (res.Account[r] - (e.ResBufferDays * res.IncomeEwma[r])) >> e.PayoutShift;

@@ -85,6 +85,7 @@ internal static class Growth
             b.RevenueDay[s] = 0;
             b.CostDay[s] = 0;
             b.VisitsDay[s] = 0;
+            b.ArrivalsDay[s] = 0;   // без режима всегда 0
         }
     }
 
@@ -92,6 +93,7 @@ internal static class Growth
     public static void Daily(World w, CityWorld c)
     {
         ClearYesterday(c);
+        c.Fields?.Swap();   // поля квартала (building-lifecycle.md §2.6): накопитель прохода по зданиям становится действующим
         Market m = c.Market;
         m.Sync(c);
         if (c.Cfg.Zoning.GrowthStep != 0)

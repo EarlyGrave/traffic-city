@@ -27,7 +27,11 @@ internal static class CityLife
     public const int AbandonBp = 5_000;      // < 50 % - не функционирует, ремонту не подлежит
     public const int LowlandSiteQ8 = 320;    // +25 % износа на низине
     public const int SiteQ8 = 256;
+    public const int H1Bp = 3_500;           // заброшка: >= 35 % - H1, 15-35 % - H2, ниже - H3 (§2.4)
+    public const int H2Bp = 1_500;
+    public const int DisorderOutPenalty = 10;   // выработка фирмы в клетке с беспорядком, п.п.
     private const int LowlandRadius = 2;     // отсчётов рельефа вокруг центра участка
+    private static readonly int[] _signifLevels = { 1_280, 6_400, 19_200, 38_400, 64_000 };   // пороги накопителя значимости (стационар 20/100/300/600/1000 прибытий в сутки)
 
     /// <summary>Новое здание (стройка или стартовое): <c>Cond = Ceil = 100 %</c>, возраст - с текущих суток.</summary>
     public static void OnCreate(CityWorld c, int bi)
@@ -56,7 +60,67 @@ internal static class CityLife
         }
 
         int cond = c.Buildings.Cond[bi];
-        return cond >= NormBp ? 100 : cond >= MinorBp ? 95 : 80;
+        int pct = cond >= NormBp ? 100 : cond >= MinorBp ? 95 : 80;
+        NeighborhoodFields? f = c.Fields;
+        if (f != null)
+        {
+            int lot = c.Buildings.Lot[bi];
+            if (f.Value(f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]), NeighborhoodFields.Disorder) > 0)
+            {
+                pct -= DisorderOutPenalty;   // беспорядок в клетке (стадия вреда H2-H3, §2.4): фирма -10 %
+            }
+        }
+
+        return pct;
+    }
+
+    /// <summary>
+    /// Порог жребия добровольного переезда (§2.6): <paramref name="baseQ16"/> × <c>(1 − min(50 %, 2 %·h))</c> (наследие вокруг дома держит жителей) и × 2 при <c>Disorder &gt; 0</c> в окне 3×3.
+    /// Число обращений к PRNG прежнее; без режима - <paramref name="baseQ16"/>.
+    /// </summary>
+    public static int RelocateThreshold(CityWorld c, int baseQ16, int home)
+    {
+        NeighborhoodFields? f = c.Fields;
+        if (f == null || home < 0)
+        {
+            return baseQ16;
+        }
+
+        int lot = c.Buildings.Lot[home];
+        int cell = f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]);
+        long h = f.Window(cell, NeighborhoodFields.Heritage);
+        long q = (long)baseQ16 * (1000 - Math.Min(500L, 20 * h)) / 1000;
+        if (f.Window(cell, NeighborhoodFields.Disorder) > 0)
+        {
+            q *= 2;
+        }
+
+        return (int)Math.Min(q, 65_536L);
+    }
+
+    /// <summary>Уровень значимости 0-5 по накопителю (§2.6): пороги стационара 20 / 100 / 300 / 600 / 1 000 прибытий в сутки при утечке <c>2^-6</c>.</summary>
+    public static int Level(int signif)
+    {
+        int lv = 0;
+        while (lv < _signifLevels.Length && signif >= _signifLevels[lv])
+        {
+            lv++;
+        }
+
+        return lv;
+    }
+
+    /// <summary>Потолок суточных прибытий в накопитель значимости (§2.6).</summary>
+    public const int ArrivalsCap = 4_000;
+
+    /// <summary>Прибытие ноги в здание-цель (§2.6): +1 к сегодняшнему слоту; внешние места и мёртвые слоты не считаются. Micro и агрегат - одна точка (<c>CompleteLeg</c>).</summary>
+    public static void OnArrival(CityWorld c, int dest)
+    {
+        BuildingStore b = c.Buildings;
+        if (dest >= 0 && b.IsAlive(dest))
+        {
+            b.ArrivalsDay[Economy.Slot(dest, c.Day & 1)]++;
+        }
     }
 
     /// <summary>Дом в полосе переезда (§2.2, 50-60 %): житель раз в сутки с шансом <c>worn_relocate</c> пробует переехать.</summary>
@@ -71,7 +135,120 @@ internal static class CityLife
     /// Суточный шаг здания в стадии «здания» (§2.2), до экономики фирмы. Износ и потолок - у <c>Active</c> и <c>Abandoned</c>; пороги - у <c>Active</c>.
     /// true - экономику фирмы сегодня пропустить (заброшено сейчас или раньше).
     /// </summary>
-    public static bool Day(World w, CityWorld c, int bi, in BuildingTypeDesc t)
+    public static bool Day(World w, CityWorld c, int bi, in BuildingTypeDesc t) => DayCore(w, c, bi, in t);
+
+    /// <summary>
+    /// Конец суточного шага здания (после экономики фирмы, когда состояние на сегодня окончательное): сглаживание значимости и вклад в поля квартала (§2.6).
+    /// Стройка (<c>Constructing</c>) и не-R/C/I виды не участвуют.
+    /// </summary>
+    public static void Finish(CityWorld c, int bi, in BuildingTypeDesc t)
+    {
+        if (t.Kind is not (LotZone.Residential or LotZone.Commercial or LotZone.Industrial))
+        {
+            return;
+        }
+
+        var st = (BuildingState)c.Buildings.State[bi];
+        if (st is not (BuildingState.Active or BuildingState.Abandoned))
+        {
+            return;
+        }
+
+        Signif(c, bi);
+        if (c.Fields != null)
+        {
+            Contribute(c, bi, in t, c.Fields.Next, true);
+        }
+    }
+
+    /// <summary>Сглаживание значимости раз в сутки (§2.6): <c>Signif += min(A, 4000) − (Signif &gt;&gt; sig_shift)</c> по вчерашнему слоту прибытий.</summary>
+    private static void Signif(CityWorld c, int bi)
+    {
+        BuildingStore b = c.Buildings;
+        int a = Math.Min(b.ArrivalsDay[Economy.Slot(bi, (c.Day + 1) & 1)], ArrivalsCap);
+        b.Signif[bi] += a - (b.Signif[bi] >> c.Cfg.Lifecycle.SigShift);
+    }
+
+    /// <summary>
+    /// Вклад здания в поля квартала (§2.4, §2.6) в <paramref name="target"/> (накопитель или пересчёт с нуля в тесте): активное - <c>Heritage += уровень</c>;
+    /// заброшенное, не сносимое - стадия вреда по <c>Cond</c> (H1 ≥ 35 %, H2 15-35 %, H3 &lt; 15 %): очки <c>вес · ceil(Capacity / 8)</c>. <paramref name="effects"/> - ещё и жалобы/случаи K4
+    /// у жителей клетки с беспорядком (только в проходе, не в пересчёте).
+    /// </summary>
+    internal static void Contribute(CityWorld c, int bi, in BuildingTypeDesc t, int[] target, bool effects)
+    {
+        BuildingStore b = c.Buildings;
+        NeighborhoodFields f = c.Fields!;
+        int lot = b.Lot[bi];
+        int cell = f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]);
+        if (b.State[bi] == (byte)BuildingState.Active)
+        {
+            int lv = Level(b.Signif[bi]);
+            if (lv > 0)
+            {
+                NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Heritage, lv);
+            }
+
+            if (effects && t.Kind == LotZone.Residential && b.Occupants[bi] > 0)
+            {
+                // беспорядок в клетке: жалобы жителей; при пожарной опасности (H3) ещё и случаи K4
+                int n = Math.Max(1, b.Occupants[bi] / 4);
+                int gen = b.Pool.GenerationOf(bi);
+                if (f.Value(cell, NeighborhoodFields.FireRisk) > 0)
+                {
+                    c.Kpi.OnBlight(bi, gen, n);
+                }
+                else if (f.Value(cell, NeighborhoodFields.Disorder) > 0)
+                {
+                    c.Kpi.Complaints.Add(ComplaintKind.Blight, bi, gen, n);
+                }
+            }
+
+            return;
+        }
+
+        if ((b.LifeFlags[bi] & BuildingLifeFlags.Demolishing) != 0)
+        {
+            return;   // снос уже заказан: вред не копится
+        }
+
+        int size = (t.Capacity + 7) / 8;
+        int cond = b.Cond[bi];
+        if (cond >= H1Bp)
+        {
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Blight, 2 * size);
+        }
+        else if (cond >= H2Bp)
+        {
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Blight, 4 * size);
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Disorder, 4 * size);
+        }
+        else
+        {
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Blight, 6 * size);
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.Disorder, 6 * size);
+            NeighborhoodFields.AddTo(target, cell, NeighborhoodFields.FireRisk, 6 * size);
+        }
+    }
+
+    /// <summary>Пересчёт полей с нуля по текущим зданиям в <paramref name="target"/> (длина как у <c>Fields.Cur</c>; для проверки двойного буфера в тестах).</summary>
+    internal static void RecomputeFields(CityWorld c, int[] target)
+    {
+        Array.Clear(target);
+        BuildingStore b = c.Buildings;
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            if (b.IsAlive(i) && b.State[i] is (byte)BuildingState.Active or (byte)BuildingState.Abandoned)
+            {
+                ref readonly BuildingTypeDesc t = ref c.Types.Rows[b.Type[i]];
+                if (t.Kind is LotZone.Residential or LotZone.Commercial or LotZone.Industrial)
+                {
+                    Contribute(c, i, in t, target, false);
+                }
+            }
+        }
+    }
+
+    private static bool DayCore(World w, CityWorld c, int bi, in BuildingTypeDesc t)
     {
         BuildingStore b = c.Buildings;
         bool abandoned = b.State[bi] == (byte)BuildingState.Abandoned;
@@ -204,6 +381,7 @@ internal static class CityLife
     {
         BuildingStore b = c.Buildings;
         CityResidents res = c.Residents;
+        HeritageLoss(c, bi);
         Growth.Abandon(w, c, bi);
         b.LifeFlags[bi] |= BuildingLifeFlags.Demolishing;
         b.Version++;   // клиент видит «сносится»
@@ -213,6 +391,48 @@ internal static class CityLife
         }
 
         w.Counters.BuildingsDemolished++;
+    }
+
+    /// <summary>
+    /// Снос значимого (§2.5, уровень ≥ 2): разовый проход по зданиям в радиусе <c>heritage_loss_radius_m</c> - жилым активным <c>incidents += Occupants · уровень / 2</c> (случаи K4)
+    /// и жалоба <c>HeritageLost</c> у сносимого здания. O(зданий) на команду, редко.
+    /// </summary>
+    private static void HeritageLoss(CityWorld c, int bi)
+    {
+        BuildingStore b = c.Buildings;
+        int lv = Level(b.Signif[bi]);
+        if (lv < 2)
+        {
+            return;
+        }
+
+        int lot = b.Lot[bi];
+        float x = c.Lots.X[lot];
+        float z = c.Lots.Z[lot];
+        float r = c.Cfg.Lifecycle.HeritageLossRadiusM;
+        float r2 = r * r;
+        long incidents = 0;
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            if (i == bi || !b.IsAlive(i) || b.State[i] != (byte)BuildingState.Active || b.Occupants[i] <= 0
+                || c.Types.Rows[b.Type[i]].Kind != LotZone.Residential)
+            {
+                continue;
+            }
+
+            int l = b.Lot[i];
+            float dx = c.Lots.X[l] - x;
+            float dz = c.Lots.Z[l] - z;
+            if ((dx * dx) + (dz * dz) <= r2)
+            {
+                incidents += (long)b.Occupants[i] * lv / 2;
+            }
+        }
+
+        if (incidents > 0)
+        {
+            c.Kpi.OnHeritageLost(bi, b.Pool.GenerationOf(bi), (int)Math.Min(incidents, int.MaxValue));
+        }
     }
 
     /// <summary>Заброшенное здание к удалению (§2.3): снос игроком или рассыпалось (<c>Cond = 0</c>).</summary>

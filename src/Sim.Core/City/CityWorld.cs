@@ -29,6 +29,9 @@ internal sealed class CityWorld
     public readonly LotBuilder LotGen;
     public readonly Market Market;             // производные рынков труда и жилья (Z4); в сейв не входят
 
+    /// <summary>Поля квартала (building-lifecycle.md §2.6); <c>null</c> без <c>city.lifecycle</c>.</summary>
+    public readonly NeighborhoodFields? Fields;
+
     /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
     public CityBudget? Budget;
 
@@ -97,6 +100,11 @@ internal sealed class CityWorld
             Budget = new CityBudget(in cfg.Economy, grid.Cells);
             Ledger.Carry = Budget.Carry;
             Budget.RecomputeDerived(this);
+        }
+
+        if (cfg.Lifecycle.Enabled)
+        {
+            Fields = new NeighborhoodFields(in grid, cfg.Lifecycle.CellM);
         }
 
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
