@@ -3,7 +3,7 @@ using Sim.Core.City;
 
 namespace Sim.Core.Api;
 
-// Городские службы (services.md §2.3-§2.9, §7, SR2): сводка записи, вызовы для маркеров, охват. Вне тика, только чтение.
+// Городские службы (services.md §2.3-§2.9, §7, SR2-SR3): сводка записи, вызовы для маркеров, охват, доступность врача. Вне тика, только чтение.
 public sealed partial class Simulation
 {
     /// <summary>Клеток слоя охвата (<see cref="GetServiceCoverage"/>, сетка BL 128 м); 0 - без режима <c>city.services</c>.</summary>
@@ -41,6 +41,14 @@ public sealed partial class Simulation
             {
                 stats.Stations++;
                 stats.UnitsMax += s.UnitsMax[i];
+                stats.BedsUsed += s.BedsUsed[i];
+                stats.IcuUsed += s.IcuUsed[i];
+                if (sv.Table.Explicit)
+                {
+                    stats.Beds += Illness.BedsCap(sv, i);
+                    stats.Icu += Illness.IcuCap(sv, i);
+                    stats.VisitsToday += c.Buildings.VisitsDay[Economy.Slot(bi, c.Day & 1)];
+                }
             }
         }
 
@@ -127,6 +135,22 @@ public sealed partial class Simulation
         o.EnRoute = enRoute;
         o.Urgent = urgent ? (byte)1 : (byte)0;
         return true;
+    }
+
+    /// <summary>
+    /// Доступность врача по клеткам 128 м (§2.6, SR3): <c>CareEwma</c> - EWMA стоимости ноги к врачу от домов клетки, секунды; 0 - приёмов не было. Длина <paramref name="perCell"/>
+    /// не меньше <see cref="ServiceCellCount"/>. Возвращает число клеток (0 - без режима).
+    /// </summary>
+    public int GetCareCoverage(Span<ushort> perCell)
+    {
+        CityServices? sv = _disposed ? null : _w.City?.Services;
+        if (sv == null || sv.Cells == 0 || perCell.Length < sv.Cells)
+        {
+            return 0;
+        }
+
+        sv.CareEwma.AsSpan(0, sv.Cells).CopyTo(perCell);
+        return sv.Cells;
     }
 
     /// <summary>
