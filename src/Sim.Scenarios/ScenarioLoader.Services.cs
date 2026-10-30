@@ -40,6 +40,20 @@ public static partial class ScenarioLoader
 
         int[] days = IntTriple(r, "ill_days", d.IllDaysLight, d.IllDaysInpatient, d.IllDaysCritical, 1, 31);
         (d.IllDaysLight, d.IllDaysInpatient, d.IllDaysCritical) = (days[0], days[1], days[2]);
+
+        // fire_ppm {residential, commercial, industrial}: возгорание зданий в сутки, ppm (SR6); базовые типы горят с 0, значения калибруются в сценарии, а не в пакете
+        int fireR = -1;
+        int fireC = -1;
+        int fireI = -1;
+        JsonObjectReader? fp = r.OptObject("fire_ppm");
+        if (fp != null)
+        {
+            fireR = fp.Int("residential", 0, min: 0, max: 1_000_000);
+            fireC = fp.Int("commercial", 0, min: 0, max: 1_000_000);
+            fireI = fp.Int("industrial", 0, min: 0, max: 1_000_000);
+            fp.Finish();
+        }
+
         HashSet<AssetId>? off = null;
         JsonElement[]? offA = r.OptArray("services_off");
         if (offA != null)
@@ -89,8 +103,34 @@ public static partial class ScenarioLoader
 
             if (depot >= 0)
             {
-                CityServicesDesc.BaseRecords(depot, types[depot].VehicleType, out d.Records, out d.Levels, out d.Calls);
+                // SR6: утилита + медицина + пожарные; типы служб дописываются к таблице ядра (без режима она остаётся из 7 строк)
+                BuildingTypeDesc[] svc = CityDesc.BaseServiceBuildingTypes();
+                var all = new BuildingTypeDesc[types.Length + svc.Length];
+                types.CopyTo(all, 0);
+                svc.CopyTo(all, types.Length);
+                town.BuildingTypes = all;
+                CityServicesDesc.BaseAllRecords(depot, types[depot].VehicleType, types.Length, out d.Records, out d.Levels, out d.Upgrades, out d.Calls, out d.Visits);
             }
+        }
+
+        if (fireR >= 0)
+        {
+            BuildingTypeDesc[] tt = town.BuildingTypes is { Length: > 0 } cur ? cur : CityDesc.BaseBuildingTypes();
+            for (int i = 0; i < tt.Length; i++)
+            {
+                if (tt[i].FirePpm == 0)
+                {
+                    tt[i].FirePpm = tt[i].Kind switch
+                    {
+                        LotZone.Residential => fireR,
+                        LotZone.Commercial => fireC,
+                        LotZone.Industrial => fireI,
+                        _ => 0,
+                    };
+                }
+            }
+
+            town.BuildingTypes = tt;
         }
 
         town.Services = d;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Sim.Core.Api;
 using Sim.Scenarios.Mods;
 using AssetKind = Sim.Scenarios.Mods.AssetKind;
@@ -66,24 +67,46 @@ public sealed class ServiceContentTests : IDisposable
     private const string Level = "\"levels\": [{ \"type\": \"base:building/utility_depot\", \"role\": [\"repair\"], \"dispatch\": { \"vehicle\": \"base:vehicle/utility\", \"units\": 4 } }]";
 
     [Fact]
-    public void BasePackage_UtilityRecord_EqualsCoreBuiltIn()
+    public void BasePackage_Records_EqualCoreBuiltIn()
     {
         PackageSet set = PackageLoader.Load([new PackageSearchDir(ContentDir(), true)], ["base"]);
         var issues = new List<ModIssue>();
         ContentCatalog cat = Catalog(set, issues);
         Assert.Empty(issues);
-        ServiceEntry e = Assert.Single(cat.Services);
-        Assert.Equal("base:service/utility", e.Id.ToString());
-        Assert.Equal(0, cat.FindService(e.Id));
+        Assert.Equal(3, cat.Services.Count);
+        Assert.Equal(["base:service/utility", "base:service/medicine", "base:service/fire"], cat.Services.Select(e => e.Id.ToString()).ToArray());
+        Assert.Equal(0, cat.FindService(cat.Services[0].Id));
         var d = CityServicesDesc.Default();
         cat.FillServices(null, ref d);
         int depot = cat.FindBuilding(new AssetId("base", AssetKind.Building, "utility_depot"));
-        CityServicesDesc.BaseRecords(depot, cat.Buildings[depot].Desc.VehicleType, out ServiceRecordDesc[] rec, out ServiceLevelDesc[] lv, out ServiceCallDesc[] calls);
+        int med = cat.FindBuilding(new AssetId("base", AssetKind.Building, "medpoint"));
+        Assert.Equal(depot + 1, med);
+        CityServicesDesc.BaseAllRecords(depot, cat.Buildings[depot].Desc.VehicleType, med, out ServiceRecordDesc[] rec, out ServiceLevelDesc[] lv, out ServiceUpgradeDesc[] up, out ServiceCallDesc[] calls, out ServiceVisitDesc[] vis);
+        ServiceLevelDesc[] want = lv;
+        for (int i = 0; i < want.Length; i++)
+        {
+            if (want[i].DispatchVehicle >= 0)
+            {
+                // индексы ТС каталога: машины - по имени, а не по индексу набора v2
+                string name = i == 0 ? "utility" : i == 3 ? "ambulance" : "fire";
+                want[i].DispatchVehicle = (short)cat.FindVehicle(new AssetId("base", AssetKind.Vehicle, name));
+            }
+        }
+
         Assert.Equal(rec, d.Records);
-        Assert.Equal(lv, d.Levels);
+        Assert.Equal(want, d.Levels);
+        Assert.Equal(up, d.Upgrades);
         Assert.Equal(calls, d.Calls);
-        Assert.Empty(d.Upgrades);
-        Assert.Empty(d.Visits);
+        Assert.Equal(vis, d.Visits);
+
+        // типы зданий служб: те же, что дописывает загрузчик v2 (таблица каталога: 7 типов ядра + 5 служб)
+        BuildingTypeDesc[] svc = CityDesc.BaseServiceBuildingTypes();
+        for (int i = 0; i < svc.Length; i++)
+        {
+            BuildingTypeDesc c = cat.Buildings[med + i].Desc;
+            c.Reserved = 0;
+            Assert.Equal(svc[i], c);
+        }
     }
 
     [Fact]
@@ -102,9 +125,10 @@ public sealed class ServiceContentTests : IDisposable
                   "upgrades": [{ "id": "bay", "cost": 70, "effect": "units", "value": 2 }, { "id": "icu", "cost": 90, "effect": "icu", "value": 5 }] }] }
             """));
         Assert.Empty(issues);
-        Assert.Equal(2, cat.Services.Count);   // base:service/utility + svc_mod:service/rescue
+        Assert.Equal(4, cat.Services.Count);   // base: utility, medicine, fire + svc_mod:service/rescue
         var d = CityServicesDesc.Default();
-        cat.FillServices(null, ref d);
+        var offBase = new HashSet<AssetId> { new("base", AssetKind.Service, "medicine"), new("base", AssetKind.Service, "fire") };   // остаются utility и rescue: индексы 0 и 1
+        cat.FillServices(offBase, ref d);
         Assert.Equal(2, d.Records.Length);
         ServiceRecordDesc r = d.Records[1];
         Assert.Equal((ServiceFund.City, 1, 2, 1, 1, 0, 1), (r.Fund, r.FirstLevel, r.LevelCount, r.FirstCall, r.CallCount, r.FirstVisit, r.VisitCount));
@@ -115,7 +139,7 @@ public sealed class ServiceContentTests : IDisposable
 
         // services_off: выключенная запись не попадает в таблицы
         var d2 = CityServicesDesc.Default();
-        cat.FillServices(new HashSet<AssetId> { new("base", AssetKind.Service, "utility") }, ref d2);
+        cat.FillServices(new HashSet<AssetId> { new("base", AssetKind.Service, "utility"), new("base", AssetKind.Service, "medicine"), new("base", AssetKind.Service, "fire") }, ref d2);
         Assert.Single(d2.Records);
         Assert.Equal(0, d2.Records[0].FirstLevel);
         Assert.Equal(0, d2.Levels[1].FirstUpgrade - 1);
@@ -140,7 +164,7 @@ public sealed class ServiceContentTests : IDisposable
         ModIssue i = Assert.Single(issues);
         Assert.Equal(code, i.Code);
         Assert.Contains(pathPart, i.JsonPath, StringComparison.Ordinal);
-        Assert.Single(cat.Services);   // только base:service/utility
+        Assert.Equal(3, cat.Services.Count);   // только записи base: utility, medicine, fire
     }
 
     [Fact]
@@ -156,7 +180,7 @@ public sealed class ServiceContentTests : IDisposable
         }
 
         (ContentCatalog cat, List<ModIssue> lim) = Mod("{ \"format_version\": 1, \"services\": [" + string.Join(",", recs) + "] }");
-        Assert.Equal(ModLimits.MaxServices + 1, cat.Services.Count);
+        Assert.Equal(ModLimits.MaxServices + 3, cat.Services.Count);   // + 3 записи base
         Assert.Contains(lim, i => i.Code == ModError.CapacityExceeded);
     }
 

@@ -12,7 +12,8 @@
   "duration_s": 600,
   "city": {
     "enabled": false,
-    "lifecycle": { "tariff_leave": 0.002 }
+    "lifecycle": { "tariff_leave": 0.002 },
+    "services": { "fire_spread_ppm": 60000, "fire_ppm": { "residential": 100, "commercial": 150, "industrial": 400 } }
   },
   "network": {
     "nodes": [

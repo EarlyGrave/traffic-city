@@ -133,7 +133,14 @@ public sealed class BasePackageGoldenTests : IDisposable
         string v3Text = FormatUpgrades.ScenarioV2ToV3(JsonNode.Parse(File.ReadAllText(path))!).ToJsonString();
         // единственный внешний файл v3-копии - каталог профилей (demo-profiles, RP6): читается из scenarios/, но как у v2-загрузки подменяется фикстурой тестов (ScenarioLoader.DefaultOverrides)
         LoadedScenario v3 = ScenarioLoader.Parse(v3Text, f => Path.IsPathRooted(f) || f == "road-profiles.json" ? File.ReadAllText(Path.IsPathRooted(f) ? f : Path.Combine(Scenarios(), f)) : throw new InvalidOperationException("no files in v3"), "x", GameDirs(), ScenarioLoader.DefaultOverrides);
-        AssertDeepEqual(v2.Desc, v3.Desc, "$");
+        ScenarioDesc d3 = v3.Desc;
+        if (!v2.Desc.Town.Services.Enabled && d3.Town.BuildingTypes is { Length: > 0 } rows && v2.Desc.Town.BuildingTypes is { Length: > 0 } rows2 && rows.Length > rows2.Length)
+        {
+            // SR6: в каталоге base после 7 типов ядра лежат 5 типов служб (медицина, пожарные); без city.services они инертны, v2 их не дописывает
+            d3.Town.BuildingTypes = rows[..rows2.Length];
+        }
+
+        AssertDeepEqual(v2.Desc, d3, "$");
     }
 
     [Fact]

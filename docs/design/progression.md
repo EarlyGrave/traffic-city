@@ -173,6 +173,8 @@ CityKpi: KpiHour[24] Ring, int Head; KpiHour Current; long VehTicksAtHourStart, 
 
 Блок BL (`building-lifecycle.md`): снос (`DemolishBuilding`), депо ЖКХ (`BuildService`), тариф и капремонт (`RestoreBuilding`) признаков не получили и доступны с M0 в сценариях с `city.lifecycle`
 (признак `Restoration` не заведён: он сдвигает `Features` в хэше прогрессии); `Monuments` отложен.
+Блок SR (`services.md` §6): новых `Feature` нет — уровни служб и их апгрейды открывает поле `milestone` записи (индекс вехи из §3; `Locked` до неё, в превью `Value` = `Defs[k − 1]`; без секции `progression` открыто всё).
+База: медпункт и пожарная часть — M0, больница — M2, медцентр и пожарное управление — M3. Критический больной без медцентра (до M3) — «уезжает» (заглушка решения 10.3/10.4, до SR7); ползунок бюджета служб открыт вместе с `Taxes`.
 
 Снос (`RemoveRoad`), `SplitRoad`/`MergeAtNode` и не-инструменты (`SpawnTrip`, `SelectVehicle`, `SetTripExecution`, …) замков не имеют.
 Профиль: `BuildRoad.Profile` / `UpgradeRoad.Profile` (индекс + 1) должен быть открыт в битсете.

@@ -104,6 +104,7 @@ public static class RejectMessages
             IssueCode.SetbackShort => "Мало места от соседней дороги до перекрёстка",
             IssueCode.Earthwork => string.Create(CultureInfo.InvariantCulture, $"Земляные работы: {value} м³"),
             IssueCode.BridgeAuto => string.Create(CultureInfo.InvariantCulture, $"Будет мост: {value} м"),
+            IssueCode.ServiceAnnexBuyout => string.Create(CultureInfo.InvariantCulture, $"Выкуп соседних участков: под снос уйдёт зданий — {value}"),
             _ => "Есть замечание",
         };
     }

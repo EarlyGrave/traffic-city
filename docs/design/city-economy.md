@@ -95,6 +95,7 @@
 | `UtilityFee` | дневной проход жителя и фирмы (только `city.lifecycle`) | житель/фирма → `Utility` | `TransferPct(R0 · места, 100 б.п.)`: житель — 1 место, фирма — `Capacity`; `R0` = тариф, стартово 30 (сотые доли в сутки) |
 | `Repair`, `CrewWages` | окончание ремонта; граница суток | `Utility` → `External` | `(Ceil − Cond) · Capacity · repair_per_unit / 10 000` (10); `crew_day_cost` (60) на бригаду |
 | `Restoration`, `UtilitySubsidy` | команда `RestoreBuilding`; выезд при пустом фонде и флаге политики | `City` → `External`; `City` → `Utility` | `Capacity · restore_per_unit · (2 − Cond/10 000)`; дефицит фонда |
+| `ServiceUpkeep` | граница суток, проход станции (только `city.services`) | `City` или `Utility` → `External` | `(upkeep_day + апгрейды + per_unit_day · Duty) · Pct/100 + per_call · вызовов + per_visit · визитов`; база SR6: медпункт 250, больница 900, медцентр 2 400 + 80/машина, пожарная часть 300 + 60/машина |
 | `Endowment` | `Create` или `Enable` | `External` → `City` | `initial_city_balance_per_resident · Alive` |
 
 Порядок внутри дневного прохода фирмы (по возрастанию индекса здания, 3.2): прибыль вчера → `Tax` → `Rent` (в счёт сегодняшнего дня)

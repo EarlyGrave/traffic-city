@@ -204,4 +204,68 @@ public struct CityServicesDesc
         };
         calls = new[] { new ServiceCallDesc { Kind = ServiceCallKind.Repair, OnsiteS = 150 } };
     }
+
+    /// <summary>
+    /// Встроенный набор записей <c>utility</c>, <c>medicine</c>, <c>fire</c> (SR6; = <c>content/base/services.json</c>, тест сверяет) для сценариев v2 с <c>city.services</c>:
+    /// типы зданий - <see cref="CityDesc.BaseServiceBuildingTypes"/>, дописанные в таблицу с индекса <paramref name="firstServiceType"/> (медпункт, больница, медцентр, пожарная часть, пожарное управление).
+    /// </summary>
+    public static void BaseAllRecords(int depotType, short utilityVehicle, int firstServiceType, out ServiceRecordDesc[] records, out ServiceLevelDesc[] levels, out ServiceUpgradeDesc[] upgrades, out ServiceCallDesc[] calls, out ServiceVisitDesc[] visits)
+    {
+        BaseRecords(depotType, utilityVehicle, out ServiceRecordDesc[] ur, out ServiceLevelDesc[] ul, out ServiceCallDesc[] uc);
+        int t = firstServiceType;
+        records = new[]
+        {
+            ur[0],
+            new ServiceRecordDesc { Fund = ServiceFund.City, Rev = 1, FirstLevel = 1, LevelCount = 3, FirstCall = 1, CallCount = 1, FirstVisit = 0, VisitCount = 2 },
+            new ServiceRecordDesc { Fund = ServiceFund.City, Rev = 1, FirstLevel = 4, LevelCount = 2, FirstCall = 2, CallCount = 1, FirstVisit = 2, VisitCount = 0 },
+        };
+        levels = new[]
+        {
+            ul[0],
+            new ServiceLevelDesc
+            {
+                Type = t, Roles = ServiceRole.Light, LotMinF = 2, LotMinD = 2, Milestone = 0, BuildCost = 15_000, UpkeepDay = 250, CapacityDay = 60, OpenSlot = 96, CloseSlot = 216, StaySlots = 6,
+                DispatchVehicle = -1, FirstUpgrade = 0, UpgradeCount = 1,
+            },
+            new ServiceLevelDesc
+            {
+                Type = t + 1, Roles = ServiceRole.Light | ServiceRole.Inpatient, LotMinF = 4, LotMinD = 4, Milestone = 2, BuildCost = 60_000, UpkeepDay = 900, CapacityDay = 150, Beds = 20,
+                OpenSlot = 84, CloseSlot = 240, StaySlots = 12, DispatchVehicle = -1, FirstUpgrade = 1, UpgradeCount = 1,
+            },
+            new ServiceLevelDesc
+            {
+                Type = t + 2, Roles = ServiceRole.Light | ServiceRole.Inpatient | ServiceRole.Critical, LotMinF = 6, LotMinD = 5, Milestone = 3, BuildCost = 180_000, UpkeepDay = 2_400, CapacityDay = 300,
+                Beds = 60, Icu = 15, OpenSlot = 0, CloseSlot = 288, StaySlots = 12, DispatchVehicle = CityDesc.BaseAmbulanceVehicle, Units = 4, PerUnitDay = 80, FirstUpgrade = 2, UpgradeCount = 2,
+            },
+            new ServiceLevelDesc
+            {
+                Type = t + 3, Roles = ServiceRole.Fire, LotMinF = 3, LotMinD = 3, Milestone = 0, BuildCost = 25_000, UpkeepDay = 300, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 2,
+                PerUnitDay = 60, FirstUpgrade = 4, UpgradeCount = 0,
+            },
+            new ServiceLevelDesc
+            {
+                Type = t + 4, Roles = ServiceRole.Fire, LotMinF = 5, LotMinD = 4, Milestone = 3, BuildCost = 80_000, UpkeepDay = 900, DispatchVehicle = CityDesc.BaseFireVehicle, Units = 5,
+                PerUnitDay = 60, FirstUpgrade = 4, UpgradeCount = 1,
+            },
+        };
+        upgrades = new[]
+        {
+            new ServiceUpgradeDesc { Cost = 5_000, UpkeepDay = 60, Effect = ServiceUpgradeEffect.VisitCapacity, Value = 30 },
+            new ServiceUpgradeDesc { Cost = 25_000, UpkeepDay = 250, Effect = ServiceUpgradeEffect.Beds, Value = 15 },
+            new ServiceUpgradeDesc { Cost = 30_000, UpkeepDay = 160, Effect = ServiceUpgradeEffect.Units, Value = 2 },
+            new ServiceUpgradeDesc { Cost = 50_000, UpkeepDay = 400, Effect = ServiceUpgradeEffect.Icu, Value = 10 },
+            new ServiceUpgradeDesc { Cost = 20_000, UpkeepDay = 150, Effect = ServiceUpgradeEffect.OnsitePct, Value = 75 },
+        };
+        calls = new[]
+        {
+            uc[0],
+            new ServiceCallDesc { Kind = ServiceCallKind.Critical, Flags = ServiceCallFlags.Urgent | ServiceCallFlags.OnCall | ServiceCallFlags.OnCallReturn, OnsiteS = 120, DeadlineS = 600, PerCall = 150 },
+            new ServiceCallDesc { Kind = ServiceCallKind.Fire, Flags = ServiceCallFlags.Urgent | ServiceCallFlags.OnCall, OnsiteS = 60, PerCall = 200 },
+        };
+        visits = new[]
+        {
+            new ServiceVisitDesc { Reason = ServiceVisitReason.Light, MinRole = ServiceRole.Light, PerVisit = 10, MaxCostS = 1_200 },
+            new ServiceVisitDesc { Reason = ServiceVisitReason.Inpatient, MinRole = ServiceRole.Inpatient, PerVisit = 40, MaxCostS = 1_800 },
+        };
+    }
 }

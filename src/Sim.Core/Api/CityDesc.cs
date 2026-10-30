@@ -358,6 +358,25 @@ public struct CityDesc
     /// <summary>Индекс типа ТС <c>utility</c> в базовом наборе (car, bus, van, truck, ambulance, fire, utility).</summary>
     public const byte BaseUtilityVehicle = 6;
 
+    /// <summary>Индекс типа ТС <c>ambulance</c> в базовом наборе.</summary>
+    public const byte BaseAmbulanceVehicle = 4;
+
+    /// <summary>Индекс типа ТС <c>fire</c> в базовом наборе.</summary>
+    public const byte BaseFireVehicle = 5;
+
+    /// <summary>
+    /// 5 типов служб медицины и пожарной охраны (services.md §2.2, SR6), дописываются к <see cref="BaseBuildingTypes"/> загрузчиком v2 при <c>city.services</c> (индексы 7-11):
+    /// медпункт, больница, медцентр, пожарная часть, пожарное управление. Тот же набор в <c>content/base/buildings.json</c> (тест сверяет). Без режима таблица не растёт.
+    /// </summary>
+    public static BuildingTypeDesc[] BaseServiceBuildingTypes() => new[]
+    {
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 7, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 3_000, BuildCost = 15_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 8, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 10_000, BuildCost = 60_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 9, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 25_000, BuildCost = 180_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 10, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 5_000, BuildCost = 25_000, ServiceKind = ServiceKind.Fire, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 11, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 12_000, BuildCost = 80_000, ServiceKind = ServiceKind.Fire, VehicleType = byte.MaxValue },
+    };
+
     /// <summary>7 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность + депо ЖКХ); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {

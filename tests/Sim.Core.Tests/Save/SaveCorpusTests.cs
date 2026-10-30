@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Sim.Core.Api;
+using Sim.Core.City;
 using Sim.Core.Save;
+using Sim.Core.Tests.City;
 using Sim.Core.Tests.Gen;
 using Sim.Headless;
 using Sim.Host;
@@ -24,7 +26,7 @@ public sealed class SaveCorpusTests
     private const int ContinueTicks = 200;
     // w17 (BL1): жизнь здания, без city.lifecycle поведение прежнее - пересоздаются те же Current. w16 (VC1, ADR-0039): классы ТС, столбцов пока нет (Deny - VC2) - пересоздаются те же Current. w15 (YS1): блок GOAL только при goals, PARM не меняется - пересоздаются те же Current. w14 (Y3): PARM 259-277, блок OUTS только при outside - пересоздаются те же Current. w13 (Y4): PARM 256-258, поведение прежнее - пересоздаются те же Current (small, s1k, terrain-demo), остальные покрыты файлами w11. w12 (TR1): бюджет не растёт - пересоздаётся только подмножество Current (small, s1k, terrain-demo), остальные случаи покрыты файлами w11 (мигрируют без смены поведения).
     private const int SubsetSinceVersion = 12;
-    private const long BudgetBytes = 32L * 1024 * 1024;   // 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ; w11 (ADR-0034, PG1): 32 МБ - полный набор w11 (+5,7 МБ) и файл прогрессии
+    private const long BudgetBytes = 40L * 1024 * 1024;   // w18 (SR6): 40 МБ - случай s1k-res-sr (+0,7 МБ) вывел корпус за 32 МБ (было 33,5 МБ: w12-w17 держались на подмножестве); 5 МБ на w1-w3; растёт на ~1,4 МБ с каждой версией (файлы старых версий не удаляются), решено в T4: 8 МБ; w6 (ADR-0028): 10 МБ; w7 (ADR-0029): 12 МБ (корпус 11.4 МБ); w8 (ADR-0030): 15 МБ; w9 (ADR-0025): 21 МБ; w10 (ADR-0026, K1): 25 МБ; w11 (ADR-0034, PG1): 32 МБ - полный набор w11 (+5,7 МБ) и файл прогрессии
     private const long PedsFileBudgetBytes = 1024L * 1024;
     private const string RegenEnv = "TC_REGEN_CORPUS";
 
@@ -43,6 +45,7 @@ public sealed class SaveCorpusTests
         new("s1k-res-econ-d3", 216500, S1kResEcon, EvolveBudget),   // w9 (ADR-0025): сценарий s1k-res-econ, ожидающая политика в сейве
         new("s1k-res-prof", 4800, S1kResProf),   // w10, RP5 (ADR-0030): s1k-res по профилям фикстуры - участки на мировой сетке 8 м (CellX/CellZ/CellsF/CellsD/Orient в LOTS)
         new("s1k-res-park", 24000, S1kResPark),
+        new("s1k-res-sr", 30000, S1kResSr, EvolveServices) { Current = true },   // w18 (SR6, ADR-0041): s1k-res-sr с набором станций - блок SERV, Ill, пожар и вызов в пути на момент сейва
         new("s1k-res-econ-prog", 3600, S1kResEconProg),   // w11 (ADR-0034, PG1-PG2): s1k-res-econ + секция progression - блоки PROG и CKPI, кольцо показателей посреди второго часа   // w10 (ADR-0026, K1): сценарий s1k-res-park + city.landuse (парки, пруды, вода): блоки PARK и LUSE, домашние места, обочины и стоянки зданий
     };
 
@@ -291,6 +294,42 @@ public sealed class SaveCorpusTests
         ScenarioDesc d = sc.Desc;
         d.City.LandUse = new LandUseDesc { Enabled = true, ParkShare = 0.08f, PondShare = 0.25f, Coast = LandUseCoast.South, CoastWidthM = 300f };
         return (d, sc.TypeNames);
+    }
+
+    private static (ScenarioDesc, string[]) S1kResSr()
+    {
+        LoadedScenario sc = ScenarioLoader.LoadInfo(Path.Combine(GenFixture.RepoRoot(), "scenarios", "s1k-res-sr.json"));
+        return (sc.Desc, sc.TypeNames);
+    }
+
+    // SR6: ЖКХ 3, медцентр (больница + пристройка), медпункт, пожарная часть; на 20000-м тике больной в критическом состоянии и пожар - к 30000-му машины служб в пути/на месте.
+    private static void EvolveServices(Simulation sim, int ticks)
+    {
+        sim.Step(20);
+        CityWorld c = sim.World.City!;
+        c.Ledger.Transfer(c.Ledger.ExternalAccount, c.Ledger.CityAccount, 50_000_000, FlowKind.Subsidy);
+        Assert.Equal(3, LifecycleCalibrationTests.PlaceDepots(sim, 3));
+        Assert.Equal(1, ServicesScenarioTests.PlaceMedCenters(sim, 1));
+        Assert.Equal(1, ServicesScenarioTests.Place(sim, ServicesScenarioTests.Medicine, 1, 1, 700));
+        Assert.Equal(1, ServicesScenarioTests.Place(sim, ServicesScenarioTests.Fire, 1, 1, 800));
+        sim.Step(20_000 - 20);
+        int r = -1;
+        for (int i = 0; i < c.Residents.HighWater && r < 0; i++)
+        {
+            r = c.Residents.IsAlive(i) && c.Residents.Home[i] >= 0 ? i : -1;
+        }
+
+        Illness.Onset(sim.World, c, r, 3);
+        for (int i = 0; i < c.Buildings.HighWater; i++)
+        {
+            if (c.Buildings.IsAlive(i) && c.Buildings.State[i] == (byte)BuildingState.Active && c.Types.Rows[c.Buildings.Type[i]].Kind == LotZone.Residential && c.Lots.CarLane[c.Buildings.Lot[i]] >= 0)
+            {
+                Assert.True(Fires.Start(sim.World, c, i));
+                break;
+            }
+        }
+
+        sim.Step(ticks - 20_000);
     }
 
     private static (ScenarioDesc, string[]) S1kResEconProg()
