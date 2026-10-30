@@ -5,4 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
-| BL3 ЖКХ: депо, бригады, ремонт, фонд | локал | local/bl3 | City/*, Agents/ArrivalPhase.cs, Lod/QueueMeso.cs, Agents/Spawner.cs, City/Ledger.cs, Api/*, Save/*, content/base/* | 2026-10-30 |
+| BL4 капремонт и API жизни здания | локал | local/bl4 | City/*, City/Progression.Rules.cs, Api/*, Tools/*, Save/* | 2026-10-30 |

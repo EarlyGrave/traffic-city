@@ -325,3 +325,5 @@
 | BL1 (L102) | opus | 176 112 | н/д | 2026-10-30 |
 - L103 (sonnet, BL2 значимость и поля квартала): ArrivalsDay/Signif, поля 128 м, LV_lot, H1-H3, снос значимого; LifecycleSignifTests+LifecycleTests 30/30, хэши без режима прежние; local/bl2 влит. Отчёт: reports/L103.md
 | BL2 (L103) | sonnet | 253 064 | н/д | 2026-10-30 |
+- L104 (opus, BL3 ЖКХ): депо/бригады/очередь ремонтов/счёт Utility/тариф/субсидия; LifecycleUtilityTests 19/19, Headless 605/605, Host 57/57; local/bl3 влит. Для BL5: при тарифе 100 уходят 136 из ~3900 жителей s1k-res за 3 дня (нулевой доход). Отчёт: reports/L104.md
+| BL3 (L104) | opus | н/д | н/д | 2026-10-30 |
