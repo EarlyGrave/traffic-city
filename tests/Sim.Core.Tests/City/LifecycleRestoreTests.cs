@@ -250,11 +250,11 @@ public sealed class LifecycleRestoreTests
         c.Buildings.Cond[bi] = 7_000;
         Utilities.Request(w, c, bi);
         Assert.NotEqual(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
-        Assert.Equal(1, c.Utility!.Queue.Count);
+        Assert.Equal(1, c.Services!.UtilityQueue!.Count);
 
         Assert.Equal(RejectReason.None, ToolsFixture.Run(sim, Restore(c, bi)));
         sim.Step(200);
-        Assert.Equal(0, c.Utility.Queue.Count);   // голова очереди снята как «уже в норме»
+        Assert.Equal(0, c.Services!.UtilityQueue!.Count);   // голова очереди снята как «уже в норме»
         Assert.Equal(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
         Assert.Equal(0, w.Counters.RepairsDone);
         Assert.Equal(0L, c.Ledger.FlowTotal[(int)FlowKind.Repair]);

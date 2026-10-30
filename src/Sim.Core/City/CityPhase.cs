@@ -70,7 +70,7 @@ internal static class CityPhase
     public static void Periodic(World w)
     {
         CityWorld c = w.City!;
-        if (c.Utility != null)
+        if (c.Services != null)
         {
             Utilities.Tick(w, c);   // ЖКХ (building-lifecycle.md §2.10): прибытия бригад, сроки, выезд - до прибытий жителей
         }

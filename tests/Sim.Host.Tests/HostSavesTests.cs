@@ -163,7 +163,7 @@ public class HostSavesTests
         string? file = null;
         for (int i = 0; i < 8 && dir != null; i++, dir = Path.GetDirectoryName(dir))
         {
-            string c = Path.Combine(dir, "tests", "SaveCorpus", "w17-s1k-t2400.tcsave");
+            string c = Path.Combine(dir, "tests", "SaveCorpus", "w18-s1k-t2400.tcsave");
             if (File.Exists(c))
             {
                 file = c;

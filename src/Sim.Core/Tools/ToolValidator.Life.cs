@@ -96,12 +96,12 @@ internal static partial class ToolValidator
 
     /// <summary>
     /// <c>BuildService</c> (building-lifecycle.md §2.10, §6.2): режим <c>city.lifecycle</c> (иначе <c>NotSupported</c>); участок в пределах и тип вида <c>Service</c> (иначе <c>InvalidArgument</c>);
-    /// участок без здания, не <c>Lost</c>, с полосой (иначе <c>ZoneRule</c>); свободных слотов бригад не меньше <c>Vehicles</c> типа (иначе <c>Capacity</c>). Цена - <c>build_cost</c>; точка - центр участка.
+    /// участок без здания, не <c>Lost</c>, с полосой (иначе <c>ZoneRule</c>); тип не ЖКХ - <c>NotSupported</c> (до SR5); свободных слотов бригад не меньше <c>Vehicles</c> типа и есть место станции (иначе <c>Capacity</c>). Цена - <c>build_cost</c>; точка - центр участка.
     /// </summary>
     private static RejectReason CheckBuildService(World w, in Command cmd, ref ToolCheck c)
     {
         CityWorld? city = w.City;
-        if (city == null || !city.Cfg.Lifecycle.Enabled || city.Utility == null)
+        if (city == null || !city.Cfg.Lifecycle.Enabled || city.Services == null)
         {
             return RejectReason.NotSupported;
         }
@@ -123,7 +123,12 @@ internal static partial class ToolValidator
             return RejectReason.ZoneRule;
         }
 
-        if (city.Utility.FreeSlots() < city.Types.Rows[type].Vehicles)
+        if (city.Types.Rows[type].ServiceKind != ServiceKind.Utility)
+        {
+            return RejectReason.NotSupported;   // станции без выезда ЖКХ (медицина, пожарные) - с SR5
+        }
+
+        if (city.Services.Crews.FreeSlots() < city.Types.Rows[type].Vehicles || !city.Services.CanAllocSite(city.Buildings))
         {
             return RejectReason.Capacity;
         }

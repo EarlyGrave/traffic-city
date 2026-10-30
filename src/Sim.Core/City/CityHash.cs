@@ -172,35 +172,16 @@ internal static class CityHash
             h.Add((int)bud.PendingPolicy.R1);
         }
 
-        UtilityService? u = c.Utility;
-        if (u != null)
+        CityServices? sv = c.Services;
+        if (sv != null)
         {
-            h.Add(u.Queue.Count);
-            for (int i = 0; i < u.Queue.Count; i++)
+            if (sv.Table.Explicit)
             {
-                ref readonly RepairRequest q = ref u.Queue.At(i);
-                h.Add(q.Building);
-                h.Add(q.Gen);
-                h.Add(q.Tick);
+                AddServices(ref h, sv);   // режим city.services (services.md §5): станции, все кольца, бригады со станцией
             }
-
-            for (int i = 0; i < u.Capacity; i++)
+            else
             {
-                h.Add(u.State[i]);
-                if (u.State[i] == CrewState.Free)
-                {
-                    continue;
-                }
-
-                h.Add(u.Depot[i]);
-                h.Add(u.DepotGen[i]);
-                h.Add(u.Target[i]);
-                h.Add(u.TargetGen[i]);
-                h.Add(u.SiteLot[i]);
-                h.Add(u.Vehicle[i]);
-                h.Add(u.VehicleGen[i]);
-                h.Add(u.DueTick[i]);
-                h.Add(u.ReqTick[i]);
+                AddUtilityBl(ref h, sv);   // без режима - ровно как BL3: очередь заявок и бригады с депо-зданием
             }
         }
 
@@ -210,6 +191,107 @@ internal static class CityHash
         h.Add(k.CrewTimeouts);
         h.Add(k.TariffLeaves);
         h.Add(k.Restorations);
+    }
+
+    /// <summary>ЖКХ без режима служб (BL3, побитово прежний порядок): очередь заявок (здание, поколение, тик), бригады (депо-здание станции, поколение, цель, машина, сроки).</summary>
+    private static void AddUtilityBl(ref Fnv1a64 h, CityServices sv)
+    {
+        RingBuffer<ServiceCall> queue = sv.UtilityQueue!;
+        CrewStore u = sv.Crews;
+        h.Add(queue.Count);
+        for (int i = 0; i < queue.Count; i++)
+        {
+            ref readonly ServiceCall q = ref queue.At(i);
+            h.Add(q.Target);
+            h.Add(q.TargetGen);
+            h.Add(q.Tick);
+        }
+
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.State[i]);
+            if (u.State[i] == CrewState.Free)
+            {
+                continue;
+            }
+
+            h.Add(sv.SiteBuilding(i));
+            h.Add(sv.SiteGen(i));
+            AddCrewTail(ref h, u, i);
+        }
+    }
+
+    /// <summary>Службы в режиме <c>city.services</c> (services.md §5, блок SERV): станции, кольца вызовов по записям (обычные, срочные), бригады со станцией.</summary>
+    private static void AddServices(ref Fnv1a64 h, CityServices sv)
+    {
+        SiteStore s = sv.Sites;
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            h.Add(s.Building[i]);
+            if (s.Building[i] < 0)
+            {
+                continue;
+            }
+
+            h.Add(s.Gen[i]);
+            h.Add(s.Svc[i]);
+            h.Add(s.Level[i]);
+            h.Add(s.UpgradeMask[i]);
+            h.Add(s.UnitsMax[i]);
+            h.Add(s.Duty[i]);
+            h.Add(s.BedsUsed[i]);
+            h.Add(s.IcuUsed[i]);
+            for (int d = 0; d < SiteStore.ReleaseDays; d++)
+            {
+                h.Add(s.BedRelease[(i * SiteStore.ReleaseDays) + d]);
+                h.Add(s.IcuRelease[(i * SiteStore.ReleaseDays) + d]);
+            }
+        }
+
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            AddRing(ref h, sv.Normal[r]);
+            AddRing(ref h, sv.Urgent[r]);
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.State[i]);
+            if (u.State[i] == CrewState.Free)
+            {
+                continue;
+            }
+
+            h.Add(u.Site[i]);
+            AddCrewTail(ref h, u, i);
+        }
+    }
+
+    private static void AddRing(ref Fnv1a64 h, RingBuffer<ServiceCall> ring)
+    {
+        h.Add(ring.Count);
+        for (int i = 0; i < ring.Count; i++)
+        {
+            ref readonly ServiceCall q = ref ring.At(i);
+            h.Add(q.Kind);
+            h.Add(q.Target);
+            h.Add(q.TargetGen);
+            h.Add(q.Ref);
+            h.Add(q.RefGen);
+            h.Add(q.Tick);
+        }
+    }
+
+    private static void AddCrewTail(ref Fnv1a64 h, CrewStore u, int i)
+    {
+        h.Add(u.Target[i]);
+        h.Add(u.TargetGen[i]);
+        h.Add(u.SiteLot[i]);
+        h.Add(u.Vehicle[i]);
+        h.Add(u.VehicleGen[i]);
+        h.Add(u.DueTick[i]);
+        h.Add(u.ReqTick[i]);
     }
 
     /// <summary>

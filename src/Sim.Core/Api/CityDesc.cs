@@ -346,6 +346,9 @@ public struct CityDesc
     /// <summary>Жизнь здания (<c>city.lifecycle</c>, building-lifecycle.md); <c>Enabled = false</c> - секции нет, поведение прежнее.</summary>
     public CityLifecycleDesc Lifecycle;
 
+    /// <summary>Службы (<c>city.services</c>, services.md); <c>Enabled = false</c> - секции нет, ЖКХ работает как в BL (встроенная запись <c>utility</c>).</summary>
+    public CityServicesDesc Services;
+
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;
 

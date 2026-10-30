@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "services": [
+    {
+      "id": "utility",
+      "rev": 1,
+      "title": "Utility service",
+      "fund": "utility",
+      "calls": [{ "kind": "repair", "urgent": false, "on_call": false, "onsite_s": 150 }],
+      "levels": [
+        {
+          "type": "base:building/utility_depot",
+          "role": ["repair"],
+          "lot_min": [1, 1],
+          "build_cost": 20000,
+          "dispatch": { "vehicle": "base:vehicle/utility", "units": 16, "per_unit_day": 60 }
+        }
+      ]
+    }
+  ]
+}

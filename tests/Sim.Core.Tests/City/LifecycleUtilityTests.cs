@@ -110,7 +110,7 @@ public sealed class LifecycleUtilityTests
         c.Buildings.Cond[bi] = cond;
     }
 
-    private static int Count(UtilityService u, byte state)
+    private static int Count(CrewStore u, byte state)
     {
         int n = 0;
         for (int k = 0; k < u.Capacity; k++)
@@ -154,7 +154,7 @@ public sealed class LifecycleUtilityTests
         long city = c.Ledger.City;
         int bi = BuildDepot(sim, lot);
         Assert.True(city - c.Ledger.City >= t.BuildCost);
-        Assert.Equal(t.Vehicles, Count(c.Utility!, CrewState.Idle));
+        Assert.Equal(t.Vehicles, Count(c.Services!.Crews, CrewState.Idle));
         Assert.Equal(0L, c.Ledger.SumAll());
 
         // Занятый участок - ZoneRule; не тот тип - InvalidArgument; без режима - NotSupported.
@@ -172,7 +172,7 @@ public sealed class LifecycleUtilityTests
         sim.Step(20);
         World w = sim.World;
         CityWorld c = w.City!;
-        UtilityService u = c.Utility!;
+        CrewStore u = c.Services!.Crews;
         int lot = FreeLot(c);
         BuildDepot(sim, lot);
         int bi = Target(c, lot);
@@ -183,13 +183,13 @@ public sealed class LifecycleUtilityTests
         long fund = c.Ledger.Utility;
 
         Utilities.Request(w, c, bi);
-        Assert.Equal(1, u.Queue.Count);
+        Assert.Equal(1, c.Services!.UtilityQueue!.Count);
         Assert.NotEqual(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
         Utilities.Request(w, c, bi);
-        Assert.Equal(1, u.Queue.Count);   // повтор не дублирует
+        Assert.Equal(1, c.Services!.UtilityQueue!.Count);   // повтор не дублирует
 
         Assert.True(StepUntil(sim, () => Count(u, CrewState.ToSite) == 1, 40));
-        Assert.Equal(0, u.Queue.Count);
+        Assert.Equal(0, c.Services!.UtilityQueue!.Count);
         Assert.True(StepUntil(sim, () => w.Counters.RepairsDone == 1, 20_000));
         Assert.Equal(CityLife.Full, c.Buildings.Cond[bi]);
         Assert.Equal(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
@@ -208,7 +208,7 @@ public sealed class LifecycleUtilityTests
         sim.Step(20);
         World w = sim.World;
         CityWorld c = w.City!;
-        UtilityService u = c.Utility!;
+        CrewStore u = c.Services!.Crews;
         int lot = FreeLot(c);
         BuildDepot(sim, lot);
         int bi = Target(c, lot);
@@ -216,7 +216,7 @@ public sealed class LifecycleUtilityTests
         Assert.Equal(0L, c.Ledger.Utility);
         Utilities.Request(w, c, bi);
         sim.Step(200);
-        Assert.Equal(1, u.Queue.Count);   // фонд пуст, субсидии нет: заявка ждёт денег
+        Assert.Equal(1, c.Services!.UtilityQueue!.Count);   // фонд пуст, субсидии нет: заявка ждёт денег
         Assert.Equal(DepotCrews(c), Count(u, CrewState.Idle));
 
         c.Budget!.Policy.Flags |= BudgetPolicyFlags.UtilitySubsidy;
@@ -256,7 +256,7 @@ public sealed class LifecycleUtilityTests
         Utilities.Request(w, c, bi);
         sim.Step(40);
         Assert.Equal(1, w.Counters.RepairNoDepot);
-        Assert.Equal(0, c.Utility!.Queue.Count);
+        Assert.Equal(0, c.Services!.UtilityQueue!.Count);
         Assert.Equal(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
     }
 
@@ -271,7 +271,7 @@ public sealed class LifecycleUtilityTests
         Utilities.Request(w, c, bi);
         Worn(c, bi, (ushort)c.Cfg.Lifecycle.RepairRequestBp);
         Utilities.Request(w, c, bi);
-        Assert.Equal(0, c.Utility!.Queue.Count);
+        Assert.Equal(0, c.Services!.UtilityQueue!.Count);
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public sealed class LifecycleUtilityTests
         sim.Step(20);
         World w = sim.World;
         CityWorld c = w.City!;
-        UtilityService u = c.Utility!;
+        CrewStore u = c.Services!.Crews;
         int lot = FreeLot(c);
         BuildDepot(sim, lot);
         int bi = Target(c, lot);
@@ -302,7 +302,7 @@ public sealed class LifecycleUtilityTests
         sim.Step(200);
         World w = sim.World;
         CityWorld c = w.City!;
-        UtilityService u = c.Utility!;
+        CrewStore u = c.Services!.Crews;
         int lot = FreeLot(c);
         BuildDepot(sim, lot);
         int bi = Target(c, lot);
@@ -340,7 +340,7 @@ public sealed class LifecycleUtilityTests
         sim.Step(200);
         World w = sim.World;
         CityWorld c = w.City!;
-        UtilityService u = c.Utility!;
+        CrewStore u = c.Services!.Crews;
         int lot = FreeLot(c);
         BuildDepot(sim, lot);
         int bi = Target(c, lot);
@@ -530,7 +530,7 @@ public sealed class LifecycleUtilityTests
         {
             using Simulation sim = Scene(t, out _);
             sim.Step(6_000);
-            Assert.True(sim.World.Counters.RepairsDone > 0 || sim.World.City!.Utility!.Crews() > 0);
+            Assert.True(sim.World.Counters.RepairsDone > 0 || sim.World.City!.Services!.Crews.Crews() > 0);
             ulong h = sim.ComputeStateHash();
             first ??= h;
             Assert.Equal(first.Value, h);
@@ -542,7 +542,7 @@ public sealed class LifecycleUtilityTests
     {
         using Simulation sim = Scene(1, out int bi);
         World w = sim.World;
-        UtilityService u = w.City!.Utility!;
+        CrewStore u = w.City!.Services!.Crews;
         int saves = 0;
         bool sawToSite = false;
         bool sawWorking = false;
@@ -594,7 +594,7 @@ public sealed class LifecycleUtilityTests
     {
         using Simulation sim = Scene(1, out _);
         sim.Step(60);
-        Assert.True(sim.World.City!.Utility!.Crews() > 0);
+        Assert.True(sim.World.City!.Services!.Crews.Crews() > 0);
         byte[] raw = Sim.Core.Tests.Save.WorldSaveFixtures.SaveBytes(sim);
         using Simulation loaded = Sim.Core.Tests.Save.WorldSaveFixtures.Load(raw);
         sim.Step(4_000);
@@ -606,7 +606,7 @@ public sealed class LifecycleUtilityTests
     public void ZeroAllocations_WithCrewsInFlight()
     {
         using Simulation sim = Scene(1, out _);
-        UtilityService u = sim.World.City!.Utility!;
+        CrewStore u = sim.World.City!.Services!.Crews;
         Assert.True(StepUntil(sim, () => Count(u, CrewState.ToSite) > 0, 400, 1));
         long bytes = Fixtures.AllocationProbe.Measure(() => sim.Step(400));
         Assert.Equal(0L, bytes);
@@ -620,7 +620,7 @@ public sealed class LifecycleUtilityTests
         using Simulation sim = Make(Desc(life: false));
         sim.Step(200);
         CityWorld c = sim.World.City!;
-        Assert.Null(c.Utility);
+        Assert.Null(c.Services);
         Assert.Equal(0L, c.Ledger.Utility);
         Assert.Equal(0, c.Budget!.Policy.R0);
     }
