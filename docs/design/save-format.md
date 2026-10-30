@@ -799,6 +799,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 311 | ServicesIllDaysLight | i32 | 1 | 0 |
 | `PARM` | 312 | ServicesIllDaysInpatient | i32 | 1 | 0 |
 | `PARM` | 313 | ServicesIllDaysCritical | i32 | 1 | 0 |
+| `PARM` | 314 | ServicesFireCap | i32 | 1 | 0 |
+| `PARM` | 315 | ServicesFireSpreadPpm | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -851,6 +853,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `BTYP` (demand.model = residents) | 17 | ServiceKind | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 18 | Vehicles | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 19 | VehicleType | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 20 | FirePpm | i32 | Rows.Length | 0 |
 | `SVCR` (PARM.ServicesEnabled = 1) | 1 | RecFund | u8 | Records.Length | 0 |
 | `SVCR` (PARM.ServicesEnabled = 1) | 2 | RecRev | u16 | Records.Length | 0 |
 | `SVCR` (PARM.ServicesEnabled = 1) | 3 | RecFirstLevel | i32 | Records.Length | 0 |
@@ -1103,6 +1106,11 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 192 | IcuAdmitted | i64 | 1 | 0 |
 | `CNTR` | 193 | IcuOverflow | i64 | 1 | 0 |
 | `CNTR` | 194 | ResidentsLostNoAmbulance | i64 | 1 | 0 |
+| `CNTR` | 195 | FiresStarted | i64 | 1 | 0 |
+| `CNTR` | 196 | FiresOut | i64 | 1 | 0 |
+| `CNTR` | 197 | BuildingsBurned | i64 | 1 | 0 |
+| `CNTR` | 198 | FiresSpread | i64 | 1 | 0 |
+| `CNTR` | 199 | FiresCapped | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1777,6 +1785,12 @@ s10k с цифрами размера и времени. Клиентские к
 | `SERV` (PARM.LifecycleEnabled = 1) | 39 | CrewRef | i32 | max_service_vehicles | -1 |
 | `SERV` (PARM.LifecycleEnabled = 1) | 40 | CrewRefGen | i32 | max_service_vehicles | 0 |
 | `SERV` (PARM.LifecycleEnabled = 1) | 41 | SvcCareEwma | u16 | cells (0 без city.services) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 42 | FireState | u8 | max_fires (0 без city.services) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 43 | FireBuilding | i32 | max_fires (0 без city.services) | -1 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 44 | FireGen | i32 | max_fires (0 без city.services) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 45 | FireStartTick | i64 | max_fires (0 без city.services) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 46 | FireCondStart | u16 | max_fires (0 без city.services) | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 47 | FireRetry | i64 | max_fires (0 без city.services) | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |
