@@ -86,6 +86,9 @@ public sealed class LifecycleUtilityTests
         return best;
     }
 
+    /// <summary>Бригад в депо базового пакета.</summary>
+    private static int DepotCrews(CityWorld c) => c.Types.Rows[DepotType(c)].Vehicles;
+
     private static int BuildDepot(Simulation sim, int lot)
     {
         CityWorld c = sim.World.City!;
@@ -194,7 +197,7 @@ public sealed class LifecycleUtilityTests
         Assert.Equal(price, c.Ledger.FlowDay[(int)FlowKind.Repair]);
         Assert.True(w.Counters.RepairDelayTicksTotal > 0);
         Assert.Equal(1, Count(u, CrewState.Return));
-        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == 4, 20_000));
+        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == DepotCrews(c), 20_000));
         Assert.Equal(0L, c.Ledger.SumAll());
     }
 
@@ -214,7 +217,7 @@ public sealed class LifecycleUtilityTests
         Utilities.Request(w, c, bi);
         sim.Step(200);
         Assert.Equal(1, u.Queue.Count);   // фонд пуст, субсидии нет: заявка ждёт денег
-        Assert.Equal(4, Count(u, CrewState.Idle));
+        Assert.Equal(DepotCrews(c), Count(u, CrewState.Idle));
 
         c.Budget!.Policy.Flags |= BudgetPolicyFlags.UtilitySubsidy;
         Assert.True(StepUntil(sim, () => w.Counters.RepairsDone == 1, 20_000));
@@ -287,7 +290,7 @@ public sealed class LifecycleUtilityTests
         Utilities.Request(w, c, bi);
         Assert.True(StepUntil(sim, () => Count(u, CrewState.ToSite) == 1, 40));
         Growth.Abandon(w, c, bi);
-        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == 4, 40_000));
+        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == DepotCrews(c), 40_000));
         Assert.Equal(0, w.Counters.RepairsDone);
         Assert.Equal(0L, c.Ledger.FlowTotal[(int)FlowKind.Repair]);
     }
@@ -326,7 +329,7 @@ public sealed class LifecycleUtilityTests
         Assert.True(linked, "машина бригады не появилась на дороге");
         Assert.Equal(1, w.Counters.RepairsDone);
         Assert.Equal(CityLife.Full, c.Buildings.Cond[bi]);
-        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == 4, 40_000));
+        Assert.True(StepUntil(sim, () => Count(u, CrewState.Idle) == DepotCrews(c), 40_000));
         Assert.Equal(0L, c.Ledger.SumAll());
     }
 
@@ -355,7 +358,7 @@ public sealed class LifecycleUtilityTests
 
         sim.Step(Utilities.Step);
         Assert.Equal(1, w.Counters.CrewTimeouts);
-        Assert.Equal(4, Count(u, CrewState.Idle));
+        Assert.Equal(DepotCrews(c), Count(u, CrewState.Idle));
         Assert.Equal(0, c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested);
         for (int i = 0; i < w.Vehicles.HighWater; i++)
         {
@@ -371,7 +374,7 @@ public sealed class LifecycleUtilityTests
         CityWorld c = sim.World.City!;
         BuildDepot(sim, FreeLot(c));
         sim.Step(c.DayTicks);
-        Assert.Equal(4L * c.Cfg.Lifecycle.CrewDayCost, c.Ledger.FlowTotal[(int)FlowKind.CrewWages]);
+        Assert.Equal(DepotCrews(c) * (long)c.Cfg.Lifecycle.CrewDayCost, c.Ledger.FlowTotal[(int)FlowKind.CrewWages]);
         Assert.Equal(0L, c.Ledger.SumAll());
     }
 

@@ -347,7 +347,7 @@ public sealed class LifecycleRestoreTests
 
         Assert.True(sim.GetUtilityInfo(out ui));
         Assert.Equal((5_000L, 0), (ui.Fund, (int)ui.FundEmpty));
-        Assert.Equal((100, 300, 0, 1), (ui.Tariff, ui.PendingTariff, (int)ui.Subsidy, (int)ui.PendingSubsidy));
+        Assert.Equal((CityLifecycleDesc.Default().UtilityTariff, 300, 0, 1), (ui.Tariff, ui.PendingTariff, (int)ui.Subsidy, (int)ui.PendingSubsidy));
         sim.Step(c.DayTicks);
         Assert.True(sim.GetUtilityInfo(out ui));
         Assert.Equal((300, 1), (ui.Tariff, (int)ui.Subsidy));

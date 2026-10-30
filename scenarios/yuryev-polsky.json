@@ -11,7 +11,8 @@
   "seed": 1,
   "duration_s": 600,
   "city": {
-    "enabled": false
+    "enabled": false,
+    "lifecycle": { "tariff_leave": 0.002 }
   },
   "network": {
     "nodes": [

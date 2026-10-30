@@ -7,6 +7,6 @@
     { "name": "c_high", "rev": 1, "kind": "commercial", "density": "high", "capacity": 40, "shop_capacity": 120, "shift_start_slot": 96, "shift_slots": 96, "construct_days": 6, "attract": 1.5, "parking": 30, "parking_access": "public" },
     { "name": "i_low", "rev": 1, "kind": "industrial", "density": "low", "capacity": 12, "shift_start_slot": 90, "shift_slots": 96, "construct_days": 3, "parking": 12 },
     { "name": "i_high", "rev": 1, "kind": "industrial", "density": "high", "capacity": 60, "shift_start_slot": 90, "shift_slots": 96, "construct_days": 6, "parking": 40 },
-    { "name": "utility_depot", "rev": 1, "kind": "service", "density": "low", "capacity": 4, "construct_days": 0, "decay_bp_day": 100, "ceil_drop_bp_day": 30, "demolish_cost": 5000, "build_cost": 20000, "service": "utility", "vehicles": 4, "vehicle_type": "utility" }
+    { "name": "utility_depot", "rev": 1, "kind": "service", "density": "low", "capacity": 4, "construct_days": 0, "decay_bp_day": 25, "ceil_drop_bp_day": 8, "demolish_cost": 5000, "build_cost": 20000, "service": "utility", "vehicles": 16, "vehicle_type": "utility" }
   ]
 }

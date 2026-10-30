@@ -18,7 +18,7 @@ namespace Sim.Headless.Tests.Mods;
 public sealed class AssetManifestHostTests : IDisposable
 {
     /// <summary>Отпечаток <c>base</c> v1.0.0 (s1k-v3): если контент <c>base</c> менялся намеренно, обновить вместе с описанием коммита.</summary>
-    private const string BaseFingerprint = "69464090bc72d89a";   // BL3: в base добавлен тип здания utility_depot (служба ЖКХ); до этого "aadb3d05277d733a" (VC1 (ADR-0039): в base добавлены van, truck, ambulance, fire, utility; до этого "c3ba046c5562f937" (K1, ADR-0026))
+    private const string BaseFingerprint = "16372be668ba3dca";   // BL5: калибровка депо (16 бригад, износ 25 б.п., потолок 8), до этого "69464090bc72d89a"; BL3: в base добавлен тип здания utility_depot (служба ЖКХ); до этого "aadb3d05277d733a" (VC1 (ADR-0039): в base добавлены van, truck, ambulance, fire, utility; до этого "c3ba046c5562f937" (K1, ADR-0026))
 
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "tc-mani-" + Guid.NewGuid().ToString("N"));
 

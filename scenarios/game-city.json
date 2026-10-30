@@ -23,6 +23,7 @@
   "road_profiles_file": "road-profiles.json",
   "city": {
     "enabled": true,
+    "lifecycle": { "tariff_leave": 0.002 },
     "size_m": [
       3040,
       3040
