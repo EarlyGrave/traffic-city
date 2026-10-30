@@ -79,7 +79,7 @@ public sealed class BudgetSurfaceTests
         Assert.Equal(16, (int)RejectReason.BudgetRule);
         Assert.Equal(16, System.Runtime.CompilerServices.Unsafe.SizeOf<BudgetPolicy>());
         Assert.Equal(64, System.Runtime.CompilerServices.Unsafe.SizeOf<Command>());
-        Assert.Equal(17, SaveSchema.WorldVersion);   // w17 - жизнь здания (BL1), w16 - классы ТС (VC1, ADR-0039), w11 - прогрессия (PG1, ADR-0034), w12 - рельеф (TR1, ADR-0036), w13 - старт с нуля (Y4), w14 - внешние подключения (Y3), w15 - цели сценария (YS1)
+        Assert.Equal(18, SaveSchema.WorldVersion);   // w18 - службы (SR1, блоки SVCR/SERV), w17 - жизнь здания (BL1), w16 - классы ТС (VC1, ADR-0039), w11 - прогрессия (PG1, ADR-0034), w12 - рельеф (TR1, ADR-0036), w13 - старт с нуля (Y4), w14 - внешние подключения (Y3), w15 - цели сценария (YS1)
     }
 
     [Fact]
