@@ -15,29 +15,29 @@ public sealed class ServicesRefactorTests
 {
     private const int Points = 16;   // контрольных точек за 2 суток
 
-    /// <summary>Хэши до рефакторинга (dev 3a0f18c): тики 20 + k · DayTicks / 8, k = 1..16.</summary>
+    /// <summary>Хэши на тиках 20 + k · DayTicks / 8, k = 1..16. Сняты до рефакторинга SR1 (dev 3a0f18c), пересняты в SR2: станция ЖКХ выбирается по оценке времени в пути из скима (решение владельца 10.2 А), а не по манхэттену.</summary>
     private static readonly ulong[] _s1kAgents =
     {
         0xe0be479c951f20afUL, 0x64f6b115a59858f7UL, 0x24daccaa6ccfdf59UL, 0xceb21b3f45b0da58UL, 0x36f34c3592e4afbaUL, 0x14f320094c29f4bcUL, 0x75d72f8cb3c8fabaUL, 0x020e1f71a1069308UL,
-        0x92aa26eaa3632132UL, 0x3e3e1c81c2c1a38cUL, 0xecd114af4c5eb80aUL, 0xf11a38bd4047d871UL, 0xcc9aefdc084df6feUL, 0x1bea9b956a3ebb22UL, 0x3ae4663d0e8d588eUL, 0x0a77a24e96b37caaUL,
+        0x46c574bf74348586UL, 0x545f582df274ba2bUL, 0xf123e92ee8d2e174UL, 0xce4b09d55396f6a8UL, 0xf9a33e08d046471bUL, 0x7b881665d6886d63UL, 0xb1c09a6a20dfe90eUL, 0xa38b75b904153e1aUL,
     };
 
     private static readonly ulong[] _s1kAggregate =
     {
-        0x9ba82a5b76e56cd4UL, 0xbfb86c6db63cacfcUL, 0xb8a6287c13686cddUL, 0x448639c760582c29UL, 0x764277a167c517d5UL, 0x873462e287ce0195UL, 0x4db605f6f6e1be9bUL, 0x3a38db9dfa17c865UL,
-        0x1b620f046095faf5UL, 0x39a2dc74c8c94bd0UL, 0x8d7fbdbac55c13abUL, 0x9bfaf0b1145b9ffeUL, 0x8cff8eda94e45c37UL, 0xa505ac7476f059eaUL, 0xe58f94e9444bb5cdUL, 0xc5f0c6604533fa31UL,
+        0x9ba82a5b76e56cd4UL, 0xbfb86c6db63cacfcUL, 0xb8a6287c13686cddUL, 0x448639c760582c29UL, 0x764277a167c517d5UL, 0x873462e287ce0195UL, 0x4db605f6f6e1be9bUL, 0xde4f9a963fe4e84dUL,
+        0xc45191830194442dUL, 0x94e01bdb4033ff8dUL, 0xcd14cc06694b7f6cUL, 0xc452bd7c4330b48aUL, 0x3d6d37820773a5d5UL, 0xbdc47d4c2cec8afcUL, 0x26c2cfb254da4da7UL, 0x0b7b659472f6c1e2UL,
     };
 
     private static readonly ulong[] _s10kAgents =
     {
         0x758a3dfb7bf3e5b8UL, 0xc94acd9de9c8d1c0UL, 0x9cfc250a9afda69eUL, 0xc2a9f8c428df1189UL, 0x9dbb319611c73344UL, 0x7f991324fd44e06bUL, 0xee43c40da1ce1cbdUL, 0x8d13d0c0f87aee86UL,
-        0x987779bbd9f04dfcUL, 0x952faf101d1c722eUL, 0xc158730802fbcbd7UL, 0xed2dacfa26095d23UL, 0xf824e91ee0e2de6cUL, 0x618043b9ddaf5acbUL, 0x2cb6dc9ad9d65ae5UL, 0xed9fdab5baa21f0dUL,
+        0x554f93a0184ff4cdUL, 0xd00a3ea79d1a4094UL, 0xf9df93d129428f00UL, 0xc01573e5d6135517UL, 0x4cc878e9ea59cb35UL, 0xb36cb3bc8b00b665UL, 0x138d963f5e0ec7c4UL, 0x6dc793d4a18b9effUL,
     };
 
     private static readonly ulong[] _s10kAggregate =
     {
-        0x3066cf3e5df68f66UL, 0x9b47480e2fc17e58UL, 0xb696aa40a5e825b4UL, 0x604065ca19139898UL, 0x0385eb75bdebae32UL, 0xd22bb088f4055b66UL, 0x67bd1c495674102aUL, 0xe3c5b194664ad0e3UL,
-        0x24f6ef3c855ac412UL, 0x379bbedf0b009658UL, 0xafd7c2b29245f948UL, 0x628a8721dd2d4f2fUL, 0x4a91245f2bd086c7UL, 0x912a11e9d167bb03UL, 0x057b2a9849472378UL, 0x10fbb716febd9024UL,
+        0x3066cf3e5df68f66UL, 0x9b47480e2fc17e58UL, 0xb696aa40a5e825b4UL, 0x604065ca19139898UL, 0x0385eb75bdebae32UL, 0xd22bb088f4055b66UL, 0x67bd1c495674102aUL, 0x64da6586ee824c53UL,
+        0xcb156a56191d638aUL, 0x76db47cc5878045fUL, 0x6a330b2a57ec84e6UL, 0x256f797a84606ad4UL, 0x98c391cf41e6f2c7UL, 0x630336fc9f70618eUL, 0x8962ce9e96bf4ee4UL, 0x0daea93a3e8f0eb3UL,
     };
 
     /// <summary>Сценарий с депо и заранее изношенной частью зданий; <paramref name="mode"/> - секция <c>city.services</c> со встроенной записью <c>utility</c>.</summary>
