@@ -16,6 +16,81 @@
           "dispatch": { "vehicle": "base:vehicle/utility", "units": 16, "per_unit_day": 60 }
         }
       ]
+    },
+    {
+      "id": "medicine",
+      "rev": 1,
+      "title": "Medicine",
+      "fund": "city",
+      "visits": [
+        { "reason": "light", "min_role": "light", "per_visit": 10, "max_cost_s": 1200 },
+        { "reason": "inpatient", "min_role": "inpatient", "per_visit": 40, "max_cost_s": 1800 }
+      ],
+      "calls": [{ "kind": "critical", "urgent": true, "on_call": true, "on_call_return": true, "onsite_s": 120, "deadline_s": 600, "per_call": 150 }],
+      "levels": [
+        {
+          "type": "base:building/medpoint",
+          "role": ["light"],
+          "lot_min": [2, 2],
+          "build_cost": 15000,
+          "upkeep_day": 800,
+          "milestone": 0,
+          "visit": { "capacity_day": 60, "open_slot": 96, "close_slot": 216, "stay_slots": 6 },
+          "upgrades": [{ "id": "extra_room", "cost": 5000, "upkeep_day": 200, "effect": "visit_capacity", "value": 30 }]
+        },
+        {
+          "type": "base:building/hospital",
+          "role": ["light", "inpatient"],
+          "lot_min": [4, 4],
+          "build_cost": 60000,
+          "upkeep_day": 3000,
+          "milestone": 2,
+          "visit": { "capacity_day": 150, "beds": 20, "open_slot": 84, "close_slot": 240, "stay_slots": 12 },
+          "upgrades": [{ "id": "ward", "cost": 25000, "upkeep_day": 800, "effect": "beds", "value": 15 }]
+        },
+        {
+          "type": "base:building/med_center",
+          "role": ["light", "inpatient", "critical"],
+          "lot_min": [6, 5],
+          "build_cost": 180000,
+          "upkeep_day": 8000,
+          "milestone": 3,
+          "visit": { "capacity_day": 300, "beds": 60, "icu": 15, "open_slot": 0, "close_slot": 288, "stay_slots": 12 },
+          "dispatch": { "vehicle": "base:vehicle/ambulance", "units": 4, "per_unit_day": 300 },
+          "upgrades": [
+            { "id": "ambulance_bay", "cost": 30000, "upkeep_day": 600, "effect": "units", "value": 2 },
+            { "id": "icu_wing", "cost": 50000, "upkeep_day": 1500, "effect": "icu", "value": 10 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fire",
+      "rev": 1,
+      "title": "Fire service",
+      "fund": "city",
+      "calls": [{ "kind": "fire", "urgent": true, "on_call": true, "onsite_s": 60, "per_call": 200 }],
+      "levels": [
+        {
+          "type": "base:building/fire_station",
+          "role": ["fire"],
+          "lot_min": [3, 3],
+          "build_cost": 25000,
+          "upkeep_day": 400,
+          "milestone": 0,
+          "dispatch": { "vehicle": "base:vehicle/fire", "units": 2, "per_unit_day": 100 }
+        },
+        {
+          "type": "base:building/fire_hq",
+          "role": ["fire"],
+          "lot_min": [5, 4],
+          "build_cost": 80000,
+          "upkeep_day": 1200,
+          "milestone": 3,
+          "dispatch": { "vehicle": "base:vehicle/fire", "units": 5, "per_unit_day": 100 },
+          "upgrades": [{ "id": "drill_yard", "cost": 20000, "upkeep_day": 500, "effect": "onsite_pct", "value": 75 }]
+        }
+      ]
     }
   ]
 }

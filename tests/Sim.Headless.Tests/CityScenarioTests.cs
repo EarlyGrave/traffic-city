@@ -164,10 +164,11 @@ public class CityScenarioTests
         ContentCatalog cat = ContentCatalog.Build(set, issues);
         Assert.Empty(issues);
         BuildingTypeDesc[] def = CityDesc.BaseBuildingTypes();
-        Assert.Equal(def.Length, cat.Buildings.Count);
-        for (int i = 0; i < def.Length; i++)
+        BuildingTypeDesc[] svc = CityDesc.BaseServiceBuildingTypes();   // SR6: после 7 типов ядра - 5 типов служб медицины и пожарных
+        Assert.Equal(def.Length + svc.Length, cat.Buildings.Count);
+        for (int i = 0; i < def.Length + svc.Length; i++)
         {
-            Assert.Equal(def[i], cat.Buildings[i].Desc);
+            Assert.Equal(i < def.Length ? def[i] : svc[i - def.Length], cat.Buildings[i].Desc);
             Assert.Equal(i, cat.FindBuilding(cat.Buildings[i].Id));
         }
 
