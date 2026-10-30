@@ -179,6 +179,7 @@ internal static class CityHash
             {
                 AddServices(ref h, sv);   // режим city.services (services.md §5): станции, все кольца, бригады со станцией
                 AddServiceBudget(ref h, sv, lg, bud, in k);   // SR2: поток ServiceUpkeep, ползунки, расходы, отклик
+                AddIllness(ref h, c, sv, in k);   // SR3: болезнь жителей, пациенты бригад, CareEwma
             }
             else
             {
@@ -315,6 +316,38 @@ internal static class CityHash
         h.Add(k.CallsDone);
         h.Add(k.RespTicksTotal);
         h.Add(k.CallsLate);
+    }
+
+    /// <summary>SR3 (services.md §2.5-§2.6, только в режиме): байт болезни живых жителей, пациент бригады (<c>Ref</c>/<c>RefGen</c>), <c>CareEwma</c>, счётчики болезни.</summary>
+    private static void AddIllness(ref Fnv1a64 h, CityWorld c, CityServices sv, in SimCounters k)
+    {
+        CityResidents res = c.Residents;
+        for (int r = 0; r < res.Ill.Length; r++)
+        {
+            if (res.IsAlive(r))
+            {
+                h.Add(res.Ill[r]);
+            }
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.Ref[i]);
+            h.Add(u.RefGen[i]);
+        }
+
+        for (int i = 0; i < sv.CareEwma.Length; i++)
+        {
+            h.Add(sv.CareEwma[i]);
+        }
+
+        h.Add(k.IllStarted);
+        h.Add(k.CareVisits);
+        h.Add(k.CareRefused);
+        h.Add(k.IcuAdmitted);
+        h.Add(k.IcuOverflow);
+        h.Add(k.ResidentsLostNoAmbulance);
     }
 
     private static void AddRing(ref Fnv1a64 h, RingBuffer<ServiceCall> ring)

@@ -230,6 +230,35 @@ internal sealed class ServiceTable
         return -1;
     }
 
+    /// <summary>Индекс повода визита <paramref name="reason"/> записи в <see cref="Visits"/> или -1.</summary>
+    public int VisitOf(int rec, ServiceVisitReason reason)
+    {
+        ref readonly ServiceRecordDesc r = ref Records[rec];
+        for (int i = 0; i < r.VisitCount; i++)
+        {
+            if (Visits[r.FirstVisit + i].Reason == reason)
+            {
+                return r.FirstVisit + i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Первая запись с выездным вызовом вида <paramref name="kind"/> или -1.</summary>
+    public int RecordWithCall(ServiceCallKind kind)
+    {
+        for (int r = 0; r < Records.Length; r++)
+        {
+            if (HasCall(r, kind))
+            {
+                return r;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>Флаги вызова вида <paramref name="kind"/> записи (0 - вызова нет).</summary>
     public byte CallFlagsOf(int rec, int kind)
     {
@@ -366,6 +395,8 @@ internal sealed class CrewStore
     public readonly long[] DueTick;     // micro: таймаут поездки / конец работы; агрегат: прибытие / конец работы
     public readonly long[] ReqTick;     // тик вызова (задержка)
     public readonly byte[] Kind;        // вид вызова в работе (ServiceCallKind; 0 - нет): сроки, действие на месте, OnCall; в хэше и сейве - только в режиме city.services
+    public readonly int[] Ref;          // ссылка вызова в работе (critical - житель-пациент, SR3) или -1; в хэше - только в режиме city.services
+    public readonly int[] RefGen;
     public readonly RingBuffer<int> Arrivals;   // CrewArrivals: бригады, чьи машины прибыли в этом тике
 
     public CrewStore(int crews)
@@ -381,7 +412,10 @@ internal sealed class CrewStore
         DueTick = new long[Capacity];
         ReqTick = new long[Capacity];
         Kind = new byte[Capacity];
+        Ref = new int[Capacity];
+        RefGen = new int[Capacity];
         Array.Fill(Site, -1);
+        Array.Fill(Ref, -1);
         Array.Fill(Target, -1);
         Array.Fill(SiteLot, -1);
         Array.Fill(Vehicle, -1);
@@ -416,6 +450,8 @@ internal sealed class CrewStore
         DueTick[k] = 0;
         ReqTick[k] = 0;
         Kind[k] = 0;
+        Ref[k] = -1;
+        RefGen[k] = 0;
     }
 }
 
@@ -442,6 +478,7 @@ internal sealed class CityServices
     public readonly long[] RecRespTicks;      // [запись] Σ отклика (прибытие - вызов), тики
     public readonly long[] RecCallsLate;      // [запись] опозданий сверх deadline_s (в ожидании, в пути, без станции)
     public readonly ushort[] RespEwma;        // [запись * клеток + клетка] отклик, с; EWMA >> 3; 0 - нет данных; только в режиме (иначе пусто)
+    public readonly ushort[] CareEwma;        // [клетка дома] стоимость ноги к службе «к ним ходят», с; EWMA >> 3; 0 - нет данных (SR3, §2.9); только в режиме
     public readonly int Cells;                // клеток сетки охвата (NeighborhoodFields, 128 м); 0 - без режима
     internal readonly int[] IdleScratch;      // [станция] первая свободная бригада на линии при разборе колец; производное, вне сейва
 
@@ -467,6 +504,7 @@ internal sealed class CityServices
         RecCallsLate = new long[n];
         Cells = mode ? Math.Max(0, cells) : 0;
         RespEwma = new ushort[n * Cells];
+        CareEwma = new ushort[Cells];
         IdleScratch = new int[Sites.Capacity];
         int calls = mode ? (cfg.Services.MaxCalls > 0 ? cfg.Services.MaxCalls : Math.Max(maxBuildings / 8, 256)) : Math.Max(1, maxBuildings);
         Normal = new RingBuffer<ServiceCall>[Table.Count];

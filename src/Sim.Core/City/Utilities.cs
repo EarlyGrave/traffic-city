@@ -352,13 +352,18 @@ internal static class Utilities
             {
                 ring.TryDequeue(out _);
                 ClearRequested(c, bi, req.TargetGen);   // снесено, заброшено или уже в норме: заявка снята
+                if (req.Kind == (byte)ServiceCallKind.Critical)
+                {
+                    Illness.Lose(w, c, req.Ref, req.RefGen);   // дом снесён: ехать некуда (житель уже выселен - ничего)
+                }
+
                 continue;
             }
 
             if (Late(c, sv, req.Svc, req.Kind, req.Tick, w.Tick))
             {
                 ring.TryDequeue(out _);
-                OnLate(w, sv, req.Svc);   // ждал дольше deadline_s: последствия вызова (SR3/SR4), вызов снят
+                OnLate(w, c, sv, req.Svc, req.Kind, req.Ref, req.RefGen);   // ждал дольше deadline_s: последствия вызова (SR3/SR4), вызов снят
                 continue;
             }
 
@@ -378,7 +383,7 @@ internal static class Utilities
                 }
                 else
                 {
-                    OnLate(w, sv, req.Svc);   // некому ехать (нет станции с ролью в компоненте): как опоздание
+                    OnLate(w, c, sv, req.Svc, req.Kind, req.Ref, req.RefGen);   // некому ехать (нет станции с ролью в компоненте): как опоздание
                 }
 
                 continue;
@@ -421,7 +426,7 @@ internal static class Utilities
                     }
                     else
                     {
-                        OnLate(w, sv, req.Svc);
+                        OnLate(w, c, sv, req.Svc, req.Kind, req.Ref, req.RefGen);
                     }
 
                     continue;
@@ -439,6 +444,8 @@ internal static class Utilities
             u.VehicleGen[k] = 0;
             u.ReqTick[k] = req.Tick;
             u.Kind[k] = req.Kind;
+            u.Ref[k] = req.Ref;
+            u.RefGen[k] = req.RefGen;
             NextIdle(sv, u.Site[k], k);
             sent++;
         }
@@ -466,11 +473,15 @@ internal static class Utilities
         return dl > 0 && now - callTick > (long)dl * Simulation.TicksPerSecond;
     }
 
-    /// <summary>Опоздание вызова: счётчики; последствия по виду (critical - SR3, fire - SR4) подключаются здесь.</summary>
-    private static void OnLate(World w, CityServices sv, int rec)
+    /// <summary>Опоздание вызова: счётчики; последствия по виду - critical: исход §10.3 (<see cref="Illness.Lose"/>, SR3); fire - SR4.</summary>
+    private static void OnLate(World w, CityWorld c, CityServices sv, int rec, int kind, int refIdx, int refGen)
     {
         sv.RecCallsLate[rec]++;
         w.Counters.CallsLate++;
+        if (kind == (int)ServiceCallKind.Critical)
+        {
+            Illness.Lose(w, c, refIdx, refGen);
+        }
     }
 
     /// <summary>Станция работает: живое, то же поколение, <c>Active</c>.</summary>
@@ -684,8 +695,10 @@ internal static class Utilities
                 OnResponse(w, c, sv, k, rec);
                 if (Late(c, sv, rec, u.Kind[k], u.ReqTick[k], w.Tick))
                 {
-                    OnLate(w, sv, rec);   // не успели (§2.3.1): без действия на месте, назад
+                    OnLate(w, c, sv, rec, u.Kind[k], u.Ref[k], u.RefGen[k]);   // не успели (§2.3.1): без действия на месте, назад
                     u.Kind[k] = 0;
+                    u.Ref[k] = -1;
+                    u.RefGen[k] = 0;
                     StartReturn(w, c, sv, k);
                     return;
                 }
@@ -696,12 +709,19 @@ internal static class Utilities
             }
 
             ClearRequested(c, u.Target[k], u.TargetGen[k]);   // снесено или заброшено к приезду: без ремонта, назад
+            if (u.Kind[k] == (byte)ServiceCallKind.Critical)
+            {
+                Illness.Lose(w, c, u.Ref[k], u.RefGen[k]);
+            }
+
             u.Kind[k] = 0;
+            u.Ref[k] = -1;
+            u.RefGen[k] = 0;
             StartReturn(w, c, sv, k);
         }
         else if (u.State[k] == CrewState.Return)
         {
-            ToDepot(c, sv, k);
+            ToDepot(w, c, sv, k);
         }
     }
 
@@ -763,6 +783,11 @@ internal static class Utilities
             w.Counters.RepairsDone++;
             w.Counters.RepairDelayTicksTotal += w.Tick - u.ReqTick[k];
         }
+        else if (u.Kind[k] == (byte)ServiceCallKind.Critical && !Illness.Waiting(c, u.Ref[k], u.RefGen[k]))
+        {
+            u.Ref[k] = -1;   // пациента уже нет (уехал, выселен): назад пустыми (SR3, §2.3)
+            u.RefGen[k] = 0;
+        }
 
         ClearRequested(c, bi, u.TargetGen[k]);
         StartReturn(w, c, sv, k);
@@ -777,7 +802,7 @@ internal static class Utilities
         int site = u.SiteLot[k];
         if (!DepotOk(c, sv.SiteBuilding(k), sv.SiteGen(k)) || site < 0)
         {
-            ToDepot(c, sv, k);
+            ToDepot(w, c, sv, k);
             return;
         }
 
@@ -791,7 +816,7 @@ internal static class Utilities
 
         if (w.Trips.IsFull || !Submit(w, c, sv, k, site, depotLot))
         {
-            ToDepot(c, sv, k);   // поездку не подать: бригада возвращается без машины
+            ToDepot(w, c, sv, k);   // поездку не подать: бригада возвращается без машины
             return;
         }
 
@@ -804,10 +829,23 @@ internal static class Utilities
     /// <summary>
     /// Бригада на станции: <c>Idle</c>, либо слот свободен, если станция больше не работает. В режиме: на линии бригад больше <c>Duty</c> (ползунок урезан) - <c>OffDuty</c> (§2.4).
     /// </summary>
-    private static void ToDepot(CityWorld c, CityServices sv, int k)
+    private static void ToDepot(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
-        if (!DepotOk(c, sv.SiteBuilding(k), sv.SiteGen(k)))
+        bool ok = DepotOk(c, sv.SiteBuilding(k), sv.SiteGen(k));
+        if (u.Kind[k] == (byte)ServiceCallKind.Critical && u.Ref[k] >= 0)
+        {
+            if (ok && u.State[k] is CrewState.Return or CrewState.Working)
+            {
+                Illness.AdmitIcu(w, c, sv, u.Site[k], u.Ref[k], u.RefGen[k]);   // доставка в реанимацию станции (SR3, §2.3); Working - обратную поездку не подать, вернулись без машины
+            }
+            else
+            {
+                Illness.Lose(w, c, u.Ref[k], u.RefGen[k]);   // не доехали (таймаут, поездка снята) или станции больше нет
+            }
+        }
+
+        if (!ok)
         {
             u.Reset(k);
             return;
@@ -847,7 +885,7 @@ internal static class Utilities
             ClearRequested(c, u.Target[k], u.TargetGen[k]);
         }
 
-        ToDepot(c, sv, k);
+        ToDepot(w, c, sv, k);
     }
 
     /// <summary>Отвязывает машину бригады (поставленную или ещё в очереди поездок): дальше она едет пустой, как поездка OD.</summary>
@@ -953,7 +991,7 @@ internal static class Utilities
             ClearRequested(c!, u.Target[crew], u.TargetGen[crew]);
         }
 
-        ToDepot(c!, c!.Services!, crew);
+        ToDepot(w, c!, c!.Services!, crew);
     }
 
     // ------------------------------------------------------------------ сутки
@@ -1006,6 +1044,8 @@ internal static class Utilities
                 Rebalance(sv, i);
             }
         }
+
+        Illness.ReleaseDay(c, sv);   // выписка коек и реанимации (SR3)
     }
 
     /// <summary>Бригады станции на линии к <c>Duty</c>: не хватает - снятые с линии выходят (с меньшего индекса); лишние свободные - снимаются (с большего); занятые доезжают (<see cref="ToDepot"/>).</summary>

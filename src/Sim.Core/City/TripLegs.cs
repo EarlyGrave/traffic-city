@@ -822,6 +822,12 @@ internal static class TripLegs
             long end = c.TickOfSlot(Calendar.DayOf(c, res.LegReq[r]), endSlot);
             CityPhase.SetEvent(w, c, r, end > now ? end : now + 1, ResidentEvent.EndActivity);
         }
+        else if (res.PlanKind[tour] == TourKind.Care)
+        {
+            res.State[r] = (byte)ResidentState.AtShop;   // у врача (services.md §2.6): приём, койка, расход - без Economy.Visit (запись уже в VisitsDay)
+            int stay = Illness.OnCareArrived(w, c, r, res.PlanDest[tour], cost);
+            CityPhase.SetEvent(w, c, r, now + ((long)stay * c.SlotTicks), ResidentEvent.EndActivity);
+        }
         else
         {
             res.State[r] = (byte)ResidentState.AtShop;

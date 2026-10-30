@@ -170,6 +170,13 @@ public struct SimCounters
     public long CallsDone;                // прибытий к цели вызова (отклик посчитан)
     public long RespTicksTotal;           // Σ тиков отклика (средний = / CallsDone)
     public long CallsLate;                // вызовов опоздало: ждали дольше deadline_s или некому ехать
+    // --- болезнь и «к ним ходят» (services.md §2.5-§2.6, SR3): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long IllStarted;               // заболело (бросок в плане дня)
+    public long CareVisits;               // визитов к службе с приёмом (Treated)
+    public long CareRefused;              // отказов: нет станции с местом, дальше max_cost_s, станции не стало, коек нет
+    public long IcuAdmitted;              // критических доставлено в реанимацию
+    public long IcuOverflow;              // из них сверх мест (days x2)
+    public long ResidentsLostNoAmbulance; // критических без скорой или не успели: житель уезжает (заглушка §10.3/§10.4)
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>
