@@ -769,6 +769,16 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 286 | LifecycleSigShift | i32 | 1 | 0 |
 | `PARM` | 287 | LifecycleHeritageLossRadiusM | i32 | 1 | 0 |
 | `PARM` | 288 | LifecycleLvBlightPermille | i32 | 1 | 0 |
+| `PARM` | 289 | LifecycleRepairRequestBp | i32 | 1 | 0 |
+| `PARM` | 290 | LifecycleRepairPerUnit | i32 | 1 | 0 |
+| `PARM` | 291 | LifecycleRepairMinutes | i32 | 1 | 0 |
+| `PARM` | 292 | LifecycleCrewDayCost | i32 | 1 | 0 |
+| `PARM` | 293 | LifecycleMaxServiceVehicles | i32 | 1 | 0 |
+| `PARM` | 294 | LifecycleMaxDispatchPerTick | i32 | 1 | 0 |
+| `PARM` | 295 | LifecycleTariffBurdenPct | i32 | 1 | 0 |
+| `PARM` | 296 | LifecycleTariffLeaveQ16 | i32 | 1 | 0 |
+| `PARM` | 297 | LifecycleMaxUtilityTariff | i32 | 1 | 0 |
+| `PARM` | 298 | LifecycleUtilityTariff | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -817,6 +827,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `BTYP` (demand.model = residents) | 13 | DecayBpDay | u16 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 14 | CeilDropBpDay | u16 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 15 | DemolishCost | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 16 | BuildCost | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 17 | ServiceKind | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 18 | Vehicles | u8 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 19 | VehicleType | u8 | Rows.Length | 0 |
 | `WRLD` | 1 | Tick | i64 | 1 | 0 |
 | `WRLD` | 2 | NetVersion | i32 | 1 | 0 |
 | `WRLD` | 3 | TargetVehicles | i32 | 1 | 0 |
@@ -1013,6 +1027,11 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 176 | BuildingsCrumbled | i64 | 1 | 0 |
 | `CNTR` | 177 | BuildingsDemolished | i64 | 1 | 0 |
 | `CNTR` | 178 | BuildingsResettled | i64 | 1 | 0 |
+| `CNTR` | 179 | RepairsDone | i64 | 1 | 0 |
+| `CNTR` | 180 | RepairDelayTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 181 | RepairNoDepot | i64 | 1 | 0 |
+| `CNTR` | 182 | CrewTimeouts | i64 | 1 | 0 |
+| `CNTR` | 183 | TariffLeaves | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1581,9 +1600,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `SKIM` (demand.model = residents) | 14 | LsJobs | i32 | NC | 0 |
 | `LEDG` (demand.model = residents) | 1 | External | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 2 | City | i64 | 1 | 0 |
-| `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 17 | 0 |
-| `LEDG` (demand.model = residents) | 4 | FlowYesterday | i64 | 17 | 0 |
-| `LEDG` (demand.model = residents) | 5 | FlowTotal | i64 | 17 | 0 |
+| `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 22 | 0 |
+| `LEDG` (demand.model = residents) | 4 | FlowYesterday | i64 | 22 | 0 |
+| `LEDG` (demand.model = residents) | 5 | FlowTotal | i64 | 22 | 0 |
 | `LEDG` (demand.model = residents) | 6 | CursorResidents | i32 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 7 | CursorBuildings | i32 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 8 | CursorAccess | i32 | 1 | 0 |
@@ -1617,7 +1636,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `CBGT` (PARM.CityBudget = 1) | 18 | LandValue | i32 | NC | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 19 | IncomeEwma | i64 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 20 | ExpenseEwma | i64 | 1 | 0 |
-| `CBGT` (PARM.CityBudget = 1) | 21 | Carry | i64 | 17 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 21 | Carry | i64 | 22 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 22 | DebtDays | i32 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 23 | OverLimitDays | i32 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 24 | Insolvent | u8 | 1 | 0 |
@@ -1644,6 +1663,21 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARK` (PARM.ParkingEnabled = 1) | 14 | Fee | i32 | HighWater | 0 |
 | `LIFE` (PARM.LifecycleEnabled = 1) | 1 | FieldsCur | i32 | 4 * NC | 0 |
 | `LIFE` (PARM.LifecycleEnabled = 1) | 2 | FieldsNext | i32 | 4 * NC | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 3 | Utility | i64 | 1 | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 4 | QueueCount | i32 | 1 | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 5 | QueueBuilding | i32 | QueueCount | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 6 | QueueGen | i32 | QueueCount | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 7 | QueueTick | i64 | QueueCount | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 8 | CrewDepot | i32 | max_service_vehicles | -1 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 9 | CrewDepotGen | i32 | max_service_vehicles | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 10 | CrewState | u8 | max_service_vehicles | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 11 | CrewTarget | i32 | max_service_vehicles | -1 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 12 | CrewTargetGen | i32 | max_service_vehicles | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 13 | CrewSiteLot | i32 | max_service_vehicles | -1 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 14 | CrewVehicle | i32 | max_service_vehicles | -1 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 15 | CrewVehicleGen | i32 | max_service_vehicles | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 16 | CrewDueTick | i64 | max_service_vehicles | 0 |
+| `LIFE` (PARM.LifecycleEnabled = 1) | 17 | CrewReqTick | i64 | max_service_vehicles | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |
