@@ -70,6 +70,11 @@ internal static class Economy
             ref readonly BuildingTypeDesc t = ref c.Types.Rows[b.Type[shop]];
             int slot = Slot(shop, parity);
             long dayCap = (long)t.ShopCapacity * Math.Max(1, t.ShiftSlots / 12);
+            if (c.Cfg.Lifecycle.Enabled)
+            {
+                dayCap = dayCap * CityLife.OutPct(c, shop) / 100;   // выработка по состоянию (building-lifecycle.md §2.2)
+            }
+
             if (b.VisitsDay[slot] < dayCap && res.Account[r] >= price)
             {
                 c.Ledger.Transfer(Ledger.AccountOfResident(r), c.Ledger.AccountOfBuilding(shop), price, FlowKind.Purchase);
@@ -108,6 +113,11 @@ internal static class Economy
             return;
         }
 
+        if (c.Cfg.Lifecycle.Enabled && CityLife.Day(w, c, bi, in t))
+        {
+            return;   // building-lifecycle.md §2.2: износ, потолок, пороги; заброшенное - без экономики фирмы
+        }
+
         if (b.State[bi] != (byte)BuildingState.Active || t.Kind == LotZone.Residential)
         {
             return;
@@ -134,6 +144,11 @@ internal static class Economy
         else
         {
             long export = e.ExportPerShift * shifts;
+            if (c.Cfg.Lifecycle.Enabled)
+            {
+                export = export * CityLife.OutPct(c, bi) / 100;   // выработка по состоянию (building-lifecycle.md §2.2)
+            }
+
             if (export > 0)
             {
                 c.Ledger.Transfer(c.Ledger.ExternalAccount, c.Ledger.AccountOfBuilding(bi), export, FlowKind.Export);

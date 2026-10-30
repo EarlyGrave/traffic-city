@@ -13,7 +13,7 @@ namespace Sim.Core.Metrics;
 /// </summary>
 internal sealed class Complaints
 {
-    public const int Kinds = 5;
+    public const int Kinds = 6;
     public const int Capacity = 256;        // [Старт] мест на вид за час; переполнение - в «прочее» (KPI его видит, жалобы - нет)
     public const int PerKind = 2;
     public const int PerHour = 6;
@@ -46,7 +46,38 @@ internal sealed class Complaints
     }
 
     /// <summary>Случай вида <paramref name="kind"/> у места (<paramref name="index"/>, <paramref name="gen"/>); индекс &lt; 0 - места нет.</summary>
-    public void Add(ComplaintKind kind, int index, int gen)
+    public void Add(ComplaintKind kind, int index, int gen) => Add(kind, index, gen, 1);
+
+    /// <summary>Накоплено случаев вида у места в текущем часе (0 - нет; для тестов и отладки).</summary>
+    public int Pending(ComplaintKind kind, int index, int gen)
+    {
+        int k = (int)kind - 1;
+        if ((uint)k >= Kinds || index < 0)
+        {
+            return 0;
+        }
+
+        int b = k * Slots;
+        int h = (int)(((uint)index * 2654435761u) >> 24) & (Slots - 1);
+        for (int i = 0; i < Slots; i++)
+        {
+            int s = b + ((h + i) & (Slots - 1));
+            if (_idx[s] < 0)
+            {
+                return 0;
+            }
+
+            if (_idx[s] == index && _gen[s] == gen)
+            {
+                return _cnt[s];
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Сразу <paramref name="count"/> случаев вида <paramref name="kind"/> у места (суточные случаи жизни здания, building-lifecycle.md §2.2).</summary>
+    public void Add(ComplaintKind kind, int index, int gen, int count)
     {
         int k = (int)kind - 1;
         if ((uint)k >= Kinds || index < 0)
@@ -61,7 +92,7 @@ internal sealed class Complaints
             int s = b + ((h + i) & (Slots - 1));
             if (_idx[s] == index && _gen[s] == gen)
             {
-                _cnt[s]++;
+                _cnt[s] += count;
                 return;
             }
 
@@ -74,7 +105,7 @@ internal sealed class Complaints
 
                 _idx[s] = index;
                 _gen[s] = gen;
-                _cnt[s] = 1;
+                _cnt[s] = count;
                 _used[k]++;
                 return;
             }
@@ -83,7 +114,7 @@ internal sealed class Complaints
         Overflow++;
     }
 
-    /// <summary>Выпуск на сдвиге часа KPI (фаза 9r): два прохода по видам 1..5 (сначала лучшее место каждого вида, затем второе), затем накопитель очищается.</summary>
+    /// <summary>Выпуск на сдвиге часа KPI (фаза 9r): два прохода по видам 1..6 (сначала лучшее место каждого вида, затем второе), затем накопитель очищается.</summary>
     public void EmitHour(World w, CityWorld c)
     {
         int emitted = 0;

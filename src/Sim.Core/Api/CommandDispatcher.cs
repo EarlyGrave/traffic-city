@@ -138,6 +138,9 @@ internal static partial class CommandDispatcher
             case CommandKind.MergeAtNode:
                 MergeAtNode(w, in cmd);
                 break;
+            case CommandKind.DemolishBuilding:
+                DemolishBuilding(w, in cmd);
+                break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
@@ -542,6 +545,21 @@ internal static partial class CommandDispatcher
 
         w.Counters.OverlayRebuilds = ov.Rebuilds;
         w.Counters.OverlayDisabled = ov.Disabled ? 1 : 0;
+    }
+
+    /// <summary>Снос здания игроком (building-lifecycle.md §2.5): проверки и цена - общий валидатор, затем заброшенность + <c>Demolishing</c>; удаление - ближайший суточный шаг.</summary>
+    private static void DemolishBuilding(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        City.CityLife.Demolish(w, w.City!, cmd.DemolishBuilding.Building.Index);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>

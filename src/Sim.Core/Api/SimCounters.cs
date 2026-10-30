@@ -154,6 +154,10 @@ public struct SimCounters
     public long ParkWalkTicks;            // parking_walk_ticks: Σ ходьбы от мест
     // --- прогрессия (progression.md §4.3, ADR-0034): в сейве (CNTR) всегда, в хэше - только при прогрессии; считает PG3 ---
     public long LockedRejects;            // отказов команд RejectReason.Locked
+    // --- жизнь здания (building-lifecycle.md §3, BL1): в сейве (CNTR) всегда, в хэше - только в режиме city.lifecycle ---
+    public long BuildingsCrumbled;        // рассыпалось (Cond = 0) и убрано
+    public long BuildingsDemolished;      // снесено игроком (DemolishBuilding)
+    public long BuildingsResettled;       // заброшенных заселено повторно (Abandoned -> Active)
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

@@ -144,9 +144,34 @@ internal static partial class SaveValidator
             {
                 return Bad(c, i, 9);   // разумный предел занятости (>= 2 x вместимости - порча, а не штатное превышение)
             }
+
+            if (!LifeOk(city, b, i))
+            {
+                return Bad(c, i, 22);
+            }
         }
 
-        return LoadStatus.Ok;
+        return SimCountersLifeOk(c) ? LoadStatus.Ok : Bad(c, 0, 176);
+    }
+
+    // building-lifecycle.md §5: Cond <= Ceil <= 10 000; Demolishing => Abandoned; биты - только известные (Monument, Boost - отложены); без режима все поля нули.
+    private static bool LifeOk(CityWorld city, BuildingStore b, int i)
+    {
+        if (!city.Cfg.Lifecycle.Enabled)
+        {
+            return b.Cond[i] == 0 && b.Ceil[i] == 0 && b.BornDay[i] == 0 && b.LifeFlags[i] == 0;
+        }
+
+        byte f = b.LifeFlags[i];
+        return b.Cond[i] <= b.Ceil[i] && b.Ceil[i] <= CityLife.Full && b.BornDay[i] >= 0 && b.BornDay[i] <= city.Day
+            && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified)) == 0
+            && ((f & BuildingLifeFlags.Demolishing) == 0 || b.State[i] == (byte)BuildingState.Abandoned);
+    }
+
+    private static bool SimCountersLifeOk(LoadContext c)
+    {
+        ref readonly SimCounters k = ref c.W.Counters;
+        return k.BuildingsCrumbled >= 0 && k.BuildingsDemolished >= 0 && k.BuildingsResettled >= 0;
     }
 
     private static LoadStatus ValidateCityResidents(LoadContext c, World w, CityWorld city)

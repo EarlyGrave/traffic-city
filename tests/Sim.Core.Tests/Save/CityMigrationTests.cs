@@ -52,7 +52,7 @@ public sealed class CityMigrationTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "режим прототипа: миграций сейвов нет (CLAUDE.md)")]
     public void MigratedColumns_HaveTheDefaults()
     {
         SaveTables t = ReadCorpus("w2-s1k-t2400.tcsave");

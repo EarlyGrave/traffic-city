@@ -37,7 +37,7 @@ internal static partial class SaveValidator
         h.LegsCar >= 0 && h.LegsBus >= 0 && h.LegsWalk >= 0 && h.LegsWork >= 0 && h.LegsWork <= h.LegsAll &&
         h.DurCarDs >= 0 && h.DurBusDs >= 0 && h.DurWalkDs >= 0 && h.DurWorkDs >= 0 &&
         h.VehTicks >= 0 && h.MovingTicks >= 0 && h.MovingTicks <= h.VehTicks &&
-        h.IncLongWait >= 0 && h.IncNoParking >= 0 && h.IncLongCommute >= 0 && h.IncTourCancelled >= 0 && h.IncLongStopWait >= 0 && h.R == 0;
+        h.IncLongWait >= 0 && h.IncNoParking >= 0 && h.IncLongCommute >= 0 && h.IncTourCancelled >= 0 && h.IncLongStopWait >= 0 && h.IncBuildingWorn >= 0;
 
     /// <summary>
     /// Блок PROG: определения проходят <see cref="ProgressionState.Validate"/>; <c>Reached &lt;= Defs</c>; тик взятия есть ровно у взятых и не больше текущего; открытые признаки - подмножество всех,

@@ -76,7 +76,7 @@ internal static partial class ToolValidator
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
         or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad
-        or CommandKind.MergeAtNode || IsBusKind(k);
+        or CommandKind.MergeAtNode or CommandKind.DemolishBuilding || IsBusKind(k);
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -110,6 +110,7 @@ internal static partial class ToolValidator
             CommandKind.RemoveBusStop => CheckRemoveBusStop(w, in cmd, ref c),
             CommandKind.RemoveBusRoute => CheckRemoveBusRoute(w, in cmd, ref c),
             CommandKind.SetBusRouteParams => CheckSetBusRouteParams(w, in cmd, ref c),
+            CommandKind.DemolishBuilding => CheckDemolishBuilding(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
         c.LockMilestone = -1;

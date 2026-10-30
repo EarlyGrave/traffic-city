@@ -28,6 +28,7 @@ internal sealed class BuildingTypes
         t.Kind is >= LotZone.Residential and <= LotZone.Parking && t.Density <= 1 && t.Capacity is >= 1 and <= MaxCapacity &&
         t.ShopCapacity >= 0 && t.ShopCapacity <= 1_000_000 && t.ConstructDays is >= 0 and <= 3650 && t.AttractQ8 is >= 0 and <= 1 << 20 && t.VisualRow >= 0 &&
         t.ParkingCapacity is >= 0 and <= MaxCapacity && t.ParkingAccess <= ParkingAccess.Public && t.ParkingFee >= 0 &&
+        t.DecayBpDay <= 10_000 && t.CeilDropBpDay <= 10_000 && t.DemolishCost is >= 0 and <= 100_000_000 &&
         (t.Kind is LotZone.Residential or LotZone.Parking || (t.ShiftStartSlot is >= 0 and < 288 && t.ShiftSlots is >= 1 and <= 288));
 
     /// <summary>Первый подходящий по виду и плотности тип (zoning-demand.md §8.3) со сдвигом <paramref name="variant"/> по подходящим; -1 - нет такого вида.</summary>

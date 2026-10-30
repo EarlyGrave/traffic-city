@@ -33,7 +33,7 @@ internal static partial class SaveSchema
     // ---- CKPI: показатели города (есть <=> residents); производные (пороги случаев) не сохраняются ----
     private static BlockDef CityKpiBlock()
     {
-        var cols = new ColumnDef[7 + (2 * KpiFields.Length)];
+        var cols = new ColumnDef[7 + (2 * KpiFields.Length) + 2];
         cols[0] = Col.Scalar<int>(1, "Head", w => w.City!.Kpi.Head, (c, v) => c.W.City!.Kpi.Head = v);
         cols[1] = Col.Scalar<int>(2, "HoursFilled", w => w.City!.Kpi.HoursFilled, (c, v) => c.W.City!.Kpi.HoursFilled = v);
         cols[2] = Col.Scalar<long>(3, "VehAtHourStart", w => w.City!.Kpi.VehAtHourStart, (c, v) => c.W.City!.Kpi.VehAtHourStart = v);
@@ -47,6 +47,11 @@ internal static partial class SaveSchema
             cols[7 + KpiFields.Length + i] = Col.Field<KpiHour>((uint)(8 + KpiFields.Length + i), "Cur" + KpiFields[i], w => w.City!.Kpi.Cur, _kpiOne, "1", KpiFields[i]);
         }
 
+        // w17 (building-lifecycle.md §2.2): случаи «дом ветшает» (бывший резерв R; без режима city.lifecycle - нули)
+        int n = 7 + (2 * KpiFields.Length);
+        cols[n] = Col.Field<KpiHour>((uint)(8 + (2 * KpiFields.Length)), "RingIncBuildingWorn", w => w.City!.Kpi.Ring, _kpiHours, "24", nameof(KpiHour.IncBuildingWorn));
+        cols[n + 1] = Col.Field<KpiHour>((uint)(9 + (2 * KpiFields.Length)), "CurIncBuildingWorn", w => w.City!.Kpi.Cur, _kpiOne, "1", nameof(KpiHour.IncBuildingWorn));
+
         return new BlockDef("CKPI", "показатели города: кольцо 24 игровых часов (физический порядок), текущий час, отметки счётчиков движения, суточное кольцо баланса (progression.md §2.3)", cols)
         {
             After = c => SaveValidator.ValidateKpi(c),
@@ -55,7 +60,7 @@ internal static partial class SaveSchema
         };
     }
 
-    /// <summary>Поля <see cref="KpiHour"/> в сейве (порядок - id столбцов CKPI 8..22 кольца и 23..37 текущего часа); резерв <c>R</c> не сохраняется.</summary>
+    /// <summary>Поля <see cref="KpiHour"/> в сейве (порядок - id столбцов CKPI 8..22 кольца и 23..37 текущего часа); <c>IncBuildingWorn</c> (w17) - отдельными столбцами 38, 39.</summary>
     internal static readonly string[] KpiFields =
     {
         nameof(KpiHour.LegsCar), nameof(KpiHour.LegsBus), nameof(KpiHour.LegsWalk), nameof(KpiHour.LegsWork),

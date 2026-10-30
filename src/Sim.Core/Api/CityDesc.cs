@@ -59,6 +59,65 @@ public struct BuildingTypeDesc
     public int ParkingCapacity;     // R/C/I: мест стоянки здания (buildings.json: parking); для Kind = Parking (гараж) - Capacity
     public ParkingAccess ParkingAccess;   // buildings.json: parking_access
     public int ParkingFee;          // buildings.json: parking_fee, деньги за постановку гостя
+
+    // ---- жизнь здания (building-lifecycle.md §2.2, §2.5): читается только в режиме city.lifecycle ----
+    public ushort DecayBpDay;       // buildings.json: decay_bp_day, износ в сутки, б.п.
+    public ushort CeilDropBpDay;    // buildings.json: ceil_drop_bp_day, падение потолка в сутки, б.п.
+    public int DemolishCost;        // buildings.json: demolish_cost, цена сноса из казны
+
+    /// <summary>Стартовые значения жизни здания базового пакета по виду и плотности (§2.2, §2.5): износ, потолок, цена сноса.</summary>
+    public static void LifeDefaults(LotZone kind, byte density, out ushort decay, out ushort ceilDrop, out int demolish)
+    {
+        bool high = density != 0;
+        ceilDrop = (ushort)(high ? 50 : 30);
+        switch (kind)
+        {
+            case LotZone.Residential:
+                decay = (ushort)(high ? 250 : 120);
+                demolish = high ? 12_000 : 1_500;
+                break;
+            case LotZone.Commercial:
+                decay = (ushort)(high ? 250 : 150);
+                demolish = high ? 12_000 : 2_000;
+                break;
+            case LotZone.Industrial:
+                decay = (ushort)(high ? 400 : 250);
+                demolish = high ? 18_000 : 2_500;
+                break;
+            default:
+                decay = 0;
+                ceilDrop = 0;
+                demolish = 0;
+                break;
+        }
+    }
+
+    /// <summary>Строка с заполненными стартовыми значениями жизни здания (§2.2).</summary>
+    public static BuildingTypeDesc WithLifeDefaults(BuildingTypeDesc t)
+    {
+        LifeDefaults(t.Kind, t.Density, out t.DecayBpDay, out t.CeilDropBpDay, out t.DemolishCost);
+        return t;
+    }
+}
+
+/// <summary>Секция <c>city.lifecycle</c> (building-lifecycle.md §2, §6.1): износ, заброшка стоит, рассыпание, снос. <c>Enabled = false</c> - режима нет, поведение прежнее.</summary>
+public struct CityLifecycleDesc
+{
+    public bool Enabled;
+    public int AbandonedDecayPct;   // abandoned_decay_pct: множитель износа заброшенного, %; дефолт 200
+    public int LowlandCm;           // lowland_m * 100: запас над уровнем воды для «низины»; дефолт 200
+    public int WornRelocateQ16;     // worn_relocate: шанс переезда в сутки при Cond 50-60 %; дефолт 0.05
+    public int RubbleCostPct;       // rubble_cost_pct: очистка рассыпавшегося, % demolish_cost; дефолт 10
+
+    /// <summary>Дефолты §2 с включённым режимом.</summary>
+    public static CityLifecycleDesc Default() => new()
+    {
+        Enabled = true,
+        AbandonedDecayPct = 200,
+        LowlandCm = 200,
+        WornRelocateQ16 = CityDesc.Q16(0.05),
+        RubbleCostPct = 10,
+    };
 }
 
 /// <summary>Календарь (<c>calendar</c>).</summary>
@@ -236,18 +295,21 @@ public struct CityDesc
     /// <summary>Внешние подключения у края карты (<c>outside</c>, new-game-scratch.md §2.1, ADR-0037); <c>Count = 0</c> - секции нет, поведение прежнее.</summary>
     public CityOutsideDesc Outside;
 
+    /// <summary>Жизнь здания (<c>city.lifecycle</c>, building-lifecycle.md); <c>Enabled = false</c> - секции нет, поведение прежнее.</summary>
+    public CityLifecycleDesc Lifecycle;
+
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;
 
     /// <summary>6 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8 },
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8, DecayBpDay = 120, CeilDropBpDay = 30, DemolishCost = 1_500 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20, DecayBpDay = 250, CeilDropBpDay = 50, DemolishCost = 12_000 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public, DecayBpDay = 150, CeilDropBpDay = 30, DemolishCost = 2_000 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public, DecayBpDay = 250, CeilDropBpDay = 50, DemolishCost = 12_000 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12, DecayBpDay = 250, CeilDropBpDay = 30, DemolishCost = 2_500 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40, DecayBpDay = 400, CeilDropBpDay = 50, DemolishCost = 18_000 },
     };
 
     /// <summary>Дефолты спеки (zoning-demand.md §16) с базовой таблицей зданий; <c>Calendar.DayTicks</c> = 72 000.</summary>

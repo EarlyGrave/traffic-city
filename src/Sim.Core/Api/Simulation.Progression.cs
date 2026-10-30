@@ -121,6 +121,7 @@ public sealed partial class Simulation
         info.IncLongCommute = s.IncLongCommute;
         info.IncTourCancelled = s.IncTourCancelled;
         info.IncLongStopWait = s.IncLongStopWait;
+        info.IncBuildingWorn = s.IncBuildingWorn;
         info.StuckNow = _w.Counters.StuckVehicles;
         info.Gridlock = _w.Counters.GridlockFlag;
         info.Balance = c.Ledger.City;

@@ -41,6 +41,9 @@ public enum CommandKind : ushort
     // Классы ТС (vehicle-classes.md §2.2, ADR-0039, VC2).
     SetStreetAccess = 37,   // запрет улицы по классам (SegmentData.Deny), на месте; обратная - прежняя маска
     SetOnCall = 38,         // VC3 (§2.4): флаг «на вызове» у спецмашины; ставит диспетчер SR или тест, без цены
+
+    // Жизнь здания (building-lifecycle.md §6.2, BL1).
+    DemolishBuilding = 39,  // снос здания игроком: цена demolish_cost из казны, необратима; только в режиме city.lifecycle
 }
 
 public enum SignalMode : int
@@ -145,6 +148,9 @@ public struct Command
 
     [FieldOffset(8)]
     public SetOnCallCmd SetOnCall;
+
+    [FieldOffset(8)]
+    public DemolishBuildingCmd DemolishBuilding;
 
     [FieldOffset(8)]
     public InsertBusStopCmd InsertBusStop;
@@ -350,6 +356,16 @@ public struct Command
         c.Kind = CommandKind.SetOnCall;
         c.Tag = tag;
         c.SetOnCall = new SetOnCallCmd { Index = h.Index, Generation = h.Generation, OnCall = onCall ? (byte)1 : (byte)0 };
+        return c;
+    }
+
+    /// <summary>Снос здания игроком (building-lifecycle.md §2.5): <paramref name="building"/> - слот и поколение из <see cref="BuildingRenderData"/>.</summary>
+    public static Command MakeDemolishBuilding(EntityRef building, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.DemolishBuilding;
+        c.Tag = tag;
+        c.DemolishBuilding = new DemolishBuildingCmd { Building = building };
         return c;
     }
 
@@ -560,6 +576,13 @@ public struct SetOnCallCmd
     public int Index;
     public int Generation;
     public byte OnCall;   // 0/1
+}
+
+/// <summary>Снос здания игроком (building-lifecycle.md §2.5, §6.2): живой слот с совпадающим поколением, ещё не сносится.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct DemolishBuildingCmd
+{
+    public EntityRef Building;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

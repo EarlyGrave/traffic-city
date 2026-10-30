@@ -65,9 +65,18 @@ public struct BuildingRenderData
     public byte Kind;            // 14     LotZone
     public byte State;           // 15     BuildingState
     public byte FillPct;         // 16     заполнение 0..100 (жители / работники к вместимости); Constructing - прогресс стройки
-    public byte R0;              // 17
-    public ushort R1;            // 18..19
+    public byte R0;              // 17     состояние Cond, % (режим city.lifecycle; без режима 0)
+    public ushort R1;            // 18..19 биты BuildingRenderFlags (режим city.lifecycle; без режима 0)
     public int Gen;              // 20..23 поколение слота
+}
+
+/// <summary>Биты <see cref="BuildingRenderData.R1"/> (building-lifecycle.md §3).</summary>
+public static class BuildingRenderFlags
+{
+    public const ushort Monument = 1;      // резерв (памятник отложен, §2.8)
+    public const ushort Requested = 2;     // заявка ЖКХ (BL3)
+    public const ushort Demolishing = 4;   // сносится: удаление на ближайшей границе суток
+    public const ushort Boost = 8;         // резерв (буст отложен, §2.7)
 }
 
 /// <summary>Биты <see cref="LotRenderData.Flags"/>.</summary>

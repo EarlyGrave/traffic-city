@@ -138,6 +138,13 @@ internal sealed class CityKpi
         Complaints.Add(ComplaintKind.LongWait, segment, segmentGen);
     }
 
+    /// <summary>Суточные случаи «дом ветшает» (building-lifecycle.md §2.2): <paramref name="incidents"/> в K4 и столько же случаев жалобы у здания.</summary>
+    public void OnBuildingWorn(int building, int gen, int incidents)
+    {
+        Cur[0].IncBuildingWorn += incidents;
+        Complaints.Add(ComplaintKind.BuildingWorn, building, gen, incidents);
+    }
+
     // ------------------------------------------------------------------ фаза 9r
 
     /// <summary>Фаза 9r, каждый тик: на последнем тике игрового часа час уходит в кольцо (дельты счётчиков движения - здесь).</summary>
@@ -248,7 +255,7 @@ internal sealed class CityKpi
     }
 
     /// <summary>Раздел хэша (только при прогрессии, §2.4): кольцо в физическом порядке, текущий час, отметки, суточное кольцо.</summary>
-    public void AddToHash(ref Fnv1a64 h)
+    public void AddToHash(ref Fnv1a64 h, bool lifecycle)
     {
         h.Add(Head);
         h.Add(HoursFilled);
@@ -256,10 +263,10 @@ internal sealed class CityKpi
         h.Add(MovingAtHourStart);
         for (int i = 0; i < Hours; i++)
         {
-            AddHour(ref h, in Ring[i]);
+            AddHour(ref h, in Ring[i], lifecycle);
         }
 
-        AddHour(ref h, in Cur[0]);
+        AddHour(ref h, in Cur[0], lifecycle);
         h.Add(DayHead);
         h.Add(DaysFilled);
         for (int i = 0; i < Days; i++)
@@ -268,8 +275,14 @@ internal sealed class CityKpi
         }
     }
 
-    private static void AddHour(ref Fnv1a64 h, in KpiHour k)
+    // Случаи «дом ветшает» - только с режимом city.lifecycle: без него хэш побитово прежний (building-lifecycle.md §5).
+    private static void AddHour(ref Fnv1a64 h, in KpiHour k, bool lifecycle)
     {
+        if (lifecycle)
+        {
+            h.Add(k.IncBuildingWorn);
+        }
+
         h.Add(k.LegsCar);
         h.Add(k.LegsBus);
         h.Add(k.LegsWalk);
@@ -304,5 +317,6 @@ internal sealed class CityKpi
         s.IncLongCommute += k.IncLongCommute;
         s.IncTourCancelled += k.IncTourCancelled;
         s.IncLongStopWait += k.IncLongStopWait;
+        s.IncBuildingWorn += k.IncBuildingWorn;
     }
 }

@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return desc.Town.Economy.CityBudget || desc.Parking.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget и parking только при residents (city-economy.md §1, parking.md §1)
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -81,6 +81,9 @@ internal static class CityBuild
         ok &= e.InitialResidentBalance >= 0 && e.InitialFirmBalance >= 0 && e.ConstructCost >= 0 && e.HireMarginPct >= 0;
         ok &= e.LossDaysFire is >= 1 and <= 3650 && e.LossDaysClose is >= 1 and <= 3650 && e.EwmaShift is >= 0 and <= 16 && e.CTargetPct >= 0;
         ok &= CityBudget.IsValid(in e);   // казна (city-economy.md §13)
+        CityLifecycleDesc lf = t.Lifecycle;   // жизнь здания (building-lifecycle.md §5): только с казной
+        ok &= !lf.Enabled || (e.CityBudget && lf.AbandonedDecayPct is >= 0 and <= 10_000 && lf.LowlandCm is >= 0 and <= 100_000 &&
+            lf.WornRelocateQ16 is >= 0 and <= 65_536 && lf.RubbleCostPct is >= 0 and <= 100);
         ok &= ch.ThetaMode64 >= 0 && ch.ThetaDest64 >= 0 && ch.ThetaTime64 >= 0 && ch.ThetaFreq64 >= 0;
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;

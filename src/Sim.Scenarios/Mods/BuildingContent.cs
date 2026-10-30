@@ -8,7 +8,7 @@ namespace Sim.Scenarios.Mods;
 /// <summary>
 /// Разбор <c>buildings.json</c> пакета (<c>format_version</c> 1, zoning-demand.md §17, modding.md §3.3): <c>name</c> (id <c>&lt;пакет&gt;:building/&lt;имя&gt;</c>), <c>rev</c>, <c>kind</c>
 /// (<c>residential | commercial | industrial</c>), <c>density</c> (<c>low | high</c>), <c>capacity</c>, <c>shop_capacity</c>, <c>shift_start_slot</c>, <c>shift_slots</c>,
-/// <c>construct_days</c>, <c>attract</c> и <c>visual.model</c>. Ядру уходят только симуляционные поля (<see cref="BuildingTypeDesc"/>); строка визуала - индекс в каталоге.
+/// <c>construct_days</c>, <c>attract</c>, жизнь здания <c>decay_bp_day</c>, <c>ceil_drop_bp_day</c>, <c>demolish_cost</c> (building-lifecycle.md §2.2, §2.5; дефолты - по виду и плотности) и <c>visual.model</c>. Ядру уходят только симуляционные поля (<see cref="BuildingTypeDesc"/>); строка визуала - индекс в каталоге.
 /// </summary>
 internal static class BuildingContent
 {
@@ -110,6 +110,10 @@ internal static class BuildingContent
             ParkingAccess = access,
             ParkingFee = r.Int("parking_fee", 0, min: 0, max: 1_000_000),
         };
+        BuildingTypeDesc.LifeDefaults(kind, density, out ushort decay, out ushort ceilDrop, out int demolish);
+        t.DecayBpDay = (ushort)r.Int("decay_bp_day", decay, min: 0, max: 10_000);
+        t.CeilDropBpDay = (ushort)r.Int("ceil_drop_bp_day", ceilDrop, min: 0, max: 10_000);
+        t.DemolishCost = r.Int("demolish_cost", demolish, min: 0, max: 100_000_000);
         string? model = VehicleContent.ReadVisual(r, "model");
         r.Finish();
         if (kind != LotZone.Commercial && t.ShopCapacity != 0)

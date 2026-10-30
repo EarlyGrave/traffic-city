@@ -158,6 +158,7 @@ public static partial class ScenarioLoader
         }
 
         JsonObjectReader? cityR = root.OptObject("city");
+        JsonObjectReader? lifeR = cityR?.OptObject(LifecycleKey);   // до ParseCity: Finish генератора города не должен счесть ключ лишним
         JsonObjectReader? netR = root.OptObject("network");
         if (v3 && cityR != null)
         {
@@ -215,6 +216,7 @@ public static partial class ScenarioLoader
         }
 
         CityDesc town = ParseTown(root, residents, catalog);
+        ParseLifecycle(lifeR, residents, ref town);
         ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
         ProgressionDesc progression = ParseProgression(root.OptObject(ProgressionKey), residents, roadProfiles, out string[] milestoneIds);
         ToolsDesc tools = ParseTools(root.OptObject("tools"));

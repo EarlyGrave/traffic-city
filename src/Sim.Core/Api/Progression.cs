@@ -41,6 +41,7 @@ public enum ComplaintKind : byte
     LongCommute = 3,        // нога к работе дольше порога
     TourCancelled = 4,      // тур снят по дедлайну WaitDepart
     LongStopWait = 5,       // посадка после долгого ожидания на остановке
+    BuildingWorn = 6,       // дом ветшает (building-lifecycle.md §2.2, режим city.lifecycle)
 }
 
 /// <summary>Флаги вехи (<see cref="MilestoneDesc.Flags"/>).</summary>
@@ -132,11 +133,11 @@ public struct KpiHour
     public long DurCarDs, DurBusDs, DurWalkDs, DurWorkDs;
     public long VehTicks, MovingTicks;
     public int IncLongWait, IncNoParking, IncLongCommute, IncTourCancelled, IncLongStopWait;
-    public int R;
+    public int IncBuildingWorn;     // «дом ветшает» (building-lifecycle.md §2.2; только в режиме city.lifecycle, иначе 0); был резерв R
 
     public readonly int LegsAll => LegsCar + LegsBus + LegsWalk;
 
-    public readonly int Incidents => IncLongWait + IncNoParking + IncLongCommute + IncTourCancelled + IncLongStopWait;
+    public readonly int Incidents => IncLongWait + IncNoParking + IncLongCommute + IncTourCancelled + IncLongStopWait + IncBuildingWorn;
 }
 
 /// <summary>
@@ -165,6 +166,7 @@ public struct CityKpiInfo
     public int HasBudget;                  // 1 - режим city_budget
     public int Population;                 // K6
     public int DaysFilled;                 // значений в суточном кольце баланса (0..32)
+    public int IncBuildingWorn;            // «дом ветшает» (building-lifecycle.md §2.2)
 }
 
 /// <summary>

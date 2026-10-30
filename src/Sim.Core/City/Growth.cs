@@ -29,6 +29,7 @@ internal static class Growth
         }
 
         Parking.ParkingBuild.OnBuildingActive(w, c, bi);   // стоянка здания (parking.md §3); без режима - ничего
+        CityLife.OnComplete(c, bi);   // building-lifecycle.md §2.2: новое здание; без режима - ничего
         w.Counters.BuildingsBuilt++;
     }
 
@@ -186,12 +187,37 @@ internal static class Growth
         CityResidents res = c.Residents;
         bool[] marked = c.Market.Removing;
         long vacate = (long)c.Cfg.Residents.VacateDays * c.DayTicks;
+        bool life = c.Cfg.Lifecycle.Enabled;
         int n = 0;
         for (int i = 0; i < b.HighWater; i++)
         {
             marked[i] = false;
             if (!b.IsAlive(i) || b.State[i] != (byte)BuildingState.Abandoned)
             {
+                continue;
+            }
+
+            if (life)
+            {
+                // building-lifecycle.md §2.3: заброшенное стоит; удаляются только снесённые игроком и рассыпавшиеся, vacate_days не действует
+                if (!CityLife.ToRemove(c, i))
+                {
+                    continue;
+                }
+
+                if (b.Occupants[i] == 0)
+                {
+                    marked[i] = true;
+                    n++;
+                }
+                else
+                {
+                    for (int r = b.HeadRes[i]; r >= 0; r = res.NextHome[r])
+                    {
+                        res.Flags[r] |= ResidentFlags.Leaving;
+                    }
+                }
+
                 continue;
             }
 
@@ -276,6 +302,11 @@ internal static class Growth
 
             marked[i] = false;
             int lot = b.Lot[i];
+            if (life)
+            {
+                CityLife.OnRemove(w, c, i);   // рассыпавшееся - дешёвая очистка из казны (§2.5)
+            }
+
             c.Ledger.Transfer(c.Ledger.AccountOfBuilding(i), c.Ledger.ExternalAccount, b.Account[i], FlowKind.Emigration);
             Parking.ParkingBuild.OnBuildingRemoved(w, c, i);   // стоянка здания снесена (до Destroy: слот ещё хранит участок)
             b.Destroy(i);
@@ -366,7 +397,13 @@ internal static class Growth
         for (int i = 0; i < l.Count; i++)
         {
             int z = l.Zone[i] - 1;
-            if (z < 0 || z > 2 || want[z] == 0 || l.Building[i] >= 0 || (l.Flags[i] & LotFlags.Lost) != 0)
+            if (z < 0 || z > 2 || want[z] == 0 || (l.Flags[i] & LotFlags.Lost) != 0)
+            {
+                continue;
+            }
+
+            // Занятый участок - только заброшенное здание, годное к повторному заселению (building-lifecycle.md §2.3); без режима - как раньше
+            if (l.Building[i] >= 0 && !(cfg.Lifecycle.Enabled && CityLife.Resettable(c, l.Building[i], (LotZone)l.Zone[i])))
             {
                 continue;
             }
@@ -449,6 +486,12 @@ internal static class Growth
     private static bool Place(World w, CityWorld c, int lot)
     {
         LotStore l = c.Lots;
+        if (l.Building[lot] >= 0)
+        {
+            CityLife.Resettle(w, c, l.Building[lot]);   // Build берёт занятый участок только с годной заброшкой (режим city.lifecycle)
+            return true;
+        }
+
         int type = c.Types.Find((LotZone)l.Zone[lot], l.Density[lot], lot);
         if (type < 0)
         {
@@ -460,6 +503,7 @@ internal static class Growth
             return false;
         }
 
+        CityLife.OnCreate(c, bi);
         l.Building[lot] = bi;
         l.Version++;
         if (c.Types.Rows[type].Kind != LotZone.Residential)

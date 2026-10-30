@@ -221,6 +221,7 @@ public static class UiNotifyMap
         ComplaintKind.LongCommute => "Жители: на работу больше часа",
         ComplaintKind.TourCancelled => "Жители: не смогли выехать",
         ComplaintKind.LongStopWait => "Жители: долго ждали автобус",
+        ComplaintKind.BuildingWorn => "Жители: дом ветшает",
         _ => "Жалоба жителей",
     };
 

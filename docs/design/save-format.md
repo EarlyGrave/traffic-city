@@ -760,6 +760,11 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 277 | CityOutside3ShareQ16 | i32 | 1 | 0 |
 | `PARM` | 278 | RulesEmergencyRedSpeed | f32 | 1 | 4.17 |
 | `PARM` | 279 | DemandSpecialOnCall | u8 | 1 | 0 |
+| `PARM` | 280 | LifecycleEnabled | u8 | 1 | 0 |
+| `PARM` | 281 | LifecycleAbandonedDecayPct | i32 | 1 | 0 |
+| `PARM` | 282 | LifecycleLowlandCm | i32 | 1 | 0 |
+| `PARM` | 283 | LifecycleWornRelocateQ16 | i32 | 1 | 0 |
+| `PARM` | 284 | LifecycleRubbleCostPct | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -805,6 +810,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `BTYP` (demand.model = residents) | 10 | ParkingCapacity | i32 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 11 | ParkingAccess | u8 | Rows.Length | 0 |
 | `BTYP` (demand.model = residents) | 12 | ParkingFee | i32 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 13 | DecayBpDay | u16 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 14 | CeilDropBpDay | u16 | Rows.Length | 0 |
+| `BTYP` (demand.model = residents) | 15 | DemolishCost | i32 | Rows.Length | 0 |
 | `WRLD` | 1 | Tick | i64 | 1 | 0 |
 | `WRLD` | 2 | NetVersion | i32 | 1 | 0 |
 | `WRLD` | 3 | TargetVehicles | i32 | 1 | 0 |
@@ -998,6 +1006,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 173 | LockedRejects | i64 | 1 | 0 |
 | `CNTR` | 174 | OnCallRedGrants | i64 | 1 | 0 |
 | `CNTR` | 175 | DenyDescends | i64 | 1 | 0 |
+| `CNTR` | 176 | BuildingsCrumbled | i64 | 1 | 0 |
+| `CNTR` | 177 | BuildingsDemolished | i64 | 1 | 0 |
+| `CNTR` | 178 | BuildingsResettled | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1476,6 +1487,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `BLDG` (demand.model = residents) | 19 | LossDays | i16 | HighWater | 0 |
 | `BLDG` (demand.model = residents) | 20 | VacantDays | i16 | HighWater | 0 |
 | `BLDG` (demand.model = residents) | 21 | PayrollEwma | i64 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 22 | Cond | u16 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 23 | Ceil | u16 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 24 | BornDay | i32 | HighWater | 0 |
+| `BLDG` (demand.model = residents) | 25 | LifeFlags | u8 | HighWater | 0 |
 | `RESD` (demand.model = residents) | 1 | HighWater | i32 | 1 | 0 |
 | `RESD` (demand.model = residents) | 2 | FreeCount | i32 | 1 | 0 |
 | `RESD` (demand.model = residents) | 3 | FreeList | i32 | FreeCount | 0 |
@@ -1669,6 +1684,8 @@ s10k с цифрами размера и времени. Клиентские к
 | `CKPI` (demand.model = residents) | 35 | CurIncLongCommute | i32 | 1 | 0 |
 | `CKPI` (demand.model = residents) | 36 | CurIncTourCancelled | i32 | 1 | 0 |
 | `CKPI` (demand.model = residents) | 37 | CurIncLongStopWait | i32 | 1 | 0 |
+| `CKPI` (demand.model = residents) | 38 | RingIncBuildingWorn | i32 | 24 | 0 |
+| `CKPI` (demand.model = residents) | 39 | CurIncBuildingWorn | i32 | 1 | 0 |
 | `PROG` (PARM.ProgressionEnabled = 1) | 1 | MilestoneCount | i32 | 1 | 0 |
 | `PROG` (PARM.ProgressionEnabled = 1) | 2 | ProfileIdxCount | i32 | 1 | 0 |
 | `PROG` (PARM.ProgressionEnabled = 1) | 3 | AreaCount | i32 | 1 | 0 |

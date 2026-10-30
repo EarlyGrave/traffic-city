@@ -327,6 +327,8 @@ public sealed partial class Simulation
                 Kind = (byte)t.Kind,
                 State = b.State[i],
                 FillPct = (byte)fill,
+                R0 = c.Cfg.Lifecycle.Enabled ? (byte)(b.Cond[i] / 100) : (byte)0,              // building-lifecycle.md §3: состояние, % (без режима 0)
+                R1 = c.Cfg.Lifecycle.Enabled ? CityLife.RenderFlags(c, i) : (ushort)0,    // BuildingRenderFlags
                 Gen = b.Pool.GenerationOf(i),
             };
         }

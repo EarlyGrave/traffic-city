@@ -139,6 +139,7 @@ internal static class CityInit
             }
 
             l.Building[i] = bi;
+            CityLife.OnCreate(c, bi);   // building-lifecycle.md §2.2; без режима - ничего
             ref readonly BuildingTypeDesc t = ref c.Types.Rows[type];
             if (t.Kind == LotZone.Residential)
             {

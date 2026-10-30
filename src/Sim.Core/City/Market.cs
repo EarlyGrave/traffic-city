@@ -1046,6 +1046,14 @@ internal sealed class Market
         {
             TryRelocate(w, c, r, false);
         }
+
+        // building-lifecycle.md §2.2: дом в полосе 50-60 % - ещё одна попытка добровольного переезда с шансом worn_relocate (жребий - только в режиме и в полосе)
+        int lifeHome = res.Home[r];
+        if (c.Cfg.Lifecycle.Enabled && lifeHome >= 0 && CityLife.InRelocateBand(c, lifeHome)
+            && (w.RngDemand.NextUInt() >> 16) < (uint)c.Cfg.Lifecycle.WornRelocateQ16)
+        {
+            TryRelocate(w, c, r, false);
+        }
     }
 
     /// <summary>Добровольная смена работы (§8.1): дорога на работу дороже <c>switch_ratio · LS_jobs(дом)</c>, жребий <c>max_jobswitch_per_day</c>, другая фирма с вакансией дешевле.</summary>

@@ -88,7 +88,7 @@ internal static class CityHash
         {
             // раздел прогрессии (progression.md §2.4, §4.4): вехи, открытое, показатели города и счётчик замков - только при прогрессии; без неё кольцо KPI - наблюдатель, хэш прежний
             w.Progression.AddToHash(ref h);
-            c.Kpi.AddToHash(ref h);
+            c.Kpi.AddToHash(ref h, c.Cfg.Lifecycle.Enabled);
             h.Add(w.Counters.LockedRejects);
         }
 
@@ -110,6 +110,29 @@ internal static class CityHash
 
         // раздел целей сценария (ADR-0038): только при секции goals, хэш прочих миров не меняется
         c.Goals?.AddToHash(ref h);
+        if (c.Cfg.Lifecycle.Enabled)
+        {
+            AddLifecycle(ref h, c.Buildings, in w.Counters);
+        }
+    }
+
+    /// <summary>Раздел жизни зданий (building-lifecycle.md §5): только в режиме <c>city.lifecycle</c>, без него ни одного нового байта. Поля живых слотов, затем счётчики.</summary>
+    private static void AddLifecycle(ref Fnv1a64 h, BuildingStore b, in SimCounters k)
+    {
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            if (b.Pool.IsAlive(i))
+            {
+                h.Add((int)b.Cond[i]);
+                h.Add((int)b.Ceil[i]);
+                h.Add(b.BornDay[i]);
+                h.Add(b.LifeFlags[i]);
+            }
+        }
+
+        h.Add(k.BuildingsCrumbled);
+        h.Add(k.BuildingsDemolished);
+        h.Add(k.BuildingsResettled);
     }
 
     /// <summary>
