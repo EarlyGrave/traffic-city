@@ -70,7 +70,7 @@ internal static partial class SaveSchema
         PreField<BuildingTypeDesc, byte>(19, "VehicleType", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.VehicleType, static (ref BuildingTypeDesc t, byte v) => t.VehicleType = v),
     };
 
-    // ---- CNTR 176-188 (185-188 - вызовы служб, SR2) ----
+    // ---- CNTR 176-194 (185-188 - вызовы служб, SR2; 189-194 - болезнь и визиты, SR3) ----
     private static ColumnDef[] LifecycleCounters() => new[]
     {
         Col.Scalar<long>(176, "BuildingsCrumbled", w => w.Counters.BuildingsCrumbled, (c, v) => c.W.Counters.BuildingsCrumbled = v),
@@ -86,5 +86,11 @@ internal static partial class SaveSchema
         Col.Scalar<long>(186, "CallsDone", w => w.Counters.CallsDone, (c, v) => c.W.Counters.CallsDone = v),
         Col.Scalar<long>(187, "RespTicksTotal", w => w.Counters.RespTicksTotal, (c, v) => c.W.Counters.RespTicksTotal = v),
         Col.Scalar<long>(188, "CallsLate", w => w.Counters.CallsLate, (c, v) => c.W.Counters.CallsLate = v),
+        Col.Scalar<long>(189, "IllStarted", w => w.Counters.IllStarted, (c, v) => c.W.Counters.IllStarted = v),
+        Col.Scalar<long>(190, "CareVisits", w => w.Counters.CareVisits, (c, v) => c.W.Counters.CareVisits = v),
+        Col.Scalar<long>(191, "CareRefused", w => w.Counters.CareRefused, (c, v) => c.W.Counters.CareRefused = v),
+        Col.Scalar<long>(192, "IcuAdmitted", w => w.Counters.IcuAdmitted, (c, v) => c.W.Counters.IcuAdmitted = v),
+        Col.Scalar<long>(193, "IcuOverflow", w => w.Counters.IcuOverflow, (c, v) => c.W.Counters.IcuOverflow = v),
+        Col.Scalar<long>(194, "ResidentsLostNoAmbulance", w => w.Counters.ResidentsLostNoAmbulance, (c, v) => c.W.Counters.ResidentsLostNoAmbulance = v),
     };
 }

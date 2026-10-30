@@ -199,6 +199,7 @@ internal static partial class SaveValidator
         VehicleStoreView veh = new(w);
         int cells = city.Grid.Cells;
         int slots = CityWorld.SlotsPerDay;
+        bool illMode = city.Services is { Table.Explicit: true };
         for (int i = 0; i < r.HighWater; i++)
         {
             if (!r.Pool.IsAlive(i))
@@ -219,7 +220,9 @@ internal static partial class SaveValidator
                 return Bad(c, i, 6);
             }
 
-            if (r.Flags[i] > (city.Outside != null ? 63 : 31) || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.AccessWalkDone || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
+            // SR3: флаг CareRefused (64) и болезнь Ill - только в режиме служб; Ill: тяжесть 1-3, 1-31 сутки
+            byte ill = r.Ill[i];
+            if (r.Flags[i] > (city.Outside != null ? 63 : 31) + (illMode ? ResidentFlags.CareRefused : 0) || (ill != 0 && (!illMode || Illness.Severity(ill) == 0 || Illness.Days(ill) == 0)) || r.State[i] > (byte)ResidentState.InLeg || r.EvKind[i] > ResidentEvent.AccessWalkDone || r.EvTick[i] < -1 || r.StateTick[i] < 0 || r.StateTick[i] > w.Tick)
             {
                 return Bad(c, i, 9);
             }
@@ -234,7 +237,7 @@ internal static partial class SaveValidator
             for (int k = 0; k < CityResidents.MaxTours; k++)
             {
                 int dest = r.PlanDest[pb + k];
-                if (r.PlanKind[pb + k] > TourKind.Shop || r.PlanMode[pb + k] > (byte)TravelMode.Walk || r.PlanSlot[pb + k] >= slots || !PlaceOk(city, b, dest))
+                if (r.PlanKind[pb + k] > (illMode ? TourKind.Care : TourKind.Shop) || r.PlanMode[pb + k] > (byte)TravelMode.Walk || r.PlanSlot[pb + k] >= slots || !PlaceOk(city, b, dest))
                 {
                     return Bad(c, i, 16);
                 }
@@ -336,6 +339,7 @@ internal static partial class SaveValidator
 
         BuildingStore b = city.Buildings;
         int bcap = b.Pool.Capacity;
+        int rcap = city.Residents.Pool.Capacity;
         LoadStatus st0 = ValidateSites(c, city, sv);
         if (st0 != LoadStatus.Ok)
         {
@@ -369,7 +373,7 @@ internal static partial class SaveValidator
 
             if (st == CrewState.Free)
             {
-                if (u.Site[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1 || u.Kind[k] != 0)
+                if (u.Site[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1 || u.Kind[k] != 0 || u.Ref[k] != -1 || u.RefGen[k] != 0)
                 {
                     return Bad(c, k, 63);
                 }
@@ -383,7 +387,8 @@ internal static partial class SaveValidator
             if ((uint)u.Site[k] >= (uint)sv.Sites.Capacity || sv.Sites.Building[u.Site[k]] < 0 || u.Target[k] < -1 || u.Target[k] >= bcap || u.TargetGen[k] < 0 ||
                 u.SiteLot[k] < -1 || u.SiteLot[k] >= city.Lots.Count || u.DueTick[k] < 0 || u.ReqTick[k] < 0 || u.ReqTick[k] > w.Tick ||
                 (idle && (u.Target[k] != -1 || u.Vehicle[k] != -1 || u.Kind[k] != 0)) || (busy && (u.Target[k] == -1 || u.Kind[k] == 0)) ||
-                (u.Kind[k] != 0 && !sv.Table.HasCall(rec, (Api.ServiceCallKind)u.Kind[k])) || (st == CrewState.OffDuty && !sv.Table.Explicit))
+                (u.Kind[k] != 0 && !sv.Table.HasCall(rec, (Api.ServiceCallKind)u.Kind[k])) || (st == CrewState.OffDuty && !sv.Table.Explicit) ||
+                u.Ref[k] < -1 || u.Ref[k] >= rcap || u.RefGen[k] < 0 || (u.Ref[k] != -1 && u.Kind[k] != (byte)Api.ServiceCallKind.Critical))   // SR3: пациент - только у вызова critical
             {
                 return Bad(c, k, 64);
             }

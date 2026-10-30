@@ -70,7 +70,7 @@ internal static partial class SaveSchema
         PedPathQueue(),
         Extend(LotsBlock(), LotGridColumns()),
         Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }, LifecycleBuildingColumns()),
-        Extend(ResidentsCityBlock(), ParkingResidentColumns()),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns(), ServicesResidentColumns()),
         OutsideBlock(),
         GoalsBlock(),
         SkimsBlock(),
