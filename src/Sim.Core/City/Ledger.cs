@@ -10,12 +10,14 @@ namespace Sim.Core.City;
 /// </summary>
 internal sealed class Ledger
 {
-    public const int FlowCount = 17;     // FlowKind.Endowment .. Refund (city-economy.md §2.1)
+    public const int FlowCount = 22;     // FlowKind.Endowment .. UtilitySubsidy (city-economy.md §2.1, building-lifecycle.md §2.10)
     public const int LegacyFlowCount = 13;   // виды 0..12 (3.2): только они входят в хэш без бюджета
+    public const int BudgetFlowCount = 17;   // виды 0..16 (4.2): в хэше бюджета; 17..21 - только с режимом city.lifecycle
     public const int Bp = 10_000;        // знаменатель ставок: базисные пункты
 
     public long External;
     public long City;
+    public long Utility;   // фонд ЖКХ (building-lifecycle.md §2.10); вне режима city.lifecycle всегда 0
 
     public readonly long[] FlowDay = new long[FlowCount];        // за текущие сутки
     public readonly long[] FlowYesterday = new long[FlowCount];  // за прошлые сутки
@@ -41,6 +43,8 @@ internal sealed class Ledger
 
     public int CityAccount => _maxResidents + _maxBuildings + 1;
 
+    public int UtilityAccount => _maxResidents + _maxBuildings + 2;
+
     public static int AccountOfResident(int resident) => resident;
 
     public int AccountOfBuilding(int building) => _maxResidents + building;
@@ -57,7 +61,7 @@ internal sealed class Ledger
             return _buildings.Account[account - _maxResidents];
         }
 
-        return account == ExternalAccount ? External : City;
+        return account == ExternalAccount ? External : account == CityAccount ? City : Utility;
     }
 
     /// <summary>Переводит <paramref name="amount"/> со счёта <paramref name="from"/> на <paramref name="to"/> и пишет сумму потока. Отрицательные балансы разрешены.</summary>
@@ -110,7 +114,7 @@ internal sealed class Ledger
     /// <summary>Σ балансов всех счетов (обязана быть 0). O(жителей + зданий).</summary>
     public long SumAll()
     {
-        long s = External + City;
+        long s = External + City + Utility;
         for (int i = 0; i < _residents.HighWater; i++)
         {
             s += _residents.Account[i];
@@ -138,9 +142,13 @@ internal sealed class Ledger
         {
             External += delta;
         }
-        else
+        else if (account == CityAccount)
         {
             City += delta;
+        }
+        else
+        {
+            Utility += delta;
         }
     }
 }

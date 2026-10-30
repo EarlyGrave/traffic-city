@@ -127,9 +127,9 @@ internal static class Economy
             return;   // building-lifecycle.md §2.2: износ, потолок, пороги; заброшенное - без экономики фирмы
         }
 
-        if (b.State[bi] != (byte)BuildingState.Active || t.Kind == LotZone.Residential)
+        if (b.State[bi] != (byte)BuildingState.Active || t.Kind is LotZone.Residential or LotZone.Service)
         {
-            return;
+            return;   // депо службы (building-lifecycle.md §2.10) - не фирма
         }
 
         CityEconomyDesc e = c.Cfg.Economy;

@@ -147,6 +147,68 @@ internal static class CityHash
         h.Add(k.BuildingsCrumbled);
         h.Add(k.BuildingsDemolished);
         h.Add(k.BuildingsResettled);
+
+        // ЖКХ (BL3, §2.10): фонд, потоки и переносы 17..21, тариф (R0) и флаг субсидии, очередь заявок, бригады, счётчики
+        Ledger lg = c.Ledger;
+        h.Add(lg.Utility);
+        for (int fl = Ledger.BudgetFlowCount; fl < Ledger.FlowCount; fl++)
+        {
+            h.Add(lg.FlowDay[fl]);
+            h.Add(lg.FlowYesterday[fl]);
+            h.Add(lg.FlowTotal[fl]);
+        }
+
+        CityBudget? bud = c.Budget;
+        if (bud != null)
+        {
+            for (int fl = Ledger.BudgetFlowCount; fl < Ledger.FlowCount; fl++)
+            {
+                h.Add(bud.Carry[fl]);
+            }
+
+            h.Add((int)bud.Policy.R0);
+            h.Add((int)bud.Policy.R1);
+            h.Add((int)bud.PendingPolicy.R0);
+            h.Add((int)bud.PendingPolicy.R1);
+        }
+
+        UtilityService? u = c.Utility;
+        if (u != null)
+        {
+            h.Add(u.Queue.Count);
+            for (int i = 0; i < u.Queue.Count; i++)
+            {
+                ref readonly RepairRequest q = ref u.Queue.At(i);
+                h.Add(q.Building);
+                h.Add(q.Gen);
+                h.Add(q.Tick);
+            }
+
+            for (int i = 0; i < u.Capacity; i++)
+            {
+                h.Add(u.State[i]);
+                if (u.State[i] == CrewState.Free)
+                {
+                    continue;
+                }
+
+                h.Add(u.Depot[i]);
+                h.Add(u.DepotGen[i]);
+                h.Add(u.Target[i]);
+                h.Add(u.TargetGen[i]);
+                h.Add(u.SiteLot[i]);
+                h.Add(u.Vehicle[i]);
+                h.Add(u.VehicleGen[i]);
+                h.Add(u.DueTick[i]);
+                h.Add(u.ReqTick[i]);
+            }
+        }
+
+        h.Add(k.RepairsDone);
+        h.Add(k.RepairDelayTicksTotal);
+        h.Add(k.RepairNoDepot);
+        h.Add(k.CrewTimeouts);
+        h.Add(k.TariffLeaves);
     }
 
     /// <summary>
@@ -166,7 +228,7 @@ internal static class CityHash
 
         h.Add(b.IncomeEwma);
         h.Add(b.ExpenseEwma);
-        for (int i = 0; i < b.Carry.Length; i++)
+        for (int i = 0; i < Ledger.BudgetFlowCount; i++)   // 17..21 - только с режимом city.lifecycle (AddLifecycle)
         {
             h.Add(b.Carry[i]);
         }
@@ -191,7 +253,7 @@ internal static class CityHash
         }
 
         Ledger lg = c.Ledger;
-        for (int f = Ledger.LegacyFlowCount; f < Ledger.FlowCount; f++)
+        for (int f = Ledger.LegacyFlowCount; f < Ledger.BudgetFlowCount; f++)
         {
             h.Add(lg.FlowDay[f]);
             h.Add(lg.FlowYesterday[f]);

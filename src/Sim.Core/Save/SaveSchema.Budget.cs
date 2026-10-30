@@ -79,7 +79,7 @@ internal static partial class SaveSchema
         Col.Array<int>(18, "LandValue", w => w.City!.Budget!.LandValue, _cellN, "NC"),
         Col.Scalar<long>(19, "IncomeEwma", w => w.City!.Budget!.IncomeEwma, (c, v) => c.W.City!.Budget!.IncomeEwma = v),
         Col.Scalar<long>(20, "ExpenseEwma", w => w.City!.Budget!.ExpenseEwma, (c, v) => c.W.City!.Budget!.ExpenseEwma = v),
-        Col.Array<long>(21, "Carry", w => w.City!.Budget!.Carry, static _ => Ledger.FlowCount, "17"),
+        Col.Array<long>(21, "Carry", w => w.City!.Budget!.Carry, static _ => Ledger.FlowCount, "22"),
         Col.Scalar<int>(22, "DebtDays", w => w.City!.Budget!.DebtDays, (c, v) => c.W.City!.Budget!.DebtDays = v),
         Col.Scalar<int>(23, "OverLimitDays", w => w.City!.Budget!.OverLimitDays, (c, v) => c.W.City!.Budget!.OverLimitDays = v),
         Col.Scalar<byte>(24, "Insolvent", w => w.City!.Budget!.Insolvent, (c, v) => c.W.City!.Budget!.Insolvent = v),

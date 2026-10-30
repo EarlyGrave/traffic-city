@@ -4,7 +4,7 @@ using Sim.Core.Terrain;
 
 namespace Sim.Core.City;
 
-/// <summary>Биты <see cref="BuildingStore.LifeFlags"/> (building-lifecycle.md §3). <c>Monument</c>, <c>Requested</c> - резерв BL3/BL4.</summary>
+/// <summary>Биты <see cref="BuildingStore.LifeFlags"/> (building-lifecycle.md §3). <c>Requested</c> - заявка ЖКХ в очереди или у бригады (BL3); <c>Monument</c> - резерв BL4.</summary>
 internal static class BuildingLifeFlags
 {
     public const byte Monument = 1;
@@ -252,7 +252,7 @@ internal static class CityLife
     {
         BuildingStore b = c.Buildings;
         bool abandoned = b.State[bi] == (byte)BuildingState.Abandoned;
-        if (t.Kind is not (LotZone.Residential or LotZone.Commercial or LotZone.Industrial))
+        if (t.Kind is not (LotZone.Residential or LotZone.Commercial or LotZone.Industrial or LotZone.Service))
         {
             return false;
         }
@@ -286,6 +286,7 @@ internal static class CityLife
             return true;
         }
 
+        Utilities.Request(w, c, bi);   // заявка ЖКХ (§2.10): Cond < repair_request_bp, Ceil - Cond >= 5 %
         if (cond < MinorBp)
         {
             int incidents = b.Occupants[bi] / 4;   // перебои: случаи K4 Occupants/4 в сутки и жалоба

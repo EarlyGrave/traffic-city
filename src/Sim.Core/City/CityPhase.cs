@@ -70,6 +70,11 @@ internal static class CityPhase
     public static void Periodic(World w)
     {
         CityWorld c = w.City!;
+        if (c.Utility != null)
+        {
+            Utilities.Tick(w, c);   // ЖКХ (building-lifecycle.md §2.10): прибытия бригад, сроки, выезд - до прибытий жителей
+        }
+
         while (c.Arrivals.TryPop(out int r))
         {
             TripLegs.OnLegArrived(w, c, r);
@@ -100,6 +105,7 @@ internal static class CityPhase
             c.Day++;
             w.Counters.CityDays++;
             c.Outside?.OnDayEnd();
+            Utilities.OnDayBoundary(c);   // зарплата бригад ЖКХ и субсидия из фонда - по политике закончившихся суток
             BudgetFlows.OnDayBoundary(w, c);   // казна (city-economy.md §6.2): применение ожидающей политики; E2 - цена земли, содержание, проценты, лимит
             c.Kpi.OnDayEnd(c.Ledger.City);   // суточное кольцо баланса (K5)
             Progression.CheckMilestone(w, c);   // вехи на границе суток - после роста и казны (PG3, progression.md §3.3)

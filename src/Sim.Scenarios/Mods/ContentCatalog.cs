@@ -95,7 +95,7 @@ public sealed class ContentCatalog
 
             foreach (string file in pkg.Manifest.Content.Buildings)
             {
-                foreach (BuildingEntry e in BuildingContent.Load(pkg, file, issues))
+                foreach (BuildingEntry e in BuildingContent.Load(pkg, file, issues, cat.FindVehicle))
                 {
                     assets++;
                     BuildingTypeDesc desc = e.Desc;

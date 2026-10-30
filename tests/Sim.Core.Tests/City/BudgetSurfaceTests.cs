@@ -67,8 +67,9 @@ public sealed class BudgetSurfaceTests
     [Fact]
     public void Surface_Constants_AreFrozen()
     {
-        Assert.Equal(17, Ledger.FlowCount);
-        Assert.Equal(17, Simulation.FlowKindCount);
+        Assert.Equal(22, Ledger.FlowCount);
+        Assert.Equal(17, Ledger.BudgetFlowCount);
+        Assert.Equal(22, Simulation.FlowKindCount);
         Assert.Equal(13, (int)FlowKind.Interest);
         Assert.Equal(14, (int)FlowKind.Dividend);
         Assert.Equal(15, (int)FlowKind.Leakage);

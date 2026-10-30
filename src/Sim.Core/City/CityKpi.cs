@@ -159,6 +159,13 @@ internal sealed class CityKpi
         Complaints.Add(ComplaintKind.HeritageLost, building, gen, incidents);
     }
 
+    /// <summary>Квартплата ЖКХ выше порога (building-lifecycle.md §2.10): житель уезжает - случай K4 и жалоба <c>HighRent</c> у дома.</summary>
+    public void OnHighRent(int building, int gen)
+    {
+        Cur[0].IncBuildingWorn++;
+        Complaints.Add(ComplaintKind.HighRent, building, gen, 1);
+    }
+
     // ------------------------------------------------------------------ фаза 9r
 
     /// <summary>Фаза 9r, каждый тик: на последнем тике игрового часа час уходит в кольцо (дельты счётчиков движения - здесь).</summary>

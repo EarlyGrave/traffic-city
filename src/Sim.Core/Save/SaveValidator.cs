@@ -906,7 +906,7 @@ internal static partial class SaveValidator
             ref readonly PendingTrip t = ref w.Trips.At(i);
             if (t.FromZone < -1 || t.FromZone >= n.ZoneCount || t.ToZone < -1 || t.ToZone >= n.ZoneCount || t.FromLane < -1 || t.FromLane >= n.LaneCount ||
                 t.Type >= w.Types.Length || t.DestLane < -1 || t.DestLane >= n.LaneCount || !Fin(t.FromS) || !Fin(t.DestS) || t.Route < -1 ||
-                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || t.ResidentRef < 0 || (t.ResidentRef != 0 && (w.City == null || t.ResidentRef > w.City.Residents.Capacity)))
+                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || !TripRefOk(w, t.ResidentRef))
             {
                 return Bad(c, i, 50);
             }
@@ -914,6 +914,10 @@ internal static partial class SaveValidator
 
         return LoadStatus.Ok;
     }
+
+    // ResidentRef: 0 - нет; > 0 - житель + 1; < 0 - бригада ЖКХ -(k + 1) (building-lifecycle.md §2.10, BL3).
+    private static bool TripRefOk(World w, int r) =>
+        r == 0 || (w.City != null && (r > 0 ? r <= w.City.Residents.Capacity : w.City.Utility != null && -(long)r <= w.City.Utility.Capacity));
 
     public static LoadStatus ValidateQueues(LoadContext c)
     {

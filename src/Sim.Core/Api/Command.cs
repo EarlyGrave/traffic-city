@@ -44,6 +44,8 @@ public enum CommandKind : ushort
 
     // Жизнь здания (building-lifecycle.md §6.2, BL1).
     DemolishBuilding = 39,  // снос здания игроком: цена demolish_cost из казны, необратима; только в режиме city.lifecycle
+    // 40 RestoreBuilding, 41 SetMonument - резерв BL4
+    BuildService = 42,      // депо службы (ЖКХ) на пустой участок: цена build_cost из казны; обратная - DemolishBuilding с возвратом по undo_refund_s (§6.2)
 }
 
 public enum SignalMode : int
@@ -151,6 +153,9 @@ public struct Command
 
     [FieldOffset(8)]
     public DemolishBuildingCmd DemolishBuilding;
+
+    [FieldOffset(8)]
+    public BuildServiceCmd BuildService;
 
     [FieldOffset(8)]
     public InsertBusStopCmd InsertBusStop;
@@ -369,6 +374,16 @@ public struct Command
         return c;
     }
 
+    /// <summary>Депо службы (building-lifecycle.md §2.10, §6.2): участок <paramref name="lot"/> без здания, тип <paramref name="type"/> вида <see cref="LotZone.Service"/>.</summary>
+    public static Command MakeBuildService(int lot, int type, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.BuildService;
+        c.Tag = tag;
+        c.BuildService = new BuildServiceCmd { Lot = lot, Type = type };
+        return c;
+    }
+
     public static Command MakeInsertBusStop(in InsertBusStopCmd payload, uint tag = 0)
     {
         var c = default(Command);
@@ -583,6 +598,14 @@ public struct SetOnCallCmd
 public struct DemolishBuildingCmd
 {
     public EntityRef Building;
+}
+
+/// <summary>Депо службы (building-lifecycle.md §2.10, §6.2): индекс участка (<c>BuildingRenderData</c>/участки города) и индекс типа здания вида <c>Service</c>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct BuildServiceCmd
+{
+    public int Lot;
+    public int Type;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

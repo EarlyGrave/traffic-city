@@ -1015,6 +1015,11 @@ internal sealed class Market
             }
         }
 
+        if (c.Cfg.Lifecycle.Enabled && (res.Flags[r] & ResidentFlags.Leaving) == 0)
+        {
+            Utilities.TariffLeave(w, c, r);   // квартплата выше порога дохода: жребий ухода (building-lifecycle.md §2.10)
+        }
+
         if ((res.Flags[r] & ResidentFlags.Leaving) != 0)
         {
             bool seekOver = res.Work[r] == -1 && res.SeekDays[r] > rd.SeekMaxDays + 2;

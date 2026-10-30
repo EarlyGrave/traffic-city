@@ -17,6 +17,16 @@ public enum LotZone : byte
 
     /// <summary>Гараж (parking.md §3): здание-стоянка, ставится командой <c>BuildParking</c> (K6); рост и зонирование его не трогают (<c>Lot.Zone</c> этого значения не принимает).</summary>
     Parking = 4,
+
+    /// <summary>Здание службы (building-lifecycle.md §2.10): депо ЖКХ, ставится командой <c>BuildService</c>; рост, зонирование и рынок его не трогают (<c>Lot.Zone</c> этого значения не принимает).</summary>
+    Service = 5,
+}
+
+/// <summary>Вид службы здания <see cref="LotZone.Service"/> (§2.10); SR добавит прочие.</summary>
+public enum ServiceKind : byte
+{
+    None = 0,
+    Utility = 1,
 }
 
 /// <summary>Исполнитель ног (zoning-demand.md §4, §9): агенты (micro, дефолт) или агрегат (скимы и загрузка ячеек).</summary>
@@ -64,6 +74,12 @@ public struct BuildingTypeDesc
     public ushort DecayBpDay;       // buildings.json: decay_bp_day, износ в сутки, б.п.
     public ushort CeilDropBpDay;    // buildings.json: ceil_drop_bp_day, падение потолка в сутки, б.п.
     public int DemolishCost;        // buildings.json: demolish_cost, цена сноса из казны
+
+    // ---- службы (building-lifecycle.md §2.10): только Kind = Service ----
+    public int BuildCost;           // buildings.json: build_cost, цена постройки из казны (BuildService)
+    public ServiceKind ServiceKind; // buildings.json: service ("utility")
+    public byte Vehicles;           // buildings.json: vehicles, бригад (машин) депо
+    public byte VehicleType;        // buildings.json: vehicle_type, индекс типа ТС (Vehicles[]); 0 - тип машины жителя
 
     /// <summary>Стартовые значения жизни здания базового пакета по виду и плотности (§2.2, §2.5): износ, потолок, цена сноса.</summary>
     public static void LifeDefaults(LotZone kind, byte density, out ushort decay, out ushort ceilDrop, out int demolish)
@@ -113,6 +129,18 @@ public struct CityLifecycleDesc
     public int HeritageLossRadiusM; // heritage_loss_radius_m: радиус разового недовольства при сносе значимого (§2.5); дефолт 400
     public int LvBlightPermille;    // lv_blight: ‰ цены земли на очко Blight (§2.6); дефолт 5
 
+    // ---- ЖКХ (§2.10) ----
+    public int RepairRequestBp;     // repair_request_bp: заявка на ремонт при Cond ниже, б.п.; дефолт 8 500
+    public int RepairPerUnit;       // repair_per_unit: цена ремонта (Ceil - Cond) * Capacity * это / 10 000; дефолт 20
+    public int RepairMinutes;       // repair_minutes: работа бригады на месте, игровых минут (сутки = 1 440); дефолт 60
+    public int CrewDayCost;         // crew_day_cost: зарплата бригады в сутки; дефолт 120
+    public int MaxServiceVehicles;  // max_service_vehicles: ёмкость CrewStore; дефолт 512
+    public int MaxDispatchPerTick;  // max_dispatch_per_tick: выездов за тик фазы 9r; дефолт 4
+    public int TariffBurdenPct;     // tariff_burden_pct: тариф выше этой доли IncomeEwma - шанс ухода, %; дефолт 5
+    public int TariffLeaveQ16;      // tariff_leave: шанс ухода в сутки при тарифе выше порога; дефолт 0.02
+    public int MaxUtilityTariff;    // max_utility_tariff: предел тарифа (сотые в сутки на жителя); дефолт 1 000
+    public int UtilityTariff;       // utility_tariff: стартовый тариф BudgetPolicy.R0; дефолт 100
+
     /// <summary>Дефолты §2 с включённым режимом.</summary>
     public static CityLifecycleDesc Default() => new()
     {
@@ -125,6 +153,16 @@ public struct CityLifecycleDesc
         SigShift = 6,
         HeritageLossRadiusM = 400,
         LvBlightPermille = 5,
+        RepairRequestBp = 8_500,
+        RepairPerUnit = 20,
+        RepairMinutes = 60,
+        CrewDayCost = 120,
+        MaxServiceVehicles = 512,
+        MaxDispatchPerTick = 4,
+        TariffBurdenPct = 5,
+        TariffLeaveQ16 = CityDesc.Q16(0.02),
+        MaxUtilityTariff = 1_000,
+        UtilityTariff = 100,
     };
 }
 
@@ -309,7 +347,10 @@ public struct CityDesc
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;
 
-    /// <summary>6 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
+    /// <summary>Индекс типа ТС <c>utility</c> в базовом наборе (car, bus, van, truck, ambulance, fire, utility).</summary>
+    public const byte BaseUtilityVehicle = 6;
+
+    /// <summary>7 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность + депо ЖКХ); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {
         new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8, DecayBpDay = 120, CeilDropBpDay = 30, DemolishCost = 1_500 },
@@ -318,6 +359,7 @@ public struct CityDesc
         new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public, DecayBpDay = 250, CeilDropBpDay = 50, DemolishCost = 12_000 },
         new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12, DecayBpDay = 250, CeilDropBpDay = 30, DemolishCost = 2_500 },
         new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40, DecayBpDay = 400, CeilDropBpDay = 50, DemolishCost = 18_000 },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 6, DecayBpDay = 100, CeilDropBpDay = 30, DemolishCost = 5_000, BuildCost = 20_000, ServiceKind = ServiceKind.Utility, Vehicles = 4, VehicleType = BaseUtilityVehicle },
     };
 
     /// <summary>Дефолты спеки (zoning-demand.md §16) с базовой таблицей зданий; <c>Calendar.DayTicks</c> = 72 000.</summary>

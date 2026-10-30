@@ -19,6 +19,10 @@ internal static class ToolCosts
     // T9: цели остановок и линий в UndoCredits - индекс со старшим тегом вида (индексы сегментов, узлов, остановок и линий пересекаются; поколение у генератора у всех 1).
     private const int StopTag = 1 << 24;
     private const int RouteTag = 2 << 24;
+    private const int BuildingTag = 3 << 24;   // BL3: здание (депо BuildService; обратная - DemolishBuilding с битом Inverse)
+
+    /// <summary>Индекс цели undo-кредита для здания <paramref name="building"/>.</summary>
+    public static int BuildingTarget(int building) => BuildingTag | building;
 
     /// <summary>Индекс цели undo-кредита для остановки <paramref name="stop"/>.</summary>
     public static int StopTarget(int stop) => StopTag | stop;
@@ -75,6 +79,14 @@ internal static class ToolCosts
                 index = StopTarget(cmd.RemoveBusStop.Stop.Index);
                 gen = (uint)cmd.RemoveBusStop.Stop.Index < (uint)w.Net.BusStopCount
                     ? (cmd.RemoveBusStop.Stop.Generation != 0 ? cmd.RemoveBusStop.Stop.Generation : w.Net.BusStops[cmd.RemoveBusStop.Stop.Index].Generation) : 0;
+                break;
+            case CommandKind.DemolishBuilding:
+                if ((cmd.Flags & CommandFlags.Inverse) != 0)
+                {
+                    index = BuildingTarget(cmd.DemolishBuilding.Building.Index);   // только обратная BuildService: прямой снос кредит не пишет (поведение BL1)
+                    gen = cmd.DemolishBuilding.Building.Generation;
+                }
+
                 break;
             case CommandKind.RemoveBusRoute:
                 index = RouteTarget(cmd.RemoveBusRoute.Route.Index);

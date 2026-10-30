@@ -141,6 +141,9 @@ internal static partial class CommandDispatcher
             case CommandKind.DemolishBuilding:
                 DemolishBuilding(w, in cmd);
                 break;
+            case CommandKind.BuildService:
+                BuildService(w, in cmd);
+                break;
             default:
                 Rejected(w, in cmd, RejectReason.UnknownKind);
                 break;
@@ -560,6 +563,29 @@ internal static partial class CommandDispatcher
 
         City.CityLife.Demolish(w, w.City!, cmd.DemolishBuilding.Building.Index);
         AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>Депо службы (building-lifecycle.md §2.10): проверки и цена - общий валидатор; здание сразу <c>Active</c>, бригады - из свободных слотов.</summary>
+    private static void BuildService(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        City.CityWorld c = w.City!;
+        if (!City.Utilities.BuildDepot(w, c, cmd.BuildService.Lot, cmd.BuildService.Type))
+        {
+            RejectTool(w, in cmd, RejectReason.Capacity);   // пул зданий полон
+            return;
+        }
+
+        int bi = c.Lots.Building[cmd.BuildService.Lot];
+        ToolCosts.Settle(w, in cmd, in chk, ToolCosts.BuildingTarget(bi), c.Buildings.Pool.GenerationOf(bi));
+        Applied(w, in cmd);
     }
 
     /// <summary>

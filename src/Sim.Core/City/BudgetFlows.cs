@@ -38,7 +38,7 @@ internal static class BudgetFlows
             return (p.Flags & BudgetPolicyFlags.Enable) != 0 ? Enable(w, c) : RejectReason.BudgetRule;
         }
 
-        RejectReason why = CityBudget.CheckPolicy(in c.Cfg.Economy, in p);
+        RejectReason why = CityBudget.CheckPolicy(in c.Cfg.Economy, in c.Cfg.Lifecycle, in p);
         if (why != RejectReason.None)
         {
             return why;
@@ -88,7 +88,7 @@ internal static class BudgetFlows
         int ys = (c.Day + 1) & 1;
         for (int i = 0; i < bs.HighWater; i++)
         {
-            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind != LotZone.Residential)
+            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind is not (LotZone.Residential or LotZone.Service))
             {
                 bs.PayrollEwma[i] = Payroll(c, i);
             }
@@ -120,7 +120,7 @@ internal static class BudgetFlows
         BuildingStore bs = c.Buildings;
         for (int i = 0; i < bs.HighWater; i++)
         {
-            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind != LotZone.Residential)
+            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind is not (LotZone.Residential or LotZone.Service))
             {
                 bs.PayrollEwma[i] = Payroll(c, i);
             }
@@ -176,7 +176,7 @@ internal static class BudgetFlows
             if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active)
             {
                 ref readonly BuildingTypeDesc t = ref c.Types.Rows[bs.Type[i]];
-                if (t.Kind != LotZone.Residential)
+                if (t.Kind is not (LotZone.Residential or LotZone.Service))
                 {
                     landBase += LandAt(c, b, bs.Lot[i]) * t.Capacity;
                 }
@@ -242,6 +242,12 @@ internal static class BudgetFlows
         long landBase = LandAt(c, b, bs.Lot[bi]) * t.Capacity;
         long rent = c.Ledger.TransferPct(acct, c.Ledger.CityAccount, landBase, b.Policy.LandTaxBpDay, FlowKind.Rent);
         bs.CostDay[todaySlot] += rent;
+        if (b.Policy.R0 != 0)
+        {
+            // квартплата ЖКХ фирмы за место (building-lifecycle.md §2.10): тариф * Capacity, в расходы сегодняшних суток
+            bs.CostDay[todaySlot] += c.Ledger.TransferPct(acct, c.Ledger.UtilityAccount, (long)b.Policy.R0 * t.Capacity, UtilityRateBp, FlowKind.UtilityFee);
+        }
+
         return tax;
     }
 
@@ -269,6 +275,9 @@ internal static class BudgetFlows
     }
 
     /// <summary>Дневной проход жителя (§3, §7.2): земля за место, затем утечка остатка сверх <c>res_buffer_days * IncomeEwma</c>. Выселение за долг - E3.</summary>
+    /// <summary>Ставка сбора квартплаты: тариф в сотых денег -> <c>TransferPct(тариф, 100 б.п.)</c> = тариф / 100 с переносом остатка.</summary>
+    internal const int UtilityRateBp = 100;
+
     internal static void ResidentDay(CityWorld c, int r)
     {
         CityBudget? b = c.Budget;
@@ -284,6 +293,11 @@ internal static class BudgetFlows
         if (home >= 0)
         {
             c.Ledger.TransferPct(acct, c.Ledger.CityAccount, LandAt(c, b, c.Buildings.Lot[home]), b.Policy.LandTaxBpDay, FlowKind.Rent);
+            if (b.Policy.R0 != 0)
+            {
+                // квартплата ЖКХ (building-lifecycle.md §2.10): R0 - сотые в сутки на жителя, в фонд Utility (R0 != 0 только в режиме city.lifecycle)
+                c.Ledger.TransferPct(acct, c.Ledger.UtilityAccount, b.Policy.R0, UtilityRateBp, FlowKind.UtilityFee);
+            }
         }
 
         long pay = (res.Account[r] - (e.ResBufferDays * res.IncomeEwma[r])) >> e.PayoutShift;

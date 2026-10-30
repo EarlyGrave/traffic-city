@@ -149,6 +149,8 @@ public sealed partial class Simulation
                 case LotZone.Commercial:
                     stats.BuildingsC++;
                     break;
+                case LotZone.Service:
+                    break;   // депо службы (building-lifecycle.md §2.10) - не R/C/I
                 default:
                     stats.BuildingsI++;
                     break;
@@ -214,7 +216,7 @@ public sealed partial class Simulation
     /// <summary>Число видов потоков денег (<see cref="FlowKind"/>): минимальная длина буфера <see cref="CopyFlowTotals"/>.</summary>
     public const int FlowKindCount = Ledger.FlowCount;
 
-    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера, за текущие сутки или с начала симуляции (<paramref name="period"/>); длина <paramref name="dst"/> не меньше <see cref="FlowKindCount"/> (17).</summary>
+    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера, за текущие сутки или с начала симуляции (<paramref name="period"/>); длина <paramref name="dst"/> не меньше <see cref="FlowKindCount"/> (22).</summary>
     public bool CopyFlowTotals(Span<long> dst, FlowPeriod period)
     {
         CityWorld? c = _disposed ? null : _w.City;

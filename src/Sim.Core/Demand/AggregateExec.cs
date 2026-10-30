@@ -335,6 +335,13 @@ internal static class AggregateExec
             return 0;
         }
 
+        // ЖКХ (building-lifecycle.md §2.10): тик выезда или срока бригады исполняется обычным путём
+        n = Math.Min(n, Utilities.NextWorkTick(c, tick) - tick);
+        if (n <= 0)
+        {
+            return 0;
+        }
+
         long due = c.Wheel.NextDue(tick - 1, tick + n - 1);
         if (due != long.MaxValue)
         {

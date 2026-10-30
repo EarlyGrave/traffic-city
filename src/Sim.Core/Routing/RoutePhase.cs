@@ -438,9 +438,13 @@ internal static class RoutePhase
             {
                 trips.RemoveAt(k); // не на дороге: поездка отбрасывается (RouteFailed считает роутер)
                 w.Counters.TripsDropped++;
-                if (t.ResidentRef != 0)
+                if (t.ResidentRef > 0)
                 {
                     City.TripLegs.OnTripDropped(w, t.ResidentRef - 1, in t);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
+                }
+                else if (t.ResidentRef < 0)
+                {
+                    City.Utilities.OnTripDropped(w, -t.ResidentRef - 1);   // бригада ЖКХ без пути (building-lifecycle.md §2.10)
                 }
 
                 continue;

@@ -55,6 +55,22 @@ public static class ContentFingerprint
         BinaryPrimitives.WriteInt32LittleEndian(b[16..], d.ShiftSlots);
         BinaryPrimitives.WriteInt32LittleEndian(b[20..], d.ConstructDays);
         BinaryPrimitives.WriteInt32LittleEndian(b[24..], d.AttractQ8);
+        if (d.ServiceKind != ServiceKind.None || d.BuildCost != 0)
+        {
+            // служба (BL3, building-lifecycle.md §2.10): поля службы - в хвост; у прочих типов отпечаток прежний
+            Span<byte> s = stackalloc byte[48];
+            b.CopyTo(s);
+            BinaryPrimitives.WriteInt32LittleEndian(s[28..], d.ParkingCapacity);
+            BinaryPrimitives.WriteInt32LittleEndian(s[32..], (int)d.ParkingAccess);
+            BinaryPrimitives.WriteInt32LittleEndian(s[36..], d.ParkingFee);
+            BinaryPrimitives.WriteInt32LittleEndian(s[40..], d.BuildCost);
+            s[44] = (byte)d.ServiceKind;
+            s[45] = d.Vehicles;
+            s[46] = d.VehicleType;
+            s[47] = 0;
+            return XxHash64.HashToUInt64(s);
+        }
+
         if (d.ParkingCapacity == 0 && d.ParkingAccess == ParkingAccess.Private && d.ParkingFee == 0)
         {
             return XxHash64.HashToUInt64(b[..28]);   // без парковки отпечаток прежний (пакеты до world_version 10)

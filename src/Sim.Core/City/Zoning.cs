@@ -96,7 +96,7 @@ internal static class Zoning
             cells += l.Orient[i] == LotOrient.Legacy ? 1 : Math.Max(1, l.CellsF[i] * l.CellsD[i]);
             byte state = PaintLotMarkState.Zoned;
             int bi = l.Building[i];
-            if (bi >= 0 && b.IsAlive(bi) && (byte)c.Types.Rows[b.Type[bi]].Kind != p.ZoneKind)
+            if (bi >= 0 && b.IsAlive(bi) && (byte)c.Types.Rows[b.Type[bi]].Kind != p.ZoneKind && c.Types.Rows[b.Type[bi]].Kind != LotZone.Service)
             {
                 if (b.State[bi] != (byte)BuildingState.Abandoned)
                 {

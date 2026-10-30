@@ -62,6 +62,10 @@ internal static class Growth
             }
 
             b.Jobs[bi] = 0;
+            if (c.Types.Rows[b.Type[bi]].Kind == LotZone.Service)
+            {
+                Utilities.OnDepotLost(c, bi);   // депо не работает: бригады в депо распущены (building-lifecycle.md §2.10)
+            }
         }
 
         b.State[bi] = (byte)BuildingState.Abandoned;

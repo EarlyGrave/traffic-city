@@ -67,6 +67,12 @@ internal static partial class SaveValidator
             return st;
         }
 
+        st = ValidateUtility(c, w, city);
+        if (st != LoadStatus.Ok)
+        {
+            return st;
+        }
+
         st = ValidateCityLists(c, city);
         if (st != LoadStatus.Ok)
         {
@@ -176,7 +182,7 @@ internal static partial class SaveValidator
 
         byte f = b.LifeFlags[i];
         return b.Signif[i] >= 0 && b.ArrivalsDay[2 * i] >= 0 && b.ArrivalsDay[(2 * i) + 1] >= 0 && b.Cond[i] <= b.Ceil[i] && b.Ceil[i] <= CityLife.Full && b.BornDay[i] >= 0 && b.BornDay[i] <= city.Day
-            && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified)) == 0
+            && (f & ~(BuildingLifeFlags.Demolishing | BuildingLifeFlags.WornNotified | BuildingLifeFlags.Requested)) == 0
             && ((f & BuildingLifeFlags.Demolishing) == 0 || b.State[i] == (byte)BuildingState.Abandoned);
     }
 
@@ -290,7 +296,7 @@ internal static partial class SaveValidator
         for (int v = 0; v < veh.HighWater; v++)
         {
             int res = veh.ResidentOf(v);
-            if (res == -1 || !veh.Alive(v))
+            if (res < 0 || !veh.Alive(v))   // -1 - без жителя; <= -2 - бригада ЖКХ (ValidateUtility)
             {
                 continue;
             }
@@ -298,6 +304,98 @@ internal static partial class SaveValidator
             if (!r.Pool.IsAlive(res) || r.State[res] != (byte)ResidentState.InLeg || r.LegMode[res] != (byte)TravelMode.Car || r.Agent[res] != v || r.AgentGen[res] != veh.Generation(v))
             {
                 return Bad(c, v, 41);
+            }
+        }
+
+        return LoadStatus.Ok;
+    }
+
+    // ЖКХ (building-lifecycle.md §2.10, BL3): фонд только при службе; заявки очереди; состояния бригад; машины бригад <-> бригады; Requested у цели бригады в пути/на работе.
+    private static LoadStatus ValidateUtility(LoadContext c, World w, CityWorld city)
+    {
+        UtilityService? u = city.Utility;
+        VehicleStoreView veh = new(w);
+        if (u == null)
+        {
+            if (city.Ledger.Utility != 0)
+            {
+                return Bad(c, 0, 60);
+            }
+
+            for (int v = 0; v < veh.HighWater; v++)
+            {
+                if (veh.Alive(v) && veh.ResidentOf(v) <= -2)
+                {
+                    return Bad(c, v, 61);
+                }
+            }
+
+            return LoadStatus.Ok;
+        }
+
+        BuildingStore b = city.Buildings;
+        int bcap = b.Pool.Capacity;
+        for (int i = 0; i < u.Queue.Count; i++)
+        {
+            ref readonly RepairRequest q = ref u.Queue.At(i);
+            if ((uint)q.Building >= (uint)bcap || q.Gen < 0 || q.Tick < 0 || q.Tick > w.Tick)
+            {
+                return Bad(c, i, 62);
+            }
+        }
+
+        for (int k = 0; k < u.Capacity; k++)
+        {
+            byte st = u.State[k];
+            if (st > CrewState.Return)
+            {
+                return Bad(c, k, 63);
+            }
+
+            if (st == CrewState.Free)
+            {
+                if (u.Depot[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1)
+                {
+                    return Bad(c, k, 63);
+                }
+
+                continue;
+            }
+
+            bool busy = st is CrewState.ToSite or CrewState.Working;
+            if ((uint)u.Depot[k] >= (uint)bcap || u.DepotGen[k] < 0 || u.Target[k] < -1 || u.Target[k] >= bcap || u.TargetGen[k] < 0 ||
+                u.SiteLot[k] < -1 || u.SiteLot[k] >= city.Lots.Count || u.DueTick[k] < 0 || u.ReqTick[k] < 0 || u.ReqTick[k] > w.Tick ||
+                (st == CrewState.Idle && (u.Target[k] != -1 || u.Vehicle[k] != -1)) || (busy && u.Target[k] == -1))
+            {
+                return Bad(c, k, 64);
+            }
+
+            int t = u.Target[k];
+            if (busy && b.Pool.IsAlive(t, u.TargetGen[k]) && (b.LifeFlags[t] & BuildingLifeFlags.Requested) == 0)
+            {
+                return Bad(c, k, 65);
+            }
+
+            int vi = u.Vehicle[k];
+            // машину могли убрать (клапан перегрузки, стоп-кран): бригада дождётся таймаута; живая машина обязана ссылаться на бригаду
+            if (vi != -1 && (st is CrewState.Idle or CrewState.Working || vi >= veh.HighWater || (veh.IsAlive(vi, u.VehicleGen[k]) && veh.ResidentOf(vi) != -2 - k)))
+            {
+                return Bad(c, k, 66);
+            }
+        }
+
+        for (int v = 0; v < veh.HighWater; v++)
+        {
+            int res = veh.ResidentOf(v);
+            if (res > -2 || !veh.Alive(v))
+            {
+                continue;
+            }
+
+            int k = -2 - res;
+            if (k >= u.Capacity || u.Vehicle[k] != v || u.VehicleGen[k] != veh.Generation(v))
+            {
+                return Bad(c, v, 67);
             }
         }
 
@@ -501,8 +599,8 @@ internal static partial class SaveValidator
         }
 
         CityEconomyDesc e = city.Cfg.Economy;
-        if (CityBudget.CheckPolicy(in e, in b.Policy) != RejectReason.None || b.HasPending > 1 ||
-            (b.HasPending == 1 ? CityBudget.CheckPolicy(in e, in b.PendingPolicy) != RejectReason.None : !CityBudget.Same(in b.PendingPolicy, default(BudgetPolicy))))
+        if (CityBudget.CheckPolicy(in e, in city.Cfg.Lifecycle, in b.Policy) != RejectReason.None || b.HasPending > 1 ||
+            (b.HasPending == 1 ? CityBudget.CheckPolicy(in e, in city.Cfg.Lifecycle, in b.PendingPolicy) != RejectReason.None : !CityBudget.Same(in b.PendingPolicy, default(BudgetPolicy))))
         {
             return Bad(c, 0, 9);
         }

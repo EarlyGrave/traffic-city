@@ -113,11 +113,18 @@ internal sealed class CityBudget
     /// Проверка политики (§11): резерв и неизвестные биты - <see cref="RejectReason.InvalidArgument"/>; бит <c>Enable</c> обязан стоять (бюджет не выключить), ставки не выше
     /// <c>max_tax_bp</c> / <c>max_land_bp_day</c> / <c>max_fare</c> - иначе <see cref="RejectReason.BudgetRule"/>.
     /// </summary>
-    public static RejectReason CheckPolicy(in CityEconomyDesc e, in BudgetPolicy p)
+    public static RejectReason CheckPolicy(in CityEconomyDesc e, in CityLifecycleDesc lf, in BudgetPolicy p)
     {
-        if ((p.Flags & ~BudgetPolicyFlags.Enable) != 0 || p.R0 != 0 || p.R1 != 0)
+        // Режим city.lifecycle (building-lifecycle.md §2.10): R0 - тариф ЖКХ, бит UtilitySubsidy; без режима - резерв.
+        ushort known = lf.Enabled ? (ushort)(BudgetPolicyFlags.Enable | BudgetPolicyFlags.UtilitySubsidy) : BudgetPolicyFlags.Enable;
+        if ((p.Flags & ~known) != 0 || (!lf.Enabled && p.R0 != 0) || p.R1 != 0)
         {
             return RejectReason.InvalidArgument;
+        }
+
+        if (lf.Enabled && p.R0 > lf.MaxUtilityTariff)
+        {
+            return RejectReason.BudgetRule;
         }
 
         if ((p.Flags & BudgetPolicyFlags.Enable) == 0 || p.TaxRBp > e.MaxTaxBp || p.TaxCBp > e.MaxTaxBp || p.TaxIBp > e.MaxTaxBp || p.LandTaxBpDay > e.MaxLandBp || p.Fare > e.MaxFare)

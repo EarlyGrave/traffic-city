@@ -224,6 +224,7 @@ public static class UiNotifyMap
         ComplaintKind.BuildingWorn => "Жители: дом ветшает",
         ComplaintKind.HeritageLost => "Жители: снесли значимое здание",
         ComplaintKind.Blight => "Жители: заброшенные дома в квартале",
+        ComplaintKind.HighRent => "Жители: дорогая квартплата",
         _ => "Жалоба жителей",
     };
 

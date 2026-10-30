@@ -29,6 +29,18 @@ public static partial class ScenarioLoader
         d.SigShift = r.Int("sig_shift", d.SigShift, min: 1, max: 16);
         d.HeritageLossRadiusM = r.Int("heritage_loss_radius_m", d.HeritageLossRadiusM, min: 0, max: 10_000);
         d.LvBlightPermille = r.Int("lv_blight", d.LvBlightPermille, min: 0, max: 100);
+
+        // ЖКХ (§2.10, BL3)
+        d.RepairRequestBp = DetRound(r.Num("repair_request", 0.85, min: 0.5, max: 1) * 10_000.0);
+        d.RepairPerUnit = r.Int("repair_per_unit", d.RepairPerUnit, min: 0, max: 1_000_000);
+        d.RepairMinutes = r.Int("repair_minutes", d.RepairMinutes, min: 1, max: 14_400);
+        d.CrewDayCost = r.Int("crew_day_cost", d.CrewDayCost, min: 0, max: 1_000_000);
+        d.MaxServiceVehicles = r.Int("max_service_vehicles", d.MaxServiceVehicles, min: 0, max: 65_536);
+        d.MaxDispatchPerTick = r.Int("max_dispatch_per_tick", d.MaxDispatchPerTick, min: 1, max: 64);
+        d.TariffBurdenPct = r.Int("tariff_burden_pct", d.TariffBurdenPct, min: 0, max: 100);
+        d.TariffLeaveQ16 = CityDesc.Q16(r.Num("tariff_leave", 0.02, min: 0, max: 1));
+        d.MaxUtilityTariff = r.Int("max_utility_tariff", d.MaxUtilityTariff, min: 0, max: ushort.MaxValue);
+        d.UtilityTariff = r.Int("utility_tariff", d.UtilityTariff, min: 0, max: d.MaxUtilityTariff);
         r.Finish();
         if (d.Enabled && !town.Economy.CityBudget)
         {

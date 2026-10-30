@@ -868,6 +868,10 @@ internal sealed class QueueMeso
         {
             City.TripLegs.OnVehicleArrived(w, i);
         }
+        else if (v.Resident[i] <= -2)
+        {
+            City.Utilities.OnVehicleArrived(w, i);   // бригада ЖКХ (building-lifecycle.md §2.10)
+        }
 
         _occ.UnlinkAll(i);   // OnRemove: выход из очереди, ведомый освобождается
         if (v.Route[i] >= 0)

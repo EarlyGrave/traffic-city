@@ -32,6 +32,9 @@ internal sealed class CityWorld
     /// <summary>Поля квартала (building-lifecycle.md §2.6); <c>null</c> без <c>city.lifecycle</c>.</summary>
     public readonly NeighborhoodFields? Fields;
 
+    /// <summary>ЖКХ: бригады, очередь заявок, кольцо прибытий (building-lifecycle.md §2.10); <c>null</c> без <c>city.lifecycle</c>.</summary>
+    public readonly UtilityService? Utility;
+
     /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
     public CityBudget? Budget;
 
@@ -105,6 +108,11 @@ internal sealed class CityWorld
         if (cfg.Lifecycle.Enabled)
         {
             Fields = new NeighborhoodFields(in grid, cfg.Lifecycle.CellM);
+            Utility = new UtilityService(cfg.Lifecycle.MaxServiceVehicles, caps.MaxBuildings);
+            if (Budget != null)
+            {
+                Budget.Policy.R0 = (ushort)cfg.Lifecycle.UtilityTariff;   // тариф ЖКХ по умолчанию (§2.10)
+            }
         }
 
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
@@ -150,6 +158,7 @@ internal sealed class CityWorld
     {
         Wheel.Clear();
         Arrivals.Clear();
+        Utility?.Arrivals.Clear();
         CityResidents r = Residents;
         for (int i = 0; i < r.HighWater; i++)
         {

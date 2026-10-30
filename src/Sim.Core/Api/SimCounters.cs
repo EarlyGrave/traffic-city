@@ -158,6 +158,12 @@ public struct SimCounters
     public long BuildingsCrumbled;        // рассыпалось (Cond = 0) и убрано
     public long BuildingsDemolished;      // снесено игроком (DemolishBuilding)
     public long BuildingsResettled;       // заброшенных заселено повторно (Abandoned -> Active)
+    // --- ЖКХ (building-lifecycle.md §2.10, BL3): в сейве (CNTR) всегда, в хэше - только в режиме city.lifecycle ---
+    public long RepairsDone;              // ремонтов бригадами
+    public long RepairDelayTicksTotal;    // Σ тиков от заявки до ремонта (средняя задержка = / RepairsDone)
+    public long RepairNoDepot;            // заявок снято: нет депо в дорожной компоненте
+    public long CrewTimeouts;             // таймаутов поездки бригады (micro)
+    public long TariffLeaves;             // жителей уехало из-за квартплаты (HighRent)
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

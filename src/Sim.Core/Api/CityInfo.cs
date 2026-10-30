@@ -33,7 +33,7 @@ public enum AccessKind : byte
     Jobs = 1,       // LS_jobs: logsum до рабочих мест
 }
 
-/// <summary>Вид потока денег (zoning-demand.md §7.1, city-economy.md §2.1). Числа лежат в сейве; новые - только в конец. Всего <see cref="Simulation.FlowKindCount"/> = 17.</summary>
+/// <summary>Вид потока денег (zoning-demand.md §7.1, city-economy.md §2.1). Числа лежат в сейве; новые - только в конец. Всего <see cref="Simulation.FlowKindCount"/> = 22.</summary>
 public enum FlowKind : byte
 {
     Endowment = 0,
@@ -53,6 +53,11 @@ public enum FlowKind : byte
     Dividend = 14,      // фирма -> External: остаток сверх буфера
     Leakage = 15,       // житель -> External: траты вне города сверх буфера
     Refund = 16,        // External -> City: возврат за снос, понижение, undo
+    UtilityFee = 17,    // житель/фирма -> Utility: квартплата (building-lifecycle.md §2.10, режим city.lifecycle)
+    Repair = 18,        // Utility -> External: ремонт бригадой ЖКХ
+    CrewWages = 19,     // Utility -> External: зарплата бригад
+    Restoration = 20,   // City -> External: капремонт (резерв BL4)
+    UtilitySubsidy = 21, // City -> Utility: субсидия ЖКХ из казны (флаг политики UtilitySubsidy)
 }
 
 /// <summary>Здание для клиента: 24 байта (zoning-demand.md §13). Индекс в массиве = слот пула зданий; мёртвый слот - <c>Kind = 0</c>.</summary>
@@ -207,6 +212,9 @@ public static class BudgetPolicyFlags
 {
     /// <summary>Бюджет включён. У города с бюджетом бит обязан стоять в каждой политике (выключить нельзя); у города без бюджета - запрос <c>Enable</c> (E2).</summary>
     public const ushort Enable = 1;
+
+    /// <summary>Субсидия ЖКХ из казны (building-lifecycle.md §2.10, только режим <c>city.lifecycle</c>): дефицит фонда <c>Utility</c> покрывает <c>City</c>.</summary>
+    public const ushort UtilitySubsidy = 2;
 }
 
 /// <summary>
@@ -222,7 +230,7 @@ public struct BudgetPolicy
     public ushort LandTaxBpDay;    // 6..7   земельный налог в сутки от цены места
     public ushort Fare;            // 8..9   плата за автобусную ногу
     public ushort Flags;           // 10..11 BudgetPolicyFlags
-    public ushort R0, R1;          // 12..15 резерв, обязаны быть 0
+    public ushort R0, R1;          // 12..15 R0 - тариф ЖКХ (сотые в сутки на жителя, только режим city.lifecycle, иначе 0); R1 - резерв, 0
 }
 
 /// <summary>Состояние бюджета города для клиента (<see cref="Simulation.GetCityBudget"/>, city-economy.md §10). Потоки по видам за вчера - <see cref="Simulation.CopyFlowTotals"/>.</summary>

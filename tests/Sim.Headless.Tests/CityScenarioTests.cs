@@ -53,7 +53,7 @@ public class CityScenarioTests
         Assert.Equal(def.Residents, t.Residents);
         Assert.Equal(def.Economy, t.Economy);
         Assert.Equal(def.Choice, t.Choice);
-        Assert.Equal(6, t.BuildingTypes.Length);   // v2: базовая таблица
+        Assert.Equal(7, t.BuildingTypes.Length);   // v2: базовая таблица (BL3: седьмая строка - депо ЖКХ)
         Assert.Equal(100, d.Capacities.MaxLots);
         Assert.Equal(80, d.Capacities.MaxBuildings);
         Assert.Equal(500, d.Capacities.MaxCityResidents);
