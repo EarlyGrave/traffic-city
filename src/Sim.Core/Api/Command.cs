@@ -47,7 +47,8 @@ public enum CommandKind : ushort
     RestoreBuilding = 40,   // капремонт (§2.9): Cond = Ceil = 100 %, цена Capacity * restore_per_unit * (2 - Cond/10000) из казны (поток Restoration), необратим; < 50 % отклоняется
     // 41 SetMonument - отложен решением владельца (§2.8)
     BuildService = 42,      // депо службы (ЖКХ) на пустой участок: цена build_cost из казны; обратная - DemolishBuilding с возвратом по undo_refund_s (§6.2)
-    // 43 UpgradeService, 44 SetServiceUpgrade - резерв SR5 (services.md §6)
+    UpgradeService = 43,    // SR5 (services.md §2.8): уровень +1 на месте, до 3 участков-пристроек (выкуп соседей); с битом Inverse - понижение на уровень (undo в окне undo_refund_s)
+    SetServiceUpgrade = 44, // SR5: локальный апгрейд уровня (бит UpgradeMask станции) вкл/выкл; цена cost при включении, возврат только по undo-кредиту
 
     // Городские службы (services.md §2.4, §6, SR2).
     SetServiceBudget = 45,  // ползунок бюджета записи 50..150 % шагом 10: ожидающий, действует с границы суток; только в режиме city.services
@@ -185,6 +186,12 @@ public struct Command
 
     [FieldOffset(8)]
     public SetServiceBudgetCmd SetServiceBudget;
+
+    [FieldOffset(8)]
+    public UpgradeServiceCmd UpgradeService;
+
+    [FieldOffset(8)]
+    public SetServiceUpgradeCmd SetServiceUpgrade;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -411,6 +418,26 @@ public struct Command
         c.Kind = CommandKind.SetServiceBudget;
         c.Tag = tag;
         c.SetServiceBudget = new SetServiceBudgetCmd { Svc = svc, Pct = pct };
+        return c;
+    }
+
+    /// <summary>Уровень +1 станции <paramref name="building"/> (SR5, services.md §2.8); <paramref name="annex0"/>..<paramref name="annex2"/> - участки-пристройки (-1 - нет).</summary>
+    public static Command MakeUpgradeService(EntityRef building, int annex0 = -1, int annex1 = -1, int annex2 = -1, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.UpgradeService;
+        c.Tag = tag;
+        c.UpgradeService = new UpgradeServiceCmd { Building = building, Annex0 = annex0, Annex1 = annex1, Annex2 = annex2 };
+        return c;
+    }
+
+    /// <summary>Локальный апгрейд <paramref name="id"/> (номер в списке апгрейдов текущего уровня, 0..7) станции <paramref name="building"/> (SR5, services.md §2.8).</summary>
+    public static Command MakeSetServiceUpgrade(EntityRef building, int id, bool on, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetServiceUpgrade;
+        c.Tag = tag;
+        c.SetServiceUpgrade = new SetServiceUpgradeCmd { Building = building, Id = id, On = on ? 1 : 0 };
         return c;
     }
 
@@ -651,6 +678,31 @@ public struct SetServiceBudgetCmd
 {
     public int Svc;
     public int Pct;
+}
+
+/// <summary>
+/// <see cref="CommandKind.UpgradeService"/> (SR5, services.md §2.8): станция и до 3 участков-пристроек (индексы участков, -1 - нет). Пристройки - соседи станции по фасаду подряд (той же стороны
+/// того же сегмента); занятые выкупаются со сносом. С <see cref="CommandFlags.Inverse"/> - понижение уровня; перечисленные пристройки освобождаются.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct UpgradeServiceCmd
+{
+    public EntityRef Building;
+    public int Annex0;
+    public int Annex1;
+    public int Annex2;
+
+    /// <summary>Участок-пристройка с номером 0..2 или -1.</summary>
+    public readonly int AnnexAt(int k) => k switch { 0 => Annex0, 1 => Annex1, 2 => Annex2, _ => -1 };
+}
+
+/// <summary><see cref="CommandKind.SetServiceUpgrade"/> (SR5): станция, номер апгрейда в списке текущего уровня (0..7) и включить (1) / выключить (0).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetServiceUpgradeCmd
+{
+    public EntityRef Building;
+    public int Id;
+    public int On;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

@@ -308,6 +308,7 @@ internal static class Growth
 
             marked[i] = false;
             int lot = b.Lot[i];
+            ServiceLevels.OnBuildingRemoved(c, i);   // станция снесена: её пристройки возвращаются в обычные участки (SR5)
             if (life)
             {
                 CityLife.OnRemove(w, c, i);   // рассыпавшееся - дешёвая очистка из казны (§2.5)
@@ -403,7 +404,7 @@ internal static class Growth
         for (int i = 0; i < l.Count; i++)
         {
             int z = l.Zone[i] - 1;
-            if (z < 0 || z > 2 || want[z] == 0 || (l.Flags[i] & LotFlags.Lost) != 0)
+            if (z < 0 || z > 2 || want[z] == 0 || (l.Flags[i] & (LotFlags.Lost | LotFlags.Annex)) != 0)
             {
                 continue;
             }

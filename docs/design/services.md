@@ -197,6 +197,22 @@
 - **Локальные апгрейды** — `SetServiceUpgrade {Building, Id, On}`: бит в `UpgradeMask` (до 8 на уровень), эффект из перечисления §2.2.
   Снятие — без возврата денег, кроме окна `undo_refund_s`.
 - **Снос** станции — `DemolishBuilding` BL: машины в пути доезжают и исчезают, вызовы возвращаются в голову очереди.
+- **Реализация SR5** (отклонения от текста выше):
+  - Станция хранит список пристроек `SiteStore.Annex[site·8 + k]` (SERV 48), а `Lots.Building[annex]` **не переписывается**: у пристройки только бит `LotFlags.Annex`
+    (занятый сосед сносится асинхронно, как в BL §2.5, и после уборки здания участок остаётся пустым, но рост его пропускает). `Annex` в снапшоте участка — `LotRenderFlags.Annex 16`.
+    До 8 пристроек на станцию; снос станции освобождает их все (`ServiceLevels.OnBuildingRemoved`).
+  - «Соседи подряд по `S`» — порядковый номер участка в ряду своей стороны сегмента (`ServiceLevels.Rank`, по середине отрезка фасада); участки станции и пристроек должны занимать
+    подряд идущие номера без дыр, Lost-участок в ряду — дыра. `lot_min`: Σ клеток по фасаду ≥ `lot_min[0]`, max глубины ≥ `lot_min[1]`; участки без сетки (legacy) не проверяются.
+  - Цена: `build_cost` следующего уровня + для каждой занятой пристройки `annex_buy_pct`/100 · (`LandAt` участка · клеток) + `demolish_cost` здания. Земля бесплатна при отсутствии `city_budget`.
+    `BuildService` на уровень L = Σ `build_cost` уровней 1..L. Памятник и соседнюю службу выкупить нельзя (`ZoneRule`, `Value` 3).
+  - Код отказа `ZoneRule` у служб несёт причину в `Value` превью: 1 — мал для `lot_min`, 2 — пристройки не подряд / другая сторона, 3 — выкуп запрещён. Предупреждение
+    `ServiceAnnexBuyout` (118, `Value` = сколько зданий уйдёт под снос).
+  - Повышение уровня меняет `Buildings.Type` на тип уровня, ставит `Cond = Ceil = 100 %`, **сбрасывает маску локальных апгрейдов** (номера апгрейдов — в списке уровня) и пересчитывает
+    бригады (`ServiceLevels.Resize`: недостающие слоты — `OffDuty`, лишние стоящие — роспуск; нет слотов — `Capacity`, нет стоящих — `Busy`). Понижение (`UpgradeService` с `Inverse`) —
+    обратное, освобождает перечисленные пристройки; выкуп undo не возвращает (`ToolCheck.NoRefundCost`).
+  - `SetServiceUpgrade {Building, Id, On}`: `Id` — номер в списке апгрейдов **текущего** уровня (0..7). Выключение денег не возвращает, кроме undo-кредита; подделанный `Inverse` у включения цену не снимает.
+  - Веха `milestone` уровня/апгрейда: `Progression.Check` по `ProgressionState.Reached ≥ k` (`Locked`, в превью `Value` = `Defs[k − 1]`); без прогрессии открыто всё.
+  - Окно `world_version` w18 закрыто: версия остаётся 18, схема SERV/CNTR/PARM/RESD/BTYP после SR5 зафиксирована до RA.
 
 ### 2.9 Охват на карте
 Не круг, а факт: поля `RespEwma[rec, cell]` (секунды отклика, выездные записи) и `CareEwma[cell]` (стоимость ноги к службе) на сетке
@@ -317,7 +333,7 @@ BL 128 м, `ushort`, EWMA `>> 3` на каждом событии в клетк�
 | **SR2** | Диспетчер: срочные кольца, выбор станции по скиму, `SetOnCall`, `OffDuty`, `SetServiceBudget`, `Duty`, `onsite_q`, расходы и `ServiceUpkeep`, `SvcCostDay`, отклик, `RespEwma`, API `GetServiceStats/Calls/Coverage` | **opus** (диспетчер, деньги CZ2) | `City/CityServices*`, `City/{Economy,Ledger}.cs`, `Api/*`, `Save/*` | тесты 3, 4, 5; детерминизм; `bench-gate` s1k |
 | **SR3** | Болезнь и «к ним ходят»: `Ill`, бросок в `Build`, `TourKind.Care`, выбор станции, запись, койки, `CompleteLeg`, вызов `critical`, доставка в реанимацию, сроки, жалобы, `CareEwma` | **opus** (план дня, ноги, агрегат) | `City/{DayPlan,TripLegs,CityResidents,CityServices*}.cs`, `Api/*`, `Save/*` | тест 7; агрегат ≡ micro по событиям; `bench-gate` s1k |
 | **SR4** | Пожар: бросок в стадии «здания», `FireStore`, стадии, вызов `fire`, тушение, BL-последствия, события | sonnet | `City/{Economy,CityServices*}.cs`, `Api/*`, `Save/*` | тест 6 (механика) |
-| **SR5** | Уровни и апгрейды: `BuildService` по уровню, `UpgradeService` с пристройками и выкупом, `SetServiceUpgrade`, эффекты, `milestone`, превью, обратные; окно `world_version` закрывается | sonnet | `Tools/*`, `City/{LotStore,CityServices*,Progression.Rules}.cs`, `Api/*`, `Save/*` | тест 8; детерминизм 1/2/3 |
+| **SR5** ✓ | Уровни и апгрейды: `BuildService` по уровню, `UpgradeService` с пристройками и выкупом, `SetServiceUpgrade`, эффекты, `milestone`, превью, обратные; окно `world_version` закрывается | sonnet | `Tools/*`, `City/{LotStore,CityServices*,Progression.Rules}.cs`, `Api/*`, `Save/*` | тест 8; детерминизм 1/2/3 |
 | **SR6** | Сценарии `s1k-res-sr`, `s10k-res-sr`, режим в игровых сценариях, записи базового пакета, калибровка (тест 6 зелёный, отклик и загрузка правдоподобны), корпус, эталоны игровых сценариев, отчёт §8, доки (`zoning-demand.md` §3, `city-economy.md`, `progression.md`, `scenario-format.md`, `save-format.md`, `modding.md`) | sonnet (калибровка) + haiku (верификатор, облако) | `scenarios/*`, `content/base/*`, `tests/SaveCorpus/*`, `docs/*` | `bench-gate` s1k в облаке; цифры — из прогонов |
 | **SR7** | Смерть, кладбища, крематории, вывоз тел (после SR6; решение 10.3, §10.0) | opus | `City/{CityServices*,CityResidents}.cs`, `Api/*`, `Save/*`, `content/base/*` | сначала короткая спека-дополнение |
 

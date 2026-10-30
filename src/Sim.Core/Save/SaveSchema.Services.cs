@@ -12,6 +12,7 @@ namespace Sim.Core.Save;
 //   Отклонение от спеки: SERV есть и без режима служб - бригады ЖКХ BL живут в нём (без режима одна встроенная запись utility).
 //   SR2 (окно w18, без смены версии): SERV 29-38 (вид вызова бригады, ползунки, расходы, счётчики вызовов записей, переменная часть станций, RespEwma), CNTR 185-188, LEDG потоки длиной 23.
 //   SR4 (окно w18, без смены версии): SERV 42-47 (пул пожаров FireStore), PARM 314-315 (fire_cap, fire_spread_ppm), BTYP 20 (FirePpm), CNTR 195-199; бит здания Burning (LifeFlags 64).
+//   SR5 (окно w18 закрыто здесь, версия остаётся 18): SERV 48 (участки-пристройки станций), бит участка Annex (LOTS Flags 4).
 //   SR3 (окно w18, без смены версии): SERV 39-41 (пациент бригады Ref/RefGen, CareEwma), RESD 50 (Ill), CNTR 189-194; флаг жителя CareRefused (64), тур Care (3).
 internal static partial class SaveSchema
 {
@@ -136,6 +137,7 @@ internal static partial class SaveSchema
         Col.Array<long>(45, "FireStartTick", w => Sv(w).Fires.StartTick, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
         Col.Array<ushort>(46, "FireCondStart", w => Sv(w).Fires.CondStart, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
         Col.Array<long>(47, "FireRetry", w => Sv(w).Fires.Retry, static w => Sv(w).Fires.Capacity, "max_fires (0 без city.services)"),
+        Col.Array<int>(48, "SiteAnnex", w => Sv(w).Sites.Annex, static w => Sv(w).Sites.Annex.Length, "8 * max_service_sites", "-1"),
     })
     {
         Present = static w => w.City?.Services != null,

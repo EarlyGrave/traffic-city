@@ -132,6 +132,13 @@ internal static class ToolPreview
                 case CommandKind.SetNodeControl:
                     NodeWarnings(w, in c, ref iw);
                     break;
+                case CommandKind.UpgradeService:
+                    if (c.BuyoutBuildings > 0)
+                    {
+                        iw.Add(IssueCode.ServiceAnnexBuyout, IssueSeverity.Warning, c.IssueKind, c.IssueIndex, c.IssueGen, c.AX, c.AZ, c.BuyoutBuildings);
+                    }
+
+                    break;
             }
         }
 

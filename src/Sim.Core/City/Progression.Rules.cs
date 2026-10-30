@@ -25,6 +25,7 @@ internal static class Progression
 
         int feature = -1;
         int profile = -1;
+        int svcMilestone = 0;
         NetworkStore n = w.Net;
         switch (cmd.Kind)
         {
@@ -114,6 +115,17 @@ internal static class Progression
             case CommandKind.SetServiceBudget:
                 feature = (int)Feature.Taxes;   // ползунок бюджета служб - вместе с налогами (services.md §6)
                 break;
+            case CommandKind.BuildService:
+            case CommandKind.UpgradeService:
+            case CommandKind.SetServiceUpgrade:
+                svcMilestone = ServiceMilestone(w, in cmd);   // уровни и апгрейды служб открывает веха записи (services.md §6): поле milestone, не Feature
+                break;
+        }
+
+        if (svcMilestone > p.Reached)
+        {
+            milestone = svcMilestone - 1 < p.Defs.Length ? svcMilestone - 1 : -1;   // веха Mk = Defs[k - 1]
+            return RejectReason.Locked;
         }
 
         if (feature >= 0 && !p.IsFeatureUnlocked((Feature)feature))
@@ -129,6 +141,45 @@ internal static class Progression
         }
 
         return RejectReason.None;
+    }
+
+    /// <summary>
+    /// Веха Mk (k &gt;= 1; 0 - с начала игры), которая открывает уровень или апгрейд службы команды <paramref name="cmd"/> (<c>milestone</c> уровня / апгрейда записи, services.md §6). Ссылки уже проверены
+    /// структурно; негодные (нет режима, нет станции) дают 0 - отказ даст валидатор.
+    /// </summary>
+    private static int ServiceMilestone(World w, in Command cmd)
+    {
+        CityWorld? city = w.City;
+        CityServices? sv = city?.Services;
+        if (city == null || sv == null || !sv.Table.Explicit)
+        {
+            return 0;
+        }
+
+        ServiceTable tb = sv.Table;
+        if (cmd.Kind == CommandKind.BuildService)
+        {
+            int type = cmd.BuildService.Type;
+            return (uint)type < (uint)city.Types.Count && tb.RecOf(type) >= 0 ? tb.LevelRow(tb.RecOf(type), tb.LevelOf(type)).Milestone : 0;
+        }
+
+        EntityRef h = cmd.Kind == CommandKind.UpgradeService ? cmd.UpgradeService.Building : cmd.SetServiceUpgrade.Building;
+        int site = h.Index >= 0 && h.Index < city.Buildings.Capacity ? ServiceLevels.SiteOf(city, h.Index) : -1;
+        if (site < 0)
+        {
+            return 0;
+        }
+
+        int rec = sv.Sites.Svc[site];
+        int level = sv.Sites.Level[site];
+        if (cmd.Kind == CommandKind.UpgradeService)
+        {
+            return level < tb.Records[rec].LevelCount ? tb.LevelRow(rec, level + 1).Milestone : 0;
+        }
+
+        ref readonly ServiceLevelDesc l = ref tb.LevelRow(rec, level);
+        int id = cmd.SetServiceUpgrade.Id;
+        return cmd.SetServiceUpgrade.On != 0 && (uint)id < (uint)l.UpgradeCount ? tb.Upgrades[l.FirstUpgrade + id].Milestone : 0;
     }
 
     /// <summary>Точка в объединении открытых областей карты (0..<c>AreaStage</c>); без прогрессии или без областей - true.</summary>

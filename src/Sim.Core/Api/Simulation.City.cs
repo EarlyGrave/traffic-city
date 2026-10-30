@@ -352,7 +352,8 @@ public sealed partial class Simulation
         int n = Math.Min(dst.Length, l.Count);
         for (int i = 0; i < n; i++)
         {
-            byte flags = l.Flags[i];
+            byte flags = (byte)(l.Flags[i] & (LotFlags.Lost | LotFlags.Painted));
+            flags |= (l.Flags[i] & LotFlags.Annex) != 0 ? LotRenderFlags.Annex : (byte)0;
             if (l.Building[i] >= 0)
             {
                 flags |= LotRenderFlags.HasBuilding;

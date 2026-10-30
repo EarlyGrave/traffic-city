@@ -96,7 +96,9 @@ internal static partial class ToolValidator
 
     /// <summary>
     /// <c>BuildService</c> (building-lifecycle.md §2.10, §6.2): режим <c>city.lifecycle</c> (иначе <c>NotSupported</c>); участок в пределах и тип вида <c>Service</c> (иначе <c>InvalidArgument</c>);
-    /// участок без здания, не <c>Lost</c>, с полосой (иначе <c>ZoneRule</c>); тип не ЖКХ - <c>NotSupported</c> (до SR5); свободных слотов бригад не меньше <c>Vehicles</c> типа и есть место станции (иначе <c>Capacity</c>). Цена - <c>build_cost</c>; точка - центр участка.
+    /// участок без здания, не <c>Lost</c>, не пристройка службы, с полосой (иначе <c>ZoneRule</c>); без режима <c>city.services</c> тип только ЖКХ, в режиме - уровень любой записи (иначе <c>NotSupported</c>);
+    /// в режиме участок на сетке не меньше <c>lot_min</c> уровня (<c>ZoneRule</c>, <c>RejectValue</c> 1); свободных слотов бригад не меньше нужного и есть место станции (иначе <c>Capacity</c>).
+    /// Цена без режима - <c>build_cost</c> типа, в режиме - сумма <c>build_cost</c> уровней записи до выбранного (services.md §2.8); веху уровня проверяет <c>Progression.Check</c>. Точка - центр участка.
     /// </summary>
     private static RejectReason CheckBuildService(World w, in Command cmd, ref ToolCheck c)
     {
@@ -118,7 +120,7 @@ internal static partial class ToolValidator
         c.AZ = l.Z[lot];
         c.IssueX = c.AX;
         c.IssueZ = c.AZ;
-        if (l.Building[lot] >= 0 || (l.Flags[lot] & LotFlags.Lost) != 0 || l.CarLane[lot] < 0 || l.RoadComp[lot] < 0)
+        if (l.Building[lot] >= 0 || (l.Flags[lot] & (LotFlags.Lost | LotFlags.Annex)) != 0 || l.CarLane[lot] < 0 || l.RoadComp[lot] < 0)
         {
             return RejectReason.ZoneRule;
         }
@@ -135,7 +137,30 @@ internal static partial class ToolValidator
             return RejectReason.Capacity;
         }
 
-        c.Cost = city.Types.Rows[type].BuildCost;
+        if (!city.Services.Table.Explicit)
+        {
+            c.Cost = city.Types.Rows[type].BuildCost;
+            return RejectReason.None;
+        }
+
+        // Режим city.services (§2.8): участок не меньше lot_min уровня (участок на сетке; legacy без клеток не проверяется), цена - сумма build_cost уровней до выбранного
+        ServiceTable tb = city.Services.Table;
+        int rec = tb.RecOf(type);
+        int level = tb.LevelOf(type);
+        ref readonly ServiceLevelDesc want = ref tb.LevelRow(rec, level);
+        if (l.Orient[lot] != LotOrient.Legacy && (l.CellsF[lot] < want.LotMinF || l.CellsD[lot] < want.LotMinD))
+        {
+            c.RejectValue = ServiceLotTooSmall;
+            return RejectReason.ZoneRule;
+        }
+
+        long cost = 0;
+        for (int k = 1; k <= level; k++)
+        {
+            cost += tb.LevelRow(rec, k).BuildCost;
+        }
+
+        c.Cost = cost;
         return RejectReason.None;
     }
 }

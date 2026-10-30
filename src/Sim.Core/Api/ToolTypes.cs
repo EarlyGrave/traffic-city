@@ -239,6 +239,7 @@ public enum IssueCode : ushort
     ZoneNothingToPaint = 115,     // PaintZone: под прямоугольником нет ни одного участка (Info)
     Earthwork = 116,              // TR3: земляные работы под дорогой (Info); Value = объём, м³
     BridgeAuto = 117,             // TR3: участок пойдёт мостом сам (terrain.auto_bridge, Info); Value = длина моста, м
+    ServiceAnnexBuyout = 118,     // SR5: UpgradeService - занятые пристройки выкупаются со сносом; Value = сколько зданий уйдёт (Warning)
     SetbackShort = 113,           // RP7: отступ соседнего рукава меньше h + corner_radius нового профиля (ADR-0028: рукава не перестраиваются); Value = нехватка, мм
 }
 

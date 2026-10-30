@@ -20,6 +20,14 @@ internal static class ToolCosts
     private const int StopTag = 1 << 24;
     private const int RouteTag = 2 << 24;
     private const int BuildingTag = 3 << 24;   // BL3: здание (депо BuildService; обратная - DemolishBuilding с битом Inverse)
+    private const int UpgradeTag = 4 << 24;    // SR5: повышение уровня станции (обратная - UpgradeService с битом Inverse)
+    private const int SvcUpTag = 5 << 24;      // SR5: локальный апгрейд станции: индекс = здание * 8 + номер (обратная - SetServiceUpgrade с битом Inverse)
+
+    /// <summary>Индекс цели undo-кредита повышения уровня здания <paramref name="building"/>.</summary>
+    public static int UpgradeTarget(int building) => UpgradeTag | (building & 0xFFFFFF);
+
+    /// <summary>Индекс цели undo-кредита локального апгрейда <paramref name="id"/> здания <paramref name="building"/>.</summary>
+    public static int ServiceUpgradeTarget(int building, int id) => SvcUpTag | (((building << 3) | (id & 7)) & 0xFFFFFF);
 
     /// <summary>Индекс цели undo-кредита для здания <paramref name="building"/>.</summary>
     public static int BuildingTarget(int building) => BuildingTag | building;
@@ -87,6 +95,14 @@ internal static class ToolCosts
                     gen = cmd.DemolishBuilding.Building.Generation;
                 }
 
+                break;
+            case CommandKind.UpgradeService:
+                index = UpgradeTarget(cmd.UpgradeService.Building.Index);
+                gen = cmd.UpgradeService.Building.Generation;
+                break;
+            case CommandKind.SetServiceUpgrade:
+                index = ServiceUpgradeTarget(cmd.SetServiceUpgrade.Building.Index, cmd.SetServiceUpgrade.Id);
+                gen = cmd.SetServiceUpgrade.Building.Generation;
                 break;
             case CommandKind.RemoveBusRoute:
                 index = RouteTarget(cmd.RemoveBusRoute.Route.Index);
@@ -219,7 +235,7 @@ internal static class ToolCosts
         }
 
         // Земляные работы (TR3, terrain.md §4.4) undo не возвращает: кредит - только за дорогу.
-        long credit = cost > 0 ? Math.Max(0, cost - c.EarthworkCost) : cost;
+        long credit = cost > 0 ? Math.Max(0, cost - c.EarthworkCost - c.NoRefundCost) : cost;   // выкуп пристроек (SR5) тоже не возвращается
         if (tg != 0 && ti >= 0 && credit != 0)
         {
             Record(b, ti, tg, credit, w.Tick + window);

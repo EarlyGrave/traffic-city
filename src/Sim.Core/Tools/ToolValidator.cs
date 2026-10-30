@@ -56,6 +56,10 @@ internal struct ToolCheck
     public long EarthworkM3, EarthworkCost;
     public int RejectValue;
 
+    // Службы (SR5, services.md §2.8): часть цены, которую undo не возвращает (выкуп пристроек), и сколько зданий пойдёт под снос при выкупе.
+    public long NoRefundCost;
+    public int BuyoutBuildings;
+
     // Автобусные инструменты (T9): линия, остановка, полоса и позиция новой остановки; Noop - восстанавливаемая остановка уже на линии (повтор обратной записи).
     public int Route, Stop, Lane, Pos;
     public float StopS;
@@ -76,7 +80,8 @@ internal static partial class ToolValidator
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
         or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad
-        or CommandKind.MergeAtNode or CommandKind.DemolishBuilding or CommandKind.BuildService or CommandKind.RestoreBuilding || IsBusKind(k);
+        or CommandKind.MergeAtNode or CommandKind.DemolishBuilding or CommandKind.BuildService or CommandKind.RestoreBuilding
+        or CommandKind.UpgradeService or CommandKind.SetServiceUpgrade || IsBusKind(k);
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -113,6 +118,8 @@ internal static partial class ToolValidator
             CommandKind.DemolishBuilding => CheckDemolishBuilding(w, in cmd, ref c),
             CommandKind.BuildService => CheckBuildService(w, in cmd, ref c),
             CommandKind.RestoreBuilding => CheckRestoreBuilding(w, in cmd, ref c),
+            CommandKind.UpgradeService => CheckUpgradeService(w, in cmd, ref c),
+            CommandKind.SetServiceUpgrade => CheckSetServiceUpgrade(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
         c.LockMilestone = -1;
