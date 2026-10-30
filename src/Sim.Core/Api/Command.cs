@@ -47,6 +47,10 @@ public enum CommandKind : ushort
     RestoreBuilding = 40,   // капремонт (§2.9): Cond = Ceil = 100 %, цена Capacity * restore_per_unit * (2 - Cond/10000) из казны (поток Restoration), необратим; < 50 % отклоняется
     // 41 SetMonument - отложен решением владельца (§2.8)
     BuildService = 42,      // депо службы (ЖКХ) на пустой участок: цена build_cost из казны; обратная - DemolishBuilding с возвратом по undo_refund_s (§6.2)
+    // 43 UpgradeService, 44 SetServiceUpgrade - резерв SR5 (services.md §6)
+
+    // Городские службы (services.md §2.4, §6, SR2).
+    SetServiceBudget = 45,  // ползунок бюджета записи 50..150 % шагом 10: ожидающий, действует с границы суток; только в режиме city.services
 }
 
 public enum SignalMode : int
@@ -178,6 +182,9 @@ public struct Command
 
     [FieldOffset(8)]
     public SetBudgetPolicyCmd SetBudgetPolicy;
+
+    [FieldOffset(8)]
+    public SetServiceBudgetCmd SetServiceBudget;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -395,6 +402,15 @@ public struct Command
         c.Kind = CommandKind.BuildService;
         c.Tag = tag;
         c.BuildService = new BuildServiceCmd { Lot = lot, Type = type };
+        return c;
+    }
+
+    public static Command MakeSetServiceBudget(int svc, int pct, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetServiceBudget;
+        c.Tag = tag;
+        c.SetServiceBudget = new SetServiceBudgetCmd { Svc = svc, Pct = pct };
         return c;
     }
 
@@ -627,6 +643,14 @@ public struct BuildServiceCmd
 {
     public int Lot;
     public int Type;
+}
+
+/// <summary><see cref="CommandKind.SetServiceBudget"/>: запись службы (индекс таблицы) и ползунок, %.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetServiceBudgetCmd
+{
+    public int Svc;
+    public int Pct;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

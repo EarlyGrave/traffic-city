@@ -110,6 +110,10 @@ internal static class Progression
 
                     break;
                 }
+
+            case CommandKind.SetServiceBudget:
+                feature = (int)Feature.Taxes;   // ползунок бюджета служб - вместе с налогами (services.md §6)
+                break;
         }
 
         if (feature >= 0 && !p.IsFeatureUnlocked((Feature)feature))

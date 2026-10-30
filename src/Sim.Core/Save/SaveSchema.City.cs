@@ -281,9 +281,9 @@ internal static partial class SaveSchema
     {
         Col.Scalar<long>(1, "External", w => w.City!.Ledger.External, (c, v) => c.W.City!.Ledger.External = v),
         Col.Scalar<long>(2, "City", w => w.City!.Ledger.City, (c, v) => c.W.City!.Ledger.City = v),
-        Col.Array<long>(3, "FlowDay", w => w.City!.Ledger.FlowDay, static _ => Ledger.FlowCount, "22"),
-        Col.Array<long>(4, "FlowYesterday", w => w.City!.Ledger.FlowYesterday, static _ => Ledger.FlowCount, "22"),
-        Col.Array<long>(5, "FlowTotal", w => w.City!.Ledger.FlowTotal, static _ => Ledger.FlowCount, "22"),
+        Col.Array<long>(3, "FlowDay", w => w.City!.Ledger.FlowDay, static _ => Ledger.FlowCount, "23"),
+        Col.Array<long>(4, "FlowYesterday", w => w.City!.Ledger.FlowYesterday, static _ => Ledger.FlowCount, "23"),
+        Col.Array<long>(5, "FlowTotal", w => w.City!.Ledger.FlowTotal, static _ => Ledger.FlowCount, "23"),
         Col.Scalar<int>(6, "CursorResidents", w => w.City!.CursorResidents, (c, v) => c.W.City!.CursorResidents = v),
         Col.Scalar<int>(7, "CursorBuildings", w => w.City!.CursorBuildings, (c, v) => c.W.City!.CursorBuildings = v),
         Col.Scalar<int>(8, "CursorAccess", w => w.City!.CursorAccess, (c, v) => c.W.City!.CursorAccess = v),

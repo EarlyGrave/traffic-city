@@ -362,14 +362,14 @@ internal static partial class SaveValidator
         for (int k = 0; k < u.Capacity; k++)
         {
             byte st = u.State[k];
-            if (st > CrewState.Return)
+            if (st > CrewState.OffDuty)
             {
                 return Bad(c, k, 63);
             }
 
             if (st == CrewState.Free)
             {
-                if (u.Site[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1)
+                if (u.Site[k] != -1 || u.Target[k] != -1 || u.Vehicle[k] != -1 || u.Kind[k] != 0)
                 {
                     return Bad(c, k, 63);
                 }
@@ -378,24 +378,37 @@ internal static partial class SaveValidator
             }
 
             bool busy = st is CrewState.ToSite or CrewState.Working;
+            bool idle = st is CrewState.Idle or CrewState.OffDuty;
+            int rec = (uint)u.Site[k] < (uint)sv.Sites.Capacity ? sv.Sites.Svc[u.Site[k]] : -1;
             if ((uint)u.Site[k] >= (uint)sv.Sites.Capacity || sv.Sites.Building[u.Site[k]] < 0 || u.Target[k] < -1 || u.Target[k] >= bcap || u.TargetGen[k] < 0 ||
                 u.SiteLot[k] < -1 || u.SiteLot[k] >= city.Lots.Count || u.DueTick[k] < 0 || u.ReqTick[k] < 0 || u.ReqTick[k] > w.Tick ||
-                (st == CrewState.Idle && (u.Target[k] != -1 || u.Vehicle[k] != -1)) || (busy && u.Target[k] == -1))
+                (idle && (u.Target[k] != -1 || u.Vehicle[k] != -1 || u.Kind[k] != 0)) || (busy && (u.Target[k] == -1 || u.Kind[k] == 0)) ||
+                (u.Kind[k] != 0 && !sv.Table.HasCall(rec, (Api.ServiceCallKind)u.Kind[k])) || (st == CrewState.OffDuty && !sv.Table.Explicit))
             {
                 return Bad(c, k, 64);
             }
 
             int t = u.Target[k];
-            if (busy && b.Pool.IsAlive(t, u.TargetGen[k]) && (b.LifeFlags[t] & BuildingLifeFlags.Requested) == 0)
+            // флаг Requested - только у заявок ремонта ЖКХ; прочие вызовы (SR3/SR4) цель не помечают
+            if (busy && u.Kind[k] == (byte)Api.ServiceCallKind.Repair && b.Pool.IsAlive(t, u.TargetGen[k]) && (b.LifeFlags[t] & BuildingLifeFlags.Requested) == 0)
             {
                 return Bad(c, k, 65);
             }
 
             int vi = u.Vehicle[k];
             // машину могли убрать (клапан перегрузки, стоп-кран): бригада дождётся таймаута; живая машина обязана ссылаться на бригаду
-            if (vi != -1 && (st is CrewState.Idle or CrewState.Working || vi >= veh.HighWater || (veh.IsAlive(vi, u.VehicleGen[k]) && veh.ResidentOf(vi) != -2 - k)))
+            if (vi != -1 && (idle || st == CrewState.Working || vi >= veh.HighWater || (veh.IsAlive(vi, u.VehicleGen[k]) && veh.ResidentOf(vi) != -2 - k)))
             {
                 return Bad(c, k, 66);
+            }
+        }
+
+        // SR2: ползунки 50..150 % шагом 10 (без режима - 100), RespEwma только в режиме
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            if (!PctOk(sv.Pct[r], sv.Table.Explicit) || !PctOk(sv.PctPending[r], sv.Table.Explicit))
+            {
+                return Bad(c, r, 70);
             }
         }
 
@@ -416,6 +429,8 @@ internal static partial class SaveValidator
 
         return LoadStatus.Ok;
     }
+
+    private static bool PctOk(byte pct, bool mode) => mode ? pct is >= 50 and <= 150 && pct % 10 == 0 : pct == 100;
 
     // Станции (services.md §5): свободный слот пуст; занятый - здание в пределах пула, живое здание станции - вида Service своей записи и уровня; Duty <= UnitsMax;
     // BedsUsed = сумма BedRelease (так же Icu); живое здание - не больше одной станции.

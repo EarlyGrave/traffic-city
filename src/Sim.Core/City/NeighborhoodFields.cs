@@ -45,6 +45,12 @@ internal sealed class NeighborhoodFields
 
     public int Cells => Nx * Nz;
 
+    /// <summary>Центр клетки поля по X, м.</summary>
+    public float CenterX(int cell) => _originX + (((cell % Nx) + 0.5f) / _invCell);
+
+    /// <summary>Центр клетки поля по Z, м.</summary>
+    public float CenterZ(int cell) => _originZ + (((cell / Nx) + 0.5f) / _invCell);
+
     /// <summary>Клетка поля для точки мира (зажим к краю сетки).</summary>
     public int CellOf(float x, float z)
     {

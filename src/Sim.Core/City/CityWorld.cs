@@ -108,7 +108,7 @@ internal sealed class CityWorld
         if (cfg.Lifecycle.Enabled)
         {
             Fields = new NeighborhoodFields(in grid, cfg.Lifecycle.CellM);
-            Services = new CityServices(in own, Types, caps.MaxBuildings);
+            Services = new CityServices(in own, Types, caps.MaxBuildings, Fields.Cells);
             if (Budget != null)
             {
                 Budget.Policy.R0 = (ushort)cfg.Lifecycle.UtilityTariff;   // тариф ЖКХ по умолчанию (§2.10)

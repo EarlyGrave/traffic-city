@@ -7,9 +7,10 @@ using Sim.Core.Util;
 namespace Sim.Core.City;
 
 /// <summary>
-/// Логика ЖКХ (building-lifecycle.md §2.10): заявки в стадии «здания», выезд ближайшей свободной бригады (фаза 9r, тики кратные <see cref="Step"/>), связь машины с бригадой через
-/// <c>VehicleStore.Resident = -2 - crew</c>, ремонт до потолка из фонда <c>Utility</c>, возврат, агрегатный режим (<c>DueTick</c> по скиму), зарплата бригад и субсидия из казны на границе суток.
-/// У машины ЖКХ нет приоритета: <c>OnCall</c> не ставится никогда (VC §9.2). Всё - в последовательных фазах главного потока; 0 Б/тик.
+/// Выездные службы (building-lifecycle.md §2.10, services.md §2.3-§2.4): заявки ЖКХ в стадии «здания», общий диспетчер по кольцам записей (фаза 9r, тики кратные <see cref="Step"/>: сначала все
+/// срочные кольца по индексу записи, затем обычные), станция - минимум оценки времени в пути по скиму, связь машины с бригадой через <c>VehicleStore.Resident = -2 - crew</c>, ремонт до потолка
+/// из фонда <c>Utility</c>, приоритет <c>OnCall</c> по признакам вызова (у ЖКХ - никогда), отклик, возврат, агрегатный режим (<c>DueTick</c> по скиму), расходы на границе суток.
+/// Всё - в последовательных фазах главного потока; 0 Б/тик.
 /// </summary>
 internal static class Utilities
 {
@@ -24,7 +25,10 @@ internal static class Utilities
 
     // ------------------------------------------------------------------ BuildService
 
-    /// <summary>Создаёт депо на участке (после валидатора): здание <c>Active</c> без стройки, без мест, бригады - первые свободные слоты. false - нет места в пуле зданий.</summary>
+    /// <summary>
+    /// Создаёт станцию на участке (после валидатора): здание <c>Active</c> без стройки, без мест, бригады - первые свободные слоты. Без режима - депо BL (бригад = <c>Vehicles</c> типа, все на линии);
+    /// в режиме <c>city.services</c> - слотов <c>UnitsMax</c>, на линии <c>Duty</c> по ползунку записи, остальные <c>OffDuty</c>. false - нет места в пуле зданий.
+    /// </summary>
     public static bool BuildDepot(World w, CityWorld c, int lot, int type)
     {
         CityServices sv = c.Services!;
@@ -40,17 +44,30 @@ internal static class Utilities
         c.Lots.Building[lot] = bi;
         c.Lots.Version++;
         b.Version++;
-        int site = sv.AllocSite(b, bi, type);   // станция записи ЖКХ (services.md §2.3)
-        int need = c.Types.Rows[type].Vehicles;
+        int site = sv.AllocSite(b, bi, type);   // станция записи (services.md §2.3)
+        int need;
+        int duty;
+        if (sv.Table.Explicit)
+        {
+            need = UnitsMax(sv, site);
+            duty = DutyOf(sv, site);
+        }
+        else
+        {
+            need = c.Types.Rows[type].Vehicles;
+            duty = need;
+        }
+
         sv.Sites.UnitsMax[site] = (byte)need;
-        sv.Sites.Duty[site] = (byte)need;
+        sv.Sites.Duty[site] = (byte)duty;
         for (int k = 0; k < u.Capacity && need > 0; k++)
         {
             if (u.State[k] == CrewState.Free)
             {
                 u.Reset(k);
                 u.Site[k] = site;
-                u.State[k] = CrewState.Idle;
+                u.State[k] = duty > 0 ? CrewState.Idle : CrewState.OffDuty;
+                duty--;
                 need--;
             }
         }
@@ -59,7 +76,53 @@ internal static class Utilities
         return true;
     }
 
-    /// <summary>Депо перестало работать (заброшено или удаляется): свободные и работающие на месте бригады распускаются; едущие - по прибытии.</summary>
+    /// <summary>Бригад, нужных станции типа <paramref name="type"/> при постройке: в режиме - <c>UnitsMax</c> уровня, иначе <c>Vehicles</c> типа.</summary>
+    public static int CrewsFor(CityWorld c, int type)
+    {
+        CityServices sv = c.Services!;
+        int rec = sv.Table.RecOf(type);
+        if (!sv.Table.Explicit || rec < 0)
+        {
+            return c.Types.Rows[type].Vehicles;
+        }
+
+        ref readonly ServiceLevelDesc l = ref sv.Table.LevelRow(rec, sv.Table.LevelOf(type));
+        return UnitsMaxOf(l.Units, 0);
+    }
+
+    /// <summary><c>units'</c> станции (§2.4): <c>units</c> уровня + апгрейды <c>units</c>.</summary>
+    public static int UnitsNow(CityServices sv, int site)
+    {
+        int rec = sv.Sites.Svc[site];
+        ref readonly ServiceLevelDesc l = ref sv.Table.LevelRow(rec, sv.Sites.Level[site]);
+        return l.Units + sv.Table.UpgradeEffect(in l, sv.Sites.UpgradeMask[site], ServiceUpgradeEffect.Units);
+    }
+
+    private static int UnitsMaxOf(int units, int upgrades) => Math.Min(255, units + upgrades + ((units + 1) / 2));
+
+    /// <summary><c>UnitsMax = units + апгрейды + ceil(units / 2)</c> (гараж под 150 %, §2.4).</summary>
+    public static int UnitsMax(CityServices sv, int site)
+    {
+        int rec = sv.Sites.Svc[site];
+        ref readonly ServiceLevelDesc l = ref sv.Table.LevelRow(rec, sv.Sites.Level[site]);
+        return UnitsMaxOf(l.Units, sv.Table.UpgradeEffect(in l, sv.Sites.UpgradeMask[site], ServiceUpgradeEffect.Units));
+    }
+
+    /// <summary><c>Duty = clamp(round(units' · pct / 100), 1, UnitsMax)</c> (§2.4); без машин у уровня - 0.</summary>
+    public static int DutyOf(CityServices sv, int site)
+    {
+        int units = UnitsNow(sv, site);
+        int max = UnitsMax(sv, site);
+        if (units <= 0 || max <= 0)
+        {
+            return 0;
+        }
+
+        int pct = sv.Pct[sv.Sites.Svc[site]];
+        return Math.Clamp(((units * pct) + 50) / 100, 1, max);
+    }
+
+    /// <summary>Станция перестала работать (заброшена или удаляется): свободные, снятые с линии и работающие на месте бригады распускаются; едущие - по прибытии.</summary>
     public static void OnDepotLost(CityWorld c, int bi)
     {
         CityServices? sv = c.Services;
@@ -82,14 +145,48 @@ internal static class Utilities
                 ClearRequested(c, u.Target[k], u.TargetGen[k]);
                 u.Reset(k);
             }
-            else if (u.State[k] == CrewState.Idle)
+            else if (u.State[k] is CrewState.Idle or CrewState.OffDuty)
             {
                 u.Reset(k);
             }
         }
     }
 
-    // ------------------------------------------------------------------ заявки (стадия «здания»)
+    // ------------------------------------------------------------------ вызовы
+
+    /// <summary>
+    /// Вызов в кольцо записи <paramref name="rec"/> (срочное или обычное - по флагу <c>urgent</c> вида вызова): цель - здание <paramref name="target"/>, ссылка <paramref name="refIdx"/> (житель
+    /// или пожар; -1 - нет). false - у записи нет такого вызова или кольцо полно.
+    /// </summary>
+    public static bool Call(World w, CityWorld c, int rec, ServiceCallKind kind, int target, int refIdx = -1, int refGen = 0)
+    {
+        CityServices sv = c.Services!;
+        int ci = sv.Table.CallOf(rec, (int)kind);
+        if (ci < 0 || !c.Buildings.IsAlive(target))
+        {
+            return false;
+        }
+
+        var q = new ServiceCall
+        {
+            Target = target,
+            TargetGen = c.Buildings.Pool.GenerationOf(target),
+            Ref = refIdx,
+            RefGen = refGen,
+            Tick = w.Tick,
+            Kind = (byte)kind,
+            Svc = (byte)rec,
+        };
+        RingBuffer<ServiceCall> ring = (sv.Table.Calls[ci].Flags & ServiceCallFlags.Urgent) != 0 ? sv.Urgent[rec] : sv.Normal[rec];
+        if (!ring.TryEnqueue(in q))
+        {
+            return false;
+        }
+
+        sv.RecCallsQueued[rec]++;
+        w.Counters.CallsQueued++;
+        return true;
+    }
 
     /// <summary>
     /// Заявка на ремонт (стадия «здания», после износа): <c>Active</c>, <c>Cond &lt; repair_request_bp</c>, <c>Ceil - Cond &gt;= 500</c>, <c>Cond &gt;= 50 %</c>, флага <c>Requested</c> нет -
@@ -97,9 +194,9 @@ internal static class Utilities
     /// </summary>
     public static void Request(World w, CityWorld c, int bi)
     {
-        RingBuffer<ServiceCall>? queue = c.Services?.UtilityQueue;
+        CityServices? sv = c.Services;
         BuildingStore b = c.Buildings;
-        if (queue == null || b.State[bi] != (byte)BuildingState.Active || (b.LifeFlags[bi] & BuildingLifeFlags.Requested) != 0)
+        if (sv == null || sv.Table.Utility < 0 || b.State[bi] != (byte)BuildingState.Active || (b.LifeFlags[bi] & BuildingLifeFlags.Requested) != 0)
         {
             return;
         }
@@ -110,8 +207,7 @@ internal static class Utilities
             return;
         }
 
-        var req = new ServiceCall { Target = bi, TargetGen = b.Pool.GenerationOf(bi), Ref = -1, Tick = w.Tick, Kind = (byte)ServiceCallKind.Repair, Svc = (byte)c.Services!.Table.Utility };
-        if (queue.TryEnqueue(in req))
+        if (Call(w, c, sv.Table.Utility, ServiceCallKind.Repair, bi))
         {
             b.LifeFlags[bi] |= BuildingLifeFlags.Requested;   // Version не трогаем: смена флага не меняет набор зданий для рынков и скимов
         }
@@ -146,7 +242,7 @@ internal static class Utilities
         for (int k = 0; k < u.Capacity; k++)
         {
             byte st = u.State[k];
-            if (st is CrewState.Free or CrewState.Idle || u.DueTick[k] > now)
+            if (st is CrewState.Free or CrewState.Idle or CrewState.OffDuty || u.DueTick[k] > now)
             {
                 continue;
             }
@@ -168,7 +264,7 @@ internal static class Utilities
         Dispatch(w, c, sv);
     }
 
-    /// <summary>Ближайший тик (не раньше <paramref name="tick"/>), на котором ЖКХ что-то делает; <c>long.MaxValue</c> - ничего (для прыжков агрегата).</summary>
+    /// <summary>Ближайший тик (не раньше <paramref name="tick"/>), на котором службы что-то делают; <c>long.MaxValue</c> - ничего (для прыжков агрегата).</summary>
     public static long NextWorkTick(CityWorld c, long tick)
     {
         CityServices? sv = c.Services;
@@ -183,10 +279,10 @@ internal static class Utilities
             return tick;
         }
 
-        long next = sv.UtilityQueue is { IsEmpty: false } ? tick : long.MaxValue;
+        long next = AnyCalls(sv) ? tick : long.MaxValue;
         for (int k = 0; k < u.Capacity; k++)
         {
-            if (u.State[k] is not (CrewState.Free or CrewState.Idle))
+            if (u.State[k] is not (CrewState.Free or CrewState.Idle or CrewState.OffDuty))
             {
                 next = Math.Min(next, Math.Max(tick, u.DueTick[k]));
             }
@@ -201,47 +297,105 @@ internal static class Utilities
         return r == 0 ? next : next + (Step - r);
     }
 
+    private static bool AnyCalls(CityServices sv)
+    {
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            if (!sv.Normal[r].IsEmpty || !sv.Urgent[r].IsEmpty)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Выезд (§2.3): до <c>max_dispatch_per_tick</c> за тик - сначала срочные кольца по индексу записи, затем обычные. Голова кольца: проверка цели и срока, выбор станции, поездка.
+    /// Нет свободной машины ни на одной станции записи в компоненте - вызов остаётся головой, диспетчер идёт к следующему кольцу; фонд ЖКХ пуст или очередь поездок полна - выезд в следующий шаг.
+    /// </summary>
     private static void Dispatch(World w, CityWorld c, CityServices sv)
     {
-        CrewStore u = sv.Crews;
-        RingBuffer<ServiceCall> queue = sv.UtilityQueue!;
-        BuildingStore b = c.Buildings;
-        Ledger lg = c.Ledger;
+        if (!AnyCalls(sv))
+        {
+            return;
+        }
+
+        FillIdle(sv);
+        c.Skims.Prepare(w);
         int sent = 0;
         int max = c.Cfg.Lifecycle.MaxDispatchPerTick;
-        while (sent < max && queue.TryPeek(out ServiceCall req))
+        for (int pass = 0; pass < 2 && sent < max; pass++)
+        {
+            for (int r = 0; r < sv.Table.Count && sent < max; r++)
+            {
+                RingBuffer<ServiceCall> ring = pass == 0 ? sv.Urgent[r] : sv.Normal[r];
+                if (!DispatchRing(w, c, sv, ring, ref sent, max))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>Разбор одного кольца. false - выезд в этом шаге прекращается целиком (очередь поездок полна).</summary>
+    private static bool DispatchRing(World w, CityWorld c, CityServices sv, RingBuffer<ServiceCall> ring, ref int sent, int max)
+    {
+        CrewStore u = sv.Crews;
+        BuildingStore b = c.Buildings;
+        Ledger lg = c.Ledger;
+        while (sent < max && ring.TryPeek(out ServiceCall req))
         {
             int bi = req.Target;
-            if (!ValidTarget(c, bi, req.TargetGen))
+            bool repair = req.Kind == (byte)ServiceCallKind.Repair;
+            if (!ValidTarget(c, req.Kind, bi, req.TargetGen))
             {
-                queue.TryDequeue(out _);
+                ring.TryDequeue(out _);
                 ClearRequested(c, bi, req.TargetGen);   // снесено, заброшено или уже в норме: заявка снята
                 continue;
             }
 
-            int k = PickCrew(c, sv, b.Lot[bi], out bool anyDepot);
-            if (k < 0)
+            if (Late(c, sv, req.Svc, req.Kind, req.Tick, w.Tick))
             {
-                if (anyDepot)
-                {
-                    break;   // все бригады компоненты заняты: голова FIFO ждёт
-                }
-
-                queue.TryDequeue(out _);
-                ClearRequested(c, bi, req.TargetGen);
-                w.Counters.RepairNoDepot++;
+                ring.TryDequeue(out _);
+                OnLate(w, sv, req.Svc);   // ждал дольше deadline_s: последствия вызова (SR3/SR4), вызов снят
                 continue;
             }
 
-            long price = RepairCost(c, bi);
-            if (lg.Utility < price)
+            int k = PickCrew(w, c, sv, req.Svc, req.Kind, b.Lot[bi], out bool anyStation);
+            if (k < 0)
             {
-                if (!Subsidy(c))
+                if (anyStation)
                 {
-                    break;   // фонд пуст: заявка ждёт денег (решение владельца §9.4 В)
+                    break;   // все машины записи в компоненте заняты: голова FIFO ждёт (перегруз, §2.3.1)
                 }
 
-                lg.Transfer(lg.CityAccount, lg.UtilityAccount, price - lg.Utility, FlowKind.UtilitySubsidy);
+                ring.TryDequeue(out _);
+                ClearRequested(c, bi, req.TargetGen);
+                if (repair)
+                {
+                    w.Counters.RepairNoDepot++;
+                }
+                else
+                {
+                    OnLate(w, sv, req.Svc);   // некому ехать (нет станции с ролью в компоненте): как опоздание
+                }
+
+                continue;
+            }
+
+            if (repair && sv.Table.Records[req.Svc].Fund == ServiceFund.Utility)
+            {
+                long price = RepairCost(c, bi);
+                if (lg.Utility < price)
+                {
+                    if (!Subsidy(c))
+                    {
+                        break;   // фонд пуст: заявка ждёт денег (решение владельца §9.4 В), голова кольца остаётся; прочие кольца - дальше
+                    }
+
+                    lg.Transfer(lg.CityAccount, lg.UtilityAccount, price - lg.Utility, FlowKind.UtilitySubsidy);
+                }
             }
 
             int depotLot = b.Lot[sv.SiteBuilding(k)];
@@ -254,21 +408,29 @@ internal static class Utilities
             {
                 if (w.Trips.IsFull)
                 {
-                    break;   // очередь поездок полна: выезд в следующий шаг
+                    return false;   // очередь поездок полна: выезд в следующий шаг
                 }
 
-                if (!Submit(w, c, k, sv.SiteBuilding(k), depotLot, siteLot))
+                if (!Submit(w, c, sv, k, depotLot, siteLot))
                 {
-                    queue.TryDequeue(out _);
+                    ring.TryDequeue(out _);
                     ClearRequested(c, bi, req.TargetGen);   // нет полос у участка: заявка снята, как без депо
-                    w.Counters.RepairNoDepot++;
+                    if (repair)
+                    {
+                        w.Counters.RepairNoDepot++;
+                    }
+                    else
+                    {
+                        OnLate(w, sv, req.Svc);
+                    }
+
                     continue;
                 }
 
                 u.DueTick[k] = w.Tick + TimeoutTicks(w, c, depotLot, siteLot);
             }
 
-            queue.TryDequeue(out _);
+            ring.TryDequeue(out _);
             u.State[k] = CrewState.ToSite;
             u.Target[k] = bi;
             u.TargetGen[k] = req.TargetGen;
@@ -276,78 +438,155 @@ internal static class Utilities
             u.Vehicle[k] = -1;
             u.VehicleGen[k] = 0;
             u.ReqTick[k] = req.Tick;
+            u.Kind[k] = req.Kind;
+            NextIdle(sv, u.Site[k], k);
             sent++;
         }
+
+        return true;
     }
 
-    /// <summary>Здание годно к ремонту: живое, то же поколение, <c>Active</c>, <c>50 % &lt;= Cond &lt; Ceil</c>.</summary>
-    private static bool ValidTarget(CityWorld c, int bi, int gen)
+    /// <summary>Цель вызова годна: ремонт - живое, то же поколение, <c>Active</c>, <c>50 % &lt;= Cond &lt; Ceil</c>; прочие виды - живое здание того же поколения.</summary>
+    private static bool ValidTarget(CityWorld c, int kind, int bi, int gen)
     {
         BuildingStore b = c.Buildings;
-        return b.Pool.IsAlive(bi, gen) && b.State[bi] == (byte)BuildingState.Active && b.Cond[bi] >= CityLife.AbandonBp && b.Cond[bi] < b.Ceil[bi];
+        if (!b.Pool.IsAlive(bi, gen))
+        {
+            return false;
+        }
+
+        return kind != (int)ServiceCallKind.Repair || (b.State[bi] == (byte)BuildingState.Active && b.Cond[bi] >= CityLife.AbandonBp && b.Cond[bi] < b.Ceil[bi]);
     }
 
-    /// <summary>Депо работает: живое, то же поколение, <c>Active</c>.</summary>
+    /// <summary>Срок вызова (§2.3.1): <c>deadline_s</c> записи для вида вызова пройден к тику <paramref name="now"/>; 0 - без срока.</summary>
+    private static bool Late(CityWorld c, CityServices sv, int rec, int kind, long callTick, long now)
+    {
+        int ci = sv.Table.CallOf(rec, kind);
+        int dl = ci >= 0 ? sv.Table.Calls[ci].DeadlineS : 0;
+        return dl > 0 && now - callTick > (long)dl * Simulation.TicksPerSecond;
+    }
+
+    /// <summary>Опоздание вызова: счётчики; последствия по виду (critical - SR3, fire - SR4) подключаются здесь.</summary>
+    private static void OnLate(World w, CityServices sv, int rec)
+    {
+        sv.RecCallsLate[rec]++;
+        w.Counters.CallsLate++;
+    }
+
+    /// <summary>Станция работает: живое, то же поколение, <c>Active</c>.</summary>
     private static bool DepotOk(CityWorld c, int depot, int gen) =>
         c.Buildings.Pool.IsAlive(depot, gen) && c.Buildings.State[depot] == (byte)BuildingState.Active;
 
-    /// <summary>
-    /// Ближайшая по Manhattan свободная бригада работающего депо той же дорожной компоненты (равенство - меньший индекс депо, затем бригады); -1 - нет.
-    /// <paramref name="anyDepot"/> - в компоненте есть работающее депо с бригадами (тогда заявка ждёт, а не снимается).
-    /// </summary>
-    private static int PickCrew(CityWorld c, CityServices sv, int siteLot, out bool anyDepot)
+    /// <summary>Первая свободная бригада на линии каждой станции (<see cref="CityServices.IdleScratch"/>), один проход по бригадам.</summary>
+    private static void FillIdle(CityServices sv)
     {
         CrewStore u = sv.Crews;
-        anyDepot = false;
+        int[] idle = sv.IdleScratch;
+        Array.Fill(idle, -1);
+        for (int k = u.Capacity - 1; k >= 0; k--)
+        {
+            if (u.State[k] == CrewState.Idle && (uint)u.Site[k] < (uint)idle.Length)
+            {
+                idle[u.Site[k]] = k;
+            }
+        }
+    }
+
+    /// <summary>Бригада <paramref name="k"/> станции <paramref name="site"/> уехала: следующая свободная той же станции.</summary>
+    private static void NextIdle(CityServices sv, int site, int k)
+    {
+        CrewStore u = sv.Crews;
+        int next = -1;
+        for (int j = k + 1; j < u.Capacity && next < 0; j++)
+        {
+            next = u.State[j] == CrewState.Idle && u.Site[j] == site ? j : -1;
+        }
+
+        sv.IdleScratch[site] = next;
+    }
+
+    /// <summary>
+    /// Станция для вызова (§2.3, решение владельца 10.2 А): среди работающих станций записи <paramref name="rec"/> с ролью вызова в той же дорожной компоненте и со свободной машиной на
+    /// линии - минимум оценки времени в пути по скиму (<see cref="EstDs"/>); равенство - меньший индекс станции. Возвращает бригаду или -1.
+    /// <paramref name="anyStation"/> - в компоненте есть такая станция с бригадами (тогда вызов ждёт, а не снимается).
+    /// </summary>
+    private static int PickCrew(World w, CityWorld c, CityServices sv, int rec, int kind, int targetLot, out bool anyStation)
+    {
+        anyStation = false;
         LotStore l = c.Lots;
-        BuildingStore b = c.Buildings;
-        int comp = l.RoadComp[siteLot];
-        if (comp < 0 || l.CarLane[siteLot] < 0)
+        SiteStore s = sv.Sites;
+        int comp = l.RoadComp[targetLot];
+        if (comp < 0 || l.CarLane[targetLot] < 0)
         {
             return -1;
         }
 
+        ServiceRole role = ServiceTable.RoleOf(kind);
         int best = -1;
-        int bestDist = int.MaxValue;
-        int bestDepot = int.MaxValue;
-        for (int k = 0; k < u.Capacity; k++)
+        int bestEst = int.MaxValue;
+        for (int i = 0; i < s.Capacity; i++)
         {
-            if (u.State[k] == CrewState.Free || !DepotOk(c, sv.SiteBuilding(k), sv.SiteGen(k)))
+            int bi = s.Building[i];
+            if (bi < 0 || s.Svc[i] != rec || s.UnitsMax[i] == 0 || !DepotOk(c, bi, s.Gen[i]) || (sv.Table.LevelRow(rec, s.Level[i]).Roles & role) == 0)
             {
                 continue;
             }
 
-            int dl = b.Lot[sv.SiteBuilding(k)];
+            int dl = c.Buildings.Lot[bi];
             if (l.RoadComp[dl] != comp || l.CarLane[dl] < 0)
             {
                 continue;
             }
 
-            anyDepot = true;
-            if (u.State[k] != CrewState.Idle)
+            anyStation = true;
+            if (sv.IdleScratch[i] < 0)
             {
                 continue;
             }
 
-            int d = l.ManhattanM(dl, siteLot);
-            if (d < bestDist || (d == bestDist && sv.SiteBuilding(k) < bestDepot))
+            int est = EstDs(c, dl, targetLot, c.PeriodOf(w.Tick));
+            if (est < bestEst)
             {
-                best = k;
-                bestDist = d;
-                bestDepot = sv.SiteBuilding(k);
+                best = i;
+                bestEst = est;
             }
         }
 
-        return best;
+        return best >= 0 ? sv.IdleScratch[best] : -1;
+    }
+
+    /// <summary>
+    /// Оценка времени в пути машиной (§2.3), дс: ским ячеек <c>Skims.Get</c> (наблюдённые ноги - с пробками; без данных - априорная по свободному потоку); одна ячейка или нет оценки -
+    /// манхэттен ×1.3 на 8 м/с + 60 с (формула <c>TravelSlots</c>). Перед вызовом - <c>Skims.Prepare</c>.
+    /// </summary>
+    internal static int EstDs(CityWorld c, int fromLot, int toLot, int period)
+    {
+        LotStore l = c.Lots;
+        int a = l.Cell[fromLot];
+        int b = l.Cell[toLot];
+        int ds = a != b ? c.Skims.Get(a, b, TravelMode.Car, period) : 0;
+        return ds > 0 ? ds : ((l.ManhattanM(fromLot, toLot) * 13 / 10 / 8) + 60) * 10;
     }
 
     /// <summary>Субсидия ЖКХ из казны включена (бит политики <see cref="BudgetPolicyFlags.UtilitySubsidy"/>).</summary>
     private static bool Subsidy(CityWorld c) => c.Budget != null && (c.Budget.Policy.Flags & BudgetPolicyFlags.UtilitySubsidy) != 0;
 
-    /// <summary>Тип машины бригады: <c>VehicleType</c> депо, если он есть в таблице ТС, иначе первый тип категории <c>Car</c>.</summary>
-    private static int VehicleTypeOf(World w, CityWorld c, int depot)
+    /// <summary>
+    /// Тип машины бригады: в режиме - <c>dispatch.vehicle</c> уровня станции, если он есть в таблице ТС; иначе <c>VehicleType</c> здания станции, если есть; иначе первый тип категории <c>Car</c>.
+    /// </summary>
+    private static int VehicleTypeOf(World w, CityWorld c, CityServices sv, int crew)
     {
-        int t = c.Types.Rows[c.Buildings.Type[depot]].VehicleType;
+        int site = sv.Crews.Site[crew];
+        if (sv.Table.Explicit && site >= 0)
+        {
+            int dv = sv.Table.LevelRow(sv.Sites.Svc[site], sv.Sites.Level[site]).DispatchVehicle;
+            if ((uint)dv < (uint)w.Types.Length)
+            {
+                return dv;
+            }
+        }
+
+        int t = c.Types.Rows[c.Buildings.Type[sv.SiteBuilding(crew)]].VehicleType;
         if ((uint)t < (uint)w.Types.Length)
         {
             return t;
@@ -365,7 +604,7 @@ internal static class Utilities
     }
 
     /// <summary>Заявка поездки машины бригады <paramref name="k"/> от участка <paramref name="fromLot"/> к <paramref name="toLot"/> (<c>ResidentRef = -(k + 1)</c>). false - нет полос.</summary>
-    private static bool Submit(World w, CityWorld c, int k, int depot, int fromLot, int toLot)
+    private static bool Submit(World w, CityWorld c, CityServices sv, int k, int fromLot, int toLot)
     {
         LotStore l = c.Lots;
         int from = l.CarLane[fromLot];
@@ -375,7 +614,7 @@ internal static class Utilities
             return false;
         }
 
-        int type = VehicleTypeOf(w, c, depot);
+        int type = VehicleTypeOf(w, c, sv, k);
         float laneEnd = MathF.Max(0f, w.Net.Lanes[dest].Length - w.Types[type].MinGap);
         var trip = new PendingTrip
         {
@@ -409,10 +648,28 @@ internal static class Utilities
     /// <summary>Таймаут поездки micro (§2.10): <c>3 × скима + 1 игровой час</c>.</summary>
     private static long TimeoutTicks(World w, CityWorld c, int fromLot, int toLot) => (3 * TravelTicks(w, c, fromLot, toLot)) + (c.DayTicks / 24);
 
-    /// <summary>Работа на месте: <c>repair_minutes</c> игрового времени (сутки = 1 440 игровых минут), не меньше одного тика.</summary>
-    private static long WorkTicks(CityWorld c) => Math.Max(1L, (long)c.Cfg.Lifecycle.RepairMinutes * c.DayTicks / 1440);
+    /// <summary>
+    /// Работа на месте: без режима - <c>repair_minutes</c> игрового времени (BL); в режиме - <c>onsite_s · onsite_q</c> (§2.4: <c>onsite_q = 100 / pct</c> × эффект апгрейдов <c>onsite_pct</c>).
+    /// Не меньше одного тика.
+    /// </summary>
+    private static long WorkTicks(CityWorld c, CityServices sv, int k)
+    {
+        if (!sv.Table.Explicit)
+        {
+            return Math.Max(1L, (long)c.Cfg.Lifecycle.RepairMinutes * c.DayTicks / 1440);
+        }
 
-    /// <summary>Прибытие бригады (кольцо фазы 8 или <c>DueTick</c> агрегата): к зданию - работа или назад; в депо - <c>Idle</c>.</summary>
+        int site = sv.Crews.Site[k];
+        int rec = sv.Sites.Svc[site];
+        int ci = sv.Table.CallOf(rec, sv.Crews.Kind[k]);
+        long baseTicks = (ci >= 0 ? sv.Table.Calls[ci].OnsiteS : 0) * (long)Simulation.TicksPerSecond;
+        int up = sv.Table.UpgradeEffect(in sv.Table.LevelRow(rec, sv.Sites.Level[site]), sv.Sites.UpgradeMask[site], ServiceUpgradeEffect.OnsitePct);
+        return Math.Max(1L, baseTicks * up / Math.Max(1, (int)sv.Pct[rec]));
+    }
+
+    /// <summary>
+    /// Прибытие бригады (кольцо фазы 8 или <c>DueTick</c> агрегата): к зданию - отклик (§2.3), затем работа (или назад при опоздании и негодной цели); на станцию - <c>Idle</c>.
+    /// </summary>
     private static void Arrive(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
@@ -420,14 +677,26 @@ internal static class Utilities
         u.VehicleGen[k] = 0;
         if (u.State[k] == CrewState.ToSite)
         {
-            if (ValidTarget(c, u.Target[k], u.TargetGen[k]))
+            if (ValidTarget(c, u.Kind[k], u.Target[k], u.TargetGen[k]))
             {
+                int site = u.Site[k];
+                int rec = sv.Sites.Svc[site];
+                OnResponse(w, c, sv, k, rec);
+                if (Late(c, sv, rec, u.Kind[k], u.ReqTick[k], w.Tick))
+                {
+                    OnLate(w, sv, rec);   // не успели (§2.3.1): без действия на месте, назад
+                    u.Kind[k] = 0;
+                    StartReturn(w, c, sv, k);
+                    return;
+                }
+
                 u.State[k] = CrewState.Working;
-                u.DueTick[k] = w.Tick + WorkTicks(c);
+                u.DueTick[k] = w.Tick + WorkTicks(c, sv, k);
                 return;
             }
 
             ClearRequested(c, u.Target[k], u.TargetGen[k]);   // снесено или заброшено к приезду: без ремонта, назад
+            u.Kind[k] = 0;
             StartReturn(w, c, sv, k);
         }
         else if (u.State[k] == CrewState.Return)
@@ -436,12 +705,45 @@ internal static class Utilities
         }
     }
 
-    /// <summary>Конец работы: ремонт до потолка, плата из фонда (дефицит - субсидия, если включена), заявка снята, обратная поездка.</summary>
+    /// <summary>
+    /// Отклик вызова <c>arrive − call.Tick</c> (§2.3): счётчики записи и мира, переменная часть расхода станции (<c>per_call</c>), EWMA клетки 128 м цели (<c>RespEwma</c>, только в режиме).
+    /// </summary>
+    private static void OnResponse(World w, CityWorld c, CityServices sv, int k, int rec)
+    {
+        CrewStore u = sv.Crews;
+        long resp = w.Tick - u.ReqTick[k];
+        sv.RecCallsDone[rec]++;
+        sv.RecRespTicks[rec] += resp;
+        w.Counters.CallsDone++;
+        w.Counters.RespTicksTotal += resp;
+        if (!sv.Table.Explicit)
+        {
+            return;
+        }
+
+        int ci = sv.Table.CallOf(rec, u.Kind[k]);
+        if (ci >= 0)
+        {
+            sv.SiteVarDay[(u.Site[k] * 2) + (c.Day & 1)] += sv.Table.Calls[ci].PerCall;
+        }
+
+        NeighborhoodFields? f = c.Fields;
+        if (f != null && sv.Cells > 0 && u.SiteLot[k] >= 0)
+        {
+            int cell = f.CellOf(c.Lots.X[u.SiteLot[k]], c.Lots.Z[u.SiteLot[k]]);
+            int v = (int)Math.Clamp(resp / Simulation.TicksPerSecond, 1L, ushort.MaxValue);
+            int idx = (rec * sv.Cells) + cell;
+            int e = sv.RespEwma[idx];
+            sv.RespEwma[idx] = (ushort)(e == 0 ? v : Math.Clamp(e + ((v - e) >> 3), 1, ushort.MaxValue));
+        }
+    }
+
+    /// <summary>Конец работы: действие вызова (ремонт - до потолка из фонда, дефицит - субсидия, если включена; прочие виды - SR3/SR4), заявка снята, обратная поездка.</summary>
     private static void FinishWork(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
         int bi = u.Target[k];
-        if (ValidTarget(c, bi, u.TargetGen[k]))
+        if (u.Kind[k] == (byte)ServiceCallKind.Repair && ValidTarget(c, u.Kind[k], bi, u.TargetGen[k]))
         {
             Ledger lg = c.Ledger;
             long price = RepairCost(c, bi);
@@ -466,7 +768,7 @@ internal static class Utilities
         StartReturn(w, c, sv, k);
     }
 
-    /// <summary>Обратная поездка (micro - машина от участка здания к депо; агрегат - <c>DueTick</c> по скиму). Депо нет или полос нет - бригада сразу в депо (или распущена).</summary>
+    /// <summary>Обратная поездка (micro - машина от участка здания к станции; агрегат - <c>DueTick</c> по скиму). Станции нет или полос нет - бригада сразу на станции (или распущена).</summary>
     private static void StartReturn(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
@@ -487,7 +789,7 @@ internal static class Utilities
             return;
         }
 
-        if (w.Trips.IsFull || !Submit(w, c, k, sv.SiteBuilding(k), site, depotLot))
+        if (w.Trips.IsFull || !Submit(w, c, sv, k, site, depotLot))
         {
             ToDepot(c, sv, k);   // поездку не подать: бригада возвращается без машины
             return;
@@ -499,7 +801,9 @@ internal static class Utilities
         u.DueTick[k] = w.Tick + TimeoutTicks(w, c, site, depotLot);
     }
 
-    /// <summary>Бригада в депо: <c>Idle</c>, либо слот свободен, если депо больше не работает.</summary>
+    /// <summary>
+    /// Бригада на станции: <c>Idle</c>, либо слот свободен, если станция больше не работает. В режиме: на линии бригад больше <c>Duty</c> (ползунок урезан) - <c>OffDuty</c> (§2.4).
+    /// </summary>
     private static void ToDepot(CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
@@ -513,9 +817,26 @@ internal static class Utilities
         u.Reset(k);
         u.Site[k] = site;
         u.State[k] = CrewState.Idle;
+        if (sv.Table.Explicit && OnLine(sv, site) > sv.Sites.Duty[site])
+        {
+            u.State[k] = CrewState.OffDuty;
+        }
     }
 
-    /// <summary>Таймаут поездки micro (§2.10): бригада сразу в депо (<c>CrewTimeouts</c>), машина доезжает пустой; заявка к зданию снята (завтра - новая).</summary>
+    /// <summary>Бригад станции на линии (не свободных и не снятых с линии).</summary>
+    private static int OnLine(CityServices sv, int site)
+    {
+        CrewStore u = sv.Crews;
+        int n = 0;
+        for (int k = 0; k < u.Capacity; k++)
+        {
+            n += u.Site[k] == site && u.State[k] is not (CrewState.Free or CrewState.OffDuty) ? 1 : 0;
+        }
+
+        return n;
+    }
+
+    /// <summary>Таймаут поездки micro (§2.10): бригада сразу на станции (<c>CrewTimeouts</c>), машина доезжает пустой; заявка к зданию снята (завтра - новая).</summary>
     private static void Timeout(World w, CityWorld c, CityServices sv, int k)
     {
         CrewStore u = sv.Crews;
@@ -567,10 +888,14 @@ internal static class Utilities
 
     // ------------------------------------------------------------------ связь с машинами (фазы 2, 3, 8)
 
-    /// <summary>Машина бригады <paramref name="crew"/> поставлена на дорогу (<c>Spawner.TryPlace</c>): <c>Resident = -2 - crew</c>, без <c>OnCall</c>.</summary>
+    /// <summary>
+    /// Машина бригады <paramref name="crew"/> поставлена на дорогу (<c>Spawner.TryPlace</c>): <c>Resident = -2 - crew</c>. Приоритет VC (§2.3): к цели - при <c>on_call</c> вида вызова,
+    /// назад - при <c>on_call_return</c>; только у машины класса <c>special</c>; у ЖКХ - никогда (валидатор записей).
+    /// </summary>
     internal static void OnVehiclePlaced(World w, int crew, int vehicle)
     {
-        CrewStore? u = w.City?.Services?.Crews;
+        CityServices? sv = w.City?.Services;
+        CrewStore? u = sv?.Crews;
         if (u == null || (uint)crew >= (uint)u.Capacity || u.State[crew] is not (CrewState.ToSite or CrewState.Return) || u.Vehicle[crew] >= 0)
         {
             return;   // страховка: бригада уже не ждёт машину - машина едет пустой
@@ -579,6 +904,24 @@ internal static class Utilities
         u.Vehicle[crew] = vehicle;
         u.VehicleGen[crew] = w.Vehicles.Pool.GenerationOf(vehicle);
         w.Vehicles.Resident[vehicle] = -2 - crew;
+        if (!sv!.Table.Explicit)
+        {
+            return;   // без режима - как BL
+        }
+
+        w.Vehicles.Flags[vehicle] &= unchecked((byte)~(byte)VehicleFlags.OnCall);   // в режиме приоритетом машины службы владеет диспетчер, не demand.special_on_call
+        int site = u.Site[crew];
+        if (site < 0 || u.Kind[crew] == 0 || w.Types[w.Vehicles.Type[vehicle]].Category != VehicleCategory.Special)
+        {
+            return;
+        }
+
+        byte flags = sv.Table.CallFlagsOf(sv.Sites.Svc[site], u.Kind[crew]);
+        byte need = u.State[crew] == CrewState.ToSite ? ServiceCallFlags.OnCall : ServiceCallFlags.OnCallReturn;
+        if ((flags & need) != 0)
+        {
+            w.Vehicles.Flags[vehicle] |= (byte)VehicleFlags.OnCall;
+        }
     }
 
     /// <summary>Фаза 8 / <c>QueueMeso.Arrive</c>: машина бригады прибыла (до деспауна) - в кольцо <c>CrewArrivals</c>, разбор в 9r.</summary>
@@ -587,6 +930,7 @@ internal static class Utilities
         int crew = -2 - w.Vehicles.Resident[vehicle];
         CrewStore? u = w.City?.Services?.Crews;
         w.Vehicles.Resident[vehicle] = -1;
+        w.Vehicles.Flags[vehicle] &= unchecked((byte)~(byte)VehicleFlags.OnCall);   // приоритет снимается на прибытии (§2.3)
         if (u != null && (uint)crew < (uint)u.Capacity && u.Vehicle[crew] == vehicle && u.VehicleGen[crew] == w.Vehicles.Pool.GenerationOf(vehicle)
             && u.State[crew] is CrewState.ToSite or CrewState.Return)
         {
@@ -594,7 +938,7 @@ internal static class Utilities
         }
     }
 
-    /// <summary>Поездка бригады снята без постановки (нет пути, плохая полоса): к зданию - заявка снята, бригада в депо; назад - бригада в депо.</summary>
+    /// <summary>Поездка бригады снята без постановки (нет пути, плохая полоса): к зданию - заявка снята, бригада на станции; назад - бригада на станции.</summary>
     internal static void OnTripDropped(World w, int crew)
     {
         CityWorld? c = w.City;
@@ -615,22 +959,138 @@ internal static class Utilities
     // ------------------------------------------------------------------ сутки
 
     /// <summary>
-    /// Граница суток (фаза 9r, до казны): зарплата бригад <c>crew_day_cost</c> × бригад из фонда (всегда, даже в минус), затем субсидия: фонд в минусе и бит политики - казна покрывает минус.
+    /// Граница суток (фаза 9r, после <c>Day++</c>, до казны). Без режима служб - зарплата бригад BL <c>crew_day_cost</c> × бригад из фонда (всегда, даже в минус). В режиме - ожидающий ползунок
+    /// записей (§2.4), <c>Duty</c> станций и бригады на линии, обнуление суточных слотов новых суток (расход станции списывается в стадии «здания», <see cref="StationDay"/>).
+    /// Затем субсидия: фонд в минусе и бит политики - казна покрывает минус.
     /// </summary>
     public static void OnDayBoundary(CityWorld c)
     {
-        CrewStore? u = c.Services?.Crews;
-        if (u == null)
+        CityServices? sv = c.Services;
+        if (sv == null)
         {
             return;
         }
 
         Ledger lg = c.Ledger;
-        lg.Transfer(lg.UtilityAccount, lg.ExternalAccount, (long)c.Cfg.Lifecycle.CrewDayCost * u.Crews(), FlowKind.CrewWages);
+        if (sv.Table.Explicit)
+        {
+            NewDay(c, sv);
+        }
+        else
+        {
+            lg.Transfer(lg.UtilityAccount, lg.ExternalAccount, (long)c.Cfg.Lifecycle.CrewDayCost * sv.Crews.Crews(), FlowKind.CrewWages);
+        }
+
         if (lg.Utility < 0 && Subsidy(c))
         {
             lg.Transfer(lg.CityAccount, lg.UtilityAccount, -lg.Utility, FlowKind.UtilitySubsidy);
         }
+    }
+
+    private static void NewDay(CityWorld c, CityServices sv)
+    {
+        int d = c.Day & 1;
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            sv.SvcCostDay[(r * 2) + d] = 0;
+            sv.Pct[r] = sv.PctPending[r];
+        }
+
+        SiteStore s = sv.Sites;
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            sv.SiteVarDay[(i * 2) + d] = 0;
+            if (s.Building[i] >= 0 && DepotOk(c, s.Building[i], s.Gen[i]))
+            {
+                s.Duty[i] = (byte)DutyOf(sv, i);
+                Rebalance(sv, i);
+            }
+        }
+    }
+
+    /// <summary>Бригады станции на линии к <c>Duty</c>: не хватает - снятые с линии выходят (с меньшего индекса); лишние свободные - снимаются (с большего); занятые доезжают (<see cref="ToDepot"/>).</summary>
+    private static void Rebalance(CityServices sv, int site)
+    {
+        CrewStore u = sv.Crews;
+        int on = OnLine(sv, site);
+        int duty = sv.Sites.Duty[site];
+        for (int k = 0; k < u.Capacity && on < duty; k++)
+        {
+            if (u.Site[k] == site && u.State[k] == CrewState.OffDuty)
+            {
+                u.State[k] = CrewState.Idle;
+                on++;
+            }
+        }
+
+        for (int k = u.Capacity - 1; k >= 0 && on > duty; k--)
+        {
+            if (u.Site[k] == site && u.State[k] == CrewState.Idle)
+            {
+                u.State[k] = CrewState.OffDuty;
+                on--;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Расход станции здания <paramref name="bi"/> за сутки (§2.4, стадия «здания», только в режиме): <c>(upkeep_day + Σ upkeep апгрейдов + per_unit_day · Duty) · pct / 100</c> + переменная часть
+    /// вчера (Σ <c>per_call</c>); поток <c>ServiceUpkeep</c> со счёта <c>fund</c> записи на <c>External</c>, разбивка - <c>SvcCostDay</c>.
+    /// </summary>
+    public static void StationDay(CityWorld c, int bi)
+    {
+        CityServices? sv = c.Services;
+        if (sv == null || !sv.Table.Explicit)
+        {
+            return;
+        }
+
+        SiteStore s = sv.Sites;
+        int gen = c.Buildings.Pool.GenerationOf(bi);
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            if (s.Building[i] != bi || s.Gen[i] != gen)
+            {
+                continue;
+            }
+
+            int rec = s.Svc[i];
+            ref readonly ServiceLevelDesc l = ref sv.Table.LevelRow(rec, s.Level[i]);
+            long fixedCost = l.UpkeepDay + sv.Table.UpgradeUpkeep(in l, s.UpgradeMask[i]) + ((long)l.PerUnitDay * s.Duty[i]);
+            long cost = (fixedCost * sv.Pct[rec] / 100) + sv.SiteVarDay[(i * 2) + ((c.Day + 1) & 1)];
+            if (cost > 0)
+            {
+                Ledger lg = c.Ledger;
+                int from = sv.Table.Records[rec].Fund == ServiceFund.Utility ? lg.UtilityAccount : lg.CityAccount;
+                lg.Transfer(from, lg.ExternalAccount, cost, FlowKind.ServiceUpkeep);
+                sv.SvcCostDay[(rec * 2) + (c.Day & 1)] += cost;
+            }
+
+            return;
+        }
+    }
+
+    /// <summary>
+    /// <c>SetServiceBudget</c> (§2.4, §6): режим <c>city.services</c> (иначе <c>NotSupported</c>), запись есть и <c>Pct</c> 50..150 шагом 10 (иначе <c>InvalidArgument</c>). Ожидающее значение,
+    /// применяется на границе суток; та же величина, что действует, снимает ожидание.
+    /// </summary>
+    public static RejectReason SetBudget(World w, in Command cmd)
+    {
+        CityServices? sv = w.City?.Services;
+        if (sv == null || !sv.Table.Explicit)
+        {
+            return RejectReason.NotSupported;
+        }
+
+        int rec = cmd.SetServiceBudget.Svc;
+        int pct = cmd.SetServiceBudget.Pct;
+        if ((uint)rec >= (uint)sv.Table.Count || pct is < 50 or > 150 || pct % 10 != 0)
+        {
+            return RejectReason.InvalidArgument;
+        }
+
+        sv.PctPending[rec] = (byte)pct;
+        return RejectReason.None;
     }
 
     // ------------------------------------------------------------------ квартплата жителя

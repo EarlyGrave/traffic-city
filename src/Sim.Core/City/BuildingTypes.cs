@@ -30,8 +30,12 @@ internal sealed class BuildingTypes
         t.ParkingCapacity is >= 0 and <= MaxCapacity && t.ParkingAccess <= ParkingAccess.Public && t.ParkingFee >= 0 &&
         t.DecayBpDay <= 10_000 && t.CeilDropBpDay <= 10_000 && t.DemolishCost is >= 0 and <= 100_000_000 &&
         t.BuildCost is >= 0 and <= 100_000_000 &&
-        (t.Kind == LotZone.Service ? t.ServiceKind == ServiceKind.Utility && t.Vehicles is >= 1 and <= 64 : t.ServiceKind == ServiceKind.None && t.Vehicles == 0) &&
+        (t.Kind == LotZone.Service ? ServiceVehiclesOk(in t) : t.ServiceKind == ServiceKind.None && t.Vehicles == 0) &&
         (t.Kind is LotZone.Residential or LotZone.Parking or LotZone.Service || (t.ShiftStartSlot is >= 0 and < 288 && t.ShiftSlots is >= 1 and <= 288));
+
+    /// <summary>Станция: ЖКХ - 1..64 машины депо BL; медицина и пожарные (SR2) - 0..64 (машины - уровня записи, services.md §3).</summary>
+    private static bool ServiceVehiclesOk(in BuildingTypeDesc t) =>
+        t.ServiceKind == ServiceKind.Utility ? t.Vehicles is >= 1 and <= 64 : t.ServiceKind is ServiceKind.Medicine or ServiceKind.Fire && t.Vehicles <= 64;
 
     /// <summary>Первый подходящий по виду и плотности тип (zoning-demand.md §8.3) со сдвигом <paramref name="variant"/> по подходящим; -1 - нет такого вида.</summary>
     public int Find(LotZone kind, int density, int variant)

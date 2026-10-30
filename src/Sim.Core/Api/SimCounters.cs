@@ -165,6 +165,11 @@ public struct SimCounters
     public long CrewTimeouts;             // таймаутов поездки бригады (micro)
     public long TariffLeaves;             // жителей уехало из-за квартплаты (HighRent)
     public long Restorations;             // капремонтов игроком (RestoreBuilding, BL4)
+    // --- вызовы служб (services.md §2.3, SR2): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long CallsQueued;              // вызовов поставлено в кольца (все записи, включая ремонт ЖКХ)
+    public long CallsDone;                // прибытий к цели вызова (отклик посчитан)
+    public long RespTicksTotal;           // Σ тиков отклика (средний = / CallsDone)
+    public long CallsLate;                // вызовов опоздало: ждали дольше deadline_s или некому ехать
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

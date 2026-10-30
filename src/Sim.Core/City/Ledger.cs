@@ -10,7 +10,8 @@ namespace Sim.Core.City;
 /// </summary>
 internal sealed class Ledger
 {
-    public const int FlowCount = 22;     // FlowKind.Endowment .. UtilitySubsidy (city-economy.md §2.1, building-lifecycle.md §2.10)
+    public const int FlowCount = 23;     // FlowKind.Endowment .. ServiceUpkeep (city-economy.md §2.1, building-lifecycle.md §2.10, services.md §2.4)
+    public const int LifecycleFlowCount = 22;   // виды 17..21 - в хэше режима city.lifecycle; 22 (ServiceUpkeep) - только в режиме city.services
     public const int LegacyFlowCount = 13;   // виды 0..12 (3.2): только они входят в хэш без бюджета
     public const int BudgetFlowCount = 17;   // виды 0..16 (4.2): в хэше бюджета; 17..21 - только с режимом city.lifecycle
     public const int Bp = 10_000;        // знаменатель ставок: базисные пункты

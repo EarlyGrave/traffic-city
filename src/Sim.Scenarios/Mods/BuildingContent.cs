@@ -121,27 +121,40 @@ internal static class BuildingContent
         if (kind == LotZone.Service)
         {
             string svc = r.Str("service");
-            t.ServiceKind = svc == "utility" ? ServiceKind.Utility : throw new ScenarioException($"{p}.service: expected \"utility\"");
-            t.Vehicles = (byte)r.Int("vehicles", min: 1, max: 64);
-            string vt = r.Str("vehicle_type");
-            AssetId vid;
-            if (!AssetId.TryParse(vt, out vid))
+            t.ServiceKind = svc switch
             {
-                if (!AssetId.IsValidName(vt))
+                "utility" => ServiceKind.Utility,
+                "medicine" => ServiceKind.Medicine,
+                "fire" => ServiceKind.Fire,
+                _ => throw new ScenarioException($"{p}.service: expected \"utility\", \"medicine\" or \"fire\""),
+            };
+
+            // ЖКХ: машины депо BL обязательны; прочие службы (SR2) - машины уровня записи (units, dispatch.vehicle), поля здания необязательны
+            bool utility = t.ServiceKind == ServiceKind.Utility;
+            t.Vehicles = (byte)r.Int("vehicles", utility ? null : 0, min: utility ? 1 : 0, max: 64);
+            t.VehicleType = byte.MaxValue;   // без vehicle_type: тип машины - dispatch.vehicle уровня
+            if (utility || r.Has("vehicle_type"))
+            {
+                string vt = r.Str("vehicle_type");
+                AssetId vid;
+                if (!AssetId.TryParse(vt, out vid))
                 {
-                    throw new ScenarioException($"{p}.vehicle_type: expected a vehicle id or a vehicle name of this package");
+                    if (!AssetId.IsValidName(vt))
+                    {
+                        throw new ScenarioException($"{p}.vehicle_type: expected a vehicle id or a vehicle name of this package");
+                    }
+
+                    vid = new AssetId(pkg.Id, AssetKind.Vehicle, vt);
                 }
 
-                vid = new AssetId(pkg.Id, AssetKind.Vehicle, vt);
-            }
+                int vi = vid.Kind == AssetKind.Vehicle ? findVehicle(vid) : -1;
+                if (vi < 0 || vi > byte.MaxValue)
+                {
+                    throw new ScenarioException($"{p}.vehicle_type: vehicle type \"{vt}\" is not loaded before this building");
+                }
 
-            int vi = vid.Kind == AssetKind.Vehicle ? findVehicle(vid) : -1;
-            if (vi < 0 || vi > byte.MaxValue)
-            {
-                throw new ScenarioException($"{p}.vehicle_type: vehicle type \"{vt}\" is not loaded before this building");
+                t.VehicleType = (byte)vi;
             }
-
-            t.VehicleType = (byte)vi;
         }
 
         string? model = VehicleContent.ReadVisual(r, "model");

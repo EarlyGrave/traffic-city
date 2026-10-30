@@ -151,7 +151,7 @@ internal static class CityHash
         // ЖКХ (BL3, §2.10): фонд, потоки и переносы 17..21, тариф (R0) и флаг субсидии, очередь заявок, бригады, счётчики
         Ledger lg = c.Ledger;
         h.Add(lg.Utility);
-        for (int fl = Ledger.BudgetFlowCount; fl < Ledger.FlowCount; fl++)
+        for (int fl = Ledger.BudgetFlowCount; fl < Ledger.LifecycleFlowCount; fl++)
         {
             h.Add(lg.FlowDay[fl]);
             h.Add(lg.FlowYesterday[fl]);
@@ -161,7 +161,7 @@ internal static class CityHash
         CityBudget? bud = c.Budget;
         if (bud != null)
         {
-            for (int fl = Ledger.BudgetFlowCount; fl < Ledger.FlowCount; fl++)
+            for (int fl = Ledger.BudgetFlowCount; fl < Ledger.LifecycleFlowCount; fl++)
             {
                 h.Add(bud.Carry[fl]);
             }
@@ -178,6 +178,7 @@ internal static class CityHash
             if (sv.Table.Explicit)
             {
                 AddServices(ref h, sv);   // режим city.services (services.md §5): станции, все кольца, бригады со станцией
+                AddServiceBudget(ref h, sv, lg, bud, in k);   // SR2: поток ServiceUpkeep, ползунки, расходы, отклик
             }
             else
             {
@@ -266,6 +267,54 @@ internal static class CityHash
             h.Add(u.Site[i]);
             AddCrewTail(ref h, u, i);
         }
+    }
+
+    /// <summary>
+    /// SR2 (services.md §2.3-§2.4, только в режиме): поток 22 <c>ServiceUpkeep</c> и его перенос, ползунки <c>Pct</c>/<c>PctPending</c>, суточные расходы записей и станций, вид вызова бригад,
+    /// счётчики вызовов записей и мира, <c>RespEwma</c>.
+    /// </summary>
+    private static void AddServiceBudget(ref Fnv1a64 h, CityServices sv, Ledger lg, CityBudget? bud, in SimCounters k)
+    {
+        for (int fl = Ledger.LifecycleFlowCount; fl < Ledger.FlowCount; fl++)
+        {
+            h.Add(lg.FlowDay[fl]);
+            h.Add(lg.FlowYesterday[fl]);
+            h.Add(lg.FlowTotal[fl]);
+            h.Add(bud != null ? bud.Carry[fl] : 0L);
+        }
+
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            h.Add(sv.Pct[r]);
+            h.Add(sv.PctPending[r]);
+            h.Add(sv.SvcCostDay[r * 2]);
+            h.Add(sv.SvcCostDay[(r * 2) + 1]);
+            h.Add(sv.RecCallsQueued[r]);
+            h.Add(sv.RecCallsDone[r]);
+            h.Add(sv.RecRespTicks[r]);
+            h.Add(sv.RecCallsLate[r]);
+        }
+
+        for (int i = 0; i < sv.SiteVarDay.Length; i++)
+        {
+            h.Add(sv.SiteVarDay[i]);
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.Kind[i]);
+        }
+
+        for (int i = 0; i < sv.RespEwma.Length; i++)
+        {
+            h.Add(sv.RespEwma[i]);
+        }
+
+        h.Add(k.CallsQueued);
+        h.Add(k.CallsDone);
+        h.Add(k.RespTicksTotal);
+        h.Add(k.CallsLate);
     }
 
     private static void AddRing(ref Fnv1a64 h, RingBuffer<ServiceCall> ring)

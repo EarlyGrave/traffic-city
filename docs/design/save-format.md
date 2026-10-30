@@ -1093,6 +1093,10 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 182 | CrewTimeouts | i64 | 1 | 0 |
 | `CNTR` | 183 | TariffLeaves | i64 | 1 | 0 |
 | `CNTR` | 184 | Restorations | i64 | 1 | 0 |
+| `CNTR` | 185 | CallsQueued | i64 | 1 | 0 |
+| `CNTR` | 186 | CallsDone | i64 | 1 | 0 |
+| `CNTR` | 187 | RespTicksTotal | i64 | 1 | 0 |
+| `CNTR` | 188 | CallsLate | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |
@@ -1661,9 +1665,9 @@ s10k с цифрами размера и времени. Клиентские к
 | `SKIM` (demand.model = residents) | 14 | LsJobs | i32 | NC | 0 |
 | `LEDG` (demand.model = residents) | 1 | External | i64 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 2 | City | i64 | 1 | 0 |
-| `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 22 | 0 |
-| `LEDG` (demand.model = residents) | 4 | FlowYesterday | i64 | 22 | 0 |
-| `LEDG` (demand.model = residents) | 5 | FlowTotal | i64 | 22 | 0 |
+| `LEDG` (demand.model = residents) | 3 | FlowDay | i64 | 23 | 0 |
+| `LEDG` (demand.model = residents) | 4 | FlowYesterday | i64 | 23 | 0 |
+| `LEDG` (demand.model = residents) | 5 | FlowTotal | i64 | 23 | 0 |
 | `LEDG` (demand.model = residents) | 6 | CursorResidents | i32 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 7 | CursorBuildings | i32 | 1 | 0 |
 | `LEDG` (demand.model = residents) | 8 | CursorAccess | i32 | 1 | 0 |
@@ -1697,7 +1701,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `CBGT` (PARM.CityBudget = 1) | 18 | LandValue | i32 | NC | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 19 | IncomeEwma | i64 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 20 | ExpenseEwma | i64 | 1 | 0 |
-| `CBGT` (PARM.CityBudget = 1) | 21 | Carry | i64 | 22 | 0 |
+| `CBGT` (PARM.CityBudget = 1) | 21 | Carry | i64 | 23 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 22 | DebtDays | i32 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 23 | OverLimitDays | i32 | 1 | 0 |
 | `CBGT` (PARM.CityBudget = 1) | 24 | Insolvent | u8 | 1 | 0 |
@@ -1753,6 +1757,16 @@ s10k с цифрами размера и времени. Клиентские к
 | `SERV` (PARM.LifecycleEnabled = 1) | 26 | CrewVehicleGen | i32 | max_service_vehicles | 0 |
 | `SERV` (PARM.LifecycleEnabled = 1) | 27 | CrewDueTick | i64 | max_service_vehicles | 0 |
 | `SERV` (PARM.LifecycleEnabled = 1) | 28 | CrewReqTick | i64 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 29 | CrewKind | u8 | max_service_vehicles | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 30 | SvcPct | u8 | records | 100 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 31 | SvcPctPending | u8 | records | 100 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 32 | SvcCostDay | i64 | 2 * records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 33 | SvcCallsDone | i64 | records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 34 | SvcRespTicks | i64 | records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 35 | SvcCallsLate | i64 | records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 36 | SvcCallsQueued | i64 | records | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 37 | SiteVarDay | i64 | 2 * max_service_sites | 0 |
+| `SERV` (PARM.LifecycleEnabled = 1) | 38 | SvcRespEwma | u16 | records * cells (0 без city.services) | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 1 | Count | i32 | 1 | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 2 | P0X | f32 | Count | 0 |
 | `LUSE` (PARM.LandUseCount > 0) | 3 | P0Z | f32 | Count | 0 |

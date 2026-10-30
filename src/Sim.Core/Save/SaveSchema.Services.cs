@@ -10,6 +10,7 @@ namespace Sim.Core.Save;
 //   PARM 300-313 (секция city.services), блок SVCR (PreWorld, есть <=> PARM.ServicesEnabled = 1) - таблицы записей служб (копия, как BTYP),
 //   блок SERV (есть <=> city.lifecycle) - станции, кольца вызовов по записям, бригады (переехали из LIFE 4-17). Миграции нет (режим прототипа): MigrationV18.
 //   Отклонение от спеки: SERV есть и без режима служб - бригады ЖКХ BL живут в нём (без режима одна встроенная запись utility).
+//   SR2 (окно w18, без смены версии): SERV 29-38 (вид вызова бригады, ползунки, расходы, счётчики вызовов записей, переменная часть станций, RespEwma), CNTR 185-188, LEDG потоки длиной 23.
 internal static partial class SaveSchema
 {
     // ---- PARM 300-313 ----
@@ -112,6 +113,16 @@ internal static partial class SaveSchema
         Col.Array<int>(26, "CrewVehicleGen", w => Sv(w).Crews.VehicleGen, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
         Col.Array<long>(27, "CrewDueTick", w => Sv(w).Crews.DueTick, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
         Col.Array<long>(28, "CrewReqTick", w => Sv(w).Crews.ReqTick, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
+        Col.Array<byte>(29, "CrewKind", w => Sv(w).Crews.Kind, static w => Sv(w).Crews.Capacity, "max_service_vehicles"),
+        Col.Array<byte>(30, "SvcPct", w => Sv(w).Pct, static w => Sv(w).Pct.Length, "records", "100"),
+        Col.Array<byte>(31, "SvcPctPending", w => Sv(w).PctPending, static w => Sv(w).PctPending.Length, "records", "100"),
+        Col.Array<long>(32, "SvcCostDay", w => Sv(w).SvcCostDay, static w => Sv(w).SvcCostDay.Length, "2 * records"),
+        Col.Array<long>(33, "SvcCallsDone", w => Sv(w).RecCallsDone, static w => Sv(w).RecCallsDone.Length, "records"),
+        Col.Array<long>(34, "SvcRespTicks", w => Sv(w).RecRespTicks, static w => Sv(w).RecRespTicks.Length, "records"),
+        Col.Array<long>(35, "SvcCallsLate", w => Sv(w).RecCallsLate, static w => Sv(w).RecCallsLate.Length, "records"),
+        Col.Array<long>(36, "SvcCallsQueued", w => Sv(w).RecCallsQueued, static w => Sv(w).RecCallsQueued.Length, "records"),
+        Col.Array<long>(37, "SiteVarDay", w => Sv(w).SiteVarDay, static w => Sv(w).SiteVarDay.Length, "2 * max_service_sites"),
+        Col.Array<ushort>(38, "SvcRespEwma", w => Sv(w).RespEwma, static w => Sv(w).RespEwma.Length, "records * cells (0 без city.services)"),
     })
     {
         Present = static w => w.City?.Services != null,

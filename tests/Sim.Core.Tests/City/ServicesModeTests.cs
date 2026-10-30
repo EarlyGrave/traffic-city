@@ -20,24 +20,29 @@ public sealed class ServicesModeTests
     private const string Scenario = "s1k-res-bl";
     private const int Depots = 3;
 
-    private static (long Repairs, long Delay, long Timeouts, long NoDepot, long Fund) Outcome(Simulation sim) =>
-        (sim.World.Counters.RepairsDone, sim.World.Counters.RepairDelayTicksTotal, sim.World.Counters.CrewTimeouts, sim.World.Counters.RepairNoDepot, sim.World.City!.Ledger.Utility);
-
     [Theory]
     [InlineData(TripExecution.Agents)]
     [InlineData(TripExecution.Aggregate)]
-    public void UtilityRecord_SameOutcomeAsBl(TripExecution exec)
+    public void UtilityRecord_RepairsWithUpkeep(TripExecution exec)
     {
+        // SR2: в режиме ЖКХ работает по записи (onsite_s, Duty, расход станции ServiceUpkeep вместо зарплаты бригад BL) - исход другой, ремонты те же по смыслу
         using Simulation bl = ServicesRefactorTests.Make(Scenario, exec, Depots);
         using Simulation sr = ServicesRefactorTests.Make(Scenario, exec, Depots, mode: true);
         Assert.False(bl.World.City!.Services!.Table.Explicit);
         Assert.True(sr.World.City!.Services!.Table.Explicit);
-        int day = 2 * bl.World.City!.DayTicks;   // первые ремонты - на вторые сутки
+        int day = 3 * bl.World.City!.DayTicks;   // первые ремонты - на вторые сутки, расход станции - в проходе зданий
         bl.Step(day);
         sr.Step(day);
         Assert.True(bl.World.Counters.RepairsDone > 0);
-        Assert.Equal(Outcome(bl), Outcome(sr));
-        Assert.NotEqual(bl.ComputeStateHash(), sr.ComputeStateHash());   // в режиме хэш пишет станции и все кольца (блок SERV)
+        Assert.True(sr.World.Counters.RepairsDone > 0);
+        Ledger lb = bl.World.City!.Ledger;
+        Ledger ls = sr.World.City!.Ledger;
+        Assert.True(lb.FlowTotal[(int)FlowKind.CrewWages] > 0);
+        Assert.Equal(0L, lb.FlowTotal[(int)FlowKind.ServiceUpkeep]);
+        Assert.Equal(0L, ls.FlowTotal[(int)FlowKind.CrewWages]);
+        Assert.True(ls.FlowTotal[(int)FlowKind.ServiceUpkeep] > 0);
+        Assert.Equal(sr.World.Counters.CallsDone, sr.World.City!.Services!.RecCallsDone[sr.World.City!.Services!.Table.Utility]);
+        Assert.NotEqual(bl.ComputeStateHash(), sr.ComputeStateHash());
     }
 
     [Fact]
