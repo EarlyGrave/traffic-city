@@ -457,6 +457,12 @@ public sealed class LifecycleUtilityTests
         Assert.True(tariff <= r.IncomeEwma[rich] * pct, "разброс доходов мал для теста");
         c.Budget!.Policy.R0 = tariff;
         long inc = c.Kpi.Cur[0].IncBuildingWorn;
+        // вариант Б (2026-10-30): жребий только у рабочей силы; иждивенец с нулевым доходом не уезжает
+        r.Flags[poor] &= unchecked((byte)~ResidentFlags.Labour);
+        Utilities.TariffLeave(w, c, poor);
+        Assert.Equal(0, r.Flags[poor] & ResidentFlags.Leaving);
+        r.Flags[poor] |= ResidentFlags.Labour;
+        r.Flags[rich] |= ResidentFlags.Labour;
         Utilities.TariffLeave(w, c, rich);
         Assert.Equal(0, r.Flags[rich] & ResidentFlags.Leaving);
         Utilities.TariffLeave(w, c, poor);

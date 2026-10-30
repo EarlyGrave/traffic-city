@@ -730,7 +730,8 @@ internal static class Utilities
             return;
         }
 
-        if (bud.Policy.R0 <= res.IncomeEwma[r] * c.Cfg.Lifecycle.TariffBurdenPct)
+        // Вариант Б (решение владельца 2026-10-30): жребий только у рабочей силы; иждивенцы (дети, пенсионеры) не в счёте.
+        if ((res.Flags[r] & ResidentFlags.Labour) == 0 || bud.Policy.R0 <= res.IncomeEwma[r] * c.Cfg.Lifecycle.TariffBurdenPct)
         {
             return;
         }
