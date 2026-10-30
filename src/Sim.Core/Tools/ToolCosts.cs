@@ -188,7 +188,7 @@ internal static class ToolCosts
         long cost = c.Cost;
         if (cost > 0)
         {
-            lg.Transfer(lg.CityAccount, lg.ExternalAccount, cost, FlowKind.Construction);
+            lg.Transfer(lg.CityAccount, lg.ExternalAccount, cost, cmd.Kind == CommandKind.RestoreBuilding ? FlowKind.Restoration : FlowKind.Construction);   // капремонт - свой поток (BL4), без undo
         }
         else if (cost < 0)
         {

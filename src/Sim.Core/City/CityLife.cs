@@ -394,6 +394,35 @@ internal static class CityLife
         w.Counters.BuildingsDemolished++;
     }
 
+    /// <summary>Стадия вреда заброшки по <c>Cond</c> (§2.4): 1 - H1 (≥ 35 %), 2 - H2 (15-35 %), 3 - H3 (&lt; 15 %).</summary>
+    public static byte HarmStage(int cond) => cond >= H1Bp ? (byte)1 : cond >= H2Bp ? (byte)2 : (byte)3;
+
+    /// <summary>Цена капремонта (§2.9, вариант Б): <c>Capacity · restore_per_unit · (2 − Cond / 10 000)</c> - от 1× до 2× базы; чем запущеннее дом, тем дороже.</summary>
+    public static long RestoreCost(CityWorld c, int bi)
+    {
+        BuildingStore b = c.Buildings;
+        long baseCost = (long)c.Types.Rows[b.Type[bi]].Capacity * c.Cfg.Lifecycle.RestorePerUnit;
+        return baseCost * ((2 * Full) - b.Cond[bi]) / Full;
+    }
+
+    /// <summary>
+    /// Капремонт (§2.9), после валидатора и до проводки цены: <c>Cond = Ceil = 100 %</c>, значимость, возраст и статус не трогаются. Заброшенное (<c>Cond</c> уже &gt;= 50 %, валидатор) -
+    /// заселяется заново (<see cref="Resettle"/>, третий путь для заброшки). Заявка ЖКХ, если была, остаётся в очереди и снимается при выезде (здание не нуждается в ремонте).
+    /// </summary>
+    public static void Restore(World w, CityWorld c, int bi)
+    {
+        BuildingStore b = c.Buildings;
+        b.Cond[bi] = Full;
+        b.Ceil[bi] = Full;
+        b.LifeFlags[bi] &= unchecked((byte)~BuildingLifeFlags.WornNotified);
+        if (b.State[bi] == (byte)BuildingState.Abandoned)
+        {
+            Resettle(w, c, bi);
+        }
+
+        w.Counters.Restorations++;
+    }
+
     /// <summary>
     /// Снос значимого (§2.5, уровень ≥ 2): разовый проход по зданиям в радиусе <c>heritage_loss_radius_m</c> - жилым активным <c>incidents += Occupants · уровень / 2</c> (случаи K4)
     /// и жалоба <c>HeritageLost</c> у сносимого здания. O(зданий) на команду, редко.

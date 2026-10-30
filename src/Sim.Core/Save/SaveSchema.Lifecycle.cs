@@ -3,12 +3,12 @@ using Sim.Core.Api;
 namespace Sim.Core.Save;
 
 // world_version 17 (building-lifecycle.md §5, задачи BL1-BL2; окно w17 открыто до BL4): жизнь здания.
-//   PARM 280-298 (секция city.lifecycle; 289-298 - ЖКХ, BL3), BLDG 22-27 (Cond, Ceil, BornDay, LifeFlags, Signif, ArrivalsDay; без режима - нули), LIFE 1-2 (поля квартала, BL2), LIFE 3-17 (фонд Utility, очередь заявок, бригады, BL3),
+//   PARM 280-299 (секция city.lifecycle; 289-298 - ЖКХ, BL3; 299 - restore_per_unit, BL4), BLDG 22-27 (Cond, Ceil, BornDay, LifeFlags, Signif, ArrivalsDay; без режима - нули), LIFE 1-2 (поля квартала, BL2), LIFE 3-17 (фонд Utility, очередь заявок, бригады, BL3),
 //   BTYP 13-19 (DecayBpDay, CeilDropBpDay, DemolishCost, BuildCost, ServiceKind, Vehicles, VehicleType),
-//   CNTR 176-183 (BuildingsCrumbled, BuildingsDemolished, BuildingsResettled, RepairsDone, RepairDelayTicksTotal, RepairNoDepot, CrewTimeouts, TariffLeaves); LEDG потоки длиной 22; CKPI 38-39 (IncBuildingWorn, SaveSchema.Progression). Миграции нет (режим прототипа): MigrationV17.
+//   CNTR 176-184 (BuildingsCrumbled, BuildingsDemolished, BuildingsResettled, RepairsDone, RepairDelayTicksTotal, RepairNoDepot, CrewTimeouts, TariffLeaves, Restorations); LEDG потоки длиной 22; CKPI 38-39 (IncBuildingWorn, SaveSchema.Progression). Миграции нет (режим прототипа): MigrationV17.
 internal static partial class SaveSchema
 {
-    // ---- PARM 280-298 ----
+    // ---- PARM 280-299 ----
     private static ColumnDef[] LifecycleParams() => new[]
     {
         Col.Flag(280, "LifecycleEnabled", w => w.Town.Lifecycle.Enabled, (c, v) => c.Desc.Town.Lifecycle.Enabled = v),
@@ -30,6 +30,7 @@ internal static partial class SaveSchema
         Col.Scalar<int>(296, "LifecycleTariffLeaveQ16", w => w.Town.Lifecycle.TariffLeaveQ16, (c, v) => c.Desc.Town.Lifecycle.TariffLeaveQ16 = v),
         Col.Scalar<int>(297, "LifecycleMaxUtilityTariff", w => w.Town.Lifecycle.MaxUtilityTariff, (c, v) => c.Desc.Town.Lifecycle.MaxUtilityTariff = v),
         Col.Scalar<int>(298, "LifecycleUtilityTariff", w => w.Town.Lifecycle.UtilityTariff, (c, v) => c.Desc.Town.Lifecycle.UtilityTariff = v),
+        Col.Scalar<int>(299, "LifecycleRestorePerUnit", w => w.Town.Lifecycle.RestorePerUnit, (c, v) => c.Desc.Town.Lifecycle.RestorePerUnit = v),
     };
 
     // ---- BLDG 22-25 ----
@@ -83,7 +84,7 @@ internal static partial class SaveSchema
         PreField<BuildingTypeDesc, byte>(19, "VehicleType", 5, "Rows.Length", w => w.City?.Types.Rows, c => c.BuildingTypes, (c, a) => c.BuildingTypes = a, static (in BuildingTypeDesc t) => t.VehicleType, static (ref BuildingTypeDesc t, byte v) => t.VehicleType = v),
     };
 
-    // ---- CNTR 176-183 ----
+    // ---- CNTR 176-184 ----
     private static ColumnDef[] LifecycleCounters() => new[]
     {
         Col.Scalar<long>(176, "BuildingsCrumbled", w => w.Counters.BuildingsCrumbled, (c, v) => c.W.Counters.BuildingsCrumbled = v),
@@ -94,5 +95,6 @@ internal static partial class SaveSchema
         Col.Scalar<long>(181, "RepairNoDepot", w => w.Counters.RepairNoDepot, (c, v) => c.W.Counters.RepairNoDepot = v),
         Col.Scalar<long>(182, "CrewTimeouts", w => w.Counters.CrewTimeouts, (c, v) => c.W.Counters.CrewTimeouts = v),
         Col.Scalar<long>(183, "TariffLeaves", w => w.Counters.TariffLeaves, (c, v) => c.W.Counters.TariffLeaves = v),
+        Col.Scalar<long>(184, "Restorations", w => w.Counters.Restorations, (c, v) => c.W.Counters.Restorations = v),
     };
 }

@@ -46,6 +46,55 @@ internal static partial class ToolValidator
         return RejectReason.None;
     }
     /// <summary>
+    /// <c>RestoreBuilding</c> (building-lifecycle.md §2.9, §6.2): режим <c>city.lifecycle</c> (иначе <c>NotSupported</c>), живой слот с совпадающим поколением (иначе <c>InvalidHandle</c>);
+    /// не <c>Demolishing</c>, не <c>Constructing</c>, <c>Cond</c> не ниже 50 % (ремонту не подлежит) и есть что чинить (<c>Cond &lt; 100 %</c> или <c>Ceil &lt; 100 %</c>) - иначе <c>InvalidArgument</c>;
+    /// заброшенное - вид здания = зона участка и участок не <c>Lost</c>, иначе <c>ZoneRule</c>. Цена - <see cref="CityLife.RestoreCost"/>; точка превью - центр участка.
+    /// </summary>
+    private static RejectReason CheckRestoreBuilding(World w, in Command cmd, ref ToolCheck c)
+    {
+        CityWorld? city = w.City;
+        if (city == null || !city.Cfg.Lifecycle.Enabled)
+        {
+            return RejectReason.NotSupported;
+        }
+
+        EntityRef h = cmd.RestoreBuilding.Building;
+        BuildingStore b = city.Buildings;
+        if ((uint)h.Index >= (uint)b.Capacity || !b.IsAlive(h.Index) || b.Pool.GenerationOf(h.Index) != h.Generation)
+        {
+            return RejectReason.InvalidHandle;
+        }
+
+        int lot = b.Lot[h.Index];
+        if ((uint)lot < (uint)city.Lots.X.Length)
+        {
+            c.AX = city.Lots.X[lot];
+            c.AZ = city.Lots.Z[lot];
+        }
+
+        c.IssueKind = EntityKind.Building;
+        c.IssueIndex = h.Index;
+        c.IssueGen = h.Generation;
+        c.IssueX = c.AX;
+        c.IssueZ = c.AZ;
+        var st = (BuildingState)b.State[h.Index];
+        if ((b.LifeFlags[h.Index] & BuildingLifeFlags.Demolishing) != 0 || st is not (BuildingState.Active or BuildingState.Abandoned)
+            || b.Cond[h.Index] < CityLife.AbandonBp || (b.Cond[h.Index] >= CityLife.Full && b.Ceil[h.Index] >= CityLife.Full))
+        {
+            return RejectReason.InvalidArgument;
+        }
+
+        if (st == BuildingState.Abandoned && ((uint)lot >= (uint)city.Lots.X.Length || (city.Lots.Flags[lot] & LotFlags.Lost) != 0
+            || city.Types.Rows[b.Type[h.Index]].Kind != (LotZone)city.Lots.Zone[lot]))
+        {
+            return RejectReason.ZoneRule;
+        }
+
+        c.Cost = CityLife.RestoreCost(city, h.Index);
+        return RejectReason.None;
+    }
+
+    /// <summary>
     /// <c>BuildService</c> (building-lifecycle.md §2.10, §6.2): режим <c>city.lifecycle</c> (иначе <c>NotSupported</c>); участок в пределах и тип вида <c>Service</c> (иначе <c>InvalidArgument</c>);
     /// участок без здания, не <c>Lost</c>, с полосой (иначе <c>ZoneRule</c>); свободных слотов бригад не меньше <c>Vehicles</c> типа (иначе <c>Capacity</c>). Цена - <c>build_cost</c>; точка - центр участка.
     /// </summary>

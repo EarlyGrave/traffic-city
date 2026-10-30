@@ -164,6 +164,7 @@ public struct SimCounters
     public long RepairNoDepot;            // заявок снято: нет депо в дорожной компоненте
     public long CrewTimeouts;             // таймаутов поездки бригады (micro)
     public long TariffLeaves;             // жителей уехало из-за квартплаты (HighRent)
+    public long Restorations;             // капремонтов игроком (RestoreBuilding, BL4)
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

@@ -141,6 +141,9 @@ internal static partial class CommandDispatcher
             case CommandKind.DemolishBuilding:
                 DemolishBuilding(w, in cmd);
                 break;
+            case CommandKind.RestoreBuilding:
+                RestoreBuilding(w, in cmd);
+                break;
             case CommandKind.BuildService:
                 BuildService(w, in cmd);
                 break;
@@ -562,6 +565,21 @@ internal static partial class CommandDispatcher
         }
 
         City.CityLife.Demolish(w, w.City!, cmd.DemolishBuilding.Building.Index);
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>Капремонт (building-lifecycle.md §2.9): проверки и цена - общий валидатор; <c>Cond = Ceil = 100 %</c>, заброшенное (&gt;= 50 %) заселяется заново; проводка - поток <c>Restoration</c>, без undo.</summary>
+    private static void RestoreBuilding(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        City.CityLife.Restore(w, w.City!, cmd.RestoreBuilding.Building.Index);
         AppliedPaid(w, in cmd, in chk);
     }
 

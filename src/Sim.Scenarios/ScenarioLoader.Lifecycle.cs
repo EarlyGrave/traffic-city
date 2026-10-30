@@ -41,6 +41,7 @@ public static partial class ScenarioLoader
         d.TariffLeaveQ16 = CityDesc.Q16(r.Num("tariff_leave", 0.02, min: 0, max: 1));
         d.MaxUtilityTariff = r.Int("max_utility_tariff", d.MaxUtilityTariff, min: 0, max: ushort.MaxValue);
         d.UtilityTariff = r.Int("utility_tariff", d.UtilityTariff, min: 0, max: d.MaxUtilityTariff);
+        d.RestorePerUnit = r.Int("restore_per_unit", d.RestorePerUnit, min: 0, max: 1_000_000);
         r.Finish();
         if (d.Enabled && !town.Economy.CityBudget)
         {

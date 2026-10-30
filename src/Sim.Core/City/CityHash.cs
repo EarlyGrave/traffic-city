@@ -209,6 +209,7 @@ internal static class CityHash
         h.Add(k.RepairNoDepot);
         h.Add(k.CrewTimeouts);
         h.Add(k.TariffLeaves);
+        h.Add(k.Restorations);
     }
 
     /// <summary>

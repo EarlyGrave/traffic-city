@@ -779,6 +779,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 296 | LifecycleTariffLeaveQ16 | i32 | 1 | 0 |
 | `PARM` | 297 | LifecycleMaxUtilityTariff | i32 | 1 | 0 |
 | `PARM` | 298 | LifecycleUtilityTariff | i32 | 1 | 0 |
+| `PARM` | 299 | LifecycleRestorePerUnit | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -1032,6 +1033,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `CNTR` | 181 | RepairNoDepot | i64 | 1 | 0 |
 | `CNTR` | 182 | CrewTimeouts | i64 | 1 | 0 |
 | `CNTR` | 183 | TariffLeaves | i64 | 1 | 0 |
+| `CNTR` | 184 | Restorations | i64 | 1 | 0 |
 | `NETW` | 1 | NodeCount | i32 | 1 | 0 |
 | `NETW` | 2 | SegmentCount | i32 | 1 | 0 |
 | `NETW` | 3 | LaneCount | i32 | 1 | 0 |

@@ -183,6 +183,54 @@ public struct BuildingInfo
     public long StateTick;
 }
 
+/// <summary>Состояние ремонта здания (<see cref="BuildingLifeInfo.RepairState"/>, building-lifecycle.md §2.10).</summary>
+public enum RepairState : byte
+{
+    None = 0,       // заявки нет
+    Queued = 1,     // заявка в очереди ЖКХ
+    CrewEnRoute = 2,// бригада едет к зданию
+    Working = 3,    // бригада ремонтирует
+}
+
+/// <summary>Жизнь здания для панели клиента (<see cref="Simulation.TryGetBuildingLife"/>, building-lifecycle.md §3, §6): состояние, потолок, возраст, значимость, признаки, ремонт и цена капремонта.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct BuildingLifeInfo
+{
+    public int CondBp, CeilBp;          // состояние и потолок, б.п. (10 000 = 100 %)
+    public int AgeDays;                 // возраст, игровые сутки
+    public int Signif;                  // накопитель значимости
+    public int SignifLevel;             // уровень 0-5
+    public ushort Flags;                // BuildingRenderFlags (Requested, Demolishing; Monument/Boost - резерв)
+    public RepairState RepairState;
+    public byte HarmStage;              // стадия вреда заброшки: 0 - нет (не заброшено), 1-3 = H1-H3 (§2.4)
+    public byte CanRestore;             // 1 - RestoreBuilding сейчас пройдёт проверки (цена в RestorePrice; казна не проверяется)
+    public long RestorePrice;           // цена капремонта сейчас (0, если CanRestore = 0)
+    public long RepairPrice;            // цена ремонта ЖКХ до потолка из фонда (для справки)
+    public long DemolishPrice;          // цена сноса сейчас
+}
+
+/// <summary>Фонд и работа ЖКХ для панели бюджета и значка «фонд пуст» (<see cref="Simulation.GetUtilityInfo"/>, building-lifecycle.md §2.10).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct UtilityInfo
+{
+    public long Fund;                   // баланс фонда Utility
+    public long RepairsDone;            // ремонтов за всё время
+    public long RepairDelayTicksTotal;  // Σ задержек заявка-ремонт, тики
+    public long AvgDelayTicks;          // средняя задержка ремонта, тики (0 - ремонтов ещё не было)
+    public long RepairsPerDayX100;      // ремонтов в сутки в среднем с начала игры, ×100
+    public int Tariff;                  // действующий тариф (BudgetPolicy.R0)
+    public int PendingTariff;           // ожидающий (= Tariff, если ожидающей политики нет)
+    public int MaxTariff;               // предел тарифа
+    public int QueueLength;             // заявок в очереди
+    public int Depots;                  // работающих депо
+    public int Crews;                   // бригад всего
+    public int CrewsBusy;               // бригад в выезде (не в депо)
+    public byte Subsidy;                // 1 - субсидия из казны включена (действующая политика)
+    public byte PendingSubsidy;         // 1 - в ожидающей политике
+    public byte FundEmpty;              // 1 - фонд <= 0 (ремонт ждёт денег или идёт на субсидии)
+    public byte R0;
+}
+
 /// <summary>Сводка города (<see cref="Simulation.GetCityStats"/>): состояние на конец последнего тика; «вчера» - накопители прошлых суток.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct CityStats

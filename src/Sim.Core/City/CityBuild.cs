@@ -88,7 +88,7 @@ internal static class CityBuild
             lf.RepairRequestBp is >= 5_000 and <= 10_000 && lf.RepairPerUnit is >= 0 and <= 1_000_000 && lf.RepairMinutes is >= 1 and <= 14_400 &&
             lf.CrewDayCost is >= 0 and <= 1_000_000 && lf.MaxServiceVehicles is >= 0 and <= 65_536 && lf.MaxDispatchPerTick is >= 1 and <= 64 &&
             lf.TariffBurdenPct is >= 0 and <= 100 && lf.TariffLeaveQ16 is >= 0 and <= 65_536 && lf.MaxUtilityTariff is >= 0 and <= ushort.MaxValue &&
-            lf.UtilityTariff >= 0 && lf.UtilityTariff <= lf.MaxUtilityTariff);
+            lf.UtilityTariff >= 0 && lf.UtilityTariff <= lf.MaxUtilityTariff && lf.RestorePerUnit is >= 0 and <= 1_000_000);
         ok &= ch.ThetaMode64 >= 0 && ch.ThetaDest64 >= 0 && ch.ThetaTime64 >= 0 && ch.ThetaFreq64 >= 0;
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;

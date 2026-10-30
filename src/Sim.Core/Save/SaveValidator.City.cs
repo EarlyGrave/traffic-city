@@ -189,7 +189,7 @@ internal static partial class SaveValidator
     private static bool SimCountersLifeOk(LoadContext c)
     {
         ref readonly SimCounters k = ref c.W.Counters;
-        return k.BuildingsCrumbled >= 0 && k.BuildingsDemolished >= 0 && k.BuildingsResettled >= 0;
+        return k.BuildingsCrumbled >= 0 && k.BuildingsDemolished >= 0 && k.BuildingsResettled >= 0 && k.Restorations >= 0;
     }
 
     private static LoadStatus ValidateCityResidents(LoadContext c, World w, CityWorld city)

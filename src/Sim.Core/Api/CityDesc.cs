@@ -140,6 +140,7 @@ public struct CityLifecycleDesc
     public int TariffLeaveQ16;      // tariff_leave: шанс ухода в сутки при тарифе выше порога; дефолт 0.02
     public int MaxUtilityTariff;    // max_utility_tariff: предел тарифа (сотые в сутки на жителя); дефолт 1 000
     public int UtilityTariff;       // utility_tariff: стартовый тариф BudgetPolicy.R0; дефолт 100
+    public int RestorePerUnit;      // restore_per_unit: цена капремонта Capacity * это * (2 - Cond / 10 000) (§2.9); дефолт 150
 
     /// <summary>Дефолты §2 с включённым режимом.</summary>
     public static CityLifecycleDesc Default() => new()
@@ -163,6 +164,7 @@ public struct CityLifecycleDesc
         TariffLeaveQ16 = CityDesc.Q16(0.02),
         MaxUtilityTariff = 1_000,
         UtilityTariff = 100,
+        RestorePerUnit = 150,
     };
 }
 

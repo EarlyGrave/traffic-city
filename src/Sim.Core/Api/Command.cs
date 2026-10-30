@@ -44,7 +44,8 @@ public enum CommandKind : ushort
 
     // Жизнь здания (building-lifecycle.md §6.2, BL1).
     DemolishBuilding = 39,  // снос здания игроком: цена demolish_cost из казны, необратима; только в режиме city.lifecycle
-    // 40 RestoreBuilding, 41 SetMonument - резерв BL4
+    RestoreBuilding = 40,   // капремонт (§2.9): Cond = Ceil = 100 %, цена Capacity * restore_per_unit * (2 - Cond/10000) из казны (поток Restoration), необратим; < 50 % отклоняется
+    // 41 SetMonument - отложен решением владельца (§2.8)
     BuildService = 42,      // депо службы (ЖКХ) на пустой участок: цена build_cost из казны; обратная - DemolishBuilding с возвратом по undo_refund_s (§6.2)
 }
 
@@ -153,6 +154,9 @@ public struct Command
 
     [FieldOffset(8)]
     public DemolishBuildingCmd DemolishBuilding;
+
+    [FieldOffset(8)]
+    public RestoreBuildingCmd RestoreBuilding;
 
     [FieldOffset(8)]
     public BuildServiceCmd BuildService;
@@ -371,6 +375,16 @@ public struct Command
         c.Kind = CommandKind.DemolishBuilding;
         c.Tag = tag;
         c.DemolishBuilding = new DemolishBuildingCmd { Building = building };
+        return c;
+    }
+
+    /// <summary>Капремонт здания (building-lifecycle.md §2.9): <paramref name="building"/> - слот и поколение из <see cref="BuildingRenderData"/>.</summary>
+    public static Command MakeRestoreBuilding(EntityRef building, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.RestoreBuilding;
+        c.Tag = tag;
+        c.RestoreBuilding = new RestoreBuildingCmd { Building = building };
         return c;
     }
 
@@ -596,6 +610,13 @@ public struct SetOnCallCmd
 /// <summary>Снос здания игроком (building-lifecycle.md §2.5, §6.2): живой слот с совпадающим поколением, ещё не сносится.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct DemolishBuildingCmd
+{
+    public EntityRef Building;
+}
+
+/// <summary>Капремонт здания (building-lifecycle.md §2.9, §6.2): живой слот с совпадающим поколением.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct RestoreBuildingCmd
 {
     public EntityRef Building;
 }
