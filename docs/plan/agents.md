@@ -329,3 +329,6 @@
 | BL3 (L104) | opus | 229 876 | н/д | 2026-10-30 |
 - L105 (sonnet, BL4 капремонт + API): RestoreBuilding(40), TryGetBuildingLife, GetUtilityInfo; LifecycleRestoreTests 14/14; окно w17 закрыто; local/bl4 влит. Feature.Restoration не добавлена (сдвигает хэш Features). Отчёт: reports/L105.md
 | BL4 (L105) | sonnet | 218 708 | н/д | 2026-10-30 |
+- L106 (sonnet, BL5 сценарии s1k/s10k-res-bl, калибровка, доки): ЖКХ «успевает» при тарифе 30 (12 депо, s10k-res-bl); тест 6 (вред ≥1.5× сноса) не достигается ручками — Skip, ждёт решения владельца; tariff_leave 0.002 в сценариях; local/bl5 влит. Отчёт: reports/L106.md
+| BL5 (L106) | sonnet | 358 878 | н/д | 2026-10-30 |
+| **Волна BL (BL1–BL5; L102–L106)** — открыта до решения владельца по тарифу/тесту 6 и проверки волны | opus ×2, sonnet ×3 | **1 236 638** (агенты) | н/д | 2026-10-30 |
