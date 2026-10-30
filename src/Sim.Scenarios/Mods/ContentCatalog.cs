@@ -33,6 +33,8 @@ public sealed class ContentCatalog
     private readonly List<RoadEntry> _roads = [];
     private readonly Dictionary<AssetId, int> _buildingIndex = [];
     private readonly List<BuildingEntry> _buildings = [];
+    private readonly Dictionary<AssetId, int> _serviceIndex = [];
+    private readonly List<ServiceEntry> _services = [];
 
     public IReadOnlyList<VehicleEntry> Vehicles => _vehicles;
 
@@ -40,6 +42,15 @@ public sealed class ContentCatalog
 
     /// <summary>Типы зданий в порядке загрузки; индекс = <c>Building.Type</c> (строки только дописываются, zoning-demand.md §2.2).</summary>
     public IReadOnlyList<BuildingEntry> Buildings => _buildings;
+
+    /// <summary>Записи служб в порядке загрузки (services.md §2.2); индекс = <c>Svc</c> ядра, если сценарий не выключил записи (<c>services_off</c>).</summary>
+    public IReadOnlyList<ServiceEntry> Services => _services;
+
+    /// <summary>Таблицы записей служб ядра (<see cref="CityServicesDesc"/>) из каталога; <paramref name="off"/> - выключенные сценарием записи.</summary>
+    public void FillServices(ISet<AssetId>? off, ref CityServicesDesc s) => ServiceContent.Flatten(_services, off, ref s);
+
+    /// <summary>Индекс записи службы или -1.</summary>
+    public int FindService(AssetId id) => _serviceIndex.TryGetValue(id, out int i) ? i : -1;
 
     /// <summary>Индекс типа здания или -1.</summary>
     public int FindBuilding(AssetId id) => _buildingIndex.TryGetValue(id, out int i) ? i : -1;
@@ -111,6 +122,22 @@ public sealed class ContentCatalog
                 }
             }
 
+            foreach (string file in pkg.Manifest.Content.Services)
+            {
+                foreach (ServiceEntry e in ServiceContent.Load(pkg, file, issues, cat))
+                {
+                    assets++;
+                    if (cat._serviceIndex.TryAdd(e.Id, cat._services.Count))
+                    {
+                        cat._services.Add(e);
+                    }
+                    else
+                    {
+                        issues.Add(new ModIssue(pkg.Id, file, string.Empty, ModError.DuplicateId, e.Id.ToString()));
+                    }
+                }
+            }
+
             if (assets > ModLimits.MaxAssetsPerPackage)
             {
                 issues.Add(new ModIssue(pkg.Id, string.Empty, string.Empty, ModError.TooLarge,
@@ -128,6 +155,12 @@ public sealed class ContentCatalog
         {
             issues.Add(new ModIssue(string.Empty, string.Empty, "$.buildings", ModError.CapacityExceeded,
                 $"{cat._buildings.Count.ToString(CultureInfo.InvariantCulture)} building types, limit {ModLimits.MaxBuildingTypes.ToString(CultureInfo.InvariantCulture)}"));
+        }
+
+        if (cat._services.Count > ModLimits.MaxServices)
+        {
+            issues.Add(new ModIssue(string.Empty, string.Empty, "$.services", ModError.CapacityExceeded,
+                $"{cat._services.Count.ToString(CultureInfo.InvariantCulture)} services, limit {ModLimits.MaxServices.ToString(CultureInfo.InvariantCulture)}"));
         }
 
         if (cat._vehicles.Count > 0 && cat._vehicles[0].Desc.Category != VehicleCategory.Car)

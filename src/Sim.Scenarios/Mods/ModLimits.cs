@@ -23,6 +23,9 @@ public static class ModLimits
     public const int MaxBuildingTypes = 512;
     public const int MaxBuildingCapacity = 2_000;
 
+    /// <summary>Записи служб в наборе (services.md §2.2; = <c>CityServicesDesc.MaxRecords</c> ядра).</summary>
+    public const int MaxServices = 32;
+
     /// <summary>Расширения, которые пакет может содержать и использовать.</summary>
     public static readonly string[] AllowedExtensions = [".json", ".gltf", ".glb", ".bin", ".png", ".jpg", ".jpeg", ".ktx2"];
 
