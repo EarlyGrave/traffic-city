@@ -5,3 +5,4 @@
 
 | Задача | Среда | Ветка | Папки/файлы | С какого числа |
 |---|---|---|---|---|
+| SR1 (записи служб, `city.services`) | локал | local/sr1 | Sim.Scenarios/{ScenarioLoader,Mods/*}, content/base/*, City/CityLife*, City/CityServices*, Api/{ScenarioDesc,CityDesc}.cs, Save/* | 2026-10-30 |
