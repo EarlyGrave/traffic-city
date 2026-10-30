@@ -114,6 +114,32 @@ internal static class CityHash
         {
             AddLifecycle(ref h, c, in w.Counters);
         }
+
+        if (c.Cfg.Age.Enabled)
+        {
+            AddAge(ref h, c);   // age-groups.md §5: только в режиме city.age, без него ни одного нового байта
+        }
+    }
+
+    /// <summary>Возрастные группы (age-groups.md §5, RA1): параметры секции <c>city.age</c>, затем группа живых жителей.</summary>
+    private static void AddAge(ref Fnv1a64 h, CityWorld c)
+    {
+        ref readonly CityAgeDesc a = ref c.Cfg.Age;
+        h.Add(a.ChildQ16);
+        h.Add(a.ElderlyQ16);
+        h.Add(a.ElderlyCarPct);
+        h.Add(a.ElderlyAscFreqDs);
+        h.Add(a.ElderlySlot);
+        h.Add(a.ElderlyStepSlots);
+        h.Add(a.PensionDay);
+        CityResidents res = c.Residents;
+        for (int r = 0; r < res.HighWater; r++)
+        {
+            if (res.IsAlive(r))
+            {
+                h.Add(res.Age[r]);
+            }
+        }
     }
 
     /// <summary>Раздел жизни зданий (building-lifecycle.md §5): только в режиме <c>city.lifecycle</c>, без него ни одного нового байта. Поля живых слотов, затем счётчики.</summary>

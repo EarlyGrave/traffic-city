@@ -132,6 +132,8 @@ public sealed partial class Simulation
             }
 
             stats.BalanceResidents += r.Account[i];
+            stats.PopChild += r.Age[i] == (byte)ResidentAge.Child ? 1 : 0;
+            stats.PopElderly += r.Age[i] == (byte)ResidentAge.Elderly ? 1 : 0;
         }
 
         for (int i = 0; i < b.HighWater; i++)
@@ -414,6 +416,7 @@ public sealed partial class Simulation
             State = (r.Flags[index] & ResidentFlags.Arriving) != 0 ? ResidentState.Arriving : (ResidentState)r.State[index],
             Flags = r.Flags[index],
             Mode = r.LegMode[index],
+            Age = (ResidentAge)r.Age[index],
             Agent = r.Agent[index],
             AgentGen = r.AgentGen[index],
             Balance = r.Account[index],

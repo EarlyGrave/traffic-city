@@ -228,6 +228,11 @@ internal static partial class SaveValidator
                 return Bad(c, i, 9);
             }
 
+            if (!AgeOk(city, r, i))
+            {
+                return Bad(c, i, 51);
+            }
+
             if (r.PlanCount[i] > CityResidents.MaxTours || r.PlanCursor[i] > r.PlanCount[i] || r.LegMode[i] > (byte)TravelMode.Walk || r.LegO[i] >= cells || r.LegD[i] >= cells ||
                 r.LegWalk[i] < 0 || r.LegWait[i] < 0 || r.LegRide[i] < 0 || r.SeekDays[i] < 0 || r.EvictDays[i] < 0 || r.Seq[i] < 0 || r.Seq[i] >= r.NextSeq)
             {
@@ -312,6 +317,27 @@ internal static partial class SaveValidator
         }
 
         return LoadStatus.Ok;
+    }
+
+    /// <summary>
+    /// Возрастная группа (age-groups.md §5, RA1): <c>Age &lt;= 2</c>; без <c>city.age</c> - 0; ребёнок без <c>Labour</c>, <c>HasCar</c>, <c>InSeekQueue</c> и работы; пожилой без
+    /// <c>Labour</c>, <c>InSeekQueue</c> и работы. Правило «в плане ребёнка - только Care» - с планом дня по группе (RA2).
+    /// </summary>
+    private static bool AgeOk(CityWorld city, CityResidents r, int i)
+    {
+        byte age = r.Age[i];
+        if (age == (byte)Api.ResidentAge.Adult)
+        {
+            return true;
+        }
+
+        if (!city.Cfg.Age.Enabled || age > (byte)Api.ResidentAge.Elderly || r.Work[i] != -1)
+        {
+            return false;
+        }
+
+        int banned = ResidentFlags.Labour | ResidentFlags.InSeekQueue | (age == (byte)Api.ResidentAge.Child ? ResidentFlags.HasCar : 0);
+        return (r.Flags[i] & banned) == 0;
     }
 
     // Службы (building-lifecycle.md §2.10, services.md §5; BL3, SR1): фонд только при службах; станции; вызовы колец; состояния бригад; машины бригад <-> бригады;

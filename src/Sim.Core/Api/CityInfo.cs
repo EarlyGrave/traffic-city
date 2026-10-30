@@ -155,6 +155,14 @@ public struct LotRenderData
     }
 }
 
+/// <summary>Возрастная группа жителя (age-groups.md §2.2, ADR-0044). Числа лежат в сейве (RESD 51); 0 - взрослый, поэтому без режима <c>city.age</c> все взрослые.</summary>
+public enum ResidentAge : byte
+{
+    Adult = 0,
+    Child = 1,
+    Elderly = 2,
+}
+
 /// <summary>Публичная копия полей жителя (инспектор).</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct ResidentInfo
@@ -163,7 +171,7 @@ public struct ResidentInfo
     public ResidentState State;
     public byte Flags;           // бит0 HasCar, бит1 Labour, бит2 Evicted, бит3 Leaving
     public byte Mode;            // TravelMode текущей ноги (если InLeg)
-    public byte R0;
+    public ResidentAge Age;      // возрастная группа (age-groups.md §2.7); без city.age - Adult
     public int Agent;            // индекс машины или пешехода в пути (-1: нет)
     public int AgentGen;
     public long Balance;
@@ -254,6 +262,7 @@ public struct CityStats
     public long BalanceResidents, BalanceFirms, BalanceExternal, BalanceCity;   // Σ = 0 (CZ2)
     public long ResStuck;
     public int ExecMode;              // TripExecution
+    public int PopChild, PopElderly;  // живых детей и пожилых (age-groups.md §2.7; без city.age - 0): производные, считаются здесь же, в хэш и сейв не идут
     public int R0;
 }
 

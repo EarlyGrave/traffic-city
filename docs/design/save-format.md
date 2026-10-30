@@ -187,6 +187,8 @@ SR6 (калибровка и сценарии `*-res-sr`) схему не мен
 
 С v18 (службы, `services.md` §5, задача SR1; без миграции, режим прототипа, окно открыто до SR5): очередь заявок и бригады ЖКХ переехали из `LIFE` (id 4-17 выбыли) в новый блок `SERV` (⇔ `city.lifecycle`: станции, кольца вызовов по записям, бригады со ссылкой на станцию); секция `city.services` - столбцы `PARM` 300-313 и блок `SVCR` (PreWorld, ⇔ `PARM.ServicesEnabled = 1`: таблицы записей служб). Хэш без `city.services` - побитово прежний (ЖКХ пишется как в BL). Окно w18 (SR1-SR5) закрыто SR5: версия остаётся 18, поздние колонки (SERV 29-48, PARM 314-315, CNTR 185-199, RESD 50, BTYP 20) входят в неё; SR5 добавил `SERV 48` (пристройки станций, `LotFlags.Annex` в `LOTS` Flags, значения 0..7). Корпус w18 не менялся: его миры без города.
 
+С v19 (возрастные группы, `age-groups.md` §5, задача RA1; без миграции, режим прототипа): секция `city.age` - столбцы `PARM` 316-323 и `RESD` 51 `Age` (u8: 0 взрослый, 1 ребёнок, 2 пожилой). Отклонение от §5 спеки: биты 6-7 `Flags` заняты (`CareRefused` = 64, SR3), поэтому группа - отдельный столбец. Без `city.age` столбцы нулевые, хэш побитово прежний.
+
 Состав блоков `world_version = 1` по факту (S2): список выше плюс `LODS` (`lod.mode != off`), `QMSO` (`lod.meso_model = queue`) и `SMET` (всегда). `MANI` добавляет S3 (манифест ассетов) в ту же версию, пока не выпущены сейвы. Отличия от наброска: `PARM` несёт и `NetLaneWidth/NetConnectorSamples` (геометрия построителя для `BuildRoad`; `CityEnabled` не нужен - построитель создаётся всегда), `DEMD` - ещё `TypeMix`; `RGRP` - `ArcCost` и `BuiltVersion`; `OVLY` - явные запасы (`EntryCap/ExitCap`), общие массивы раскладки и размеры массивов (запас растёт вместе с историей, перестройка при загрузке не нужна); раскладка входов/выходов оверлея и смещения матриц - канонические (§13 п. 5), `EntryFirst/ExitFirst/MatrixFirst` - префиксные суммы запасов (производные). Проверки загрузки, не покрытые контейнером, - `SaveValidator`; `FailedColumn/FailedRow` при их срабатывании - номер проверки и строка (не id столбца).
 
 ## 4. Версии и миграции
@@ -803,6 +805,14 @@ s10k с цифрами размера и времени. Клиентские к
 | `PARM` | 313 | ServicesIllDaysCritical | i32 | 1 | 0 |
 | `PARM` | 314 | ServicesFireCap | i32 | 1 | 0 |
 | `PARM` | 315 | ServicesFireSpreadPpm | i32 | 1 | 0 |
+| `PARM` | 316 | AgeEnabled | u8 | 1 | 0 |
+| `PARM` | 317 | AgeChildQ16 | i32 | 1 | 0 |
+| `PARM` | 318 | AgeElderlyQ16 | i32 | 1 | 0 |
+| `PARM` | 319 | AgeElderlyCarPct | i32 | 1 | 0 |
+| `PARM` | 320 | AgeElderlyAscFreqDs | i32 | 1 | 0 |
+| `PARM` | 321 | AgeElderlySlot | i32 | 1 | 0 |
+| `PARM` | 322 | AgeElderlyStepSlots | i32 | 1 | 0 |
+| `PARM` | 323 | AgePensionDay | i32 | 1 | 0 |
 | `DEMD` | 1 | TypeMix | f32 | TypeMix.Length | 0 |
 | `DEMD` | 2 | ZoneCenterX | f32 | Zones.Length | 0 |
 | `DEMD` | 3 | ZoneCenterZ | f32 | Zones.Length | 0 |
@@ -1647,6 +1657,7 @@ s10k с цифрами размера и времени. Клиентские к
 | `RESD` (demand.model = residents) | 48 | LegWaitFrom | i64 | HighWater | 0 |
 | `RESD` (demand.model = residents) | 49 | LegParkWait | i32 | HighWater | 0 |
 | `RESD` (demand.model = residents) | 50 | Ill | u8 | HighWater | 0 |
+| `RESD` (demand.model = residents) | 51 | Age | u8 | HighWater | 0 |
 | `OUTS` (секция outside) | 1 | Jobs | i32 | CityOutsideCount | 0 |
 | `OUTS` (секция outside) | 2 | Taken | i32 | CityOutsideCount | 0 |
 | `OUTS` (секция outside) | 3 | ArrivalsDay | i32 | CityOutsideCount | 0 |

@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled || desc.Town.Services.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled || desc.Town.Services.Enabled || desc.Town.Age.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -104,6 +104,7 @@ internal static class CityBuild
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;
         ok &= ch.SkimPeriods is >= 1 and <= 24 && ch.SkimShift is >= 0 and <= 8 && ch.SkimUpdatePerTick >= 1;
         ok &= IsValid(in t.Outside);
+        ok &= IsValid(in t.Age, r.LabourShareQ16);
         if (!ok)
         {
             return false;
@@ -151,6 +152,22 @@ internal static class CityBuild
     }
 
     private static bool Q16(int v) => v is >= 0 and <= 65536;
+
+    /// <summary>
+    /// Пределы секции <c>city.age</c> (age-groups.md §2.3, §6): без режима все поля 0; в режиме доли детей и пожилых умещаются в неработающих (<c>C + E &lt;= 1 - L</c>, Q16),
+    /// машина пожилых 0-100 %, окно в пределах суток, пенсия неотрицательна.
+    /// </summary>
+    public static bool IsValid(in CityAgeDesc a, int labourQ16)
+    {
+        if (!a.Enabled)
+        {
+            return a.ChildQ16 == 0 && a.ElderlyQ16 == 0 && a.ElderlyCarPct == 0 && a.ElderlyAscFreqDs == 0 && a.ElderlySlot == 0 && a.ElderlyStepSlots == 0 && a.PensionDay == 0;
+        }
+
+        return a.ChildQ16 is >= 0 and <= 65_536 && a.ElderlyQ16 is >= 0 and <= 65_536 && (long)a.ChildQ16 + a.ElderlyQ16 + labourQ16 <= 65_536 &&
+            a.ElderlyCarPct is >= 0 and <= 100 && a.ElderlyAscFreqDs is >= -MaxBigCount and <= MaxBigCount &&
+            a.ElderlySlot is >= 0 and < CityWorld.SlotsPerDay && a.ElderlyStepSlots is >= 0 and <= CityWorld.SlotsPerDay && a.PensionDay is >= 0 and <= 1_000_000;
+    }
 
     /// <summary>Пределы секции <c>outside</c>: 0..4 подключений, узлы неотрицательны и различны, места и стоимость в пределах, сумма долей въезда = 65536 (при секции).</summary>
     public static bool IsValid(in CityOutsideDesc o)

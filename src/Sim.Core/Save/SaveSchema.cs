@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 18;
+    public const int WorldVersion = 19;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 4;
@@ -31,7 +31,7 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams(), VehicleClassParams(), LifecycleParams(), ServicesParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams(), VehicleClassParams(), LifecycleParams(), ServicesParams(), AgeParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
@@ -70,7 +70,7 @@ internal static partial class SaveSchema
         PedPathQueue(),
         Extend(LotsBlock(), LotGridColumns()),
         Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }, LifecycleBuildingColumns()),
-        Extend(ResidentsCityBlock(), ParkingResidentColumns(), ServicesResidentColumns()),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns(), ServicesResidentColumns(), AgeResidentColumns()),
         OutsideBlock(),
         GoalsBlock(),
         SkimsBlock(),

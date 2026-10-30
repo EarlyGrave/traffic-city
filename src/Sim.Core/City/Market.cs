@@ -887,19 +887,9 @@ internal sealed class Market
                 break;
             }
 
+            bool emptyHome = c.Buildings.Occupants[home] == 0;
             MoveIn(c, r, home);
-            byte flags = 0;
-            if ((w.RngDemand.NextUInt() >> 16) < (uint)c.Cfg.Residents.CarOwnershipQ16)
-            {
-                flags |= ResidentFlags.HasCar;
-            }
-
-            if ((w.RngDemand.NextUInt() >> 16) < (uint)c.Cfg.Residents.LabourShareQ16)
-            {
-                flags |= ResidentFlags.Labour;
-            }
-
-            res.Flags[r] = flags;
+            res.Flags[r] = AgeGroups.Roll(ref w.RngDemand, in c.Cfg.Residents, in c.Cfg.Age, emptyHome, out res.Age[r]);   // age-groups.md §2.3: те же два броска
             Parking.HomeAssign.OnMoveIn(w, c, r);   // домашнее место; нет места - HasCar снимается (parking.md §4)
             res.State[r] = (byte)ResidentState.AtHome;
             res.StateTick[r] = w.Tick;

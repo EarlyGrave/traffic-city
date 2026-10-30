@@ -171,6 +171,35 @@ public struct CityLifecycleDesc
     };
 }
 
+/// <summary>
+/// Секция <c>city.age</c> (age-groups.md §2.1, §3, ADR-0044): возрастные группы жителей - ребёнок, взрослый, пожилой. <c>Enabled = false</c> - режима нет,
+/// все жители взрослые, поведение и хэш прежние. Доли делят тот же бросок, что <c>labour_share</c> (§2.3): <c>ChildQ16 + ElderlyQ16 &lt;= 65 536 - LabourShareQ16</c>.
+/// </summary>
+public struct CityAgeDesc
+{
+    public bool Enabled;
+    public int ChildQ16;            // child_pct / 100 (Q16); стартовое 18 %
+    public int ElderlyQ16;          // elderly_pct / 100 (Q16); стартовое 16 %
+    public int ElderlyCarPct;       // elderly_car_pct: доля car_ownership у пожилых, %; стартовое 50
+    public int ElderlyAscFreqDs;    // elderly_asc_freq_s * 10: надбавка к частоте дискреционных туров пожилых, дс (RA2); стартовое 1 200
+    public int ElderlySlot;         // elderly_slot: начало окна прибытия пожилых, слот (12 = 1 ч; RA2); стартовое 108 (09:00)
+    public int ElderlyStepSlots;    // elderly_step_slots: шаг окна между турами, слотов (RA2); стартовое 48
+    public int PensionDay;          // pension_day: пенсия пожилому в сутки из внешнего мира (RA2, §2.4); стартовое 30
+
+    /// <summary>Стартовые значения §2.3, §6 с включённым режимом.</summary>
+    public static CityAgeDesc Default() => new()
+    {
+        Enabled = true,
+        ChildQ16 = CityDesc.Q16(0.18),
+        ElderlyQ16 = CityDesc.Q16(0.16),
+        ElderlyCarPct = 50,
+        ElderlyAscFreqDs = 1_200,
+        ElderlySlot = 108,
+        ElderlyStepSlots = 48,
+        PensionDay = 30,
+    };
+}
+
 /// <summary>Календарь (<c>calendar</c>).</summary>
 public struct CityCalendarDesc
 {
@@ -351,6 +380,9 @@ public struct CityDesc
 
     /// <summary>Службы (<c>city.services</c>, services.md); <c>Enabled = false</c> - секции нет, ЖКХ работает как в BL (встроенная запись <c>utility</c>).</summary>
     public CityServicesDesc Services;
+
+    /// <summary>Возрастные группы (<c>city.age</c>, age-groups.md); <c>Enabled = false</c> - секции нет, все жители взрослые, поведение прежнее.</summary>
+    public CityAgeDesc Age;
 
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;

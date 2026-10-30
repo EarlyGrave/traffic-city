@@ -166,11 +166,17 @@ internal static class CityInit
 
             seen += t.Capacity;
             long want = (seen * target / Math.Max(1L, housing)) - given;
+            bool wasEmpty = b.Occupants[bi] == 0;
+            int firstChild = -1;
+            uint firstChildCarRoll = 0;
+            bool nonChild = false;
+            bool full = false;
             for (long k = 0; k < want; k++)
             {
                 if (!r.TryCreate(out int ri))
                 {
-                    return;
+                    full = true;
+                    break;
                 }
 
                 given++;
@@ -178,23 +184,34 @@ internal static class CityInit
                 r.NextHome[ri] = b.HeadRes[bi];
                 b.HeadRes[bi] = ri;
                 b.Occupants[bi]++;
-                byte flags = 0;
-                if ((w.RngDemand.NextUInt() >> 16) < (uint)cfg.Residents.CarOwnershipQ16)
+                r.Flags[ri] = AgeGroups.Roll(ref w.RngDemand, in cfg.Residents, in cfg.Age, false, out r.Age[ri], out uint carRoll);   // age-groups.md §2.3: те же два броска
+                if (r.Age[ri] != (byte)ResidentAge.Child)
                 {
-                    flags |= ResidentFlags.HasCar;
+                    nonChild = true;
+                }
+                else if (firstChild < 0)
+                {
+                    firstChild = ri;
+                    firstChildCarRoll = carRoll;
                 }
 
-                if ((w.RngDemand.NextUInt() >> 16) < (uint)cfg.Residents.LabourShareQ16)
-                {
-                    flags |= ResidentFlags.Labour;
-                }
-
-                r.Flags[ri] = flags;
                 r.State[ri] = (byte)ResidentState.AtHome;
                 int planSlot = cfg.Residents.PlanSlot + w.RngDemand.NextInt(0, 13);
                 r.EvTick[ri] = c.TickOfSlot(0, planSlot);
                 r.EvKind[ri] = ResidentEvent.Plan;
                 c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(ri), cfg.Economy.InitialResidentBalance, FlowKind.Endowment);
+            }
+
+            if (wasEmpty && firstChild >= 0 && !nonChild)
+            {
+                // «не один ребёнок» (§2.3) для заселения пачкой: дом из одних детей - первый ребёнок становится взрослым неработающим (машина - по его же броску)
+                r.Age[firstChild] = (byte)ResidentAge.Adult;
+                r.Flags[firstChild] = AgeGroups.AdultIdleFlags(in cfg.Residents, firstChildCarRoll);
+            }
+
+            if (full)
+            {
+                return;
             }
         }
     }
