@@ -101,8 +101,8 @@
 `density` (`low|high`), `capacity` (1..2 000), `shop_capacity` (только `commercial`), `shift_start_slot` (0..287), `shift_slots` (1..288 у C/I), `construct_days`, `attract` (только `commercial`, дефолт 1.0), `visual.model`.
 Пределы - `ModLimits.MaxBuildingTypes = 512`, `MaxBuildingCapacity = 2000`. Ядру уходит `BuildingTypeDesc` (строки только дописываются, `VisualRow` = индекс в каталоге); сейв хранит копию в блоке `BTYP`.
 Жизнь здания (`building-lifecycle.md` §6.1, только в режиме `city.lifecycle`): `decay_bp_day`, `ceil_drop_bp_day` (износ и падение потолка в сутки, б.п.), `demolish_cost` (цена сноса), `fire_ppm` (возгорание в сутки, ppm; SR4, режим `city.services`; 0 — не горит и не заражается огнём), для депо службы —
-`kind: "service"`, `service: "utility"`, `build_cost`, `vehicles` (бригад на депо), `vehicle_type` (тип ТС пакета; id или имя). Без этих ключей берутся значения по виду и плотности (`BuildingTypeDesc.LifeDefaults`).
-`base` поставляет 7 типов (R/C/I x low/high и `utility_depot`; значения = `CityDesc.BaseBuildingTypes()`). `MANI` вид 2 пока не пишется. Подробнее - `zoning-demand.md` §17.
+`kind: "service"`, `service: "utility"` (SR: и `"medicine"`, `"fire"`), `build_cost`, `vehicles` (бригад на депо), `vehicle_type` (тип ТС пакета; id или имя). Без этих ключей берутся значения по виду и плотности (`BuildingTypeDesc.LifeDefaults`).
+`base` поставляет 12 типов (R/C/I x low/high, `utility_depot` и 5 зданий служб SR6; значения = `CityDesc.BaseBuildingTypes()` + `BaseServiceBuildingTypes()`; сценарий v2 без `city.services` видит только первые 7). `MANI` вид 2 пока не пишется. Подробнее - `zoning-demand.md` §17.
 Пропы - только визуал, в симуляцию и сейв не попадают, пока ядро не размещает объекты; непустой `props` даёт `UnsupportedContent`.
 
 ### 3.4 Сценарии `format_version: 3`
@@ -129,6 +129,15 @@
   (`core-api.md` §4.2). Результат совпадает с ручным `Enqueue` в тех же тиках побитово.
 - Таймлайн требует `api_version` (поле сценария, semver `CoreInfo.ApiVersion`). Несовместимая MAJOR даёт ошибку
   `ApiVersionMismatch`, а не тихую потерю команд.
+
+### 3.6 Службы (`services.json`, `format_version: 1`, `content.services`, `services.md` §2.2)
+Запись службы: `id` (`<пакет>:service/<имя>`), `rev`, `title`, `fund` (`city | utility`), `levels[]` (1–4: `type` — id здания вида `service` или имя в своём пакете, `role[]` ⊂ {`repair`, `light`, `inpatient`, `critical`, `fire`},
+`lot_min` [фасад, глубина] клеток, `build_cost`, `upkeep_day`, `milestone`, `visit` {`capacity_day`, `beds`, `icu`, `open_slot`, `close_slot`, `stay_slots`}, `dispatch` {`vehicle`, `units`, `per_unit_day`}, `upgrades[]`
+(≤ 8: `id`, `cost`, `upkeep_day`, `milestone`, `effect` ∈ {`units`, `visit_capacity`, `beds`, `icu`, `onsite_pct`}, `value`)), `calls[]` (`kind` ∈ {`repair`, `critical`, `fire`}, `urgent`, `on_call`, `on_call_return`,
+`onsite_s`, `deadline_s`, `per_call`), `visits[]` (`reason` ∈ {`light`, `inpatient`}, `min_role`, `per_visit`, `max_cost_s`). Пределы — `ModLimits.MaxServices = 32`. Валидатор: `on_call` у `repair` — ошибка; машина выезда — класс `special`;
+роли уровня ⊇ роли предыдущего; `deadline_s = 0` или ≥ `onsite_s`; вид вызова и повод визита — не больше одного раза в записи. Данные — да, **новое поведение (школа, мусор, полиция) — только кодом** (`services.md` §2.2,
+«Расширяемость»). Пакет `base` поставляет `utility`, `medicine`, `fire` (и 5 зданий-служб: `medpoint`, `hospital`, `med_center`, `fire_station`, `fire_hq`); возгорание `fire_ppm` в пакете 0, включает его сценарий.
+Здание службы в `buildings.json`: `kind: "service"`, `service: "utility" | "medicine" | "fire"`; `vehicles`/`vehicle_type` обязательны только у ЖКХ (машины прочих — `dispatch` уровня), `fire_ppm` — у зданий R/C/I.
 
 ## 4. Визуал и glTF
 
