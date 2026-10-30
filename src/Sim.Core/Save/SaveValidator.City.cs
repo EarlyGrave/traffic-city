@@ -96,7 +96,7 @@ internal static partial class SaveValidator
                 return Bad(c, i, 2);
             }
 
-            if (l.Side[i] > 1 || l.S0Mm[i] < 0 || l.S1Mm[i] <= l.S0Mm[i] || l.Zone[i] > (byte)LotZone.Industrial || l.Density[i] > 1 || l.Flags[i] > 3)
+            if (l.Side[i] > 1 || l.S0Mm[i] < 0 || l.S1Mm[i] <= l.S0Mm[i] || l.Zone[i] > (byte)LotZone.Industrial || l.Density[i] > 1 || l.Flags[i] > 7)
             {
                 return Bad(c, i, 4);
             }
@@ -493,7 +493,52 @@ internal static partial class SaveValidator
             }
         }
 
-        return LoadStatus.Ok;
+        return ValidateAnnex(c, city, sv);
+    }
+
+    // Пристройки (services.md §2.8, SR5): участок в списке станции <=> бит Annex участка; участок в одном списке один раз; у свободной станции списка нет.
+    private static LoadStatus ValidateAnnex(LoadContext c, CityWorld city, CityServices sv)
+    {
+        SiteStore s = sv.Sites;
+        LotStore l = city.Lots;
+        int listed = 0;
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            for (int k = 0; k < SiteStore.MaxAnnex; k++)
+            {
+                int lot = s.Annex[(i * SiteStore.MaxAnnex) + k];
+                if (lot == -1)
+                {
+                    continue;
+                }
+
+                if (s.Building[i] < 0 || (uint)lot >= (uint)l.Count || (l.Flags[lot] & LotFlags.Annex) == 0)
+                {
+                    return Bad(c, i, 178);
+                }
+
+                for (int j = 0; j <= i; j++)
+                {
+                    for (int m = 0; m < SiteStore.MaxAnnex && (j < i || m < k); m++)
+                    {
+                        if (s.Annex[(j * SiteStore.MaxAnnex) + m] == lot)
+                        {
+                            return Bad(c, i, 178);
+                        }
+                    }
+                }
+
+                listed++;
+            }
+        }
+
+        int flagged = 0;
+        for (int i = 0; i < l.Count; i++)
+        {
+            flagged += (l.Flags[i] & LotFlags.Annex) != 0 ? 1 : 0;
+        }
+
+        return flagged == listed ? LoadStatus.Ok : Bad(c, 0, 178);
     }
 
     // Пожары (services.md §2.7, §5): состояние 0..2, свободный слот пуст; занятый - здание в пределах пула, не больше fire_cap записей, одна запись на здание; горящая запись живого

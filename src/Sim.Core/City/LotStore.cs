@@ -9,6 +9,7 @@ internal static class LotFlags
 {
     public const byte Lost = 1;       // дорога снесена: участок остаётся в списке, здание заброшено
     public const byte Painted = 2;    // зону задал игрок (автозонирование и рост его не трогают)
+    public const byte Annex = 4;      // пристройка службы (services.md §2.8, SR5): участок принадлежит станции (SiteStore.Annex), рост его не занимает
 }
 
 /// <summary>Значения <see cref="LotStore.Orient"/>.</summary>

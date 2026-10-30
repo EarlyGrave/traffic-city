@@ -29,7 +29,7 @@ internal static class InverseBuilder
         CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan or CommandKind.SetLaneFlags
             or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad or CommandKind.MergeAtNode
             or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop or CommandKind.RemoveBusStop
-            or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams or CommandKind.PaintZone => true,
+            or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams or CommandKind.PaintZone or CommandKind.UpgradeService or CommandKind.SetServiceUpgrade => true,
         _ => false,
     };
 
@@ -78,6 +78,31 @@ internal static class InverseBuilder
                 break;
             case CommandKind.PaintZone:
                 BeginPaintZone(w, in cmd, ref ctx);
+                break;
+            case CommandKind.UpgradeService:
+                // SR5: обратная - понижение (та же команда с битом Inverse; пристройки те же); обратной к обратной нет
+                if ((cmd.Flags & CommandFlags.Inverse) != 0)
+                {
+                    ctx.NoInverse = true;
+                }
+                else
+                {
+                    UpgradeServiceCmd u = cmd.UpgradeService;
+                    Add(w.Inv, ref ctx, Command.MakeUpgradeService(u.Building, u.Annex0, u.Annex1, u.Annex2));
+                }
+
+                break;
+            case CommandKind.SetServiceUpgrade:
+                if ((cmd.Flags & CommandFlags.Inverse) != 0)
+                {
+                    ctx.NoInverse = true;
+                }
+                else
+                {
+                    SetServiceUpgradeCmd su = cmd.SetServiceUpgrade;
+                    Add(w.Inv, ref ctx, Command.MakeSetServiceUpgrade(su.Building, su.Id, su.On == 0));
+                }
+
                 break;
             case CommandKind.SplitRoad:
                 ctx.Ref = cmd.SplitRoad.Seg.Index >= 0 && w.Net.SegmentAlive(cmd.SplitRoad.Seg.Index)
@@ -302,7 +327,7 @@ internal static class InverseBuilder
     public static bool HasInverse(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
         or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.PaintZone
         or CommandKind.SplitRoad or CommandKind.MergeAtNode or CommandKind.CreateBusRoute or CommandKind.AppendBusStop or CommandKind.InsertBusStop
-        or CommandKind.RemoveBusStop or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams;
+        or CommandKind.RemoveBusStop or CommandKind.RemoveBusRoute or CommandKind.SetBusRouteParams or CommandKind.UpgradeService or CommandKind.SetServiceUpgrade;
 
     /// <summary>
     /// <c>PaintZone</c> (UI-C1/E4): прежние вид, плотность и <c>Painted</c> участков под прямоугольником (<see cref="Zoning.BuildInverse"/>). Не влезла в запись (&gt; 64 команд) - <c>Truncated</c>.

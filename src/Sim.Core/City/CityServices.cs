@@ -319,6 +319,9 @@ internal sealed class SiteStore
 {
     public const int ReleaseDays = 16;
 
+    /// <summary>Участков-пристроек на станцию (services.md §2.8, SR5): уровней 4 - до трёх апгрейдов по три участка, берём с запасом.</summary>
+    public const int MaxAnnex = 8;
+
     public readonly int Capacity;
     public readonly int[] Building;
     public readonly int[] Gen;
@@ -331,6 +334,7 @@ internal sealed class SiteStore
     public readonly int[] IcuUsed;
     public readonly int[] BedRelease;   // [site * 16 + day & 15]
     public readonly int[] IcuRelease;
+    public readonly int[] Annex;        // [site * MaxAnnex + k] участок-пристройка (LotFlags.Annex) или -1 (SR5)
 
     public SiteStore(int capacity)
     {
@@ -346,7 +350,9 @@ internal sealed class SiteStore
         IcuUsed = new int[Capacity];
         BedRelease = new int[Capacity * ReleaseDays];
         IcuRelease = new int[Capacity * ReleaseDays];
+        Annex = new int[Capacity * MaxAnnex];
         Array.Fill(Building, -1);
+        Array.Fill(Annex, -1);
     }
 
     /// <summary>Слот в исходное (свободен).</summary>
@@ -363,6 +369,7 @@ internal sealed class SiteStore
         IcuUsed[s] = 0;
         Array.Clear(BedRelease, s * ReleaseDays, ReleaseDays);
         Array.Clear(IcuRelease, s * ReleaseDays, ReleaseDays);
+        Array.Fill(Annex, -1, s * MaxAnnex, MaxAnnex);
     }
 
     /// <summary>Станций в работе (занятых слотов).</summary>

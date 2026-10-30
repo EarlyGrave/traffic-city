@@ -91,6 +91,7 @@ public static class LotRenderFlags
     public const byte Lost = 1;          // дорога снесена
     public const byte Painted = 2;       // зону задал игрок
     public const byte HasBuilding = 4;
+    public const byte Annex = 16;        // пристройка службы (services.md §2.8, SR5): участок принадлежит станции
     public const byte Abandoned = 8;     // здание участка заброшено (<c>BuildingState.Abandoned</c>); производное, в сейве не хранится
 }
 
@@ -326,6 +327,21 @@ public struct ServiceStats
     public int VisitsToday;             // записей на приём за текущие сутки (VisitsDay станций)
     public byte Pct;                    // действующий ползунок, %
     public byte PctPending;             // ожидающий (с границы суток)
+}
+
+/// <summary>Станция службы (<see cref="Simulation.GetServiceStation"/>, services.md §2.8, SR5): запись, уровень, апгрейды, пристройки, машины и цена следующего шага.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct ServiceStationInfo
+{
+    public long NextLevelCost;          // build_cost следующего уровня без выкупа (0 - уровня нет)
+    public int Svc;                     // индекс записи
+    public int Level;                   // 1..LevelCount
+    public int LevelCount;
+    public int UpgradeCount;            // апгрейдов у текущего уровня
+    public int Annexes;                 // участков-пристроек
+    public int UnitsMax;                // слотов машин
+    public int Duty;                    // машин на линии по ползунку
+    public byte UpgradeMask;            // включённые апгрейды (бит = номер в списке уровня)
 }
 
 /// <summary>Вызов для маркера на карте (<see cref="Simulation.GetServiceCalls"/>, services.md §7 C3): цель, вид, запись, ждёт или едет.</summary>

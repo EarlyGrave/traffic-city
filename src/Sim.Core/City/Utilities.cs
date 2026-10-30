@@ -98,7 +98,7 @@ internal static class Utilities
         return l.Units + sv.Table.UpgradeEffect(in l, sv.Sites.UpgradeMask[site], ServiceUpgradeEffect.Units);
     }
 
-    private static int UnitsMaxOf(int units, int upgrades) => Math.Min(255, units + upgrades + ((units + 1) / 2));
+    internal static int UnitsMaxOf(int units, int upgrades) => Math.Min(255, units + upgrades + ((units + 1) / 2));
 
     /// <summary><c>UnitsMax = units + апгрейды + ceil(units / 2)</c> (гараж под 150 %, §2.4).</summary>
     public static int UnitsMax(CityServices sv, int site)
@@ -1066,7 +1066,7 @@ internal static class Utilities
     }
 
     /// <summary>Бригады станции на линии к <c>Duty</c>: не хватает - снятые с линии выходят (с меньшего индекса); лишние свободные - снимаются (с большего); занятые доезжают (<see cref="ToDepot"/>).</summary>
-    private static void Rebalance(CityServices sv, int site)
+    internal static void Rebalance(CityServices sv, int site)
     {
         CrewStore u = sv.Crews;
         int on = OnLine(sv, site);

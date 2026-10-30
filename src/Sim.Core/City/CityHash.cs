@@ -249,6 +249,16 @@ internal static class CityHash
                 h.Add(s.BedRelease[(i * SiteStore.ReleaseDays) + d]);
                 h.Add(s.IcuRelease[(i * SiteStore.ReleaseDays) + d]);
             }
+
+            for (int k = 0; k < SiteStore.MaxAnnex; k++)
+            {
+                int a = s.Annex[(i * SiteStore.MaxAnnex) + k];
+                if (a >= 0)
+                {
+                    h.Add(k);   // пристройки пишутся только занятые: станции без них хэшируются как до SR5
+                    h.Add(a);
+                }
+            }
         }
 
         for (int r = 0; r < sv.Table.Count; r++)

@@ -68,6 +68,37 @@ public sealed partial class Simulation
         return true;
     }
 
+    /// <summary>Станция живого здания <paramref name="building"/> (индекс слота): уровень, апгрейды, пристройки. false - здание не станция или нет режима <c>city.services</c>.</summary>
+    public bool GetServiceStation(int building, out ServiceStationInfo info)
+    {
+        info = default;
+        CityWorld? c = _disposed ? null : _w.City;
+        CityServices? sv = c?.Services;
+        if (c == null || sv == null || !sv.Table.Explicit || (uint)building >= (uint)c.Buildings.Capacity)
+        {
+            return false;
+        }
+
+        int site = ServiceLevels.SiteOf(c, building);
+        if (site < 0)
+        {
+            return false;
+        }
+
+        int rec = sv.Sites.Svc[site];
+        int level = sv.Sites.Level[site];
+        info.Svc = rec;
+        info.Level = level;
+        info.LevelCount = sv.Table.Records[rec].LevelCount;
+        info.UpgradeCount = sv.Table.LevelRow(rec, level).UpgradeCount;
+        info.Annexes = ServiceLevels.AnnexCount(sv.Sites, site);
+        info.UnitsMax = sv.Sites.UnitsMax[site];
+        info.Duty = sv.Sites.Duty[site];
+        info.UpgradeMask = sv.Sites.UpgradeMask[site];
+        info.NextLevelCost = level < info.LevelCount ? sv.Table.LevelRow(rec, level + 1).BuildCost : 0;
+        return true;
+    }
+
     /// <summary>
     /// Вызовы для маркеров (§7 C3): сначала ждущие в кольцах (по записям: срочное, обычное), затем машины к цели и на месте. Пишет не больше <c>dst.Length</c>, возвращает записанное.
     /// </summary>

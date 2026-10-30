@@ -147,6 +147,12 @@ internal static partial class CommandDispatcher
             case CommandKind.BuildService:
                 BuildService(w, in cmd);
                 break;
+            case CommandKind.UpgradeService:
+                UpgradeService(w, in cmd);
+                break;
+            case CommandKind.SetServiceUpgrade:
+                SetServiceUpgrade(w, in cmd);
+                break;
             case CommandKind.SetServiceBudget:
                 Result(w, in cmd, Locked(w, in cmd) ? RejectReason.Locked : City.Utilities.SetBudget(w, in cmd));
                 break;
@@ -607,6 +613,47 @@ internal static partial class CommandDispatcher
         int bi = c.Lots.Building[cmd.BuildService.Lot];
         ToolCosts.Settle(w, in cmd, in chk, ToolCosts.BuildingTarget(bi), c.Buildings.Pool.GenerationOf(bi));
         Applied(w, in cmd);
+    }
+
+    /// <summary>
+    /// Повышение уровня станции на месте с пристройками (services.md §2.8, SR5); с битом <see cref="CommandFlags.Inverse"/> - понижение. Проверки и цена - общий валидатор,
+    /// выкуп пристроек не возвращается при undo (<c>NoRefundCost</c>).
+    /// </summary>
+    private static void UpgradeService(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        if ((cmd.Flags & CommandFlags.Inverse) != 0)
+        {
+            City.ServiceLevels.Downgrade(w.City!, cmd.UpgradeService.Building.Index, in cmd.UpgradeService);
+        }
+        else
+        {
+            City.ServiceLevels.Upgrade(w, w.City!, cmd.UpgradeService.Building.Index, in cmd.UpgradeService);
+        }
+
+        AppliedPaid(w, in cmd, in chk);
+    }
+
+    /// <summary>Локальный апгрейд станции вкл/выкл (services.md §2.8, SR5): бит маски, машины пересчитываются.</summary>
+    private static void SetServiceUpgrade(World w, in Command cmd)
+    {
+        var chk = default(ToolCheck);
+        RejectReason why = ToolValidator.Check(w, in cmd, ref chk);
+        if (why != RejectReason.None)
+        {
+            RejectTool(w, in cmd, why);
+            return;
+        }
+
+        City.ServiceLevels.SetUpgrade(w.City!, cmd.SetServiceUpgrade.Building.Index, in cmd.SetServiceUpgrade);
+        AppliedPaid(w, in cmd, in chk);
     }
 
     /// <summary>
