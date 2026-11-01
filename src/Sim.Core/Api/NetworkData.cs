@@ -54,6 +54,28 @@ public static class NodeFlags
 {
     /// <summary>Тишина узла: connector'ы закрыты, ждём опустения (слияние, перестройка).</summary>
     public const uint Quiesce = 1;
+
+    /// <summary>Внешнее подключение у края карты (<c>outside</c>, ADR-0037): узел нельзя снести, слить или удалить сегмент от него (<c>RejectReason.Protected</c>).</summary>
+    public const uint Outside = 2;
+}
+
+/// <summary>Биты <see cref="NetworkView.ArmFlags"/> (значения совпадают с внутренними битами сети; тест сверяет).</summary>
+public static class ArmFlagBits
+{
+    /// <summary>Рукав второстепенный (вычисляется).</summary>
+    public const byte Minor = 1;
+
+    /// <summary>Переопределение игрока: главный.</summary>
+    public const byte ForceMajor = 2;
+
+    /// <summary>Переопределение игрока: второстепенный (уступи).</summary>
+    public const byte ForceMinor = 4;
+
+    /// <summary>Переопределение игрока: стоп (вместе с <see cref="ForceMinor"/>).</summary>
+    public const byte Stop = 8;
+
+    /// <summary>Знак игрока в кодах <c>SetArmControl</c>: 0 авто, 1 главный, 2 уступи, 3 стоп.</summary>
+    public static int SignOf(byte flags) => (flags & Stop) != 0 ? 3 : (flags & ForceMinor) != 0 ? 2 : (flags & ForceMajor) != 0 ? 1 : 0;
 }
 
 /// <summary>Биты <see cref="SegmentData.Flags"/>.</summary>
@@ -67,11 +89,15 @@ public static class SegmentFlags
 
     /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030): элементы читаются в обратном порядке, forward ↔ backward. Только в режиме профилей.</summary>
     public const byte Mirrored = 4;
+
+    /// <summary>Мост (terrain.md §4.5, TR3): рельеф под пролётом не штампуется, высота оси - линейная между узлами.</summary>
+    public const byte Bridge = 8;
 }
 
 /// <summary>Биты <see cref="LaneData.Flags"/>.</summary>
 public static class LaneFlags
 {
+    /// <summary>Автобусная полоса: производное зеркало <c>LaneData.Deny == LaneDeny.BusLane</c> (пишет только <c>NetworkStore.SetLaneDeny</c>).</summary>
     public const byte BusOnly = 1;
     public const byte NoLaneChangeOut = 2;
 
@@ -80,6 +106,19 @@ public static class LaneFlags
 
     /// <summary>MOBIL уводит машины с полосы (убираемая полоса).</summary>
     public const byte Draining = 8;
+}
+
+/// <summary>Маски запрета полос и улиц (биты доступа класса ТС, vehicle-classes.md §2.1-2.2, ADR-0039).</summary>
+public static class LaneDeny
+{
+    /// <summary>Предустановка «автобусная полоса»: car | van | truck | special - въезжают автобусы и спецмашины на вызове.</summary>
+    public const byte BusLane = 0x1D;
+
+    /// <summary>Все биты доступа (5 классов + Emergency).</summary>
+    public const byte Known = 0x3F;
+
+    /// <summary>Биты, которые игрок может поставить улице (<c>SetStreetAccess</c>): car | bus | van | truck. Бит special не ставится (подъезд служб гарантирован), Emergency - запрещён.</summary>
+    public const byte StreetWritable = 0x0F;
 }
 
 /// <summary>Биты <see cref="BusStopData.BayFlags"/> (ADR-0029).</summary>
@@ -117,6 +156,9 @@ public struct SegmentData
 
     /// <summary>Индекс профиля в <c>RoadProfileStore</c> (ADR-0030) или -1: режим legacy / сегмент без профиля. В хэш входит только в режиме профилей.</summary>
     public int Profile;
+
+    /// <summary>Классы, которым улица закрыта (биты <c>VehicleAccess</c>, оба направления; vehicle-classes.md §2.2, ADR-0039); 0 - всем можно. Пишет <c>SetStreetAccess</c>.</summary>
+    public byte Deny;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -139,6 +181,12 @@ public struct LaneData
 
     /// <summary>Ширина полосы, м (ADR-0030; пишется при эмиссии Normal-полосы: из профиля или <c>NetworkOptions.LaneWidth</c>); у connector'ов 0. В хэш входит только в режиме профилей.</summary>
     public float Width;
+
+    /// <summary>
+    /// Классы, которым полоса закрыта (биты <c>VehicleAccess</c>; vehicle-classes.md §2.2, ADR-0039); 0 - всем можно. Въезд и смена полосы разрешены при
+    /// <c>(access &amp; ~Deny) != 0</c>. Пишет только <c>NetworkStore.SetLaneDeny</c>: он же держит зеркало <see cref="LaneFlags.BusOnly"/> = (<c>Deny == 0x1D</c>).
+    /// </summary>
+    public byte Deny;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -181,12 +229,17 @@ public struct BusStopData
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct BusRouteData
 {
-    public int FirstStop, StopCount;
+    public int FirstStop, StopCount;    // диапазон в BusRouteStops: k-я остановка - BusRouteStops[FirstStop + k] (T9: не обязательно FirstStop + k)
+
+    /// <summary>Интервал выпуска, тики; &lt; 0 - линия приостановлена (<see cref="Suspended"/>, T9), модуль - интервал для возобновления.</summary>
     public int HeadwayTicks;
     public int VehicleType;
     public int ActiveBuses;
     public long LastDispatchTick;
     public int Generation;
+
+    /// <summary>Линия приостановлена игроком (T9): новых автобусов нет, идущие доезжают рейс.</summary>
+    public readonly bool Suspended => HeadwayTicks < 0;
 }
 
 /// <summary>Вид ребра графа пешеходов (pedestrians.md §2.1).</summary>

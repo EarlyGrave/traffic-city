@@ -31,7 +31,7 @@ internal static class CityBuild
 
         if (!on)
         {
-            return desc.Town.Economy.CityBudget || desc.Parking.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget и parking только при residents (city-economy.md §1, parking.md §1)
+            return desc.Town.Economy.CityBudget || desc.Parking.Enabled || desc.Town.Lifecycle.Enabled || desc.Town.Services.Enabled || desc.Town.Age.Enabled ? CreateStatus.InvalidCity : CreateStatus.Ok;   // city_budget, parking и lifecycle только при residents (city-economy.md §1, parking.md §1, building-lifecycle.md §5)
         }
 
         SimCapacities caps = desc.Capacities;
@@ -51,6 +51,21 @@ internal static class CityBuild
             return CreateStatus.InvalidCity;
         }
 
+        if (desc.Town.Outside.Count > 0 && desc.Parking.Enabled)
+        {
+            return CreateStatus.InvalidCity;   // внешние подключения пока без парковки как ресурса (ADR-0037, Y3): нога к узлу не резервирует место
+        }
+
+        if (desc.Town.Services.Enabled)
+        {
+            // службы (services.md §6): только поверх city.lifecycle; таблицы записей - в пределах типов зданий и ТС
+            int types = desc.Town.BuildingTypes is { Length: > 0 } bt ? bt.Length : CityDesc.BaseBuildingTypes().Length;
+            if (!desc.Town.Lifecycle.Enabled || !ServiceTable.IsValid(in desc.Town.Services, types, desc.VehicleTypes?.Length ?? 0))
+            {
+                return CreateStatus.InvalidCity;
+            }
+        }
+
         return IsValid(in desc.Town) ? CreateStatus.Ok : CreateStatus.InvalidCity;
     }
 
@@ -62,7 +77,8 @@ internal static class CityBuild
         CityResidentsDesc r = t.Residents;
         CityEconomyDesc e = t.Economy;
         CityChoiceDesc ch = t.Choice;
-        bool ok = cal.DayTicks >= CityWorld.SlotsPerDay && cal.DayTicks <= MaxDayTicks && cal.DayTicks % CityWorld.SlotsPerDay == 0;
+        bool ok = cal.DayTicks >= CityWorld.SlotsPerDay && cal.DayTicks <= MaxDayTicks && cal.DayTicks % CityWorld.SlotsPerDay == 0 && cal.StartHour is >= 0 and < 24;
+        ok &= r.MinImmigrantsPerDay is >= 0 and <= MaxBigCount && e.InitialCityBalance is >= 0 and <= 1_000_000_000;
         ok &= z.LotFrontageMm is >= 5_000 and <= 1_000_000 && z.LotDepthMm is >= 5_000 and <= 1_000_000 && z.NodeClearMm is >= 0 and <= 1_000_000;
         ok &= z.MaxNewBuildingsPerDay is >= 0 and <= MaxBigCount && z.MaxPaintM2 >= 1;
         ok &= Q16(z.CCenterShareQ16) && Q16(z.IEdgeShareQ16) && Q16(z.UnzonedShareQ16);
@@ -75,10 +91,20 @@ internal static class CityBuild
         ok &= e.InitialResidentBalance >= 0 && e.InitialFirmBalance >= 0 && e.ConstructCost >= 0 && e.HireMarginPct >= 0;
         ok &= e.LossDaysFire is >= 1 and <= 3650 && e.LossDaysClose is >= 1 and <= 3650 && e.EwmaShift is >= 0 and <= 16 && e.CTargetPct >= 0;
         ok &= CityBudget.IsValid(in e);   // казна (city-economy.md §13)
+        CityLifecycleDesc lf = t.Lifecycle;   // жизнь здания (building-lifecycle.md §5): только с казной
+        ok &= !lf.Enabled || (e.CityBudget && lf.AbandonedDecayPct is >= 0 and <= 10_000 && lf.LowlandCm is >= 0 and <= 100_000 &&
+            lf.WornRelocateQ16 is >= 0 and <= 65_536 && lf.RubbleCostPct is >= 0 and <= 100 &&
+            lf.CellM is >= 8 and <= 4096 && lf.SigShift is >= 1 and <= 16 && lf.HeritageLossRadiusM is >= 0 and <= 10_000 && lf.LvBlightPermille is >= 0 and <= 100 &&
+            lf.RepairRequestBp is >= 5_000 and <= 10_000 && lf.RepairPerUnit is >= 0 and <= 1_000_000 && lf.RepairMinutes is >= 1 and <= 14_400 &&
+            lf.CrewDayCost is >= 0 and <= 1_000_000 && lf.MaxServiceVehicles is >= 0 and <= 65_536 && lf.MaxDispatchPerTick is >= 1 and <= 64 &&
+            lf.TariffBurdenPct is >= 0 and <= 100 && lf.TariffLeaveQ16 is >= 0 and <= 65_536 && lf.MaxUtilityTariff is >= 0 and <= ushort.MaxValue &&
+            lf.UtilityTariff >= 0 && lf.UtilityTariff <= lf.MaxUtilityTariff && lf.RestorePerUnit is >= 0 and <= 1_000_000);
         ok &= ch.ThetaMode64 >= 0 && ch.ThetaDest64 >= 0 && ch.ThetaTime64 >= 0 && ch.ThetaFreq64 >= 0;
         ok &= ch.FreqMax is >= 0 and <= CityResidents.MaxTours && ch.WWaitQ8 >= 0 && ch.WWalkQ8 >= 0 && ch.SdeQ8 >= 0 && ch.SdlQ8 >= 0 && ch.BetaFreqQ8 >= 0;
         ok &= ch.TimeStepSlots is >= 1 and <= 144 && ch.DestCandidates is >= 1 and <= 64 && ch.MaxWalkMm >= 0;
         ok &= ch.SkimPeriods is >= 1 and <= 24 && ch.SkimShift is >= 0 and <= 8 && ch.SkimUpdatePerTick >= 1;
+        ok &= IsValid(in t.Outside);
+        ok &= IsValid(in t.Age, r.LabourShareQ16);
         if (!ok)
         {
             return false;
@@ -103,7 +129,99 @@ internal static class CityBuild
         return true;
     }
 
+    /// <summary>Сетка города при Create: по границам мира (<c>zoning.grid_from_bounds</c>: <c>tools.world_bounds</c>, иначе протяжённость рельефа), иначе по bbox начальной сети.</summary>
+    private static bool CreateGrid(World w, out CityGrid grid)
+    {
+        float cellM = w.LodCfg.CellM;
+        if (w.Town.Zoning.GridFromBounds != 0)
+        {
+            ToolsDesc t = w.ToolsCfg;
+            if (t.HasWorldBounds)
+            {
+                return CityGrid.TryCreate(t.BoundsMinX, t.BoundsMinZ, t.BoundsMaxX, t.BoundsMaxZ, cellM, out grid);
+            }
+
+            if (w.Terrain != null)
+            {
+                Terrain.TerrainStore s = w.Terrain;
+                return CityGrid.TryCreate(s.OriginX, s.OriginZ, s.OriginX + ((s.SamplesX - 1) * s.CellM), s.OriginZ + ((s.SamplesZ - 1) * s.CellM), cellM, out grid);
+            }
+        }
+
+        return CityGrid.TryCreate(w.Net, cellM, out grid);
+    }
+
     private static bool Q16(int v) => v is >= 0 and <= 65536;
+
+    /// <summary>
+    /// Пределы секции <c>city.age</c> (age-groups.md §2.3, §6): без режима все поля 0; в режиме доли детей и пожилых умещаются в неработающих (<c>C + E &lt;= 1 - L</c>, Q16),
+    /// машина пожилых 0-100 %, окно в пределах суток, пенсия неотрицательна.
+    /// </summary>
+    public static bool IsValid(in CityAgeDesc a, int labourQ16)
+    {
+        if (!a.Enabled)
+        {
+            return a.ChildQ16 == 0 && a.ElderlyQ16 == 0 && a.ElderlyCarPct == 0 && a.ElderlyAscFreqDs == 0 && a.ElderlySlot == 0 && a.ElderlyStepSlots == 0 && a.PensionDay == 0;
+        }
+
+        return a.ChildQ16 is >= 0 and <= 65_536 && a.ElderlyQ16 is >= 0 and <= 65_536 && (long)a.ChildQ16 + a.ElderlyQ16 + labourQ16 <= 65_536 &&
+            a.ElderlyCarPct is >= 0 and <= 100 && a.ElderlyAscFreqDs is >= -MaxBigCount and <= MaxBigCount &&
+            a.ElderlySlot is >= 0 and < CityWorld.SlotsPerDay && a.ElderlyStepSlots is >= 0 and <= CityWorld.SlotsPerDay && a.PensionDay is >= 0 and <= 1_000_000;
+    }
+
+    /// <summary>Пределы секции <c>outside</c>: 0..4 подключений, узлы неотрицательны и различны, места и стоимость в пределах, сумма долей въезда = 65536 (при секции).</summary>
+    public static bool IsValid(in CityOutsideDesc o)
+    {
+        if (o.Count == 0)
+        {
+            return true;
+        }
+
+        if (o.Count is < 0 or > CityOutsideDesc.Max || !Q16(o.JobsDecayQ16) || o.ArrivalByCar > 1)
+        {
+            return false;
+        }
+
+        long share = 0;
+        for (int k = 0; k < o.Count; k++)
+        {
+            OutsideConnDesc c = o.Get(k);
+            if (c.Node < 0 || c.Jobs is < 0 or > MaxBigCount || c.JobCostTicks is < 0 or > MaxDayTicks || !Q16(c.ShareQ16))
+            {
+                return false;
+            }
+
+            for (int j = 0; j < k; j++)
+            {
+                if (o.Get(j).Node == c.Node)
+                {
+                    return false;
+                }
+            }
+
+            share += c.ShareQ16;
+        }
+
+        return share == 65536;
+    }
+
+    /// <summary>Узлы подключений при Create: живые узлы явной сети, флаг <see cref="NodeFlags.Outside"/> (в сейве - в столбце флагов узлов).</summary>
+    private static bool MarkOutsideNodes(World w)
+    {
+        CityOutsideDesc o = w.Town.Outside;
+        for (int k = 0; k < o.Count; k++)
+        {
+            int node = o.Get(k).Node;
+            if (!w.Net.NodeAlive(node))
+            {
+                return false;
+            }
+
+            w.Net.Nodes[node].Flags |= Network.NodeFlags.Outside;
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// Строит город мира: сетка ячеек, хранилища по ёмкостям и (при <paramref name="create"/>) нарезка, автозонирование и начальное население. <c>create = false</c> -
@@ -117,7 +235,7 @@ internal static class CityBuild
         }
 
         CityGrid grid = savedGrid;
-        if (create && !CityGrid.TryCreate(w.Net, w.LodCfg.CellM, out grid))
+        if (create && !CreateGrid(w, out grid))
         {
             return CreateStatus.InvalidCity;
         }
@@ -127,10 +245,26 @@ internal static class CityBuild
             return CreateStatus.NotSupported;   // s1m-res: двухуровневый ским - этап 4.1 (zoning-demand.md §5.1)
         }
 
+        if (create && w.Town.Calendar.StartHour > 0)
+        {
+            w.Tick = (long)w.Town.Calendar.StartHour * w.Town.Calendar.DayTicks / 24;   // calendar.start_hour: мир стартует в середине суток (сутки 0)
+            w.SegmentLoadsTick = w.Tick - 1;   // нагрузки сегментов "посчитаны" на тике до старта: пересчёт весов на первом тике (Tick кратен периоду) читает нули, как и в мире с нулевого тика
+        }
+
         w.City = new CityWorld(in w.Town, in grid, in w.Caps, w);
         if (w.ParkCfg.Enabled)
         {
             w.City.Parking = new Parking.ParkingStore(in w.ParkCfg, in w.Caps, in grid);
+        }
+
+        if (create && w.City.Outside != null)
+        {
+            if (!MarkOutsideNodes(w))
+            {
+                return CreateStatus.InvalidCity;
+            }
+
+            w.City.Outside.Ensure(w, w.City);
         }
 
         return create ? CityInit.Run(w) : CreateStatus.Ok;

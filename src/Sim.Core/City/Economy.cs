@@ -23,6 +23,17 @@ internal static class Economy
         CityResidents res = c.Residents;
         BuildingStore b = c.Buildings;
         int firm = res.PlanDest[(r * CityResidents.MaxTours) + res.PlanCursor[r]];
+        if (OutsideRef.Is(firm) && res.Work[r] == firm)
+        {
+            // Внешняя фирма (ADR-0037): зарплата от внешнего мира, налог города - как с обычной; в Ledger фирма не заводится.
+            long presentX = Math.Min((w.Tick - res.StateTick[r]) / c.SlotTicks, OutsideState.ShiftSlots);
+            long wageX = c.Cfg.Economy.WagePerShift * presentX / OutsideState.ShiftSlots;
+            c.Ledger.Transfer(c.Ledger.ExternalAccount, Ledger.AccountOfResident(r), wageX, FlowKind.Wage);
+            long taxX = BudgetFlows.TaxWage(c, r, wageX);
+            res.IncomeEwma[r] += (wageX - taxX - res.IncomeEwma[r]) >> c.Cfg.Economy.EwmaShift;
+            return;
+        }
+
         if (firm < 0 || !b.IsAlive(firm) || res.Work[r] != firm)
         {
             return;
@@ -59,6 +70,11 @@ internal static class Economy
             ref readonly BuildingTypeDesc t = ref c.Types.Rows[b.Type[shop]];
             int slot = Slot(shop, parity);
             long dayCap = (long)t.ShopCapacity * Math.Max(1, t.ShiftSlots / 12);
+            if (c.Cfg.Lifecycle.Enabled)
+            {
+                dayCap = dayCap * CityLife.OutPct(c, shop) / 100;   // выработка по состоянию (building-lifecycle.md §2.2)
+            }
+
             if (b.VisitsDay[slot] < dayCap && res.Account[r] >= price)
             {
                 c.Ledger.Transfer(Ledger.AccountOfResident(r), c.Ledger.AccountOfBuilding(shop), price, FlowKind.Purchase);
@@ -80,6 +96,15 @@ internal static class Economy
     /// </summary>
     public static void BuildingDay(World w, CityWorld c, int bi)
     {
+        BuildingDayCore(w, c, bi);
+        if (c.Cfg.Lifecycle.Enabled && c.Buildings.IsAlive(bi))
+        {
+            CityLife.Finish(c, bi, in c.Types.Rows[c.Buildings.Type[bi]]);   // значимость и поля квартала (building-lifecycle.md §2.6): состояние на сегодня окончательное
+        }
+    }
+
+    private static void BuildingDayCore(World w, CityWorld c, int bi)
+    {
         BuildingStore b = c.Buildings;
         if (!b.IsAlive(bi))
         {
@@ -97,9 +122,24 @@ internal static class Economy
             return;
         }
 
-        if (b.State[bi] != (byte)BuildingState.Active || t.Kind == LotZone.Residential)
+        if (c.Cfg.Lifecycle.Enabled && CityLife.Day(w, c, bi, in t))
         {
-            return;
+            return;   // building-lifecycle.md §2.2: износ, потолок, пороги; заброшенное - без экономики фирмы
+        }
+
+        if (c.Services is { Table.Explicit: true } && b.State[bi] == (byte)BuildingState.Active)
+        {
+            Fires.Roll(w, c, bi, in t);   // возгорание (services.md §2.7): бросок хэшем в стадии «здания»
+        }
+
+        if (b.State[bi] == (byte)BuildingState.Active && t.Kind == LotZone.Service)
+        {
+            Utilities.StationDay(c, bi);   // суточный расход станции (services.md §2.4, только в режиме city.services)
+        }
+
+        if (b.State[bi] != (byte)BuildingState.Active || t.Kind is LotZone.Residential or LotZone.Service)
+        {
+            return;   // депо службы (building-lifecycle.md §2.10) - не фирма
         }
 
         CityEconomyDesc e = c.Cfg.Economy;
@@ -123,6 +163,11 @@ internal static class Economy
         else
         {
             long export = e.ExportPerShift * shifts;
+            if (c.Cfg.Lifecycle.Enabled)
+            {
+                export = export * CityLife.OutPct(c, bi) / 100;   // выработка по состоянию (building-lifecycle.md §2.2)
+            }
+
             if (export > 0)
             {
                 c.Ledger.Transfer(c.Ledger.ExternalAccount, c.Ledger.AccountOfBuilding(bi), export, FlowKind.Export);

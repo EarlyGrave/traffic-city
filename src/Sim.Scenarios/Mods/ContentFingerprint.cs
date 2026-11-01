@@ -55,6 +55,22 @@ public static class ContentFingerprint
         BinaryPrimitives.WriteInt32LittleEndian(b[16..], d.ShiftSlots);
         BinaryPrimitives.WriteInt32LittleEndian(b[20..], d.ConstructDays);
         BinaryPrimitives.WriteInt32LittleEndian(b[24..], d.AttractQ8);
+        if (d.ServiceKind != ServiceKind.None || d.BuildCost != 0)
+        {
+            // служба (BL3, building-lifecycle.md §2.10): поля службы - в хвост; у прочих типов отпечаток прежний
+            Span<byte> s = stackalloc byte[48];
+            b.CopyTo(s);
+            BinaryPrimitives.WriteInt32LittleEndian(s[28..], d.ParkingCapacity);
+            BinaryPrimitives.WriteInt32LittleEndian(s[32..], (int)d.ParkingAccess);
+            BinaryPrimitives.WriteInt32LittleEndian(s[36..], d.ParkingFee);
+            BinaryPrimitives.WriteInt32LittleEndian(s[40..], d.BuildCost);
+            s[44] = (byte)d.ServiceKind;
+            s[45] = d.Vehicles;
+            s[46] = d.VehicleType;
+            s[47] = 0;
+            return XxHash64.HashToUInt64(s);
+        }
+
         if (d.ParkingCapacity == 0 && d.ParkingAccess == ParkingAccess.Private && d.ParkingFee == 0)
         {
             return XxHash64.HashToUInt64(b[..28]);   // без парковки отпечаток прежний (пакеты до world_version 10)
@@ -99,6 +115,85 @@ public static class ContentFingerprint
                 BinaryPrimitives.WriteUInt64LittleEndian(b, BuildingHash(e.Desc));
                 h.Append(b);
             }
+        }
+
+        foreach (ServiceEntry e in cat.Services)
+        {
+            if (e.Id.Package == packageId)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(b, ServiceHash(e, cat));
+                h.Append(b);
+            }
+        }
+
+        return h.GetCurrentHashAsUInt64();
+    }
+
+    /// <summary>
+    /// xxh64 симуляционных полей записи службы (services.md §2.2, SR2): фонд, уровни, апгрейды, вызовы, визиты. Ссылки на тип здания и машину выезда - <c>ContentHash</c> ассета, а не индекс
+    /// каталога: отпечаток не зависит от порядка пакетов. Пакет без записей служб - отпечаток прежний.
+    /// </summary>
+    public static ulong ServiceHash(ServiceEntry e, ContentCatalog cat)
+    {
+        var h = new XxHash64();
+        byte[] b = new byte[8];
+        void I(int v)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(b, v);
+            h.Append(b.AsSpan(0, 4));
+        }
+
+        void U(ulong v)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(b, v);
+            h.Append(b);
+        }
+
+        I((int)e.Fund);
+        I(e.Levels.Length);
+        foreach (ServiceLevelDesc l in e.Levels)
+        {
+            U((uint)l.Type < (uint)cat.Buildings.Count ? BuildingHash(cat.Buildings[l.Type].Desc) : 0);
+            U((uint)l.DispatchVehicle < (uint)cat.Vehicles.Count ? AssetManifestBuilder.ParamsHash(cat.Vehicles[l.DispatchVehicle].Desc) : 0);
+            I((int)l.Roles);
+            I(l.LotMinF | (l.LotMinD << 8) | (l.Milestone << 16));
+            I(l.BuildCost);
+            I(l.UpkeepDay);
+            I(l.CapacityDay);
+            I(l.Beds);
+            I(l.Icu);
+            I((ushort)l.OpenSlot | ((ushort)l.CloseSlot << 16));
+            I(l.StaySlots);
+            I(l.Units);
+            I(l.PerUnitDay);
+            I(l.FirstUpgrade);
+            I(l.UpgradeCount);
+        }
+
+        I(e.Upgrades.Length);
+        foreach (ServiceUpgradeDesc u in e.Upgrades)
+        {
+            I(u.Cost);
+            I(u.UpkeepDay);
+            I(u.Milestone | ((int)u.Effect << 8));
+            I(u.Value);
+        }
+
+        I(e.Calls.Length);
+        foreach (ServiceCallDesc c in e.Calls)
+        {
+            I((int)c.Kind | (c.Flags << 8));
+            I(c.OnsiteS);
+            I(c.DeadlineS);
+            I(c.PerCall);
+        }
+
+        I(e.Visits.Length);
+        foreach (ServiceVisitDesc v in e.Visits)
+        {
+            I((int)v.Reason | ((int)v.MinRole << 8));
+            I(v.PerVisit);
+            I(v.MaxCostS);
         }
 
         return h.GetCurrentHashAsUInt64();

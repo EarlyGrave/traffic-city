@@ -63,6 +63,18 @@ internal sealed class RouteGraph
     public readonly int[] EndNode;       // [DirSegCapacity]
     public readonly Vec2[] EndPos;       // [DirSegCapacity]
 
+    /// <summary>
+    /// [DirSegCapacity] классы, которым направленный сегмент закрыт (vehicle-classes.md §2.3, ADR-0039): запрет улицы <c>SegmentData.Deny</c> | классы, которым
+    /// в этом направлении не разрешена ни одна полоса (AND масок полос). Производное, пересчитывает <see cref="RecalcDeny"/>.
+    /// </summary>
+    public readonly byte[] DirSegDeny;
+
+    /// <summary>OR <see cref="DirSegDeny"/> по всей сети: права, у которых есть бит вне неё, проходят везде - поиск идёт прежним кодом без проверок.</summary>
+    public byte DenyUnion { get; private set; }
+
+    /// <summary>Растёт при каждом пересчёте масок (<see cref="RecalcDeny"/>).</summary>
+    public int AccessVersion { get; private set; }
+
     public RouteGraph(NetworkStore net)
     {
         _net = net;
@@ -76,6 +88,7 @@ internal sealed class RouteGraph
         StartNode = new int[DirSegCapacity];
         EndNode = new int[DirSegCapacity];
         EndPos = new Vec2[DirSegCapacity];
+        DirSegDeny = new byte[DirSegCapacity];
         Rebuild();
     }
 
@@ -276,6 +289,41 @@ internal sealed class RouteGraph
         ArcFirst[DirSegCount] = arcs;
         ArcCount = arcs;
         BuiltVersion = n.Version;
+        RecalcDeny();
+    }
+
+    /// <summary>
+    /// Пересчёт <see cref="DirSegDeny"/> и <see cref="DenyUnion"/> по маскам полос и улиц (после <see cref="Rebuild"/> и правок масок: <c>SetLaneDeny</c>,
+    /// <c>SetStreetAccess</c>). O(DirSeg + полос), главный поток, вне параллельных фаз; без аллокаций. Оверлей пересчитывает свои <c>CellDeny</c> сам.
+    /// </summary>
+    public void RecalcDeny()
+    {
+        NetworkStore n = _net;
+        byte union = 0;
+        for (int u = 0; u < DirSegCount; u++)
+        {
+            ref readonly SegmentData sd = ref n.Segments[u >> 1];
+            byte deny = 0;
+            if (EndNode[u] >= 0)
+            {
+                int dir = u & 1;
+                int first = dir == 0 ? sd.FirstLaneAB : sd.FirstLaneBA;
+                int cnt = dir == 0 ? sd.LanesAB : sd.LanesBA;
+                byte all = cnt > 0 ? (byte)0xFF : (byte)0;
+                for (int k = 0; k < cnt; k++)
+                {
+                    all &= n.Lanes[first + k].Deny;
+                }
+
+                deny = (byte)(sd.Deny | all);
+            }
+
+            DirSegDeny[u] = deny;
+            union |= deny;
+        }
+
+        DenyUnion = union;
+        AccessVersion++;
     }
 
     // Собирает дуги вершины u в scratch, упорядоченные по целевой вершине, дубликаты схлопнуты по минимуму стоимости.

@@ -8,6 +8,12 @@ hook_init
 root=$(hook_repo_root)
 cd "$root" 2>/dev/null || exit 0
 
+# Режим прототипа (CLAUDE.md, «Режим прототипа»): проверка в конце волны, не на каждом Stop.
+if [ -f .claude/prototype-mode ]; then
+  echo "stop-verify: режим прототипа — проверка в конце волны" >&2
+  exit 0
+fi
+
 changed=$( { git diff --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | tr -d '\r')
 printf '%s\n' "$changed" | grep -q '\.cs$' || exit 0
 

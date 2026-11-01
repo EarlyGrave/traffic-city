@@ -16,7 +16,7 @@ namespace Sim.Host;
 /// </para>
 /// <para>Главный поток - единственный писатель в кольца/вид/цель; вызывать публичные методы с двух потоков одновременно нельзя.</para>
 /// </summary>
-public sealed class SimThreadHost : IDisposable
+public sealed partial class SimThreadHost : IDisposable
 {
     private const int RoundTo = 1024;
 
@@ -51,6 +51,7 @@ public sealed class SimThreadHost : IDisposable
     private long _target;
     private int _stop;
     private int _exclusiveRequested;
+    private int _exclusiveGen;           // номер завершённого эксклюзивного доступа: поток симуляции выходит из ожидания по смене, а не по сбросу события (гонка при подряд идущих доступах)
     private int _republish;
     private int _state = (int)HostState.Running;
     private Exception? _fault;
@@ -66,6 +67,20 @@ public sealed class SimThreadHost : IDisposable
     private long _simAllocated;
     private int _simThreadId;
 
+    // подписки на оверлеи и выбранный пешеход: пишет главный поток, читает поток симуляции при публикации
+    private int _subs;
+    private HostOverlays _lastSubs;
+    private long _lastHeavyTick = -HeavyOverlayTicks;
+    private long _selPedPacked;
+    private long _selVehPacked;
+    private int _forceFresh;
+    private NetworkSnapshot? _netSnap;
+    private TerrainSnapshot? _terrSnap;
+    private readonly TerrainDirtyRect[] _terrDirty = new TerrainDirtyRect[256];   // ёмкость кольца грязи ядра
+
+    /// <summary>Период обновления тяжёлых оверлеев (<see cref="HostOverlays.SegmentLoads"/>, <see cref="HostOverlays.PedEdgeCounts"/>): heatmap 2 Гц, ADR-0014 п. 6.</summary>
+    public const int HeavyOverlayTicks = 10;
+
     /// <summary>Берёт владение <paramref name="simulation"/> (освободит в <see cref="Dispose"/>), публикует кадр нулевого тика и запускает поток.</summary>
     public SimThreadHost(Simulation simulation, SimHostOptions? options = null)
     {
@@ -78,6 +93,7 @@ public sealed class SimThreadHost : IDisposable
         _tick = _sim.Tick;
         _target = _tick;
         _viewApplied = 0;
+        _subs = (int)_opt.InitialOverlays;
         int cap = Math.Max(RoundTo, RoundUp(_opt.InitialFrameCapacity));
         foreach (SimFrame f in _frames)
         {
@@ -148,6 +164,18 @@ public sealed class SimThreadHost : IDisposable
 
     public void SetRenderViewAll() => WriteView(true, 0, 0, 0, 0);
 
+    /// <summary>Какие оверлеи копировать в кадры (с ближайшей публикации); новая подписка на тяжёлый оверлей даёт свежую копию в первом же кадре.</summary>
+    public void SetOverlays(HostOverlays overlays) => Volatile.Write(ref _subs, (int)overlays);
+
+    /// <summary>Свежая копия тяжёлых оверлеев в ближайшем кадре (клиент пересобрал слои: heatmap нужно заполнить сразу, а не через <see cref="HeavyOverlayTicks"/>).</summary>
+    public void RequestFreshHeavyOverlays() => Volatile.Write(ref _forceFresh, 1);
+
+    /// <summary>Выбранный пешеход: кадры несут его <see cref="PedInfo"/> (инспектор). <see cref="PedHandle.Null"/> - снять.</summary>
+    public void SetSelectedPed(PedHandle h) => Interlocked.Exchange(ref _selPedPacked, (long)h.Packed);
+
+    /// <summary>Машина в инспекторе: кадры несут её <see cref="VehicleInfo"/> (UI3). <see cref="VehicleHandle.Null"/> - снять. Выбор маршрута в ядре (<c>SelectVehicle</c>) - отдельно, командой.</summary>
+    public void SetSelectedVehicle(VehicleHandle h) => Interlocked.Exchange(ref _selVehPacked, (long)h.Packed);
+
     private void WriteView(bool all, float x0, float z0, float x1, float z1)
     {
         Interlocked.Increment(ref _viewSeq); // нечётное: идёт запись
@@ -211,7 +239,6 @@ public sealed class SimThreadHost : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         _paused.Reset();
-        _resume.Reset();
         Volatile.Write(ref _exclusiveRequested, 1);
         _wake.Set();
         while (!_paused.Wait(5))
@@ -229,6 +256,7 @@ public sealed class SimThreadHost : IDisposable
     {
         Volatile.Write(ref _republish, 1);
         Volatile.Write(ref _exclusiveRequested, 0);
+        Interlocked.Increment(ref _exclusiveGen); // после сброса запроса: поток симуляции, выйдя из ожидания по смене номера, не должен снова увидеть старый запрос
         _resume.Set();
         _wake.Set();
     }
@@ -277,27 +305,38 @@ public sealed class SimThreadHost : IDisposable
                 _wake.Reset();
                 if (Volatile.Read(ref _exclusiveRequested) == 1)
                 {
-                    _paused.Set();
-                    _resume.Wait();
+                    // _resume сбрасывает только поток симуляции и до _paused.Set: освобождение (Set) всегда позже сброса и не теряется.
+                    // Раньше сброс делал AcquireExclusive следующего доступа - он затирал Set предыдущего освобождения, и поток
+                    // досыпал таймаут ожидания (~15 мс таймер Windows) на каждый доступ; под нагрузкой 1200 доступов не влезали в 30 с.
                     _resume.Reset();
+                    int gen = Volatile.Read(ref _exclusiveGen);
+                    _paused.Set();
+                    while (Volatile.Read(ref _exclusiveGen) == gen && Volatile.Read(ref _stop) == 0)
+                    {
+                        _resume.Wait();
+                    }
+
                     continue;
                 }
 
+                // Цель читаем ДО входа: главный поток пишет вход (вид, команды), потом цель, поэтому увиденная цель гарантирует, что вход, поданный
+                // до неё, уже применён к шагу к этой цели (иначе вид/команда могли бы опоздать на тик - недетерминизм lockstep-замеров).
+                long target = Volatile.Read(ref _target);
                 DrainInput();
                 if (Interlocked.Exchange(ref _republish, 0) == 1)
                 {
                     PublishFrame(0, 0);
                 }
 
-                long target = Volatile.Read(ref _target);
                 long tick = _sim.Tick;
                 if (tick < target)
                 {
                     int n = (int)Math.Min(target - tick, _opt.MaxStepBatch);
                     long t0 = Stopwatch.GetTimestamp();
-                    _sim.Step(n);
+                    StepCollecting(n);
                     long micros = (Stopwatch.GetTimestamp() - t0) * 1_000_000L / Stopwatch.Frequency;
                     Volatile.Write(ref _tick, _sim.Tick);
+                    HarvestTools();
                     PublishFrame(micros, n);
                     continue;
                 }
@@ -314,6 +353,66 @@ public sealed class SimThreadHost : IDisposable
         {
             _exited.Set();
             _paused.Set(); // не оставить главный поток в ожидании паузы
+        }
+    }
+
+    /// <summary>Предел накопленных событий: клиент не забирает - старые отбрасываются (уведомления не должны расти без границ).</summary>
+    public const int MaxCollectedEvents = 4096;
+
+    private readonly List<SimEvent> _events = new();
+    private readonly object _eventsLock = new();
+    private int _collectEvents;
+
+    /// <summary>
+    /// Копить <c>Simulation.Events</c> (буфер ядра живёт один тик): пока включено, поток шагает по одному тику и после каждого дописывает события в очередь для
+    /// <see cref="DrainEvents"/>. Выключено (по умолчанию) - пачка <c>Step(n)</c> как раньше, без лишней работы.
+    /// </summary>
+    public bool CollectEvents
+    {
+        get => Volatile.Read(ref _collectEvents) != 0;
+        set => Volatile.Write(ref _collectEvents, value ? 1 : 0);
+    }
+
+    /// <summary>Переносит накопленные события в <paramref name="sink"/> (по порядку тиков) и очищает очередь. Главный поток.</summary>
+    public void DrainEvents(List<SimEvent> sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        lock (_eventsLock)
+        {
+            sink.AddRange(_events);
+            _events.Clear();
+        }
+    }
+
+    private void StepCollecting(int n)
+    {
+        if (!CollectEvents)
+        {
+            _sim.Step(n);
+            return;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            _sim.Step(1);
+            ReadOnlySpan<SimEvent> ev = _sim.Events;
+            if (ev.Length == 0)
+            {
+                continue;
+            }
+
+            lock (_eventsLock)
+            {
+                foreach (SimEvent e in ev)
+                {
+                    _events.Add(e);
+                }
+
+                if (_events.Count > MaxCollectedEvents)
+                {
+                    _events.RemoveRange(0, _events.Count - MaxCollectedEvents);
+                }
+            }
         }
     }
 
@@ -359,6 +458,9 @@ public sealed class SimThreadHost : IDisposable
                 _commandsRejected++;
             }
         }
+
+        DrainTools(tick);
+        ServePreview();
 
         while (_requests.TryRead(out HostRequest req))
         {
@@ -408,6 +510,8 @@ public sealed class SimThreadHost : IDisposable
         f.ActiveVehicleCount = _sim.ActiveVehicleCount;
         f.LastStepMicros = stepMicros;
         f.LastStepTicks = stepTicks;
+        CaptureStatics(f);
+        CaptureOverlays(f);
         long alloc = GC.GetAllocatedBytesForCurrentThread();
         f.SimThreadAllocatedBytes = alloc;
         Volatile.Write(ref _simAllocated, alloc);
@@ -415,6 +519,163 @@ public sealed class SimThreadHost : IDisposable
 
         int old = Interlocked.Exchange(ref _midIdx, _writeIdx | NewFlag);
         _writeIdx = old & 3;
+    }
+
+    /// <summary>Счётчики, версии статики и копия сети (при смене версии), маршрут выбранной машины.</summary>
+    private void CaptureStatics(SimFrame f)
+    {
+        f.HasPeds = _sim.HasPeds;
+        f.ActivePedCount = _sim.ActivePedCount;
+        f.PedTarget = _sim.PedTarget;
+        f.LandUseVersion = _sim.LandUseVersion;
+        f.LotsVersion = _sim.LotsVersion;
+        f.BuildingsVersion = _sim.BuildingsVersion;
+        NetworkView nv = _sim.Network;
+        if (_netSnap == null || _netSnap.Version != nv.Version)
+        {
+            _netSnap = new NetworkSnapshot(in nv);
+        }
+
+        f.Network = _netSnap;
+        CaptureTerrain(f);
+
+        RouteView route = _sim.SelectedRoute;
+        f.RouteVehicle = route.IsEmpty ? default : route.Vehicle;
+        f.RouteCursor = route.Cursor;
+        CopyTo(route.Steps, ref f.RouteStepsArr, out f.RouteStepsCount);
+    }
+
+    /// <summary>Снимок рельефа: тот же объект, пока версия не менялась (0 Б); иначе копируются грязные чанки (полная копия - на старте и при overflow).</summary>
+    private void CaptureTerrain(SimFrame f)
+    {
+        TerrainView tv = _sim.Terrain;
+        if (!tv.Enabled)
+        {
+            _terrSnap = null;
+            f.Terrain = null;
+            return;
+        }
+
+        if (_terrSnap == null || _terrSnap.Version != tv.Version)
+        {
+            bool overflow = false;
+            int nd = 0;
+            if (_terrSnap != null)
+            {
+                nd = _sim.CopyTerrainDirty(_terrDirty, _terrSnap.Version, out overflow);
+            }
+
+            _terrSnap = TerrainSnapshot.Build(_terrSnap, tv.Version, tv.CellM, tv.OriginX, tv.OriginZ, tv.SamplesX, tv.SamplesZ, tv.BaseCm, tv.Ground, tv.Water, tv.WaterKind, tv.Lock, _terrDirty.AsSpan(0, nd), overflow);
+        }
+
+        f.Terrain = _terrSnap;
+    }
+
+    private void CaptureOverlays(SimFrame f)
+    {
+        var subs = (HostOverlays)Volatile.Read(ref _subs);
+        f.Overlays = subs;
+        f.LaneSignalsCount = 0;
+        f.CrossingStatesCount = 0;
+        f.BusWaitingCount = 0;
+        f.SignalStatesCount = 0;
+        f.NodeThroughputCount = 0;
+        f.SegmentLoadsCount = 0;
+        f.PedEdgeCountsCount = 0;
+        f.SegmentLoadsFresh = false;
+        f.PedEdgeCountsFresh = false;
+        if ((subs & HostOverlays.LaneSignals) != 0)
+        {
+            CopyTo(_sim.LaneSignals, ref f.LaneSignalsArr, out f.LaneSignalsCount);
+        }
+
+        if ((subs & HostOverlays.CrossingStates) != 0)
+        {
+            CopyTo(_sim.CrossingStates, ref f.CrossingStatesArr, out f.CrossingStatesCount);
+        }
+
+        if ((subs & HostOverlays.BusStopWaiting) != 0)
+        {
+            CopyTo(_sim.BusStopWaiting, ref f.BusWaitingArr, out f.BusWaitingCount);
+        }
+
+        if ((subs & HostOverlays.SignalStates) != 0)
+        {
+            CopyTo(_sim.SignalStates, ref f.SignalStatesArr, out f.SignalStatesCount);
+        }
+
+        if ((subs & HostOverlays.NodeThroughput) != 0)
+        {
+            CopyTo(_sim.NodeThroughput, ref f.NodeThroughputArr, out f.NodeThroughputCount);
+        }
+
+        if ((subs & HostOverlays.SignalMetrics) != 0)
+        {
+            f.SignalMetrics ??= new SignalMetrics();
+            _sim.CopySignalMetrics(f.SignalMetrics);
+        }
+
+        long tick = _sim.Tick;
+        HostOverlays added = subs & ~_lastSubs;
+        if (Interlocked.Exchange(ref _forceFresh, 0) == 1)
+        {
+            added = subs;
+        }
+
+        bool due = tick - _lastHeavyTick >= HeavyOverlayTicks;
+        if ((subs & HostOverlays.SegmentLoads) != 0 && (due || (added & HostOverlays.SegmentLoads) != 0))
+        {
+            CopyTo(_sim.SegmentLoads, ref f.SegmentLoadsArr, out f.SegmentLoadsCount);
+            f.SegmentLoadsFresh = true;
+        }
+
+        if ((subs & HostOverlays.PedEdgeCounts) != 0 && (due || (added & HostOverlays.PedEdgeCounts) != 0))
+        {
+            CopyTo(_sim.PedEdgeCounts, ref f.PedEdgeCountsArr, out f.PedEdgeCountsCount);
+            f.PedEdgeCountsFresh = true;
+        }
+
+        if (due)
+        {
+            _lastHeavyTick = tick;
+        }
+
+        _lastSubs = subs;
+
+        PedHandle sel = PedHandle.FromPacked((ulong)Interlocked.Read(ref _selPedPacked));
+        f.SelectedPed = sel;
+        if (!sel.IsNull && _sim.TryGetPedInfo(sel, out PedInfo info))
+        {
+            f.SelectedPedValid = true;
+            f.SelectedPedInfo = info;
+        }
+        else
+        {
+            f.SelectedPedValid = false;
+        }
+
+        VehicleHandle veh = VehicleHandle.FromPacked((ulong)Interlocked.Read(ref _selVehPacked));
+        f.SelectedVehicle = veh;
+        if (!veh.IsNull && _sim.TryGetVehicleInfo(veh, out VehicleInfo vi))
+        {
+            f.SelectedVehicleValid = true;
+            f.SelectedVehicleInfo = vi;
+        }
+        else
+        {
+            f.SelectedVehicleValid = false;
+        }
+    }
+
+    private static void CopyTo<T>(ReadOnlySpan<T> src, ref T[] dst, out int count)
+    {
+        if (dst.Length < src.Length)
+        {
+            dst = new T[RoundUp(src.Length)];
+        }
+
+        src.CopyTo(dst);
+        count = src.Length;
     }
 
     private static int RoundUp(int n) => ((n + RoundTo - 1) / RoundTo) * RoundTo;

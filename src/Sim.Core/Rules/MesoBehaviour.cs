@@ -250,7 +250,7 @@ internal sealed partial class BehaviourJob
         }
 
         ref readonly LaneData tl = ref e.Net.Lanes[target];
-        if (tl.Kind != LaneKind.Normal || ((tl.Flags & 1) != 0 && (v.Flags[i] & (byte)VehicleFlags.IsBus) == 0))
+        if (tl.Kind != LaneKind.Normal || (v.Access(i) & ~tl.Deny) == 0)
         {
             return false;
         }

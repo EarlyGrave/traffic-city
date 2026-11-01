@@ -3,6 +3,7 @@ using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 using Sim.Core.Peds;
+using Sim.Core.Util;
 
 namespace Sim.Core.Rules.Intersections;
 
@@ -29,88 +30,122 @@ internal static class SignalPhase
     public static void Run(World w)
     {
         SignalStore s = w.Signals;
-        NetworkStore net = w.Net;
         long arrows0 = s.ArrowEntries;
         long spills0 = s.SpillOutEntries;
-        RuleEnv env = default;
-        bool envReady = false;
         bool peds = w.Peds != null && PedSignals.Enabled;
         if (peds)
         {
             PedSignals.EnsureTables(w);
         }
 
-        for (int slot = 0; slot < s.Count; slot++)
+        if (s.Count > 0)
         {
-            SignalMode mode = s.Mode[slot];
-            if (s.Machine[slot] != 0 && (mode == SignalMode.Fixed || mode == SignalMode.Adaptive))
+            // Слоты независимы (S4c): слот пишет только свои данные автомата, SignalStates[slot] и LaneSignals своего узла, читает состояние ядра на конец прошлого тика.
+            // Счётчики стрелок/спиллов - атомарные целые (сумма не зависит от порядка). С пешеходами (PedSignals пишут общие таблицы переходов) - последовательно.
+            SignalJob job = w.SignalJob;
+            job.Prepare(w, peds);
+            if (peds)
             {
-                if (mode == SignalMode.Adaptive)
-                {
-                    if (!envReady)
-                    {
-                        env = new RuleEnv(net, w.Vehicles, w.Occupancy, RouteAccess.From(w));
-                        envReady = true;
-                    }
-
-                    StepAdaptive(w, s, slot, in env, peds && PedSignals.Hold(w, s, slot));
-                }
-                else
-                {
-                    StepFixedArrow(s, slot);
-                }
-
-                Publish(w, s, slot);
-                WriteLanesMachine(w, net, s, slot);
-                if (peds)
-                {
-                    PedSignals.StepSlot(w, s, slot);
-                }
-
-                continue;
-            }
-
-            if (mode == SignalMode.Fixed)
-            {
-                if (s.TicksLeft[slot] == 0)
-                {
-                    Advance(s, slot);
-                }
-
-                w.SignalStates[slot] = new SignalState
-                {
-                    Node = s.Node[slot],
-                    Phase = s.Phase[slot],
-                    Interval = s.Interval[slot],
-                    TicksToChange = s.TicksLeft[slot],
-                };
-                if (peds)
-                {
-                    PedSignals.StepSlot(w, s, slot);   // до уменьшения TicksLeft: первый тик зелёного виден как TicksLeft == Green
-                }
-
-                s.TicksLeft[slot]--;
+                job.RunRange(0, 0, s.Count);
             }
             else
             {
-                w.SignalStates[slot] = new SignalState
-                {
-                    Node = s.Node[slot],
-                    Phase = 0,
-                    Interval = mode == SignalMode.Off ? SignalInterval.Off : SignalInterval.Yellow,
-                    TicksToChange = 0,
-                };
-                if (peds)
-                {
-                    PedSignals.StepSlot(w, s, slot);   // не цветной режим: сигнал перехода сбрасывается (переход нерегулируемый)
-                }
+                GatePhase.RunJob(w, job, s.Count);
             }
-
-            WriteLanes(w, net, s, slot, mode);
         }
 
         w.Counters.ArrowPhases += s.ArrowEntries - arrows0;
         w.Counters.SpillOuts += s.SpillOutEntries - spills0;
+    }
+
+    /// <summary>Шаг одного слота светофора (тело цикла <see cref="Run"/>).</summary>
+    private static void StepSlotFull(World w, SignalStore s, NetworkStore net, int slot, in RuleEnv env, bool peds)
+    {
+        SignalMode mode = s.Mode[slot];
+        if (s.Machine[slot] != 0 && (mode == SignalMode.Fixed || mode == SignalMode.Adaptive))
+        {
+            if (mode == SignalMode.Adaptive)
+            {
+                StepAdaptive(w, s, slot, in env, peds && PedSignals.Hold(w, s, slot));
+            }
+            else
+            {
+                StepFixedArrow(s, slot);
+            }
+
+            Publish(w, s, slot);
+            WriteLanesMachine(w, net, s, slot);
+            if (peds)
+            {
+                PedSignals.StepSlot(w, s, slot);
+            }
+
+            return;
+        }
+
+        if (mode == SignalMode.Fixed)
+        {
+            if (s.TicksLeft[slot] == 0)
+            {
+                Advance(s, slot);
+            }
+
+            w.SignalStates[slot] = new SignalState
+            {
+                Node = s.Node[slot],
+                Phase = s.Phase[slot],
+                Interval = s.Interval[slot],
+                TicksToChange = s.TicksLeft[slot],
+            };
+            if (peds)
+            {
+                PedSignals.StepSlot(w, s, slot);   // до уменьшения TicksLeft: первый тик зелёного виден как TicksLeft == Green
+            }
+
+            s.TicksLeft[slot]--;
+        }
+        else
+        {
+            w.SignalStates[slot] = new SignalState
+            {
+                Node = s.Node[slot],
+                Phase = 0,
+                Interval = mode == SignalMode.Off ? SignalInterval.Off : SignalInterval.Yellow,
+                TicksToChange = 0,
+            };
+            if (peds)
+            {
+                PedSignals.StepSlot(w, s, slot);   // не цветной режим: сигнал перехода сбрасывается (переход нерегулируемый)
+            }
+        }
+
+        WriteLanes(w, net, s, slot, mode);
+    }
+
+    /// <summary>Задание «сигналы по слотам» (S4c, ADR-0017): элемент - номер слота.</summary>
+    internal sealed class SignalJob : IRangeJob
+    {
+        private World _w = null!;
+        private RuleEnv _env;
+        private bool _peds;
+
+        public void Prepare(World w, bool peds)
+        {
+            _w = w;
+            _peds = peds;
+            _env = new RuleEnv(w.Net, w.Vehicles, w.Occupancy, RouteAccess.From(w));
+        }
+
+        public void RunRange(int worker, int begin, int end)
+        {
+            World w = _w;
+            SignalStore s = w.Signals;
+            NetworkStore net = w.Net;
+            for (int slot = begin; slot < end; slot++)
+            {
+                StepSlotFull(w, s, net, slot, in _env, _peds);
+            }
+        }
     }
 
     private static void Advance(SignalStore s, int slot)
@@ -194,7 +229,7 @@ internal static class SignalPhase
             ushort arms = s.NextArrowArms[slot];
             s.ArrowArms[slot] = arms;
             s.GapLeft[slot] = adaptive ? s.ArrowGapTicks[slot] : (ushort)0;
-            s.ArrowEntries++;
+            System.Threading.Interlocked.Increment(ref s.ArrowEntries);
             int b = slot * SignalStore.ArmCap;
             for (int a = 0; a < s.ArmCountOf[slot]; a++)
             {
@@ -373,7 +408,7 @@ internal static class SignalPhase
                 {
                     if (spillEnd && !normalEnd)
                     {
-                        s.SpillOutEntries++;
+                        System.Threading.Interlocked.Increment(ref s.SpillOutEntries);
                     }
 
                     Begin(s, slot, NextCalled(k, n, otherCall), 0, 0);

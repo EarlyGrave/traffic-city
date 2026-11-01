@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart: в облаке ($CLAUDE_CODE_REMOTE=true) убедиться, что есть .NET SDK из global.json.
+# SessionStart: в облаке ($CLAUDE_CODE_REMOTE=true) подключить git-хуки (core.hooksPath = .githooks)
+# и убедиться, что есть .NET SDK из global.json.
 # Никогда не валит сессию: всегда exit 0.
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -9,6 +10,13 @@ log() { printf 'session-start: %s\n' "$*" >&2; }
 main() {
   [ "${CLAUDE_CODE_REMOTE:-}" = true ] || return 0
   local root=${CLAUDE_PROJECT_DIR:-$PWD}
+
+  # git-хуки в облаке не ставятся сами (bootstrap.sh не запускается), поэтому подключаем их здесь.
+  # Делается до ранних return ниже, чтобы шаг выполнялся всегда; сбой не валит сессию.
+  if [ "$(git -C "$root" config --get core.hooksPath 2>/dev/null)" != .githooks ]; then
+    git -C "$root" config core.hooksPath .githooks && log "core.hooksPath = .githooks" || log "не удалось задать core.hooksPath"
+  fi
+
   local gj="$root/global.json"
   [ -f "$gj" ] || return 0
 

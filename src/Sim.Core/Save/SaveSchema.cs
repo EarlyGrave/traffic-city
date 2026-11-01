@@ -14,7 +14,7 @@ namespace Sim.Core.Save;
 internal static partial class SaveSchema
 {
     /// <summary>Версия мира (save-format.md §4, §12): растёт при любом изменении набора блоков/столбцов/смысла.</summary>
-    public const int WorldVersion = 10;
+    public const int WorldVersion = 19;
 
     /// <summary>Версия порядка хэша состояния (core-api §9), записывается в заголовок сейва.</summary>
     public const int HashVersion = 4;
@@ -31,17 +31,18 @@ internal static partial class SaveSchema
 
     private static BlockDef[] BuildBlocks() => ApplyRefs(new[]
     {
-        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams()),
+        Extend(Params(), PedParams(), CityParams(), NetGeometryParams(), BayParams(), RoadProfileParams(), BudgetParams(), ParkingParams(), ProgressionParams(), TerrainParamColumns(), NewGameParams(), OutsideParams(), VehicleClassParams(), LifecycleParams(), ServicesParams(), AgeParams()),
         Demand(),
         VehicleTypes(),
         RoadProfilesBlock(),
-        Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns()),
+        Extend(BuildingTypesBlock(), ParkingBuildingTypeColumns(), LifecycleBuildingTypeColumns()),
+        ServiceRecordsBlock(),
         Extend(WorldState(), PedWorldState(), CityWorldState()),
-        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters()),
+        Extend(Counters(), PedCounters(), CityCounters(), BayCounters(), BudgetCounters(), ParkingCounters(), ProgressionCounters(), VehicleClassCounters(), LifecycleCounters()),
         NetworkCounts(),
         Nodes(),
-        Extend(Segments(), new[] { SegmentProfileColumn() }),
-        Extend(Lanes(), new[] { LaneWidthColumn() }),
+        Extend(Segments(), new[] { SegmentProfileColumn(), SegmentDenyColumn() }),
+        Extend(Lanes(), new[] { LaneWidthColumn(), LaneDenyColumn() }),
         Arms(),
         LaneNext(),
         Points(),
@@ -68,13 +69,20 @@ internal static partial class SaveSchema
         CrossingsBlock(),
         PedPathQueue(),
         Extend(LotsBlock(), LotGridColumns()),
-        Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }),
-        Extend(ResidentsCityBlock(), ParkingResidentColumns()),
+        Extend(BuildingsBlock(), new[] { PayrollEwmaColumn() }, LifecycleBuildingColumns()),
+        Extend(ResidentsCityBlock(), ParkingResidentColumns(), ServicesResidentColumns(), AgeResidentColumns()),
+        OutsideBlock(),
+        GoalsBlock(),
         SkimsBlock(),
         LedgerBlock(),
-        BudgetBlock(),
+        Extend(BudgetBlock(), ProgressionBudgetColumns()),
         ParkingBlock(),
+        LifeBlock(),
+        ServicesBlock(),
         LandUseBlock(),
+        CityKpiBlock(),
+        ProgressionBlock(),
+        TerrainBlock(),
         Manifest(),
     });
 

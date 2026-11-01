@@ -81,6 +81,24 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = ValidateProgression(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = ValidateGoals(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        st = Terrain.TerrainBuild.Validate(in desc);
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
         var w = new World(in desc, WithDefaults(desc.Rules), WithDefaults(desc.Routing), (VehicleTypeDesc[])desc.VehicleTypes.Clone());
         st = BuildNetwork(w, in desc);
         if (st != CreateStatus.Ok)
@@ -120,16 +138,87 @@ internal static class WorldBuilder
             return st;
         }
 
+        st = Terrain.TerrainBuild.Build(w, in desc);   // рельеф и вода (terrain.md §2.4): после сети, до участков; без terrain - ничего
+        if (st != CreateStatus.Ok)
+        {
+            return st;
+        }
+
+        RoadTerrain.InitOnCreate(w);   // TR3: высоты узлов, мосты, штамп дорог, Lock, высоты полос (без рельефа - ничего)
+
         st = City.CityBuild.Build(w, create: true, default);   // жители: нарезка, зоны, начальное население (zoning-demand.md §2.5); без residents - ничего
         if (st != CreateStatus.Ok)
         {
             return st;
         }
 
+        if (desc.Progression.Enabled)
+        {
+            w.Progression = City.ProgressionState.FromDesc(in desc.Progression, ProfileCount(in desc));   // вехи (ADR-0034): только при residents (проверено выше)
+        }
+
+        if (desc.Goals.Enabled)
+        {
+            w.City!.Goals = City.GoalsState.FromDesc(in desc.Goals);   // цели сценария (ADR-0038): только при residents (проверено выше)
+        }
+
         w.TargetVehicles = desc.Demand.TargetVehicles;
         SyncStructuralCounters(w);
         world = w;
         return CreateStatus.Ok;
+    }
+
+    private static int ProfileCount(in ScenarioDesc desc) => desc.RoadProfiles.Enabled ? desc.RoadProfiles.Profiles.Length : 0;
+
+    /// <summary>Секция goals (scenarios-mode.md §2.2): только при жителях; счётчики, виды условий и пустые слоты - <see cref="City.GoalsState.Validate"/>.</summary>
+    private static CreateStatus ValidateGoals(in ScenarioDesc desc)
+    {
+        ref readonly GoalsDesc g = ref desc.Goals;
+        if (!g.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        if (desc.Demand.Model != DemandModel.Residents)
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        System.Span<GoalCondDesc> conds = stackalloc GoalCondDesc[City.GoalsState.Slots];
+        for (int i = 0; i < conds.Length; i++)
+        {
+            conds[i] = g.Get(i);
+        }
+
+        return City.GoalsState.Validate(conds, g.WinCount, g.LoseCount, g.GraceHours, g.AfterWin) ? CreateStatus.Ok : CreateStatus.InvalidCity;
+    }
+
+    /// <summary>Секция progression (progression.md §4.1): только при жителях; вехи, ворота, признаки, профили и области - <see cref="City.ProgressionState.Validate"/>.</summary>
+    private static CreateStatus ValidateProgression(in ScenarioDesc desc)
+    {
+        ref readonly ProgressionDesc p = ref desc.Progression;
+        if (!p.Enabled)
+        {
+            return CreateStatus.Ok;
+        }
+
+        if (desc.Demand.Model != DemandModel.Residents)
+        {
+            return CreateStatus.InvalidCity;
+        }
+
+        int profiles = ProfileCount(in desc);
+        int[] locked = p.LockedProfiles ?? System.Array.Empty<int>();
+        foreach (int lp in locked)
+        {
+            if ((uint)lp >= (uint)profiles)
+            {
+                return CreateStatus.InvalidCity;
+            }
+        }
+
+        bool ok = City.ProgressionState.Validate(p.Milestones, p.ProfileIdx, p.Areas, p.MinLegs, p.LockedFeatures, profiles);
+        return ok ? CreateStatus.Ok : CreateStatus.InvalidCity;
     }
 
     /// <summary>
@@ -664,7 +753,7 @@ internal static class WorldBuilder
             if (!Positive(t.Length) || !Positive(t.Width) || !Positive(t.MaxSpeed) || !Positive(t.SpeedFactor) ||
                 !Positive(t.Accel) || !Positive(t.ComfortDecel) || !NonNegative(t.HeadwayTime) || !NonNegative(t.MinGap) ||
                 !Positive(t.Delta) || t.LaneChangeDurationTicks < 0 ||
-                (t.Category != VehicleCategory.Car && t.Category != VehicleCategory.Bus))
+                (uint)t.Category > (uint)VehicleCategory.Special)
             {
                 return CreateStatus.InvalidVehicleType;
             }
@@ -827,6 +916,11 @@ internal static class WorldBuilder
         if (r.SignalArrowGapTicks <= 0)
         {
             r.SignalArrowGapTicks = Rules.Intersections.SignalStore.DefaultArrowGapTicks;
+        }
+
+        if (!(r.EmergencyRedSpeed > 0f))
+        {
+            r.EmergencyRedSpeed = Rules.Intersections.GateRules.DefaultEmergencyRedSpeed;
         }
 
         return r;

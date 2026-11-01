@@ -1,6 +1,7 @@
 using System;
 using Sim.Core.City;
 using Sim.Core.Demand;
+using Sim.Core.Tools;
 
 namespace Sim.Core.Api;
 
@@ -120,7 +121,7 @@ public sealed partial class Simulation
             if ((r.Flags[i] & ResidentFlags.Labour) != 0)
             {
                 stats.Labour++;
-                if (r.Work[i] >= 0)
+                if (r.Work[i] != -1)
                 {
                     stats.Employed++;
                 }
@@ -131,6 +132,8 @@ public sealed partial class Simulation
             }
 
             stats.BalanceResidents += r.Account[i];
+            stats.PopChild += r.Age[i] == (byte)ResidentAge.Child ? 1 : 0;
+            stats.PopElderly += r.Age[i] == (byte)ResidentAge.Elderly ? 1 : 0;
         }
 
         for (int i = 0; i < b.HighWater; i++)
@@ -149,6 +152,8 @@ public sealed partial class Simulation
                 case LotZone.Commercial:
                     stats.BuildingsC++;
                     break;
+                case LotZone.Service:
+                    break;   // депо службы (building-lifecycle.md §2.10) - не R/C/I
                 default:
                     stats.BuildingsI++;
                     break;
@@ -214,7 +219,7 @@ public sealed partial class Simulation
     /// <summary>Число видов потоков денег (<see cref="FlowKind"/>): минимальная длина буфера <see cref="CopyFlowTotals"/>.</summary>
     public const int FlowKindCount = Ledger.FlowCount;
 
-    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера, за текущие сутки или с начала симуляции (<paramref name="period"/>); длина <paramref name="dst"/> не меньше <see cref="FlowKindCount"/> (17).</summary>
+    /// <summary>Потоки денег по <see cref="FlowKind"/> за вчера, за текущие сутки или с начала симуляции (<paramref name="period"/>); длина <paramref name="dst"/> не меньше <see cref="FlowKindCount"/> (22).</summary>
     public bool CopyFlowTotals(Span<long> dst, FlowPeriod period)
     {
         CityWorld? c = _disposed ? null : _w.City;
@@ -252,7 +257,7 @@ public sealed partial class Simulation
             Balance = c.Ledger.City,
             IncomeEwma = b.IncomeEwma,
             ExpenseEwma = b.ExpenseEwma,
-            CreditLimit = b.CreditLimit(in c.Cfg.Economy),
+            CreditLimit = b.CreditLimit(in c.Cfg.Economy, City.Progression.CreditDaysBonus(_w)),
             MaintRoadDay = b.MaintRoadDay,
             MaintBusDay = b.MaintBusDay,
             FareEvadedYesterday = b.FareEvadedDay[y],
@@ -327,6 +332,8 @@ public sealed partial class Simulation
                 Kind = (byte)t.Kind,
                 State = b.State[i],
                 FillPct = (byte)fill,
+                R0 = c.Cfg.Lifecycle.Enabled ? (byte)(b.Cond[i] / 100) : (byte)0,              // building-lifecycle.md §3: состояние, % (без режима 0)
+                R1 = c.Cfg.Lifecycle.Enabled ? CityLife.RenderFlags(c, i) : (ushort)0,    // BuildingRenderFlags
                 Gen = b.Pool.GenerationOf(i),
             };
         }
@@ -347,10 +354,15 @@ public sealed partial class Simulation
         int n = Math.Min(dst.Length, l.Count);
         for (int i = 0; i < n; i++)
         {
-            byte flags = l.Flags[i];
+            byte flags = (byte)(l.Flags[i] & (LotFlags.Lost | LotFlags.Painted));
+            flags |= (l.Flags[i] & LotFlags.Annex) != 0 ? LotRenderFlags.Annex : (byte)0;
             if (l.Building[i] >= 0)
             {
                 flags |= LotRenderFlags.HasBuilding;
+                if (c.Buildings.State[l.Building[i]] == (byte)BuildingState.Abandoned)
+                {
+                    flags |= LotRenderFlags.Abandoned;
+                }
             }
 
             dst[i] = new LotRenderData
@@ -401,9 +413,10 @@ public sealed partial class Simulation
         {
             Home = r.Home[index],
             Work = r.Work[index],
-            State = (ResidentState)r.State[index],
+            State = (r.Flags[index] & ResidentFlags.Arriving) != 0 ? ResidentState.Arriving : (ResidentState)r.State[index],
             Flags = r.Flags[index],
             Mode = r.LegMode[index],
+            Age = (ResidentAge)r.Age[index],
             Agent = r.Agent[index],
             AgentGen = r.AgentGen[index],
             Balance = r.Account[index],
@@ -438,6 +451,107 @@ public sealed partial class Simulation
             ProfitEwma = b.ProfitEwma[index],
             StateTick = b.StateTick[index],
         };
+        return true;
+    }
+
+    /// <summary>
+    /// Жизнь здания для панели (building-lifecycle.md §3, §6): состояние/потолок, возраст, значимость, признаки, ремонт ЖКХ, цены капремонта/ремонта/сноса.
+    /// false - города или режима <c>city.lifecycle</c> нет либо пара (индекс, поколение) устарела.
+    /// </summary>
+    public bool TryGetBuildingLife(int index, int generation, out BuildingLifeInfo info)
+    {
+        info = default;
+        CityWorld? c = _disposed ? null : _w.City;
+        if (c == null || !c.Cfg.Lifecycle.Enabled || !c.Buildings.Pool.IsAlive(index, generation))
+        {
+            return false;
+        }
+
+        BuildingStore b = c.Buildings;
+        var st = (BuildingState)b.State[index];
+        info.CondBp = b.Cond[index];
+        info.CeilBp = b.Ceil[index];
+        info.AgeDays = Math.Max(0, c.Day - b.BornDay[index]);
+        info.Signif = b.Signif[index];
+        info.SignifLevel = CityLife.Level(b.Signif[index]);
+        info.Flags = CityLife.RenderFlags(c, index);
+        info.RepairState = RepairStateOf(c, index);
+        info.HarmStage = st == BuildingState.Abandoned && (b.LifeFlags[index] & BuildingLifeFlags.Demolishing) == 0 ? CityLife.HarmStage(b.Cond[index]) : (byte)0;
+        info.DemolishPrice = c.Types.Rows[b.Type[index]].DemolishCost;
+        info.RepairPrice = Utilities.RepairCost(c, index);
+        var probe = Command.MakeRestoreBuilding(new EntityRef { Index = index, Generation = generation });
+        var chk = default(ToolCheck);
+        if (ToolValidator.Check(_w, in probe, ref chk) == RejectReason.None)
+        {
+            info.CanRestore = 1;
+            info.RestorePrice = chk.Cost;
+        }
+
+        return true;
+    }
+
+    private static RepairState RepairStateOf(CityWorld c, int bi)
+    {
+        CrewStore? u = c.Services?.Crews;
+        if (u == null || (c.Buildings.LifeFlags[bi] & BuildingLifeFlags.Requested) == 0)
+        {
+            return RepairState.None;
+        }
+
+        for (int k = 0; k < u.Capacity; k++)
+        {
+            if (u.Target[k] == bi && u.TargetGen[k] == c.Buildings.Pool.GenerationOf(bi))
+            {
+                return u.State[k] == CrewState.Working ? RepairState.Working : RepairState.CrewEnRoute;
+            }
+        }
+
+        return RepairState.Queued;
+    }
+
+    /// <summary>
+    /// Фонд и работа ЖКХ (building-lifecycle.md §2.10): баланс, тариф и субсидия (действующие и ожидающие), очередь, бригады, ремонтов в сутки, средняя задержка, «фонд пуст».
+    /// false - города, режима <c>city.lifecycle</c> или казны нет.
+    /// </summary>
+    public bool GetUtilityInfo(out UtilityInfo info)
+    {
+        info = default;
+        CityWorld? c = _disposed ? null : _w.City;
+        CrewStore? u = c?.Services?.Crews;
+        CityBudget? bud = c?.Budget;
+        if (c == null || u == null || bud == null || !c.Cfg.Lifecycle.Enabled)
+        {
+            return false;
+        }
+
+        BudgetPolicy pend = bud.HasPending != 0 ? bud.PendingPolicy : bud.Policy;
+        info.Fund = c.Ledger.Utility;
+        info.RepairsDone = _w.Counters.RepairsDone;
+        info.RepairDelayTicksTotal = _w.Counters.RepairDelayTicksTotal;
+        info.AvgDelayTicks = info.RepairsDone > 0 ? info.RepairDelayTicksTotal / info.RepairsDone : 0;
+        info.RepairsPerDayX100 = info.RepairsDone * 100 / Math.Max(1, c.Day);
+        info.Tariff = bud.Policy.R0;
+        info.PendingTariff = pend.R0;
+        info.MaxTariff = c.Cfg.Lifecycle.MaxUtilityTariff;
+        info.QueueLength = c.Services!.UtilityQueue?.Count ?? 0;
+        info.Crews = u.Crews();
+        for (int k = 0; k < u.Capacity; k++)
+        {
+            info.CrewsBusy += u.State[k] is CrewState.ToSite or CrewState.Working or CrewState.Return ? 1 : 0;
+        }
+
+        BuildingStore b = c.Buildings;
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            if (b.IsAlive(i) && b.State[i] == (byte)BuildingState.Active && c.Types.Rows[b.Type[i]].ServiceKind == ServiceKind.Utility)
+            {
+                info.Depots++;
+            }
+        }
+
+        info.Subsidy = (bud.Policy.Flags & BudgetPolicyFlags.UtilitySubsidy) != 0 ? (byte)1 : (byte)0;
+        info.PendingSubsidy = (pend.Flags & BudgetPolicyFlags.UtilitySubsidy) != 0 ? (byte)1 : (byte)0;
+        info.FundEmpty = info.Fund <= 0 ? (byte)1 : (byte)0;
         return true;
     }
 

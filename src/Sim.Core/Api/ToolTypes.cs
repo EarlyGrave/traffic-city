@@ -14,7 +14,8 @@ public enum EntityKind : byte
     Segment = 2,
     BusStop = 3,
     BusRoute = 4,
-    Zone = 5,            // только для PreviewIssue.Obj: индекс зоны (без поколения)
+    Zone = 5,            // только для PreviewIssue.Obj и EventPlace: индекс зоны (без поколения)
+    Building = 6,        // EventPlace (EV1) и жалобы PG4: индекс и поколение здания города
 }
 
 /// <summary>
@@ -48,14 +49,17 @@ public static class BuildRoadFlags
     /// <summary>Разрезать сегмент, если конец попал на его ось (§4.4).</summary>
     public const byte AutoSplit = 2;
 
-    /// <summary>Квадратичная Безье: контрольная точка <c>Cx, Cz</c>.</summary>
+    /// <summary>Квадратичная Безье: контрольная точка <see cref="BuildRoadCmd.SetControl"/> (T5).</summary>
     public const byte Curve = 4;
 
     /// <summary>Сегмент построен «против» направления рисования профиля (ADR-0030, RP7): <see cref="BuildRoadCmd.Profile"/> обязателен.</summary>
     public const byte Mirrored = 8;
 
-    /// <summary>Биты, которые ядро понимает сейчас (T1: остальные дают <see cref="RejectReason.NotSupported"/>).</summary>
-    public const byte Supported = NoConnectors | Mirrored;
+    /// <summary>Строить мостом (terrain.md §4.5, TR3): без штампа рельефа под пролётом.</summary>
+    public const byte Bridge = 16;
+
+    /// <summary>Биты, которые ядро понимает (остальные дают <see cref="RejectReason.NotSupported"/>; T5: AutoSplit и Curve).</summary>
+    public const byte Supported = NoConnectors | AutoSplit | Curve | Mirrored | Bridge;
 }
 
 /// <summary>Бит0 <see cref="RemoveRoadCmd.Flags"/>: не удалять осиротевшие узлы.</summary>
@@ -80,7 +84,13 @@ public static class UpgradeRoadFlags
     /// <summary>Новый профиль применяется «против» направления рисования (ADR-0030, RP7); только вместе с <see cref="UpgradeRoadCmd.Profile"/> != 0.</summary>
     public const byte Mirrored = 2;
 
-    public const byte Supported = KeepKind | Mirrored;
+    /// <summary>
+    /// Снять профиль (T5): сегмент становится «без профиля» (полосы стандартной ширины), полосы и тип - из команды. Только с <see cref="UpgradeRoadCmd.Profile"/> == 0, без <see cref="Mirrored"/>.
+    /// Пишет обратная запись ядра для правки «без профиля -> профиль».
+    /// </summary>
+    public const byte NoProfile = 4;
+
+    public const byte Supported = KeepKind | Mirrored | NoProfile;
 }
 
 /// <summary>
@@ -103,8 +113,10 @@ public struct UpgradeRoadCmd
 public struct SplitRoadCmd
 {
     public EntityRef Seg;
-    public float S;                   // по оси от NodeA, м
-    public EntityRef RestoreNode;
+    public float S;                   // по полной оси от узла NodeA, м
+    public EntityRef RestoreNode;     // узел, который команда восстанавливает (undo слияния), или {-1,0}
+    public EntityRef RestoreSeg1;     // T5: половины, которые команда восстанавливает (обратная к MergeAtNode): A -> узел и узел -> B, или {-1,0}
+    public EntityRef RestoreSeg2;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -137,6 +149,17 @@ public struct SetLaneFlagsCmd
     public byte Dir, LaneNo, Flags, Mask;
 }
 
+/// <summary>
+/// Запрет улицы по классам (vehicle-classes.md §2.2, ADR-0039): биты <see cref="Deny"/> по маске <see cref="Mask"/> пишутся в <c>SegmentData.Deny</c> (оба направления).
+/// Допустимы только биты <see cref="LaneDeny.StreetWritable"/> (car, bus, van, truck); special и Emergency - <c>InvalidArgument</c>.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetStreetAccessCmd
+{
+    public EntityRef Seg;
+    public byte Deny, Mask, R0, R1;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct InsertBusStopCmd
 {
@@ -161,13 +184,30 @@ public struct RemoveBusRouteCmd
     public EntityRef Route;
 }
 
-/// <summary>«Не менять»: <c>HeadwayTicks == 0</c>, <c>VehicleType == -1</c>.</summary>
+/// <summary>
+/// «Не менять»: <c>HeadwayTicks == 0</c>, <c>VehicleType == -1</c>, <c>Flags == 0</c>. T9: <see cref="BusRouteFlags"/> в <c>Flags</c> - приостановить / возобновить линию (16 -> 20 Б).
+/// Число автобусов на линии задаётся интервалом: выпуск раз в <c>HeadwayTicks</c> с первой остановки (содержание казны считает <c>ceil(цикл / интервал)</c>, city-economy.md §6.1).
+/// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SetBusRouteParamsCmd
 {
     public EntityRef Route;
     public int HeadwayTicks;
     public int VehicleType;
+    public int Flags;
+}
+
+/// <summary>
+/// Биты <c>CreateBusRouteCmd.Flags</c> и <c>SetBusRouteParamsCmd.Flags</c> (T9). Приостановленная линия (<c>Suspended</c>) хранит интервал со знаком минус
+/// (<c>BusRouteData.HeadwayTicks &lt; 0</c>, модуль - интервал для возобновления): новых автобусов не выпускает, автобусы на линии доезжают рейс, пешеходы её не выбирают.
+/// </summary>
+public static class BusRouteFlags
+{
+    /// <summary>Создать приостановленной / приостановить.</summary>
+    public const int Suspend = 1;
+
+    /// <summary>Возобновить (только <c>SetBusRouteParams</c>; вместе с <see cref="Suspend"/> - <c>InvalidArgument</c>).</summary>
+    public const int Resume = 2;
 }
 
 // ---------------------------------------------------------------- превью (§7.1)
@@ -195,6 +235,11 @@ public enum IssueCode : ushort
     NearCapacity = 110,
     UndoUnavailable = 111,        // обратная запись не влезет
     ZoneLotsLost = 112,           // резерв ADR-0011
+    ZoneBuildingsAbandoned = 114, // PaintZone: здания другого вида уйдут в Abandoned; Value = сколько
+    ZoneNothingToPaint = 115,     // PaintZone: под прямоугольником нет ни одного участка (Info)
+    Earthwork = 116,              // TR3: земляные работы под дорогой (Info); Value = объём, м³
+    BridgeAuto = 117,             // TR3: участок пойдёт мостом сам (terrain.auto_bridge, Info); Value = длина моста, м
+    ServiceAnnexBuyout = 118,     // SR5: UpgradeService - занятые пристройки выкупаются со сносом; Value = сколько зданий уйдёт (Warning)
     SetbackShort = 113,           // RP7: отступ соседнего рукава меньше h + corner_radius нового профиля (ADR-0028: рукава не перестраиваются); Value = нехватка, мм
 }
 
@@ -229,6 +274,30 @@ public struct PreviewResult
     public int DrainVehicles, DrainPeds, BusStopsLost, ZonesLosingAccess;
     public int RoutesThrough;             // -1 - не считалось (нужен PreviewOptions.Detail)
     public int IssueCount, IssuesWritten, AxisPointCount;
+
+    // PaintZone (UI-C1, ui-spec.md §5.2): тот же обход, что у применения (City/Zoning.cs). Для остальных команд - нули.
+    public int ZoneLots;                  // участки, получающие зону (центр внутри прямоугольника, не Lost)
+    public int ZoneLotsChanged;           // из них реально меняются (вид, плотность или Painted)
+    public int ZoneCells;                 // клетки 8 м этих участков
+    public int ZoneAbandon;               // здания другого вида, которые уйдут в Abandoned
+    public int ZoneUnavailableCells;      // клетки прямоугольника без участка: дорога, вода, парк, нет доступа к дороге
+}
+
+/// <summary>Состояния <see cref="PaintLotMark.State"/>.</summary>
+public static class PaintLotMarkState
+{
+    public const byte Unchanged = 0;      // участок уже в этом состоянии
+    public const byte Zoned = 1;          // будет зонирован
+    public const byte ZonedAbandon = 2;   // будет зонирован, здание другого вида уйдёт в Abandoned
+}
+
+/// <summary>Подсветка превью <c>PaintZone</c>: участок (индекс в <c>GetLots</c>), его центр и что с ним станет.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct PaintLotMark
+{
+    public int Lot;
+    public byte State;                    // PaintLotMarkState
+    public float X, Z;
 }
 
 // ---------------------------------------------------------------- undo (§8)
@@ -321,6 +390,8 @@ public static class CommandRefs
             case CommandKind.SplitRoad:
                 Fix(ref cmd.SplitRoad.Seg, EntityKind.Segment, t);
                 Fix(ref cmd.SplitRoad.RestoreNode, EntityKind.Node, t);
+                Fix(ref cmd.SplitRoad.RestoreSeg1, EntityKind.Segment, t);
+                Fix(ref cmd.SplitRoad.RestoreSeg2, EntityKind.Segment, t);
                 break;
             case CommandKind.MergeAtNode:
                 Fix(ref cmd.MergeAtNode.Node, EntityKind.Node, t);
@@ -334,6 +405,9 @@ public static class CommandRefs
                 break;
             case CommandKind.SetLaneFlags:
                 Fix(ref cmd.SetLaneFlags.Seg, EntityKind.Segment, t);
+                break;
+            case CommandKind.SetStreetAccess:
+                Fix(ref cmd.SetStreetAccess.Seg, EntityKind.Segment, t);
                 break;
             case CommandKind.InsertBusStop:
                 Fix(ref cmd.InsertBusStop.Route, EntityKind.BusRoute, t);

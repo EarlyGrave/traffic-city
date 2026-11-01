@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стиль UI — референсы</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&family=Fredoka:wght@500;600&family=Baloo+2:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#ECE7DF; --ink:#2A2730; --muted:#6B6670; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 Nunito, system-ui, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:28px; margin:0 0 4px; }
+  .lead { color:var(--muted); margin:0 0 32px; max-width:760px; }
+  section.dir { background:#fff; border-radius:16px; padding:24px; margin-bottom:28px; }
+  .dir h2 { margin:0; font-size:22px; }
+  .dir .tag { color:var(--muted); margin:2px 0 16px; }
+  .grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:24px; }
+  @media (max-width:820px){ .grid { grid-template-columns:1fr; } }
+  .stage { border-radius:12px; padding:20px; min-height:260px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  ul { margin:0; padding-left:20px; }
+  li { margin:4px 0; }
+  .refs b { font-weight:800; }
+  .sw { display:flex; gap:6px; margin-top:12px; }
+  .sw i { width:28px; height:28px; border-radius:8px; border:2px solid var(--ink); display:block; }
+  .note { background:#fff; border-radius:16px; padding:20px 24px; }
+
+  /* A — Пластилин */
+  .a { background:#BFE3D0; font-family:Fredoka, sans-serif; }
+  .a .panel { background:#FFF6E6; border:3px solid #2E2A35; border-radius:18px; box-shadow:0 5px 0 #2E2A35; padding:14px 16px; width:min(320px,100%); }
+  .a .panel h4 { margin:0 0 8px; font-size:18px; }
+  .a .btn { font:600 16px Fredoka; padding:9px 18px; border:3px solid #2E2A35; border-radius:14px; box-shadow:0 4px 0 #2E2A35; background:#FFD36E; color:#2E2A35; }
+  .a .btn.s { background:#fff; }
+  .a .btn.on { background:#7CC6FF; transform:translateY(3px); box-shadow:0 1px 0 #2E2A35; }
+  .a .tool { width:52px; height:52px; border:3px solid #2E2A35; border-radius:14px; background:#fff; box-shadow:0 4px 0 #2E2A35; display:grid; place-items:center; font-size:24px; }
+  .a .tool.on { background:#FF9F8A; }
+  .a .kpi { display:flex; justify-content:space-between; font-weight:600; }
+
+  /* B — Игрушка 90-х */
+  .b { background:linear-gradient(#8EC9F2,#CFE9FB); font-family:"Baloo 2", sans-serif; }
+  .b .panel { background:linear-gradient(#FFFFFF,#E9F0F7); border:2px solid #1F3550; border-radius:24px; padding:14px 18px; width:min(320px,100%); box-shadow: inset 0 3px 0 #fff, 0 6px 14px rgba(31,53,80,.25); }
+  .b .panel h4 { margin:0 0 8px; font-size:19px; color:#1F3550; }
+  .b .btn { font:800 16px "Baloo 2"; padding:8px 20px; border-radius:999px; border:2px solid #1F3550; color:#fff; background:linear-gradient(#FF7A59,#E8553A); box-shadow: inset 0 3px 0 rgba(255,255,255,.5), 0 3px 0 #1F3550; }
+  .b .btn.s { background:linear-gradient(#5EC46A,#3FA24D); }
+  .b .btn.on { background:linear-gradient(#4FA3FF,#2F7FE0); }
+  .b .tool { width:54px; height:54px; border-radius:50%; border:2px solid #1F3550; background:linear-gradient(#FFE27A,#F5C02E); box-shadow: inset 0 3px 0 rgba(255,255,255,.6), 0 3px 0 #1F3550; display:grid; place-items:center; font-size:24px; }
+  .b .tool.on { background:linear-gradient(#9AD7FF,#56B2F5); }
+  .b .kpi { display:flex; justify-content:space-between; color:#1F3550; font-weight:600; }
+
+  /* C — Бумага и тушь */
+  .c { background:#E7DCC6; font-family:Nunito, sans-serif; }
+  .c .panel { background:#FBF5E8; border:2px solid #3B3328; border-radius:6px 10px 8px 12px; padding:14px 16px; width:min(320px,100%); box-shadow:4px 4px 0 rgba(59,51,40,.25); }
+  .c .panel h4 { margin:0 0 8px; font-size:18px; font-weight:900; color:#3B3328; letter-spacing:.02em; }
+  .c .btn { font:800 15px Nunito; padding:8px 16px; border:2px solid #3B3328; border-radius:8px 6px 9px 7px; background:#F1E3C4; color:#3B3328; }
+  .c .btn.s { background:transparent; }
+  .c .btn.on { background:#C9714F; color:#FBF5E8; }
+  .c .tool { width:50px; height:50px; border:2px solid #3B3328; border-radius:10px 8px 11px 9px; background:#FBF5E8; display:grid; place-items:center; font-size:22px; }
+  .c .tool.on { background:#9BB58A; }
+  .c .kpi { display:flex; justify-content:space-between; color:#3B3328; font-weight:800; }
+
+  /* D — Мягкие сумерки */
+  .d { background:#3A4566; font-family:Nunito, sans-serif; }
+  .d .panel { background:#4B5680; border:2.5px solid #1C2238; border-radius:16px; padding:14px 16px; width:min(320px,100%); box-shadow:0 4px 0 #1C2238; color:#F3EFE6; }
+  .d .panel h4 { margin:0 0 8px; font-size:18px; font-weight:900; }
+  .d .btn { font:800 15px Nunito; padding:8px 18px; border:2.5px solid #1C2238; border-radius:12px; background:#F7B7A3; color:#1C2238; box-shadow:0 3px 0 #1C2238; }
+  .d .btn.s { background:#6A76A3; color:#F3EFE6; }
+  .d .btn.on { background:#9FE0C9; }
+  .d .tool { width:52px; height:52px; border:2.5px solid #1C2238; border-radius:14px; background:#5C6894; box-shadow:0 3px 0 #1C2238; display:grid; place-items:center; font-size:22px; }
+  .d .tool.on { background:#FFD98A; }
+  .d .kpi { display:flex; justify-content:space-between; font-weight:700; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Стиль UI: мультяшный матовый, 3D-мультфильмы конца 90-х</h1>
+  <p class="lead">Четыре направления. В каждом: мини-макет (панель, кнопки, тулбар), на что смотреть в играх и мультфильмах, палитра. Общее у всех — матовые мягкие цвета и контур, как у моделей в мире. Выберите одно или смешайте («A, но палитра D»).</p>
+
+  <section class="dir">
+    <h2>A. Пластилин</h2>
+    <p class="tag">Толстый тёмный контур, плоская заливка, «твёрдая» тень снизу. Кнопка при нажатии проседает. Самый близкий к контурам на моделях.</p>
+    <div class="grid">
+      <div class="stage a">
+        <div class="row"><div class="tool on">🛣️</div><div class="tool">🚌</div><div class="tool">🏠</div><div class="tool">🧹</div></div>
+        <div class="panel"><h4>Перекрёсток №12</h4>
+          <div class="kpi"><span>Пропуск</span><span>840 / ч</span></div>
+          <div class="kpi"><span>Очередь</span><span>6 машин</span></div>
+          <div class="row" style="margin-top:10px"><button class="btn">Светофор</button><button class="btn s">Снести</button><button class="btn on">Выбран</button></div>
+        </div>
+      </div>
+      <div class="refs"><ul>
+        <li><b>Two Point Hospital / Campus</b>: панели с толстой обводкой, мягкие цвета, кнопки-плашки.</li>
+        <li><b>Overcooked 2</b>: контур и «тень-подложка» под кнопками, крупный округлый шрифт.</li>
+        <li><b>Wallace & Gromit, «Побег из курятника»</b>: матовая пластилиновая фактура, тёплый свет.</li>
+        <li><b>Townscaper</b>: пастельный мир, к которому такой UI подходит.</li>
+      </ul>
+      <div class="sw"><i style="background:#FFF6E6"></i><i style="background:#FFD36E"></i><i style="background:#7CC6FF"></i><i style="background:#FF9F8A"></i><i style="background:#BFE3D0"></i><i style="background:#2E2A35"></i></div></div>
+    </div>
+  </section>
+
+  <section class="dir">
+    <h2>B. Игрушка 90-х</h2>
+    <p class="tag">Пухлые формы-«таблетки», яркие, но мягкие основные цвета, блик сверху как у пластика. Самый «90-е» и самый детский.</p>
+    <div class="grid">
+      <div class="stage b">
+        <div class="row"><div class="tool on">🛣️</div><div class="tool">🚌</div><div class="tool">🏠</div><div class="tool">🧹</div></div>
+        <div class="panel"><h4>Перекрёсток №12</h4>
+          <div class="kpi"><span>Пропуск</span><span>840 / ч</span></div>
+          <div class="kpi"><span>Очередь</span><span>6 машин</span></div>
+          <div class="row" style="margin-top:10px"><button class="btn">Снести</button><button class="btn s">Светофор</button><button class="btn on">Выбран</button></div>
+        </div>
+      </div>
+      <div class="refs"><ul>
+        <li><b>«История игрушек» (1995), «Приключения Флика»</b>: пластиковый блеск, чистые формы.</li>
+        <li><b>Banjo-Kazooie, Spyro (1998)</b>: округлые меню, крупные цифры.</li>
+        <li><b>RollerCoaster Tycoon 3 / SimCity 3000</b>: эпоха, «игрушечный» город.</li>
+        <li><b>Mario Kart 8 (меню)</b>: современная версия того же подхода.</li>
+      </ul>
+      <div class="sw"><i style="background:#FF7A59"></i><i style="background:#5EC46A"></i><i style="background:#4FA3FF"></i><i style="background:#FFE27A"></i><i style="background:#E9F0F7"></i><i style="background:#1F3550"></i></div>
+      <p style="color:var(--muted);margin-top:8px">Риск: блик сверху спорит с матовостью мира.</p></div>
+    </div>
+  </section>
+
+  <section class="dir">
+    <h2>C. Бумага и тушь</h2>
+    <p class="tag">Кремовая бумага, неровный контур тушью, приглушённые земляные цвета. Спокойно, «книжно», хорошо читаются цифры.</p>
+    <div class="grid">
+      <div class="stage c">
+        <div class="row"><div class="tool on">🛣️</div><div class="tool">🚌</div><div class="tool">🏠</div><div class="tool">🧹</div></div>
+        <div class="panel"><h4>Перекрёсток №12</h4>
+          <div class="kpi"><span>Пропуск</span><span>840 / ч</span></div>
+          <div class="kpi"><span>Очередь</span><span>6 машин</span></div>
+          <div class="row" style="margin-top:10px"><button class="btn">Светофор</button><button class="btn s">Снести</button><button class="btn on">Выбран</button></div>
+        </div>
+      </div>
+      <div class="refs"><ul>
+        <li><b>Zelda: Wind Waker</b>: тушевой контур, мягкая заливка, пергаментные меню.</li>
+        <li><b>Pikmin, Ni no Kuni</b>: матовые природные цвета.</li>
+        <li><b>Islanders, Dorfromantik</b>: спокойный UI ситибилдера на светлой подложке.</li>
+      </ul>
+      <div class="sw"><i style="background:#FBF5E8"></i><i style="background:#F1E3C4"></i><i style="background:#C9714F"></i><i style="background:#9BB58A"></i><i style="background:#E7DCC6"></i><i style="background:#3B3328"></i></div></div>
+    </div>
+  </section>
+
+  <section class="dir">
+    <h2>D. Мягкие сумерки</h2>
+    <p class="tag">Тот же контур и «твёрдая» тень, что в A, но на приглушённых сине-лиловых панелях с пастельными акцентами. Не слепит на светлом мире, мостик к прежнему тёмному варианту.</p>
+    <div class="grid">
+      <div class="stage d">
+        <div class="row"><div class="tool on">🛣️</div><div class="tool">🚌</div><div class="tool">🏠</div><div class="tool">🧹</div></div>
+        <div class="panel"><h4>Перекрёсток №12</h4>
+          <div class="kpi"><span>Пропуск</span><span>840 / ч</span></div>
+          <div class="kpi"><span>Очередь</span><span>6 машин</span></div>
+          <div class="row" style="margin-top:10px"><button class="btn">Светофор</button><button class="btn s">Снести</button><button class="btn on">Выбран</button></div>
+        </div>
+      </div>
+      <div class="refs"><ul>
+        <li><b>Ratchet & Clank (2002), Jak and Daxter</b>: тёмные мягкие меню.</li>
+        <li><b>A Short Hike, Astroneer</b>: матовый low-poly, пастель на сумеречном фоне.</li>
+        <li><b>ReBoot (1994)</b>: ранний 3D-мультфильм, приглушённая палитра.</li>
+      </ul>
+      <div class="sw"><i style="background:#4B5680"></i><i style="background:#F7B7A3"></i><i style="background:#9FE0C9"></i><i style="background:#FFD98A"></i><i style="background:#6A76A3"></i><i style="background:#1C2238"></i></div></div>
+    </div>
+  </section>
+
+  <div class="note">
+    <b>Что это меняет в плане.</b> Набор иконок 1 (тёмное стекло) под новый стиль не подходит, его придётся перегенерировать. Структура фреймворка (токены, тема, компоненты, витрина) остаётся прежней: меняются только значения токенов. Контур в интерфейсе стоит делать той же толщины и цвета, что контур моделей (inverted hull / пост-эффект в Godot), тогда UI и мир читаются как одно целое. Эмодзи на макетах — заглушки вместо иконок.
+  </div>
+</main>
+</body>
+</html>

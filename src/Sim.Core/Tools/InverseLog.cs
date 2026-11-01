@@ -22,6 +22,19 @@ internal sealed class InverseLog
     /// <summary>Сегмент, построенный последней <c>BuildRoad</c> (-1 - нет): нужен обратной записи, которая знает индекс только после мутации.</summary>
     public int BuiltSeg = -1;
 
+    /// <summary>Узел, созданный последней <c>SplitRoad</c> (-1 - нет), и точка разреза для обратной к <c>MergeAtNode</c> (T5).</summary>
+    public int BuiltNode = -1;
+
+    public float BuiltS;
+
+    /// <summary>Линия / остановка, созданная последней <c>CreateBusRoute</c> / <c>InsertBusStop</c> (-1 - нет; T9): обратная и undo-кредит знают индекс только после применения.</summary>
+    public int BuiltRoute = -1;
+
+    public int BuiltStop = -1;
+
+    /// <summary>Половины, слитые последней <c>MergeAtNode</c> (до слияния): обратная <c>SplitRoad</c> восстанавливает их handle'ы (T5).</summary>
+    public EntityRef MergedA, MergedB;
+
     public InverseLog(int commandCapacity, int recordCapacity)
     {
         Cmds = new Command[commandCapacity > 0 ? commandCapacity : DefaultCommandCapacity];

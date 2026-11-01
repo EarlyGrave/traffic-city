@@ -162,6 +162,12 @@ public static class Timeline
                 Flags = B(r, "flags"),
                 Mask = B(r, "mask", 255),
             }, tag),
+            "set_street_access" => Command.MakeSetStreetAccess(new SetStreetAccessCmd
+            {
+                Seg = Ref(r, "seg", required: true),
+                Deny = B(r, "deny"),
+                Mask = B(r, "mask", LaneDeny.StreetWritable),
+            }, tag),
             "insert_bus_stop" => Command.MakeInsertBusStop(new InsertBusStopCmd
             {
                 Route = Ref(r, "route", required: true),
@@ -236,7 +242,8 @@ public static class Timeline
         p.Flags = Flags(r, "flags", ("no_connectors", BuildRoadFlags.NoConnectors), ("auto_split", BuildRoadFlags.AutoSplit), ("curve", BuildRoadFlags.Curve));
         if (r.Has("c"))
         {
-            (p.Cx, p.Cz) = Point(r, "c");
+            (float cx, float cz) = Point(r, "c");
+            p.SetControl(cx, cz);   // T5: контрольная точка в команде - смещение от середины хорды, дм
         }
 
         p.RestoreOf = Ref(r, "restore_of");

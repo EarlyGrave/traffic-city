@@ -66,16 +66,20 @@ internal static class AggregateExec
     /// <summary>
     /// Нога тура <c>PlanCursor</c> без агента (аналог <c>TripLegs.StartLeg</c>): способ уточняется (машина без полос или пары - пешком, автобус без пары остановок - пешком), время - модель или ским,
     /// житель <c>InLeg</c> без агента, событие <c>Arrive</c> через это время. false - ни один способ недоступен.
+    /// <para>
+    /// <paramref name="reqTick"/> &gt;= 0 - нога клапана перегрузки в micro (ADR-0035): нога уже начата и учтена в <c>ResLegs*</c>, поэтому счётчики способов не растут, а <c>LegReq</c> остаётся тиком
+    /// исходной заявки - стоимость ноги (и наблюдение в скимы) включает всё ожидание выезда.
+    /// </para>
     /// </summary>
-    internal static bool StartLeg(World w, CityWorld c, int r, bool outbound, TravelMode mode)
+    internal static bool StartLeg(World w, CityWorld c, int r, bool outbound, TravelMode mode, long reqTick = -1)
     {
         CityResidents res = c.Residents;
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         int home = res.Home[r];
         int far = res.PlanDest[tour];
         int dest = outbound ? far : home;
-        int lo = c.Buildings.Lot[outbound ? home : far];
-        int ld = c.Buildings.Lot[dest];
+        int lo = c.LotOf(outbound ? home : far);
+        int ld = c.LotOf(dest);
         long now = w.Tick;
         int o = c.Lots.Cell[lo];
         int d = c.Lots.Cell[ld];
@@ -124,7 +128,7 @@ internal static class AggregateExec
         res.LegMode[r] = (byte)mode;
         res.LegO[r] = (ushort)o;
         res.LegD[r] = (ushort)d;
-        res.LegReq[r] = now;
+        res.LegReq[r] = reqTick >= 0 ? reqTick : now;
         res.LegWalk[r] = 0;
         res.LegWait[r] = 0;
         res.LegRide[r] = 0;
@@ -135,17 +139,20 @@ internal static class AggregateExec
         res.AgentGen[r] = 0;
         res.State[r] = (byte)ResidentState.InLeg;
         res.StateTick[r] = now;
-        switch (mode)
+        if (reqTick < 0)
         {
-            case TravelMode.Car:
-                w.Counters.ResLegsCar++;
-                break;
-            case TravelMode.Bus:
-                w.Counters.ResLegsBus++;
-                break;
-            default:
-                w.Counters.ResLegsWalk++;
-                break;
+            switch (mode)
+            {
+                case TravelMode.Car:
+                    w.Counters.ResLegsCar++;
+                    break;
+                case TravelMode.Bus:
+                    w.Counters.ResLegsBus++;
+                    break;
+                default:
+                    w.Counters.ResLegsWalk++;
+                    break;
+            }
         }
 
         w.Counters.AggregateLegs++;
@@ -317,10 +324,19 @@ internal static class AggregateExec
         // граница суток: тик t с (t + 1) % dayTicks == 0 исполняется обычным путём
         long boundary = tick + (dayTicks - 1 - (tick % dayTicks));
         n = Math.Min(n, boundary - tick);
+        // сдвиг часа показателей (progression.md §2.2): последний тик игрового часа исполняется обычным путём
+        n = Math.Min(n, CityKpi.NextHourEnd(tick, dayTicks) - tick);
         // ячейка доступности: тики, кратные step
         long step = Math.Max(1, dayTicks / Math.Max(1, s.Cells));
         long access = tick % step == 0 ? tick : tick + (step - (tick % step));
         n = Math.Min(n, access - tick);
+        if (n <= 0)
+        {
+            return 0;
+        }
+
+        // ЖКХ (building-lifecycle.md §2.10): тик выезда или срока бригады исполняется обычным путём
+        n = Math.Min(n, Utilities.NextWorkTick(c, tick) - tick);
         if (n <= 0)
         {
             return 0;

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Sim.Core.Agents;
+using Sim.Core.Network;
 using Sim.Core.Util;
 
 namespace Sim.Core.Rules.Intersections;
@@ -85,4 +86,78 @@ internal sealed class GateResolveJob : IRangeJob
     }
 
     public void RunRange(int worker, int begin, int end) => GatePhase.ResolveNodes(_w, in _e, _w.Gate.Workers[worker], begin, end);
+}
+
+/// <summary>
+/// Задание «сброс по списку прошлого тика» фазы 4 (S4c): элемент - позиция в <c>PrevList</c>. Сбрасывает <c>WaitTicks</c>/<c>DenyReason</c>/допуск машины,
+/// которая кандидатом больше не является; пишет только данные своей машины и <c>PrevKeep[k]</c>.
+/// </summary>
+internal sealed class GatePrevResetJob : IRangeJob
+{
+    private World _w = null!;
+    private byte[] _lodBits = System.Array.Empty<byte>();
+    private byte[] _laneColor = System.Array.Empty<byte>();
+    private int _stamp;
+    private int _beat;
+
+    public void Prepare(World w, int stamp, int beat)
+    {
+        _w = w;
+        _lodBits = w.Vehicles.Lod;
+        _laneColor = w.Lod?.LaneColor ?? System.Array.Empty<byte>();
+        _stamp = stamp;
+        _beat = beat;
+    }
+
+    public void RunRange(int worker, int begin, int end)
+    {
+        World w = _w;
+        NetworkStore net = w.Net;
+        VehicleStore v = w.Vehicles;
+        GateScratch g = w.Gate;
+        int[] prev = g.PrevList;
+        byte[] keep = g.PrevKeep;
+        for (int k = begin; k < end; k++)
+        {
+            keep[k] = 0;
+            int i = prev[k];
+            if (g.CandStamp[i] == _stamp)
+            {
+                continue;   // кандидат и в этом тике: WaitTicks уже увеличен, запись в NextList есть
+            }
+
+            int lane = v.Lane[i];
+            if (!v.Pool.IsAlive(i) || lane < 0)
+            {
+                v.WaitTicks[i] = 0;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (net.Lanes[lane].Kind == LaneKind.Connector)
+            {
+                v.WaitTicks[i] = 0;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (GateRules.GateNodeOfNormal(net, lane) < 0)
+            {
+                v.WaitTicks[i] = 0;
+                v.GateState[i] = 0;
+                v.GrantConnector[i] = -1;
+                g.DenyReason[i] = (byte)GateDeny.None;
+                continue;
+            }
+
+            if (!GateRules.IsGranted(v, i) && _lodBits.Length != 0 && (_lodBits[i] & Lod.LodBits.Meso) != 0 && _laneColor[lane] != _beat)
+            {
+                keep[k] = 1;   // meso не в свой такт: WaitTicks и DenyReason не трогаем (sim-lod.md §2.4), запись остаётся в списке
+                continue;
+            }
+
+            v.WaitTicks[i] = 0;
+            g.DenyReason[i] = (byte)GateDeny.None;
+        }
+    }
 }

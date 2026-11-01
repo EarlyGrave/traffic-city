@@ -208,7 +208,7 @@ Fade (`visibility_range_fade_mode`) не используется: он пере
 - ТС, пешеходы — точка (§3.4).
 - Здание — **бокс-импостор**: AABB LOD2, 10 треугольников (без дна), цвет = средний `baseColorFactor`/`COLOR_0` LOD2 по площади; слит в меш дальнего
   чанка 2 000 м. Запечённые и октаэдрические импосторы отвергнуты (ADR-0014).
-- Дорога: ближние чанки 250 м (Road0 до `lod0 + 177`, Road1 до `FarBegin + 707 + 177 + 100`), дальняя лента — чанки 1 000 м от `FarBegin = max(lod1, lod0 + 177 + 707)`; `visibility_range_*_margin` = 0 (hysteresis даёт мёртвую зону, lessons.md L34). Страж: `RoadChunks.CheckRanges`.
+- Дорога: ближние чанки 250 м (Road0 до `lod0 + 177`, Road1 до `FarBegin + 707 + 177 + 100`), дальняя лента — чанки 1 000 м от `FarBegin = max(lod1, lod0 + 177 + 707)`; `visibility_range_*_margin` = 0 (hysteresis даёт мёртвую зону, `lessons/client-godot.md`, L34). Страж: `RoadChunks.CheckRanges`.
 - Дорога — лента по полилинии сегмента (не полосы) шириной профиля, полилиния упрощена (Дуглас–Пекер, 1 м на 250-м чанках, 4 м на 2 000-м).
 
 ### 4.4 Почему дорога — 2 уровня (спорное место M6/ADR-0015)
@@ -379,7 +379,7 @@ calls батчей, `count × треугольники меша`).
 ### V9. Сцена-бенч клиента и гейт
 - **Файлы:** `scripts/godot-shot.sh` (`stats` по набору), `src/Sim.Headless/Render/RenderCompare.cs` (команды `render-compare`,
   `render-update-baseline`), `perf/render-baseline.json` (облако) и `perf/render-baseline-ci.json` (CI) (только командой), `.github/workflows/ci.yml` (job `render`, §8.3, `continue-on-error` до 5 зелёных подряд),
-  `docs/plan/lessons.md` при граблях.
+  `docs/plan/lessons/client-godot.md` при граблях.
 - **Делает:** §8.3; чек-лист владельца для реального GPU (Vulkan): s10k и s100k × 3 позы × оба пресета → FPS, p95 кадра, GPU-время.
 - **Приёмка:** `render-compare` красный на искусственном превышении (тест на JSON-фикстурах) и зелёный на текущем клиенте; job `render`
   проходит вручную 3 раза подряд с одинаковыми детерминированными счётчиками.

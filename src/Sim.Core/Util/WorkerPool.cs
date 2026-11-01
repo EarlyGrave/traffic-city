@@ -33,6 +33,7 @@ internal sealed class WorkerPool : IDisposable
     private IRangeJob? _job;
     private int _count;
     private int _chunks;
+    private int _chunkSize = ChunkSize;
     private int _done;
     private int _epoch;
     private int _awake;
@@ -87,10 +88,17 @@ internal sealed class WorkerPool : IDisposable
         _wake.Reset();
     }
 
-    /// <summary>Выполняет <paramref name="job"/> на диапазоне [0, count); возвращается, когда все чанки закончены.</summary>
-    public void Run(IRangeJob job, int count)
+    /// <summary>Выполняет <paramref name="job"/> на диапазоне [0, count) чанками по <see cref="ChunkSize"/>; возвращается, когда все чанки закончены.</summary>
+    public void Run(IRangeJob job, int count) => Run(job, count, ChunkSize);
+
+    /// <summary>
+    /// То же с размером чанка <paramref name="chunkSize"/> (≥ 1): мало тяжёлых элементов (запросы маршрутов) раздаются по одному,
+    /// чтобы пакет не ушёл целиком на один воркер.
+    /// </summary>
+    public void Run(IRangeJob job, int count, int chunkSize)
     {
-        int chunks = (count + ChunkSize - 1) / ChunkSize;
+        chunkSize = Math.Max(1, chunkSize);
+        int chunks = (int)(((long)count + chunkSize - 1) / chunkSize);
         if (_threads.Length == 0 || chunks <= 1 || _disposed)
         {
             if (count > 0)
@@ -103,6 +111,7 @@ internal sealed class WorkerPool : IDisposable
 
         _job = job;
         _count = count;
+        _chunkSize = chunkSize;
         Volatile.Write(ref _chunks, chunks);
         Volatile.Write(ref _done, 0);
         _epoch++;
@@ -152,8 +161,8 @@ internal sealed class WorkerPool : IDisposable
 
     private void RunChunk(int worker, int k)
     {
-        int begin = k * ChunkSize;
-        int end = Math.Min(_count, begin + ChunkSize);
+        int begin = k * _chunkSize;
+        int end = Math.Min(_count, begin + _chunkSize);
         _job!.RunRange(worker, begin, end);
     }
 

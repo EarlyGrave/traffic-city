@@ -29,9 +29,8 @@ public sealed class PedChunks
     private readonly List<int> _keep = new();
     private readonly Vec2[] _scratch = new Vec2[256];
 
-    public PedChunks(Simulation sim, LodConfig lod)
+    public PedChunks(NetworkView net, LodConfig lod)
     {
-        NetworkView net = sim.Network;
         ReadOnlySpan<PedEdgeData> sidewalks = net.Sidewalks;
         ReadOnlySpan<PedEdgeData> crossings = net.Crossings;
         ReadOnlySpan<Vec2> pts = net.PedEdgePoints;
@@ -105,7 +104,7 @@ public sealed class PedChunks
     public void SetForce(float force) => _material.SetShaderParameter("heat_force", force);
 
     /// <summary>Обновить текстуру данных из <c>PedEdgeCounts</c> (~2 Гц).</summary>
-    public void RefreshHeat(Simulation sim) => Heat.UpdatePeds(sim.PedEdgeCounts, _edgeLenM);
+    public void RefreshHeat(ReadOnlySpan<ushort> pedEdgeCounts) => Heat.UpdatePeds(pedEdgeCounts, _edgeLenM);
 
     private static void AddZebra(MeshBuilder b, Vec2 a, Vec2 end, float width)
     {

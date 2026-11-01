@@ -51,9 +51,8 @@ public sealed partial class NodePicker : Node3D
     public void Clear() => _ring.Visible = false;
 
     /// <summary>Ближайший узел к точке земли в радиусе <paramref name="radius"/> (не меньше <see cref="MinRadius"/>); -1, если нет.</summary>
-    public int Pick(Simulation sim, float x, float z, float radius)
+    public int Pick(NetworkView net, float x, float z, float radius)
     {
-        NetworkView net = sim.Network;
         if (net.Nodes.Length == 0)
         {
             return -1;

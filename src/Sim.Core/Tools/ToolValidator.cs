@@ -33,7 +33,9 @@ internal struct ToolCheck
     public int Seg;                         // целевой сегмент (снос, правка полос) или -1
     public int Node;                        // целевой узел или -1
     public bool Reopen;                     // BuildRoad(RestoreOf) = отмена сноса
-    public long Cost;                       // > 0 трата, < 0 возврат
+    public long Cost;                       // > 0 трата, < 0 возврат; при city_budget - эффективная (undo-кредит учтён, ToolCosts.Resolve)
+    public int CreditSlot;                  // запись UndoCredits, которую погасит применение (-1 - нет)
+    public int LockMilestone;               // RejectReason.Locked (PG3): веха, которая откроет (-1 - не откроется); превью - PreviewIssue.Value
 
     // Профили (RP7): итоговые значения команды после разбора (-1 - без профиля).
     public int Profile;
@@ -42,6 +44,26 @@ internal struct ToolCheck
     public RoadKind Kind;
     public float Speed;
     public ReshapeMode Reshape;             // UpgradeRoad: что делать с сегментом
+    public int Drain;                       // UpgradeRoad занятого сегмента: машин ждать (> 0 - операция ShrinkLanes, Mechanism 2)
+    public bool CancelShrink;               // UpgradeRoad в прежние полосы во время дренажа полос: отмена операции (undo)
+    public int SplitSegA, SplitSegB;        // BuildRoad с AutoSplit: разрезаемый сегмент у конца A/B или -1 (T5)
+    public float SplitSA, SplitSB;          // точка разреза по полной оси сегмента, м от его узла A
+    public bool Curve;                      // BuildRoad: кривая Безье (T5)
+
+    // Рельеф (TR3, terrain.md §4): высоты концов после подгонки (абсолютные см), мост, земляные работы; значение отказа для превью (TooSteep - ‰, NeedsBridge -1/-2).
+    public int ElevACm, ElevBCm;
+    public bool Bridge, BridgeAuto;
+    public long EarthworkM3, EarthworkCost;
+    public int RejectValue;
+
+    // Службы (SR5, services.md §2.8): часть цены, которую undo не возвращает (выкуп пристроек), и сколько зданий пойдёт под снос при выкупе.
+    public long NoRefundCost;
+    public int BuyoutBuildings;
+
+    // Автобусные инструменты (T9): линия, остановка, полоса и позиция новой остановки; Noop - восстанавливаемая остановка уже на линии (повтор обратной записи).
+    public int Route, Stop, Lane, Pos;
+    public float StopS;
+    public bool Noop;
 
     public EntityKind IssueKind;            // объект и точка проблемы (подсветка) для отказа
     public int IssueIndex, IssueGen;
@@ -57,7 +79,9 @@ internal static partial class ToolValidator
 {
     /// <summary>Поддерживает ли валидатор команду (иначе превью даёт <see cref="RejectReason.NotSupported"/>, как и применение).</summary>
     public static bool Handles(CommandKind k) => k is CommandKind.BuildRoad or CommandKind.RemoveRoad or CommandKind.SetArmControl or CommandKind.SetTurnBan
-        or CommandKind.SetLaneFlags or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad;
+        or CommandKind.SetLaneFlags or CommandKind.SetStreetAccess or CommandKind.SetNodeControl or CommandKind.SetSignalPlan or CommandKind.UpgradeRoad or CommandKind.SplitRoad
+        or CommandKind.MergeAtNode or CommandKind.DemolishBuilding or CommandKind.BuildService or CommandKind.RestoreBuilding
+        or CommandKind.UpgradeService or CommandKind.SetServiceUpgrade || IsBusKind(k);
 
     public static RejectReason Check(World w, in Command cmd, ref ToolCheck c)
     {
@@ -67,6 +91,11 @@ internal static partial class ToolValidator
         c.Seg = -1;
         c.Node = -1;
         c.Profile = -1;
+        c.SplitSegA = -1;
+        c.SplitSegB = -1;
+        c.Route = -1;
+        c.Stop = -1;
+        c.Lane = -1;
         c.Reason = cmd.Kind switch
         {
             CommandKind.BuildRoad => CheckBuildRoad(w, in cmd, ref c),
@@ -75,10 +104,48 @@ internal static partial class ToolValidator
             CommandKind.SetArmControl => CheckSetArmControl(w, in cmd, ref c),
             CommandKind.SetTurnBan => CheckSetTurnBan(w, in cmd, ref c),
             CommandKind.SetLaneFlags => CheckSetLaneFlags(w, in cmd, ref c),
+            CommandKind.SetStreetAccess => CheckSetStreetAccess(w, in cmd, ref c),
             CommandKind.SetNodeControl => CheckSetNodeControl(w, in cmd, ref c),
             CommandKind.SetSignalPlan => CheckSetSignalPlan(w, in cmd, ref c),
+            CommandKind.SplitRoad => CheckSplitRoad(w, in cmd, ref c),
+            CommandKind.MergeAtNode => CheckMergeAtNode(w, in cmd, ref c),
+            CommandKind.CreateBusRoute => CheckCreateBusRoute(w, in cmd, ref c),
+            CommandKind.AppendBusStop => CheckAppendBusStop(w, in cmd, ref c),
+            CommandKind.InsertBusStop => CheckInsertBusStop(w, in cmd, ref c),
+            CommandKind.RemoveBusStop => CheckRemoveBusStop(w, in cmd, ref c),
+            CommandKind.RemoveBusRoute => CheckRemoveBusRoute(w, in cmd, ref c),
+            CommandKind.SetBusRouteParams => CheckSetBusRouteParams(w, in cmd, ref c),
+            CommandKind.DemolishBuilding => CheckDemolishBuilding(w, in cmd, ref c),
+            CommandKind.BuildService => CheckBuildService(w, in cmd, ref c),
+            CommandKind.RestoreBuilding => CheckRestoreBuilding(w, in cmd, ref c),
+            CommandKind.UpgradeService => CheckUpgradeService(w, in cmd, ref c),
+            CommandKind.SetServiceUpgrade => CheckSetServiceUpgrade(w, in cmd, ref c),
             _ => RejectReason.NotSupported,
         };
+        c.LockMilestone = -1;
+        if (c.Reason is not (RejectReason.InvalidArgument or RejectReason.InvalidHandle or RejectReason.NotSupported or RejectReason.UnknownKind))
+        {
+            // Прогрессия (PG3, progression.md §4.3): замок - после структурных проверок, до геометрии и денег; undo (бит Inverse) замок не проверяет.
+            RejectReason lk = City.Progression.Check(w, in cmd, out c.LockMilestone);
+            if (lk != RejectReason.None)
+            {
+                c.Reason = lk;
+            }
+        }
+
+        if (c.Reason == RejectReason.None)
+        {
+            c.Reason = ToolCosts.Resolve(w, in cmd, ref c);   // E4: цена с undo-кредитом и InsufficientFunds - одно место для превью и применения
+            if (c.Reason == RejectReason.None && c.Cost > 0 && w.City?.Budget is { Insolvent: not 0 })
+            {
+                c.Reason = RejectReason.InsufficientFunds;   // мягкое банкротство (PG5, progression.md §5): платное закрыто до выхода на границе суток; возвраты и бесплатное - открыты
+            }
+        }
+        else
+        {
+            c.CreditSlot = -1;
+        }
+
         return c.Reason;
     }
 
@@ -96,9 +163,9 @@ internal static partial class ToolValidator
             return RejectReason.None;
         }
 
-        if ((b.Flags & ~BuildRoadFlags.Supported) != 0)
+        if ((b.Flags & ~BuildRoadFlags.Supported) != 0 || ((b.Flags & BuildRoadFlags.Bridge) != 0 && w.Terrain == null))
         {
-            return RejectReason.NotSupported;   // AutoSplit / Curve (T5)
+            return RejectReason.NotSupported;   // неизвестные биты; мост - только на рельефе (TR3)
         }
 
         if (b.RestoreOf.Generation != 0 && n.ResolveSegment(in b.RestoreOf))
@@ -131,6 +198,22 @@ internal static partial class ToolValidator
         NetworkOptions o = bld.Options;
         int na = bld.FindNode(a);
         int nb = bld.FindNode(z);
+        if ((b.Flags & BuildRoadFlags.AutoSplit) != 0)
+        {
+            // T5: конец без узла рядом, но на оси сегмента (в SnapRadius) - разрез этого сегмента, конец - новый узел разреза.
+            RejectReason sa = na < 0 ? FindSplit(w, ref a, ref c, out c.SplitSegA, out c.SplitSA) : RejectReason.None;
+            RejectReason sb = sa == RejectReason.None && nb < 0 ? FindSplit(w, ref z, ref c, out c.SplitSegB, out c.SplitSB) : RejectReason.None;
+            if (sa != RejectReason.None || sb != RejectReason.None)
+            {
+                return sa != RejectReason.None ? sa : sb;
+            }
+
+            if (c.SplitSegA >= 0 && c.SplitSegA == c.SplitSegB)
+            {
+                return RejectReason.InvalidArgument;   // оба конца на одном сегменте - дорога вдоль него
+            }
+        }
+
         float r2 = o.SnapRadius * o.SnapRadius;
         if (na >= 0 && na == nb)
         {
@@ -166,8 +249,8 @@ internal static partial class ToolValidator
 
         c.NodeA = na;
         c.NodeB = nb;
-        c.SnapKindA = na >= 0 ? SnapKind.ExistingNode : SnapKind.NewNode;
-        c.SnapKindB = nb >= 0 ? SnapKind.ExistingNode : SnapKind.NewNode;
+        c.SnapKindA = na >= 0 ? SnapKind.ExistingNode : c.SplitSegA >= 0 ? SnapKind.SplitSegment : SnapKind.NewNode;
+        c.SnapKindB = nb >= 0 ? SnapKind.ExistingNode : c.SplitSegB >= 0 ? SnapKind.SplitSegment : SnapKind.NewNode;
         Vec2 pa = na >= 0 ? n.Nodes[na].Position : a;
         Vec2 pb = nb >= 0 ? n.Nodes[nb].Position : z;
         c.AX = pa.X;
@@ -180,6 +263,35 @@ internal static partial class ToolValidator
         {
             Mark(ref c, EntityKind.None, -1, 0, pa);
             return RejectReason.InvalidArgument;
+        }
+
+        // Кривая (T5): ось - сэмплы квадратичной Безье между концами после привязки; длина - по ломаной; радиус кривизны не меньше MinCurveRadiusM.
+        Span<Vec2> curve = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+        int curveN = 2;
+        curve[0] = pa;
+        curve[1] = pb;
+        if ((b.Flags & BuildRoadFlags.Curve) != 0)
+        {
+            var cp = new Vec2(b.ControlX, b.ControlZ);
+            if (!float.IsFinite(cp.X) || !float.IsFinite(cp.Z))
+            {
+                return RejectReason.InvalidArgument;
+            }
+
+            c.Curve = true;
+            curveN = NetworkBuilder.SampleQuadratic(pa, cp, pb, curve);
+            len = 0f;
+            for (int i = 1; i < curveN; i++)
+            {
+                len += Dist(curve[i - 1], curve[i]);
+            }
+
+            c.LengthM = len;
+            RejectReason sharp = CheckCurvature(curve[..curveN], ref c);
+            if (sharp != RejectReason.None)
+            {
+                return sharp;
+            }
         }
 
         // Минимум оси - по базовому отступу: увеличенные отступы ADR-0028 у коротких сегментов сжимаются построителем, а не отклоняют их.
@@ -198,15 +310,13 @@ internal static partial class ToolValidator
         // Дорога по профилю (RP7): полосы ±край профиля не должны накладываться на соседние дороги вне дисков общих узлов.
         if (c.Profile >= 0)
         {
-            Vec2 dir = new Vec2(pb.X - pa.X, pb.Z - pa.Z) * (1f / len);
-            float sa = na >= 0 ? bld.IncrementalSetback(na, pb, 0f) : o.NodeSetback;
-            float sb = nb >= 0 ? bld.IncrementalSetback(nb, pa, 0f) : o.NodeSetback;
+            float sa = na >= 0 ? bld.IncrementalSetback(na, curve[1], 0f) : o.NodeSetback;
+            float sb = nb >= 0 ? bld.IncrementalSetback(nb, curve[curveN - 2], 0f) : o.NodeSetback;
             sa = MathF.Min(sa, len * 0.5f);
             sb = MathF.Min(sb, len * 0.5f);
-            Span<Vec2> axis = stackalloc Vec2[2];
-            axis[0] = pa + (dir * sa);
-            axis[1] = pb - (dir * sb);
-            RejectReason ov = CheckFootprint(w, axis, n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, -1, ref c);
+            Span<Vec2> axis = stackalloc Vec2[NetworkBuilder.MaxCurvePoints];
+            int an = TrimAxis(curve[..curveN], sa, sb, axis);
+            RejectReason ov = CheckFootprint(w, axis[..an], n.Profiles!.EdgeMm[c.Profile] * 0.001f, na, nb, c.SplitSegA >= 0 ? c.SplitSegA : c.SplitSegB, ref c);
             if (ov != RejectReason.None)
             {
                 return ov;
@@ -244,10 +354,24 @@ internal static partial class ToolValidator
             return RejectReason.Capacity;
         }
 
-        if (n.SegmentPool.PeekIndex() < 0)
+        if (n.SegmentPool.PeekIndex() < 0 || ((c.SplitSegA >= 0 || c.SplitSegB >= 0) && n.SegmentPool.Capacity - n.SegmentPool.AliveCount < 5))
         {
             c.CapKind = CapacityKind.Segments;
             return RejectReason.Capacity;
+        }
+
+        for (int e = 0; e < 2; e++)
+        {
+            int ss = e == 0 ? c.SplitSegA : c.SplitSegB;
+            if (ss >= 0)
+            {
+                int tl = n.Segments[ss].LanesAB + n.Segments[ss].LanesBA;
+                if (ChainCapacity(w, 1, 2, 2 * tl, (2 * n.Segments[ss].PointCount) + 2, tl) != RejectReason.None)
+                {
+                    c.CapKind = CapacityKind.Lanes;
+                    return RejectReason.Capacity;
+                }
+            }
         }
 
         if (!n.CanAllocBlock(n.LaneArena, laneTotal))
@@ -256,15 +380,94 @@ internal static partial class ToolValidator
             return RejectReason.Capacity;
         }
 
-        if (!n.CanAllocBlock(n.LanePointArena, laneTotal * 2) || !n.CanAllocBlock(n.SegmentPointArena, 2))
+        if (!n.CanAllocBlock(n.LanePointArena, laneTotal * curveN) || !n.CanAllocBlock(n.SegmentPointArena, curveN))
         {
             c.CapKind = CapacityKind.LanePoints;
             return RejectReason.Capacity;
         }
 
         c.Mechanism = (byte)((na >= 0 && n.Nodes[na].FirstArm >= 0) || (nb >= 0 && n.Nodes[nb].FirstArm >= 0) ? 1 : 0);
-        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: false);
+        if (w.Terrain != null)
+        {
+            // Рельеф (TR3): высоты концов, предел уклона, выемка/насыпь, мост, земляные работы - после всех проверок сети, до цены.
+            RejectReason tr = CheckBuildTerrain(w, in cmd, curve[..curveN], len, ref c);
+            if (tr != RejectReason.None)
+            {
+                return tr;
+            }
+        }
+
+        c.Cost = RoadCost(in w.ToolsCfg.Costs, b.Kind, len, laneTotal, curve: c.Curve, bridge: c.Bridge) + c.EarthworkCost;
         return RejectReason.None;
+    }
+
+    /// <summary>Наименьший радиус кривизны оси кривой (T5; конфигурации пока нет - константа ядра).</summary>
+    internal const float MinCurveRadiusM = 12f;
+
+    // Радиус кривизны ломаной по описанной окружности соседних троек точек (без тригонометрии): меньше MinCurveRadiusM - TooSharp в точке перегиба.
+    private static RejectReason CheckCurvature(ReadOnlySpan<Vec2> pts, ref ToolCheck c)
+    {
+        for (int i = 1; i + 1 < pts.Length; i++)
+        {
+            Vec2 a = pts[i - 1];
+            Vec2 b = pts[i];
+            Vec2 d = pts[i + 1];
+            float ab = Dist(a, b);
+            float bd = Dist(b, d);
+            float ad = Dist(a, d);
+            float cross = MathF.Abs(((b.X - a.X) * (d.Z - a.Z)) - ((b.Z - a.Z) * (d.X - a.X)));
+            if (cross > 1e-6f && (ab * bd * ad) / (2f * cross) < MinCurveRadiusM)
+            {
+                Mark(ref c, EntityKind.None, -1, 0, b);
+                return RejectReason.TooSharp;
+            }
+        }
+
+        return RejectReason.None;
+    }
+
+    // Ломаная pts без отступов концов (sa от начала, sb от конца по длине): то, что останется осью сегмента после AddSegment.
+    private static int TrimAxis(ReadOnlySpan<Vec2> pts, float sa, float sb, Span<Vec2> dst)
+    {
+        float total = 0f;
+        for (int i = 1; i < pts.Length; i++)
+        {
+            total += Dist(pts[i - 1], pts[i]);
+        }
+
+        float end = total - sb;
+        int k = 0;
+        dst[k++] = PointAlong(pts, sa);
+        float acc = 0f;
+        for (int i = 1; i < pts.Length - 1; i++)
+        {
+            acc += Dist(pts[i - 1], pts[i]);
+            if (acc > sa + 0.01f && acc < end - 0.01f)
+            {
+                dst[k++] = pts[i];
+            }
+        }
+
+        dst[k++] = PointAlong(pts, end);
+        return k;
+    }
+
+    private static Vec2 PointAlong(ReadOnlySpan<Vec2> pts, float s)
+    {
+        float acc = 0f;
+        for (int i = 1; i < pts.Length; i++)
+        {
+            float d = Dist(pts[i - 1], pts[i]);
+            if (acc + d >= s || i == pts.Length - 1)
+            {
+                float f = d > 0f ? Math.Clamp((s - acc) / d, 0f, 1f) : 0f;
+                return pts[i - 1] + ((pts[i] - pts[i - 1]) * f);
+            }
+
+            acc += d;
+        }
+
+        return pts[0];
     }
 
     /// <summary>
@@ -332,9 +535,14 @@ internal static partial class ToolValidator
         ref readonly SegmentData sd = ref n.Segments[seg];
         Vec2 mid = n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)];
         Mark(ref c, EntityKind.Segment, seg, sd.Generation, mid);
-        if ((sd.Flags & SegmentFlags.Closing) != 0)
+        if (((n.Nodes[sd.NodeA].Flags | n.Nodes[sd.NodeB].Flags) & NodeFlags.Outside) != 0)
         {
-            return RejectReason.Busy;
+            return RejectReason.Protected;   // сегмент от внешнего подключения: апгрейд можно, снос нет (ADR-0037)
+        }
+
+        if ((sd.Flags & SegmentFlags.Closing) != 0 || w.Ops.FindShrink(seg) >= 0)
+        {
+            return RejectReason.Busy;   // уже сносится или в дренаже полос (T5)
         }
 
         if (w.Queue != null || HasBusStop(n, seg))
@@ -349,7 +557,7 @@ internal static partial class ToolValidator
 
         c.Mechanism = 2;
         c.LengthM = w.Builder.FullAxisLength(seg);   // от узла до узла: отступы концов по рукавам (ADR-0028), не 2 * NodeSetback
-        long build = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0);
+        long build = RoadCost(in w.ToolsCfg.Costs, sd.Kind, c.LengthM, sd.LanesAB + sd.LanesBA, (sd.Flags & SegmentFlags.Curve) != 0, (sd.Flags & SegmentFlags.Bridge) != 0);
         c.Cost = -(build * w.ToolsCfg.Costs.DemolishRefundPct / 100);
         return RejectReason.None;
     }
@@ -465,6 +673,27 @@ internal static partial class ToolValidator
         return RejectReason.None;
     }
 
+    // SetStreetAccess (vehicle-classes.md §2.2): живой сегмент; в маске только car | bus | van | truck (special - подъезд служб гарантирован, Emergency - запрещён). Цена - как у SetLaneFlags (0).
+    private static RejectReason CheckSetStreetAccess(World w, in Command cmd, ref ToolCheck c)
+    {
+        SetStreetAccessCmd a = cmd.SetStreetAccess;
+        NetworkStore n = w.Net;
+        if (!n.ResolveSegment(in a.Seg))
+        {
+            return RejectReason.InvalidHandle;
+        }
+
+        c.Seg = a.Seg.Index;
+        ref readonly SegmentData sd = ref n.Segments[a.Seg.Index];
+        Mark(ref c, EntityKind.Segment, a.Seg.Index, sd.Generation, n.SegmentPoints[sd.FirstPoint + (sd.PointCount / 2)]);
+        if ((a.Mask & ~LaneDeny.StreetWritable) != 0 || (a.Deny & ~a.Mask) != 0 || a.R0 != 0 || a.R1 != 0)
+        {
+            return RejectReason.InvalidArgument;
+        }
+
+        return RejectReason.None;
+    }
+
     private static RejectReason CheckSetNodeControl(World w, in Command cmd, ref ToolCheck c)
     {
         SetNodeControlCmd s = cmd.SetNodeControl;
@@ -547,9 +776,9 @@ internal static partial class ToolValidator
     /// <summary>
     /// Стоимость дороги (целые единицы): длина в мм x полосы x ставка за метр-полосу, кривая - <c>curve_factor_pct</c> (0 = 100). Округление - к ближайшему целому.
     /// </summary>
-    public static long RoadCost(in ToolCostsDesc costs, RoadKind kind, float lengthM, int lanes, bool curve)
+    public static long RoadCost(in ToolCostsDesc costs, RoadKind kind, float lengthM, int lanes, bool curve, bool bridge = false)
     {
-        long rate = kind == RoadKind.Arterial ? costs.RoadPerMLaneArterial : costs.RoadPerMLaneStreet;
+        long rate = bridge ? costs.BridgePerMLane : kind == RoadKind.Arterial ? costs.RoadPerMLaneArterial : costs.RoadPerMLaneStreet;   // мост (TR3): bridge_per_m_lane
         long mm = (long)MathF.Round(lengthM * 1000f);
         long v = (((mm * lanes * rate) + 500) / 1000);
         if (curve)
@@ -561,9 +790,14 @@ internal static partial class ToolValidator
         return v;
     }
 
-    /// <summary>Границы мира: <c>tools.world_bounds</c> или bounding box живых узлов + 2 км (кэш по версии сети). Пустая сеть - без ограничения.</summary>
+    /// <summary>Границы мира: открытые области прогрессии (PG3) в пересечении с <c>tools.world_bounds</c> или bounding box живых узлов + 2 км (кэш по версии сети). Пустая сеть - без ограничения.</summary>
     public static bool InBounds(World w, Vec2 p)
     {
+        if (!City.Progression.InOpenArea(w, p))
+        {
+            return false;   // прогрессия (PG3): точка вне открытых областей карты
+        }
+
         ToolsDesc t = w.ToolsCfg;
         if (t.HasWorldBounds)
         {

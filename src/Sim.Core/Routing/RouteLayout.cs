@@ -1,4 +1,5 @@
 using System;
+using Sim.Core.Agents;
 using Sim.Core.Api;
 using Sim.Core.Network;
 
@@ -13,9 +14,12 @@ internal static class RouteLayout
     /// <summary>
     /// Раскладка DirSeg-пути на полосы (routing.md 5): <c>[L0, C0, L1, ..., Lk]</c>, 2k+1 шагов. Возвращает число шагов или -1.
     /// Выбор connector'а: минимум |LaneNo(ToLane) - LaneNo(L_{j+1})|; для первого сегмента ничья - ближе к стартовой полосе,
-    /// далее - меньший индекс connector'а.
+    /// далее - меньший индекс connector'а. Права <paramref name="access"/> (vehicle-classes.md §2.3): connector пропускается, если правам закрыта его
+    /// <c>ToLane</c> (кроме полосы прибытия <paramref name="destLane"/>, когда последний DirSeg пути - цель поездки: <paramref name="lastIsDest"/>) или
+    /// <c>FromLane</c> (кроме стартовой полосы). У полос без масок проверка всегда проходит - раскладка прежняя.
     /// </summary>
-    public static int LayoutLanes(NetworkStore net, RouteGraph graph, ReadOnlySpan<int> path, int len, int startLane, int destLane, Span<RouteStep> output)
+    public static int LayoutLanes(NetworkStore net, RouteGraph graph, ReadOnlySpan<int> path, int len, int startLane, int destLane, Span<RouteStep> output,
+        byte access = VehicleAccess.All, bool lastIsDest = true)
     {
         if (len < 1 || output.Length < (2 * len) - 1)
         {
@@ -39,6 +43,11 @@ internal static class RouteLayout
             for (int li = 0; li < laneCount; li++)
             {
                 ref readonly LaneData ld = ref net.Lanes[firstLane + li];
+                if ((access & ~ld.Deny) == 0 && !(j == 0 && firstLane + li == startLane))
+                {
+                    continue;   // с закрытой правам полосы не выезжают (на стартовой машина уже стоит)
+                }
+
                 for (int c = 0; c < ld.NextCount; c++)
                 {
                     int conn = net.LaneNext[ld.FirstNext + c];
@@ -49,7 +58,7 @@ internal static class RouteLayout
                     }
 
                     ref readonly LaneData to = ref net.Lanes[cd.ToLane];
-                    if (((to.Segment * 2) + to.Direction) != w)
+                    if (((to.Segment * 2) + to.Direction) != w || ((access & ~to.Deny) == 0 && !(lastIsDest && j == k - 1 && cd.ToLane == destLane)))
                     {
                         continue;
                     }

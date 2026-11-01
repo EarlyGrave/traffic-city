@@ -30,7 +30,21 @@ public sealed class UndoTests
     [InlineData(6, true)]
     [InlineData(7, true)]
     [InlineData(8, false)]
-    public void UndoFuzz_Equivalent(int seed, bool settle)
+    public void UndoFuzz_Equivalent(int seed, bool settle) => UndoFuzz(seed, settle, chain: false);
+
+    // T5: те же прогоны с разрезом и слиянием дорог (SplitRoad/MergeAtNode). Сид 2 с ними ловит прежнее ограничение T8, не связанное с разрезом: обратная BuildRoad ставит
+    // SetNodeControl(прежний) на узел, ещё ждущий дренажа сноса (4 рукава вместо 3), и режим нормализуется (Yield -> RightHandRule) - player-tools.md §8.4, остаток T5.
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(3, true)]
+    [InlineData(4, false)]
+    [InlineData(5, false)]
+    [InlineData(6, true)]
+    [InlineData(7, true)]
+    [InlineData(8, false)]
+    public void UndoFuzz_WithSplitMerge_Equivalent(int seed, bool settle) => UndoFuzz(seed, settle, chain: true);
+
+    private static void UndoFuzz(int seed, bool settle, bool chain)
     {
         Simulation sim = Quiet();
         var rng = new Random(seed);
@@ -44,7 +58,7 @@ public sealed class UndoTests
             int k = 1 + (rng.Next(4) == 0 ? rng.Next(3) : 0);
             for (int j = 0; j < k; j++)
             {
-                Command c = EditFuzzTests.Pick(sim, rng, 0);
+                Command c = EditFuzzTests.Pick(sim, rng, 0, chain);
                 if (c.Kind != 0)
                 {
                     group.Add(c);

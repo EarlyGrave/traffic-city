@@ -40,6 +40,7 @@ public struct RoadProfileDesc
     public RoadKind Kind;
     public int WidthMm;                    // заявленная ширина: Σ элементов = WidthMm = k * ModuleMm
     public RoadElemDesc[] Elements;        // слева направо по оси A→B
+    public int MaxGradePm;                 // TR3: max_grade_pct · 10, ‰; 0 - по виду дороги (terrain.max_grade_pct), terrain.md §4.3
 }
 
 public struct RoadProfilesDesc

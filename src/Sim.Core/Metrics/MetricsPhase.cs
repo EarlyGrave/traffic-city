@@ -104,6 +104,7 @@ internal static class MetricsPhase
         }
 
         UpdateGridlock(w, active, stuck);
+        w.Places.Run(w, stuck);   // EV1: JamAt, BusLineProblem раз в период (вывод, вне хэша)
         QualityMetrics.Sample(w);
     }
 
@@ -245,7 +246,15 @@ internal static class MetricsPhase
             w.GridlockStreak = 0;
             flag = condition;
             c.GridlockFlag = flag ? 1 : 0;
-            w.Emit(flag ? SimEventKind.GridlockOn : SimEventKind.GridlockOff, 0, stuck, active);
+            if (flag)
+            {
+                EventPlace place = w.Places.GridlockPlace(w);   // EV1: сегмент с наибольшим числом застрявших
+                w.EmitAt(SimEventKind.GridlockOn, 0, stuck, active, in place);
+            }
+            else
+            {
+                w.Emit(SimEventKind.GridlockOff, 0, stuck, active);
+            }
         }
 
         if (flag)

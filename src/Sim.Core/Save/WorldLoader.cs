@@ -84,7 +84,7 @@ internal static class WorldLoader
         foreach (BlockDef b in SaveSchema.Blocks)
         {
             int idx = t.FindBlock(b.Id);
-            ExpectedPresent(b, c, out bool expected);
+            ExpectedPresent(b, c, idx >= 0, out bool expected);
             if (idx < 0)
             {
                 if (expected)
@@ -146,7 +146,7 @@ internal static class WorldLoader
     }
 
     /// <summary>Нужен ли блок: обязательные - всегда; условные - по уже прочитанным параметрам (<c>PARM</c> идёт первым).</summary>
-    private static void ExpectedPresent(BlockDef b, LoadContext c, out bool expected)
+    private static void ExpectedPresent(BlockDef b, LoadContext c, bool inFile, out bool expected)
     {
         expected = true;
         switch (b.Name)
@@ -177,8 +177,32 @@ internal static class WorldLoader
             case "LUSE":
                 expected = c.LandUseCount > 0;
                 break;
+            case "CKPI":
+                expected = c.Desc.Demand.Model == DemandModel.Residents;
+                break;
+            case "PROG":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Progression.Enabled;
+                break;
+            case "OUTS":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Outside.Count > 0;
+                break;
+            case "GOAL":
+                expected = inFile && c.Desc.Demand.Model == DemandModel.Residents;   // признак секции goals - сам блок (w15, ADR-0038): столбца PARM нет
+                break;
+            case "TERR":
+                expected = c.Desc.Terrain.Enabled;
+                break;
             case "CBGT":
                 expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Economy.CityBudget;
+                break;
+            case "LIFE":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Lifecycle.Enabled;
+                break;
+            case "SERV":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Lifecycle.Enabled;   // службы (services.md §5): бригады ЖКХ и без режима
+                break;
+            case "SVCR":
+                expected = c.Desc.Demand.Model == DemandModel.Residents && c.Desc.Town.Services.Enabled;
                 break;
             case "PEDS":
             case "PPTH":
@@ -403,6 +427,8 @@ internal static class WorldLoader
             w.City.RestoreDerived(w);   // геометрия участков, ячейки, точки доступа, компоненты - тем же кодом, что в Create
         }
 
+        RoadTerrain.RestoreDerived(w);       // TR3: высоты полос и Lock сети - функция сохранённого состояния, без Version++
+        w.Terrain?.Dirty.Reset(w.Terrain.Version);   // кольцо грязи - производное: клиент с версией старше сейва перестраивает всё (Lock - нули до TR3)
         w.Router = new Router(w, w.Graph, w.Overlay, w.Routing.QueryWorkCap);
         for (int lane = 0; lane < w.Net.LaneCount; lane++)
         {

@@ -1,20 +1,21 @@
+using Sim.Core.Agents;
 using Sim.Core.Network;
 using Sim.Core.Util;
 
 namespace Sim.Core.Routing;
 
 /// <summary>
-/// Точка прибытия в зоне (city-generator 5.2, routing.md 6): берётся случайная полоса спавна зоны, полоса прибытия - полоса
-/// <c>LaneNo 0</c> встречного направления того же сегмента (если встречных полос нет - сама полоса спавна), <c>DestS</c> -
-/// <see cref="ArrivalFraction"/> длины полосы: машина заведомо успевает занять полосу до точки, а не стоит в очереди на узел.
+/// Точка прибытия в зоне (city-generator 5.2, routing.md 6): берётся случайная полоса спавна зоны, полоса прибытия - младшая по <c>LaneNo</c> полоса
+/// встречного направления того же сегмента, разрешённая правам машины (vehicle-classes.md §2.3; без масок - <c>LaneNo 0</c>; если встречных полос нет -
+/// сама полоса спавна), <c>DestS</c> - <see cref="ArrivalFraction"/> длины полосы: машина заведомо успевает занять полосу до точки, а не стоит в очереди на узел.
 /// </summary>
 internal static class Destinations
 {
     /// <summary>Доля длины полосы прибытия, на которой засчитывается прибытие.</summary>
     public const float ArrivalFraction = 0.6f;
 
-    /// <summary>false = у зоны нет полос (поездку не к чему маршрутизировать). Одно обращение к <paramref name="rng"/>, если полосы есть.</summary>
-    public static bool Pick(NetworkStore net, int zone, ref Pcg32 rng, out int lane, out float s)
+    /// <summary>false = у зоны нет полос (поездку не к чему маршрутизировать). Одно обращение к <paramref name="rng"/>, если полосы есть (от прав не зависит).</summary>
+    public static bool Pick(NetworkStore net, int zone, ref Pcg32 rng, out int lane, out float s, byte access)
     {
         lane = -1;
         s = 0f;
@@ -30,13 +31,19 @@ internal static class Destinations
         }
 
         int spawn = net.OpenZoneLane(zone, (int)rng.NextBelow((uint)open));
-        lane = OppositeLane(net, spawn);
+        lane = OppositeLane(net, spawn, access);
         s = net.Lanes[lane].Length * ArrivalFraction;
         return true;
     }
 
     /// <summary>Полоса <c>LaneNo 0</c> встречного направления сегмента полосы <paramref name="lane"/> (или сама <paramref name="lane"/>, если встречных нет).</summary>
-    public static int OppositeLane(NetworkStore net, int lane)
+    public static int OppositeLane(NetworkStore net, int lane) => OppositeLane(net, lane, VehicleAccess.All);
+
+    /// <summary>
+    /// Младшая по <c>LaneNo</c> полоса встречного направления, разрешённая правам <paramref name="access"/> (нет разрешённой - <c>LaneNo 0</c>: последний сегмент
+    /// поездки разрешён любым правам, §2.2); встречных нет - сама <paramref name="lane"/>.
+    /// </summary>
+    public static int OppositeLane(NetworkStore net, int lane, byte access)
     {
         ref readonly LaneData ld = ref net.Lanes[lane];
         if (ld.Segment < 0)
@@ -47,6 +54,19 @@ internal static class Destinations
         ref readonly SegmentData sg = ref net.Segments[ld.Segment];
         int count = ld.Direction == 0 ? sg.LanesBA : sg.LanesAB;
         int first = ld.Direction == 0 ? sg.FirstLaneBA : sg.FirstLaneAB;
-        return count > 0 ? first : lane;
+        if (count <= 0)
+        {
+            return lane;
+        }
+
+        for (int k = 0; k < count; k++)
+        {
+            if ((access & ~net.Lanes[first + k].Deny) != 0)
+            {
+                return first + k;
+            }
+        }
+
+        return first;
     }
 }

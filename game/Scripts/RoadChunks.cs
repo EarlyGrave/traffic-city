@@ -111,9 +111,9 @@ public sealed partial class RoadChunks
     /// <summary>Версия сети (<c>NetworkView.Version</c>), по которой построены меши; при расхождении <see cref="SimHost"/> пересобирает дороги целиком.</summary>
     public int Version { get; }
 
-    public RoadChunks(Simulation sim, HeatTexture heat, LodConfig lod)
+    public RoadChunks(NetworkView net, HeatTexture heat, LodConfig lod)
     {
-        Version = sim.Network.Version;
+        Version = net.Version;
         _material = HeatPalette.CreateMaterial(GD.Load<Shader>("res://Shaders/road.gdshader"), heat.Texture, false, lod.PointRange);
         _material.SetShaderParameter("line_color", Palette.LaneLine);
         _material.SetShaderParameter("line_alpha", Palette.LaneLineAlpha);
@@ -123,7 +123,7 @@ public sealed partial class RoadChunks
         _material.SetShaderParameter("line_fade_begin", lod.RoadLod0 * LineFadeBegin);
         _material.SetShaderParameter("line_fade_end", lod.RoadLod0 * LineFadeEnd);
         Root = new Node3D { Name = "Roads" };
-        Build(sim.Network, lod);
+        Build(net, lod);
     }
 
     public Node3D Root { get; }

@@ -15,6 +15,12 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
+  <!-- Клиентский адаптер инструментов (T13) - чистый C# без Godot: собираем из исходников game/Scripts/Tools, чтобы проверять юнит-тестами. -->
+  <ItemGroup>
+    <Compile Include="../../game/Scripts/Tools/*.cs" Exclude="../../game/Scripts/Tools/ToolDemoRunner.cs" Link="ClientTools/%(Filename)%(Extension)" />
+    <Compile Include="../../game/Scripts/Ui/UiRouter.cs" Link="ClientTools/UiRouter.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/Sim.Host/Sim.Host.csproj" />

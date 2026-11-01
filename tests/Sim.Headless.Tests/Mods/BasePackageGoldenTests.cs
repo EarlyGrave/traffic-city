@@ -93,7 +93,8 @@ public sealed class BasePackageGoldenTests : IDisposable
     public static IEnumerable<object[]> V2Scenarios() =>
         Directory.GetFiles(Path.Combine(Root(), "scenarios"), "*.json")
             .Select(Path.GetFileName)
-            .Where(n => n != "vehicle-types.json" && n != "road-profiles.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
+            // yuryev-polsky.json читает бинарный .r16 (heightmap.file); v3-загрузка в тесте без бинарного ридера, сценарий покрыт YuryevPolskyScenarioTests
+            .Where(n => n != "vehicle-types.json" && n != "road-profiles.json" && n != "yuryev-polsky.json" && n != "yuryev-10k-terrain.json" && !n!.EndsWith("-v3.json", StringComparison.Ordinal))
             .OrderBy(n => n, StringComparer.Ordinal)
             .Select(n => new object[] { n! });
 
@@ -132,7 +133,14 @@ public sealed class BasePackageGoldenTests : IDisposable
         string v3Text = FormatUpgrades.ScenarioV2ToV3(JsonNode.Parse(File.ReadAllText(path))!).ToJsonString();
         // единственный внешний файл v3-копии - каталог профилей (demo-profiles, RP6): читается из scenarios/, но как у v2-загрузки подменяется фикстурой тестов (ScenarioLoader.DefaultOverrides)
         LoadedScenario v3 = ScenarioLoader.Parse(v3Text, f => Path.IsPathRooted(f) || f == "road-profiles.json" ? File.ReadAllText(Path.IsPathRooted(f) ? f : Path.Combine(Scenarios(), f)) : throw new InvalidOperationException("no files in v3"), "x", GameDirs(), ScenarioLoader.DefaultOverrides);
-        AssertDeepEqual(v2.Desc, v3.Desc, "$");
+        ScenarioDesc d3 = v3.Desc;
+        if (!v2.Desc.Town.Services.Enabled && d3.Town.BuildingTypes is { Length: > 0 } rows && v2.Desc.Town.BuildingTypes is { Length: > 0 } rows2 && rows.Length > rows2.Length)
+        {
+            // SR6: в каталоге base после 7 типов ядра лежат 5 типов служб (медицина, пожарные); без city.services они инертны, v2 их не дописывает
+            d3.Town.BuildingTypes = rows[..rows2.Length];
+        }
+
+        AssertDeepEqual(v2.Desc, d3, "$");
     }
 
     [Fact]
@@ -190,7 +198,7 @@ public sealed class BasePackageGoldenTests : IDisposable
         var issues = new List<ModIssue>();
         ContentCatalog cat = ContentCatalog.Build(set, issues);
         Assert.Empty(issues);
-        Assert.Equal(["base:vehicle/car", "base:vehicle/bus"], cat.Vehicles.Select(v => v.Id.ToString()).ToArray());
+        Assert.Equal(["base:vehicle/car", "base:vehicle/bus", "base:vehicle/van", "base:vehicle/truck", "base:vehicle/ambulance", "base:vehicle/fire", "base:vehicle/utility"], cat.Vehicles.Select(v => v.Id.ToString()).ToArray());
         Assert.Equal(["base:road/street_2", "base:road/arterial_4"], cat.Roads.Select(v => v.Id.ToString()).ToArray());
         Assert.Equal(0, cat.FindVehicle(new AssetId("base", ModAssetKind.Vehicle, "car")));
         Assert.Equal(1, cat.FindVehicle(new AssetId("base", ModAssetKind.Vehicle, "bus")));
@@ -263,20 +271,20 @@ public sealed class BasePackageGoldenTests : IDisposable
         LoadedScenario sc = Parse(Doc("[\"transit_plus\"]", "{ \"base:vehicle/car\": 0.9, \"transit_plus:vehicle/van\": 0.1 }",
             "{ \"routes\": 1, \"bus_type\": \"transit_plus:vehicle/bus_long\" }"));
         Assert.Equal(["base", "transit_plus"], sc.Packages!.Packages.Select(p => p.Id).ToArray());
-        Assert.Equal(["car", "bus", "van", "bus_long"], sc.TypeNames);
-        Assert.Equal(4, sc.Desc.VehicleTypes.Length);
-        Assert.Equal(new float[] { 0.9f, 0f, 0.1f, 0f }, sc.Desc.Demand.TypeMix);
-        Assert.Equal(3, sc.Desc.Transit.BusType);
+        Assert.Equal(["car", "bus", "van", "truck", "ambulance", "fire", "utility", "van", "bus_long"], sc.TypeNames);
+        Assert.Equal(9, sc.Desc.VehicleTypes.Length);
+        Assert.Equal(new float[] { 0.9f, 0f, 0f, 0f, 0f, 0f, 0f, 0.1f, 0f }, sc.Desc.Demand.TypeMix);
+        Assert.Equal(8, sc.Desc.Transit.BusType);
     }
 
     [Fact]
     public void ShortRefs_ResolveToBase_AndDefaultsAreCarAndBus()
     {
         LoadedScenario sc = Parse(Doc("[\"base\"]", "{ \"vehicle/bus\": 1.0 }", "{ \"routes\": 1, \"bus_type\": \"vehicle/bus\" }"));
-        Assert.Equal(new float[] { 0f, 1f }, sc.Desc.Demand.TypeMix);
+        Assert.Equal(new float[] { 0f, 1f, 0f, 0f, 0f, 0f, 0f }, sc.Desc.Demand.TypeMix);
         Assert.Equal(1, sc.Desc.Transit.BusType);
         LoadedScenario def = Parse(Doc("[\"base\"]", transit: "{ \"routes\": 1 }"));
-        Assert.Equal(new float[] { 1f, 0f }, def.Desc.Demand.TypeMix);
+        Assert.Equal(new float[] { 1f, 0f, 0f, 0f, 0f, 0f, 0f }, def.Desc.Demand.TypeMix);
         Assert.Equal(1, def.Desc.Transit.BusType);
     }
 
@@ -287,7 +295,7 @@ public sealed class BasePackageGoldenTests : IDisposable
         WritePkg("zzz_mod", Vehicles(Van("z1")));
         string[] names1 = ScenarioLoader.Parse(Doc("[\"zzz_mod\", \"aaa_mod\"]"), _ => "", "t", AllDirs()).TypeNames;
         string[] names2 = ScenarioLoader.Parse(Doc("[\"aaa_mod\", \"zzz_mod\"]"), _ => "", "t", [.. AllDirs().Reverse()]).TypeNames;
-        Assert.Equal(["car", "bus", "a1", "z1"], names1);
+        Assert.Equal(["car", "bus", "van", "truck", "ambulance", "fire", "utility", "a1", "z1"], names1);
         Assert.Equal(names1, names2);
     }
 
@@ -295,7 +303,7 @@ public sealed class BasePackageGoldenTests : IDisposable
     public void VehiclesV1File_IsUpgradedAndAccepted()
     {
         WritePkg("old_mod", Vehicles(Van()).Replace("\"format_version\": 2", "\"format_version\": 1", StringComparison.Ordinal));
-        Assert.Equal(3, Parse(Doc("[\"old_mod\"]")).Desc.VehicleTypes.Length);
+        Assert.Equal(8, Parse(Doc("[\"old_mod\"]")).Desc.VehicleTypes.Length);
     }
 
     [Fact]

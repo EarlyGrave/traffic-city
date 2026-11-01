@@ -106,7 +106,27 @@ internal sealed partial class NetworkStore
     internal static bool IsDeadLane(in LaneData l) =>
         l.Generation == 0 && l.Segment == -1 && l.Node == -1 && l.FromLane == -1 && l.ToLane == -1 && l.Left == -1 && l.Right == -1 && l.ConflictGroup == -1 &&
         l.Kind == LaneKind.Normal && l.LaneNo == 0 && l.Direction == 0 && l.Flags == 0 && l.Length == 0f && l.SpeedLimit == 0f && l.FirstPoint == 0 &&
-        l.PointCount == 0 && l.FirstNext == 0 && l.NextCount == 0 && l.Width == 0f;
+        l.PointCount == 0 && l.FirstNext == 0 && l.NextCount == 0 && l.Width == 0f && l.Deny == 0;
+
+    // ---- маски доступа (vehicle-classes.md §2.2, ADR-0039) ----
+
+    /// <summary>
+    /// Единственный сеттер маски запрета полосы: пишет <see cref="LaneData.Deny"/> и зеркало <see cref="LaneFlags.BusOnly"/> = (<c>Deny == LaneDeny.BusLane</c>).
+    /// Производные маршрутизации (<c>DirSegDeny</c>, <c>CellDeny</c>) пересчитывает вызывающий (<c>Routing.AccessMasks.Refresh</c>). true - маска изменилась.
+    /// </summary>
+    public bool SetLaneDeny(int lane, byte deny)
+    {
+        ref LaneData l = ref Lanes[lane];
+        var flags = (byte)(deny == LaneDeny.BusLane ? l.Flags | LaneFlags.BusOnly : l.Flags & ~LaneFlags.BusOnly);
+        if (l.Deny == deny && l.Flags == flags)
+        {
+            return false;
+        }
+
+        l.Deny = deny;
+        l.Flags = flags;
+        return true;
+    }
 
     // ---- блоки арен ----
 

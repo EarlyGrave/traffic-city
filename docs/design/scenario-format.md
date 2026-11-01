@@ -81,6 +81,7 @@
     "gravity_exponent": number,         // вес ∝ w_i·w_j / d^α, α. Дефолт 1.0
     "weight_jitter": number,            // веса зон = 1 ± U(-j, j) по PRNG Zones. Дефолт 0.5
     "external_share": number,           // доля поездок с началом ИЛИ концом на краю карты. Дефолт 0.3
+    "special_on_call": bool,            // VC3: машины класса special от OD-генератора едут на вызове всю поездку (тест, калибровка). Дефолт false
     "min_trip_m": number,               // отбрасывать OD-пары ближе этого (по центрам зон). Дефолт 600
     "od_pairs": [ { "from": int, "to": int, "weight": number } ]   // необязательно: явные пары вместо модели
   },
@@ -114,6 +115,7 @@
     "signal_yellow_s": 3,
     "signal_all_red_s": 1,
     "yield_gap_s": 3.0,
+    "emergency_red_speed_kmh": 15,      // VC3: порог проезда спецмашины на вызове на красный, 0-50 км/ч (0 = полная остановка у линии)
     "max_yield_wait_s": 20,             // инверсия приоритета у ворот (intersections.md §5.4)
     "signal_min_green_s": 7, "signal_max_green_s": 24, "signal_gap_s": 2.5,          // Adaptive (intersections.md §6.5), 2.5
     "signal_arrow_trigger_s": 4, "signal_arrow_min_s": 3, "signal_arrow_max_s": 6, "signal_arrow_gap_s": 2,
@@ -394,6 +396,19 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 При `peds.source = "city"` заготовок нет: `peds.count` и `peds.residents` равны 0 (`max_residents` = 1), число пешеходов ограничено `capacities.max_peds` (Z2). Сценарий `s1k-res-econ.json` (E2) - `s1k-res` с `economy.city_budget = true` и содержанием сети и автобусов (`maint_*`, подбор на s1k ≈ 90% дохода казны). Сценарий `s1k-res.json` (Z2): сеть s1k, автобусы-агенты,
 `peds.source = "city"`, `lod.cell_m = 1000`, `calendar.day_s = 3600`, `residents.initial_fill = 0.1` (≈ 1 850 жителей; временно, подбор N под пик ≈ 1 000 машин - Z8).
 
+Ключи старта с нуля (`new-game-scratch.md` §2.2, задача Y4, `world_version` 13); все необязательны, без них поведение, хэш и сейвы прежние:
+`calendar.start_hour` (целое 0-23, дефолт 0) - игровой час начала: `Tick` при `Create` = `start_hour · DayTicks / 24`, сутки 0; `zoning.growth_step` (`"day"` дефолт | `"hour"`) - при `"hour"` спрос, въезд и рост зданий идут на сдвиге
+игрового часа (в том числе в сутки 0) с лимитами суток, делёнными на 24 с округлением вверх (`max_new_buildings_per_day`, пол въезда), остальной дневной проход (фирмы, жители, снос) остаётся суточным; `zoning.grid_from_bounds` (`bool`, дефолт `false`) -
+сетка города строится по `tools.world_bounds` (иначе по протяжённости рельефа; без обоих - ошибка), а не по bbox начальной сети (Y3 включит её для сценариев с `outside`); `residents.min_immigrants_per_day` (целое >= 0, дефолт 0) - пол суточного въезда:
+`cap = max(min, max_immigrants_per_day · N)`; `economy.initial_city_balance` (целое >= 0, дефолт 0) - абсолютный вклад в казну сверх `initial_city_balance_per_resident · N` (действует при `city_budget = true`).
+
+**Секция `outside` (`new-game-scratch.md` §2.1-§2.5, ADR-0037, задача Y3, `world_version` 14)** — необязательна, только при `demand.model = "residents"`, явной сети (`network`) и `tools.world_bounds` или рельефе;
+включает `zoning.grid_from_bounds`. Ключи: `outside_jobs_decay` (0..1, дефолт 0.1) - доля своих вакансий города, на которую за сутки сокращаются внешние места (не ниже занятых); `arrival_by_car` (`bool`, дефолт `true`) -
+переселенец едет машиной от узла до дома (иначе появляется дома сразу); `connections` - 1..4 объекта {`id` (уникальная строка), `node` (индекс узла `network.nodes`; при `world_bounds` - не дальше 50 м от края),
+`jobs` (внешние места, дефолт 0), `job_cost_s` (время «за краем» в стоимости поездки на внешнюю работу, дефолт 1800), `immigrant_share` (доля въезда, сумма 1 ± 0.001; дефолт - поровну)}.
+Узел получает `NodeFlags.Outside`: снести дорогу к нему или слить его нельзя (`RejectReason.Protected`). Пока несовместима с `parking.model = "resource"` (ошибка загрузки, `CreateStatus.InvalidCity`).
+Сценарий `scenarios/yuryev-polsky.json`: подключение `moscow` в узле 0 (`a00`, юго-западный конец магистрали), 2 000 внешних мест.
+
 **Секция `parking` (этап 4.4, K1, ADR-0026, `docs/design/parking.md` §14)** — необязательна и только при `demand.model = "residents"` (иначе ошибка загрузки). Обязателен `model = "resource"`; остальное с дефолтами спеки:
 `access_walk` (`timer`/`agents`), `walk_max_m` 400, `home_walk_max_m` 300, `max_candidates` 16 (1..64), `walk_speed_mps` 1.3, `fee_ds_per_money` 60, `retry_s` 30, `search_retry_s` 10, `search_max_s` 300, `home_retry_per_day` 0.02,
 `curb` {`slot_m` 6, `stop_clear_m` 15, `street` `off|free|paid` (free), `arterial` (off), `fee` 0, `permits` true}, `garage` {`fee` 0, `permits` false}; неизвестные ключи отклоняются. Метры уходят в мм, секунды в тики,
@@ -433,7 +448,7 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
 - `cmd.kind` - snake_case имя `CommandKind` (`build_road`, `spawn_trip`, `set_signal_plan`, `create_bus_route`, `append_bus_stop`, `spawn_bus`,
   `select_vehicle`, `clear_selection`, `set_target_vehicle_count`, `set_ped_target`, `set_node_control`, `paint_zone`, `set_trip_execution`,
   `remove_road`, `upgrade_road`, `split_road`, `set_arm_control`, `set_turn_ban`, `set_lane_flags`, `insert_bus_stop`, `remove_bus_stop`,
-  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
+  `remove_bus_route`, `set_bus_route_params`, `merge_at_node`, `set_street_access`); необязательный `tag` (эхо в события). Остальные ключи - поля payload в snake_case,
   неизвестный ключ - ошибка с путём (`$.timeline[3].cmd.bogus: unknown key`). Единицы - как в ядре (метры, м/с `speed_mps`, тики `*_ticks`); точки `[x, z]`.
   Ссылка на сущность - `{ "index": i, "generation": g }` (`generation` 0 = без проверки). Тип дороги: `road_kind` (`street`/`arterial`), потому что `kind` занят видом команды.
 - `build_road.road` (только v3) разворачивается хостом в вид/полосы/скорость каталога; явные поля команды перекрывают. `vehicle_type` - имя типа (v2) или id (v3).
@@ -466,6 +481,166 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
   `lanes_ab`/`lanes_ba`/`kind` выводятся из профиля (с учётом `mirrored`), а если заданы - обязаны совпасть. Без каталога эти ключи - ошибка.
 - Тесты и golden подменяют файл каталога через `ScenarioOverrides.Profiles` (`tests/fixtures/road-profiles.fixture.json`); подмена действует, только если сценарий сам объявил `road_profiles_file`.
 
+### 2.10 Секция `progression` (этап 6.5, PG1, ADR-0034, `docs/design/progression.md` §4.1)
+
+Необязательна; `format_version` не растёт (2 и 3 принимают секцию). Нет секции или `"enabled": false` - прогрессии нет: всё открыто, поведение, хэш и сейв побитово прежние.
+Допустима только при `demand.model = "residents"`.
+
+```jsonc
+"progression": {
+  "enabled": true,                       // по умолчанию true
+  "locked_features": ["arterial_upgrade", "bus_lines", "signals_adaptive", "curves", "bus_lanes", "parking_fees", "zoning"],
+  "locked_profiles": ["arterial_6", "asym_1_2"],   // id каталога road_profiles; без каталога - ошибка
+  "min_legs": 500,                       // ворота без данных: ног за окно меньше - веха не берётся (0..1e8)
+  "areas": [ { "min_x": -1700, "min_z": -1700, "max_x": 1700, "max_z": 1700 } ],   // м; 0 - стартовая; <= 8
+  "milestones": [                        // <= 32, по порядку; population строго растёт
+    { "id": "m1", "population": 11400, "unlock": ["arterial_upgrade", "bus_lines"], "unlock_profiles": [], "grant": 20000 },
+    { "id": "m3", "population": 13000, "gates": [ { "kpi": "idle_pct", "max": 45 }, { "kpi": "travel_min", "max": 40 } ], "gates_any": true,
+      "unlock": ["bus_lanes"], "credit_days": 10, "grant": 40000, "area": 0 }
+  ]
+}
+```
+- Признаки (`Feature`, номер = бит): `roads_basic` (0, закрыть нельзя), `arterial_upgrade`, `curves`, `signals_fixed`, `signals_adaptive`, `turn_rules`, `bus_lines`, `bus_lanes`, `zoning`,
+  `taxes`, `parking_fees` (10).
+- Ворота (`gates`, <= 2; `gates_any` - связка «или», иначе «и»): `kpi` из `travel_min`, `idle_pct`, `bus_share_pct`, `satisfaction_pct`, `work_min` и ровно один из `min`/`max`.
+  Порог переводится в целое ×10 (`round(v · 10)`): минуты ×10, проценты ×10 = ‰ - те же единицы, что `CityKpiInfo`.
+- `area` - индекс области (по умолчанию -1: не меняет); `credit_days` 0..32767; `grant` >= 0.
+- Ошибки загрузчика (опечатки): неизвестный признак, профиль, показатель или ключ; признак/профиль в `unlock`/`unlock_profiles` не закрыт в `locked_*`; повтор `id`, признака или профиля;
+  `population` не растёт строго; вех > 32, ворот > 2, областей > 8; `min_* > max_*`; `area` вне областей.
+- `id` вех - только у загрузчика и клиента (`LoadedScenario.MilestoneIds`, индекс = веха ядра); ядро получает POD `ProgressionDesc` (`Api/Progression.cs`).
+
+### 2.11 Секция `terrain` (этап 6, TR2, ADR-0036, `docs/design/terrain.md` §9)
+
+Необязательна. Нет секции или `"enabled": false` - рельефа нет: состояние, хэш и сейв побитово прежние (TR-I1). Ключ `enabled` по умолчанию `true`
+(пустая `"terrain": {}` - плоский рельеф 0 м, протяжённость из `tools.world_bounds` либо bbox сети + `margin_m`). Загрузчик (`ScenarioLoader.Terrain.cs`)
+читает файлы и base64, переводит единицы в целые ядра и заполняет `ScenarioDesc.Terrain` (`TerrainDesc`); ядро файлов не читает. Все ошибки - с JSON-путём
+(`$.terrain.water.rivers[0].width_m: value 0 out of range [0.01, 10000]`), неизвестные ключи - ошибка.
+
+```jsonc
+"terrain": {
+  "enabled": true,                    // дефолт true
+  "cell_m": 8,                        // 4 | 8 | 16; дефолт 8
+  "margin_m": 1024,                   // поле вокруг bbox сети без extent и world_bounds; 0/нет - 1024
+  "extent": { "min_x": -3040, "min_z": -3040, "max_x": 3040, "max_z": 3040 },   // нет - tools.world_bounds, иначе bbox ± margin_m
+  "source": "heightmap",              // "flat" (дефолт) | "heightmap" | "noise" (пока ошибка: генератор TR7)
+  "flat_m": 0,                        // source = flat: высота всех отсчётов, 0..655.35 м
+  "heightmap": {                      // обязателен при source = heightmap, иначе ошибка
+    "file": "terrain/yuryev-polsky-32m.r16",   // ИЛИ "data_b64" (ровно одно из двух); путь от каталога сценария
+    "data_b64": "…",                  // те же байты в base64 (тесты, малые карты)
+    "size": [191, 191],               // отсчётов по X и Z, >= 2; размер данных строго size[0]·size[1]·2 байт
+    "cell_m": 32,                     // шаг исходной сетки, м; кратен terrain.cell_m (до 256 м)
+    "origin_m": [-3040, -3040],       // мир отсчёта (0, 0); дефолт [0, 0]
+    "base_m": 120.0,                  // абсолютная высота нуля, м; дефолт 0
+    "unit_m": 0.01                    // единица значений, м (целое число мм: 0.001..1); дефолт 0.01
+  },
+  "water": {
+    "sea_level_m": null,              // абсолютный уровень, м; null/нет - моря нет
+    "lakes": [ { "x": 0, "z": 0, "level_m": 100.6 } ],
+    "rivers": [ { "points": [[-100, 450], [300, 490]], "width_m": 16, "depth_m": 2, "flow_m3s": null } ],
+    "sources": [ { "id": 1, "kind": "inflow", "x": -100, "z": 450, "flow_m3s": 2.5, "target_level_m": null, "radius_m": 20 } ]
+  },
+  "stamps": [ { "kind": "ridge", "closed": true, "points": [[250, 50], [350, 50], [350, 150], [250, 150]],
+                "height_m": 2, "crest_m": 2, "slope": 2.0, "gaps": [ { "x": 300, "z": 50, "width_m": 16 } ] } ],
+  "max_grade_pct": { "street": 8, "arterial": 6 },        // %, 0.1..100
+  "max_cut_m": 10, "max_fill_m": 6,                       // 0.01..655.35 м
+  "bank_slope": 0.5,                                      // высота/заложение, 0.001..10 (0.5 = 1:2)
+  "bridge_clearance_m": 2, "max_bridge_m": 300, "auto_bridge": true,
+  "max_brush_m": 96,                                      // 1..12·cell_m
+  "max_dab_m": 2, "max_samples_per_tick": 32768, "max_flood_samples": 65536,
+  "grade_max_boost": 1.1                                  // потолок множителя скорости под гору, 1.0..2.0
+}
+```
+
+- **Высоты.** `.r16` - сырой `u16` little-endian, строка за строкой по Z (индекс `iz·size[0] + ix`), значение = `(h − base_m) / unit_m`; в base64 те же байты.
+  Высота над `base_m` не больше 655.35 м (`ushort` в сантиметрах), иначе ошибка с индексом отсчёта. Развёртка 32 → 8 м - в ядре (terrain.md §9.1).
+- **Единицы ядра.** `max_grade_pct` → ‰ (×10), `*_m` → см, `bank_slope` и `grade_max_boost` → ‰ (×1000). Ноль в `TerrainDesc` значит «дефолт», поэтому явные
+  значения параметров обязаны быть > 0; чтобы взять дефолт, ключ не пишут.
+- **Вода.** Уровни абсолютные, должны лежать в `[base_m, base_m + 655.35]` (у `flat` база 0). Реки: `points` >= 2, `width_m`, `depth_m` > 0.
+  `rivers[].flow_m3s` (`null` или >= 0) и `water.sources[]` (`id` уникален, `kind` = `spring` | `inflow` | `sink`, точка внутри протяжённости, если она известна из
+  `extent`/`world_bounds`, `flow_m3s`/`radius_m` >= 0 или `null`, `target_level_m` число или `null`) только проверяются и передаются в `TerrainDesc` (`NaN` = `null`);
+  течение не исполняется (terrain.md §3.4). Предупреждения - в `LoadedScenario.Warnings`: `water.sources: течение не реализовано, источники игнорируются`.
+- **Штампы** (`ridge` - вал, `pit` - выемка; `closed`, `gaps[]`, `crest_m` дефолт 0, `slope` дефолт 2.0) разбираются и проверяются в `LoadedScenario.TerrainStamps`,
+  но **ядро их пока не исполняет** (в `TerrainDesc` для них поля нет; предупреждение `terrain.stamps: …`). Остаток для TR7/TR8: поле в `TerrainDesc` и применение
+  после воды в порядке массива (terrain.md §9.2).
+- **Пока не читается.** `source = "noise"` и блок `noise` (генератор TR7) - ошибка пути. `lots.max_slope_pct` и цены рельефа в `tools.costs` ждут своих задач
+  (TR6, TR3/TR5): секции `lots` в загрузчике ещё нет.
+- Загрузка из строки (`ScenarioLoader.Parse` без `readRelativeBytes`) принимает только `data_b64`; `file` даёт ошибку «reading binary files is not available».
+- Пример - `scenarios/terrain-demo.json` (сеть `demo-grid`, сетка 5×5 по 160 м inline, озеро, река, источник, замкнутый вал с проёмом).
+
+### 2.12 Секции `meta` и `goals` (YS1, ADR-0038, `docs/design/scenarios-mode.md` §1.2, §2.2, `world_version` 15)
+
+**`meta`** — необязательна, только для меню «Новая игра»: в ядро не идёт, на хэш и сейв не влияет. Ключи: `mode` (`"empty_map"` | `"scenario"`, обязателен),
+`title` (непустая строка, обязателен), `summary` (строка, дефолт пусто), `difficulty` (1..5, дефолт 1, только метка), `order` (целое, дефолт 0 — порядок карточек).
+Нет секции — сценарий в меню не показывается (все тестовые s1k/s10k…). Каталог — `ScenarioLocator.List(dir)`: перебирает `scenarios/*.json` (без подкаталогов),
+читает только `meta`, сортирует по `order`, затем по имени файла; испорченная `meta` — ошибка с именем файла. В `LoadedScenario.Meta` — то же самое после полной загрузки.
+
+**`goals`** — необязательна, только при `demand.model = "residents"`. Ключи: `grace_days` (целое >= 0, дефолт 0 — сутки от старта без проверки поражения; в грейс
+счётчики «часов подряд» поражения не копятся), `after_win` (`"continue"` | `"end"`, дефолт `continue`; только подсказка клиенту — симуляция идёт дальше в обоих случаях),
+`win` (до 8 условий, все одновременно), `lose` (до 8 условий, любое). Хотя бы одно условие всего. Условие: `kind`, `value`, необязательно `for_hours` или `for_days`
+(не оба; условие должно держаться подряд столько часов, дефолт 0 — сразу). Неизвестный ключ или `kind` — ошибка с JSON-путём.
+
+| `kind` | `value` | Примечание |
+|---|---|---|
+| `population_ge` / `population_lt` | жителей, целое >= 0 | живые жители |
+| `treasury_lt` | деньги, целое (можно < 0) | баланс счёта City |
+| `insolvent` | — (ключа нет) | флаг мягкого банкротства; требует `economy.city_budget = true` |
+| `kpi_le` / `kpi_ge` | в единицах показателя (минуты, проценты), в ядро ×10 | плюс ключ `kpi`: `travel_min`, `idle_pct`, `bus_share_pct`, `satisfaction_pct`, `work_min`; окно — 24 полных часа кольца KPI; нет данных — не выполнено |
+| `prestige_ge` | ‰, 0..1000 | разбирается, но **до YS2 (секция `outflow`) не вычисляется — никогда не выполнено**; загрузчик пишет предупреждение |
+| `milestone` | индекс вехи 0..N-1 | взята веха с этим индексом; требует включённую `progression` |
+| `day_ge` | номер суток, целое >= 0 | счётчик суток города (на границе суток) |
+
+Проверка — в фазе 9r на последнем тике каждого игрового часа (после показателей, вех и границы суток): сначала поражение (после грейса), потом победа; в один час
+поражение важнее. Исход — событие `ScenarioOutcome` (A = 1 победа / 2 поражение, B = индекс условия поражения или -1), API `TryGetGoals` / `GetGoalCond`.
+После исхода условия не проверяются. Без секции поведение, хэш и сейв побитово прежние (кроме номера версии в заголовке сейва).
+
+```jsonc
+"meta":  { "mode": "scenario", "title": "Город у колена сети", "summary": "...", "difficulty": 1, "order": 10 },
+"goals": { "grace_days": 2, "lose": [ { "kind": "insolvent", "for_days": 10 } ] }
+```
+
+### 2.13 Секция `city.lifecycle` (жизнь здания, блок BL, `building-lifecycle.md` §6.1)
+Необязательная секция внутри `city`; есть — включён режим: износ и потолок зданий, заброшка стоит, рассыпание, снос игроком, значимость, поля квартала, ЖКХ. Требует `demand.model = "residents"`
+и `economy.city_budget = true`; без секции поведение прежнее (автоснос `vacate_days`, эталоны `*-res` не меняются). Пустой объект `{}` — все значения по умолчанию. Включена в
+`s1k-res-bl`, `s10k-res-bl`, `game-city`, `yuryev-polsky`, `ys0-30k/50k/100k`.
+
+| Ключ | Дефолт | Смысл |
+|---|---|---|
+| `enabled` | `true` | `false` — режима нет |
+| `abandoned_decay_pct` | 200 | множитель износа заброшенного, % |
+| `lowland_m` | 2.0 | запас над уровнем воды для «низины» (износ +25 %), м |
+| `worn_relocate` | 0.05 | шанс переезда жителя в сутки при `Cond` 50–60 % |
+| `rubble_cost_pct` | 10 | очистка рассыпавшегося, % от `demolish_cost` типа |
+| `cell_m`, `sig_shift`, `heritage_loss_radius_m`, `lv_blight` | 128, 6, 400, 5 | клетка полей квартала, м; утечка накопителя значимости; радиус недовольства при сносе значимого, м; ‰ цены земли на очко вреда |
+| `repair_request` | 0.85 | заявка ЖКХ при `Cond` ниже этой доли |
+| `repair_per_unit`, `repair_minutes` | 10, 30 | цена ремонта на место и 10 000 б.п.; работа бригады на месте, игровых минут (сутки = 1 440) |
+| `crew_day_cost`, `max_service_vehicles`, `max_dispatch_per_tick` | 60, 512, 4 | зарплата бригады в сутки; ёмкость бригад; выездов за тик |
+| `utility_tariff`, `max_utility_tariff` | 30, 1 000 | стартовый тариф и предел, сотые доли в сутки на жителя (фирма — на место) |
+| `tariff_burden_pct`, `tariff_leave` | 10, 0.02 | тариф выше этой доли `IncomeEwma` жителя — шанс ухода в сутки. В сценариях игры и `*-bl` стоит `0.002` (временно, до решения владельца: нулевой доход всегда «выше порога») |
+| `restore_per_unit` | 150 | цена капремонта на место |
+
+Тип депо — данные пакета (`modding.md` §3.3): `kind: "service"`, `service: "utility"`, `vehicles`, `vehicle_type`, `build_cost`; износ и снос — `decay_bp_day`, `ceil_drop_bp_day`, `demolish_cost`.
+
+### 2.14 Секция `city.services` (службы, блок SR, `services.md` §6)
+Необязательная секция внутри `city`; есть — включён режим служб: ЖКХ из записи пакета, болезнь и визиты к врачу, вызовы скорой, пожар, уровни и апгрейды станций, ползунок бюджета. **Требует `city.lifecycle`**;
+без секции поведение прежнее (ЖКХ как в BL, эталоны `*-res`, `*-res-bl` не меняются, таблица типов зданий в v2 остаётся из 7 строк). Пустой объект `{}` — все значения по умолчанию. Включена в
+`s1k-res-sr`, `s10k-res-sr`, `game-city`, `yuryev-polsky`, `ys0-30k/50k/100k` (в них заданы `fire_ppm` и `fire_spread_ppm`). Записи служб берутся из пакетов (v3: `services.json`, `modding.md` §3.6),
+в v2 — встроенный набор `utility`, `medicine`, `fire` (= `content/base/services.json`, тест сверяет), типы его зданий дописываются в таблицу с индекса 7.
+
+| Ключ | Дефолт | Смысл |
+|---|---|---|
+| `enabled` | `true` | `false` — режима нет |
+| `max_service_sites`, `max_calls`, `max_fires` | 256, `max_buildings / 8` (≥ 256), 256 | ёмкости станций, колец вызовов и пула пожаров |
+| `incidence_ppm.adult` | `[3000, 600, 300]` | болезнь жителя в сутки, ppm: лёгкая, стационар, критическая |
+| `ill_days` | `[1, 3, 5]` | длительность болезни по тяжести, сутки |
+| `disorder_ill_pct` | 125 | множитель болезни при `Disorder > 0` в 3×3 клетках, % |
+| `fire_ppm` | `{0, 0, 0}` | возгорание в сутки, ppm, для типов R/C/I с нулём в пакете: `residential`, `commercial`, `industrial`. Калиброванно в сценариях SR: 100 / 150 / 400 |
+| `fire_risk_pct`, `smolder_s` | 10, 120 | вклад поля `FireRisk` в шанс, % на очко (до 20); тление до огня, с |
+| `fire_spread_ppm`, `fire_cap` | 30 000, 32 | шанс огня перекинуться в минуту, ppm; потолок очагов (ожидающие + горящие). В сценариях SR — 60 000 |
+| `annex_buy_pct` | 150 | выкуп соседа под пристройку, % земли |
+| `services_off` | — | id записей пакета, выключенных в сценарии |
+
+Прогрессия: уровни и апгрейды открывают вехи записей (`milestone`; больница M2, медцентр и управление M3, остальное M0); без `progression` открыто всё.
+
 ## 3. Параметры ТС (`scenarios/vehicle-types.json`)
 
 В сценариях v3 типы лежат в пакете (`vehicles.json`, `format_version: 2`, добавляются `rev` и `visual`): `modding.md` §3.1. Этот раздел описывает файл v1 для сценариев v2.
@@ -497,6 +672,14 @@ MOBIL; s1m реже (7) — средняя по большому городу, �
   ]
 }
 ```
+
+`category` — класс ТС (`vehicle-classes.md` §2.1, ADR-0039): `"car"` (0), `"bus"` (1), `"van"` (2), `"truck"` (3), `"special"` (4); другое значение — ошибка
+загрузчика. Старые файлы с `car`/`bus` читаются без правок, `format_version` не меняется. Права на полосы и улицы задаёт класс; тип — только параметры
+(длина, ширина, скорость, IDM, MOBIL). Базовый каталог (`vehicle-types.json`, пакет `base`) с VC1 содержит семь типов: `car`, `bus`, `van`, `truck`
+и спецмашины `ambulance`, `fire`, `utility` (класс `special`). Параметры пяти новых типов — стартовые входы калибровки VC4 (спека §2.1), не замеры:
+фургон 5.5 × 2.0 м, 110 км/ч, `a` 0.9; фура 16.5 × 2.55 м, 90 км/ч, `a` 0.5, `b` 1.0, `T` 1.8 с, `s0` 3 м; скорая 6 × 2.1 м, 110 км/ч, `a` 1.2;
+пожарная 9 × 2.5 м, 90 км/ч, `a` 0.7; ЖКХ 7 × 2.3 м, 80 км/ч, `a` 0.7 (остальные поля — по аналогии с автобусом и легковой). Новые типы
+добавлены в конец каталога, индексы `car` = 0 и `bus` = 1 не изменились; в `type_mix` по умолчанию они не входят (вес 0).
 
 Соответствие `VehicleTypeDesc`: `Length, Width, MaxSpeed(м/с), SpeedFactor, Accel=a,
 ComfortDecel=b, HeadwayTime=T, MinGap=s0, Delta, Politeness, LaneChangeThreshold=threshold,

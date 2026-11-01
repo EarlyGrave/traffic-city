@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "id": "yuryev_scratch",
+  "version": "1.0.0",
+  "content_format": 1,
+  "title": "Yuryev-Polsky from scratch: base content with instant construction of low-density buildings (new-game-scratch.md, Y5)",
+  "content": {
+    "vehicles": ["vehicles.json"],
+    "roads": ["roads.json"],
+    "buildings": ["buildings.json"]
+  }
+}

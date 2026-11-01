@@ -100,6 +100,8 @@ public static partial class ScenarioLoader
             throw new ScenarioException($"{r.ChildPath("day_s")}: day_s * 20 must be a multiple of 288 (a slot is 1/288 of a day; 3600 s gives 250 ticks)");
         }
 
+        t.Calendar.StartHour = r.Int("start_hour", 0, min: 0, max: 23);
+
         r.Finish();
     }
 
@@ -117,6 +119,14 @@ public static partial class ScenarioLoader
         z.Growth = r.Bool("growth", true);
         z.MaxNewBuildingsPerDay = r.Int("max_new_buildings_per_day", 20, min: 0, max: 1_000_000);
         z.MaxPaintM2 = r.Int("max_paint_m2", 250_000, min: 1);
+        string step = r.Str("growth_step", "day");
+        z.GrowthStep = step switch
+        {
+            "day" => (byte)0,
+            "hour" => (byte)1,
+            _ => throw new ScenarioException($"{r.ChildPath("growth_step")}: expected \"day\" or \"hour\", got \"{step}\""),
+        };
+        z.GridFromBounds = (byte)(r.Bool("grid_from_bounds", false) ? 1 : 0);
         if (r.Has("auto"))
         {
             System.Text.Json.JsonValueKind kind = r.Raw("auto").ValueKind;
@@ -164,6 +174,7 @@ public static partial class ScenarioLoader
         d.MaxRelocatePerDayQ16 = Frac16(r, "max_relocate_per_day", 0.005);
         d.MaxJobSwitchPerDayQ16 = Frac16(r, "max_jobswitch_per_day", 0.005);
         d.MaxImmigrantsPerDayQ16 = Frac16(r, "max_immigrants_per_day", 0.01);
+        d.MinImmigrantsPerDay = r.Int("min_immigrants_per_day", 0, min: 0, max: 1_000_000);
         d.PlanSlot = r.Int("plan_slot", 36, min: 0, max: 287);
         d.ShopSlots = r.Int("shop_slots", 6, min: 1, max: 288);
         d.HomeMinSlots = r.Int("home_min_slots", 2, min: 0, max: 288);
@@ -172,6 +183,45 @@ public static partial class ScenarioLoader
         d.SwitchRatioQ8 = CityDesc.Q8(r.Num("switch_ratio", 1.5, min: 0, max: 1000));
         d.RBias = r.Int("r_bias", 0, min: -1_000_000, max: 1_000_000);
         r.Finish();
+    }
+
+    private const string AgeKey = "age";
+
+    /// <summary>
+    /// Секция <c>city.age</c> (age-groups.md §2.1, §6): возрастные группы, все ключи необязательны (дефолты - стартовые). Требует <c>demand.model = residents</c>;
+    /// доли детей и пожилых умещаются в неработающих: <c>child_pct + elderly_pct &lt;= 100 * (1 - labour_share)</c>.
+    /// </summary>
+    private static void ParseAge(JsonObjectReader? r, bool residents, ref CityDesc town)
+    {
+        if (r == null)
+        {
+            return;
+        }
+
+        if (!residents)
+        {
+            throw new ScenarioException($"{r.Path}: allowed only with demand.model = \"residents\"");
+        }
+
+        CityAgeDesc d = CityAgeDesc.Default();
+        double child = r.Num("child_pct", 18, min: 0, max: 100);
+        double elderly = r.Num("elderly_pct", 16, min: 0, max: 100);
+        d.ElderlyCarPct = r.Int("elderly_car_pct", d.ElderlyCarPct, min: 0, max: 100);
+        d.ElderlyAscFreqDs = Ds(r.Num("elderly_asc_freq_s", 120, min: -100_000, max: 100_000));
+        d.ElderlySlot = r.Int("elderly_slot", d.ElderlySlot, min: 0, max: 287);
+        d.ElderlyStepSlots = r.Int("elderly_step_slots", d.ElderlyStepSlots, min: 0, max: 288);
+        d.PensionDay = r.Int("pension_day", d.PensionDay, min: 0, max: 1_000_000);
+        r.Finish();
+
+        int labour = town.Residents.LabourShareQ16;
+        if (child + elderly > 100.0 * (1.0 - (labour / 65536.0)) + (100.0 / 65536.0) + 1e-9)   // допуск на округление labour_share до Q16
+        {
+            throw new ScenarioException($"{r.Path}: child_pct + elderly_pct = {child + elderly} exceeds the non-working share 100 * (1 - residents.labour_share) = {100.0 * (1.0 - (labour / 65536.0))}");
+        }
+
+        d.ElderlyQ16 = Math.Min(CityDesc.Q16(elderly / 100.0), 65_536 - labour);   // округление Q16 не выводит сумму за 1
+        d.ChildQ16 = Math.Max(0, Math.Min(CityDesc.Q16(child / 100.0), 65_536 - labour - d.ElderlyQ16));
+        town.Age = d;
     }
 
     private static void ParseEconomy(JsonObjectReader? r, ref CityDesc t)
@@ -212,6 +262,7 @@ public static partial class ScenarioLoader
         e.LandTaxBpDay = r.Int("land_tax_bp_day", 15, min: 0, max: e.MaxLandBp);
         e.BusFare = r.Int("bus_fare", 2, min: 0, max: e.MaxFare);
         e.InitialCityBalancePerResident = r.Int("initial_city_balance_per_resident", 60, min: 0, max: 100_000_000);
+        e.InitialCityBalance = r.Int("initial_city_balance", 0, min: 0, max: 1_000_000_000);
         e.InterestBpDay = r.Int("interest_bp_day", 3, min: 0, max: 10_000);
         e.CreditDays = r.Int("credit_days", 60, min: 0, max: 3650);
         JsonObjectReader? maint = r.OptObject("maint_road_per_lane_km_day");

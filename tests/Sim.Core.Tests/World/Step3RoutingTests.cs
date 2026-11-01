@@ -240,13 +240,15 @@ public sealed class Step3RoutingTests : IClassFixture<Step3Run>
         }
     }
 
-    [Fact]
-    public void BudgetLimitsQueries_PerTick_AndTripsWaitWithoutRoute()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void BudgetLimitsQueries_PerTick_AndTripsWaitWithoutRoute(int threads)
     {
         ScenarioDesc d = Step3.S1k();
         d.Demand.TargetVehicles = 0;
         d.Routing.PathfindBudgetPerTick = 8;
-        using Simulation sim = Simulation.Create(in d);
+        using Simulation sim = Simulation.Create(in d, new SimRuntimeOptions { WorkerThreads = threads });
         World w = sim.World;
         int zone = FirstZoneWithLanes(w, 0);
         int to = FirstZoneWithLanes(w, zone + 1);

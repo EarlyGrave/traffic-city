@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Godot;
 using Sim.Core.Api;
+using Sim.Host;
 
 namespace TrafficCity;
 
@@ -81,12 +82,18 @@ public sealed class BuildingLayer
 
     public string HudText() => string.Create(CultureInfo.InvariantCulture, $"bld {_count}  ring {_ring.Count}/{_cfg.BuildingCaps[0] + _cfg.BuildingCaps[1]}  chunks {ChunkCount}");
 
-    public void Update(Simulation sim, Vector3 cam)
+    /// <summary>
+    /// <paramref name="ver"/> - <c>BuildingsVersion</c> кадра; при смене здания пересобираются под эксклюзивным доступом к ядру (ADR-0024 п. 5, редкое событие).
+    /// </summary>
+    public void Update(int ver, Vector3 cam, SimThreadHost host)
     {
-        int ver = sim.BuildingsVersion;
         if (ver != _builtVersion && (Time.GetTicksMsec() - _lastBuildMs >= (ulong)MinRebuildMs || _builtVersion < 0))
         {
-            Rebuild(sim);
+            using ExclusiveAccess ex = host.AcquireExclusive();
+            if (ex.Simulation != null)
+            {
+                Rebuild(ex.Simulation);
+            }
         }
 
         float dx = cam.X - _ringCam.X;

@@ -3,13 +3,14 @@ using System.Text;
 
 namespace Sim.Scenarios.Mods;
 
-/// <summary>Вид ассета в id (<c>vehicle | road | building | prop</c>).</summary>
+/// <summary>Вид ассета в id (<c>vehicle | road | building | prop | service</c>).</summary>
 public enum AssetKind
 {
     Vehicle,
     Road,
     Building,
     Prop,
+    Service,
 }
 
 /// <summary>Полный id ассета <c>&lt;пакет&gt;:&lt;вид&gt;/&lt;имя&gt;</c> (modding.md §2).</summary>
@@ -20,6 +21,7 @@ public readonly record struct AssetId(string Package, AssetKind Kind, string Nam
         AssetKind.Vehicle => "vehicle",
         AssetKind.Road => "road",
         AssetKind.Building => "building",
+        AssetKind.Service => "service",
         _ => "prop",
     };
 
@@ -38,6 +40,9 @@ public readonly record struct AssetId(string Package, AssetKind Kind, string Nam
                 return true;
             case "prop":
                 kind = AssetKind.Prop;
+                return true;
+            case "service":
+                kind = AssetKind.Service;
                 return true;
             default:
                 kind = default;

@@ -38,7 +38,7 @@ internal static class BudgetFlows
             return (p.Flags & BudgetPolicyFlags.Enable) != 0 ? Enable(w, c) : RejectReason.BudgetRule;
         }
 
-        RejectReason why = CityBudget.CheckPolicy(in c.Cfg.Economy, in p);
+        RejectReason why = CityBudget.CheckPolicy(in c.Cfg.Economy, in c.Cfg.Lifecycle, in p);
         if (why != RejectReason.None)
         {
             return why;
@@ -88,7 +88,7 @@ internal static class BudgetFlows
         int ys = (c.Day + 1) & 1;
         for (int i = 0; i < bs.HighWater; i++)
         {
-            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind != LotZone.Residential)
+            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind is not (LotZone.Residential or LotZone.Service))
             {
                 bs.PayrollEwma[i] = Payroll(c, i);
             }
@@ -101,7 +101,7 @@ internal static class BudgetFlows
     /// <summary>Вклад в казну при <c>Create</c> (в конце <c>CityInit.Run</c>) и <c>Enable</c>: <c>initial_city_balance_per_resident * Alive</c> от <c>External</c> (§3).</summary>
     internal static void Endow(CityWorld c)
     {
-        long amount = (long)c.Cfg.Economy.InitialCityBalancePerResident * c.Residents.AliveCount;
+        long amount = ((long)c.Cfg.Economy.InitialCityBalancePerResident * c.Residents.AliveCount) + c.Cfg.Economy.InitialCityBalance;
         c.Ledger.Transfer(c.Ledger.ExternalAccount, c.Ledger.CityAccount, amount, FlowKind.Endowment);
     }
 
@@ -120,13 +120,33 @@ internal static class BudgetFlows
         BuildingStore bs = c.Buildings;
         for (int i = 0; i < bs.HighWater; i++)
         {
-            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind != LotZone.Residential)
+            if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active && c.Types.Rows[bs.Type[i]].Kind is not (LotZone.Residential or LotZone.Service))
             {
                 bs.PayrollEwma[i] = Payroll(c, i);
             }
         }
 
         b.IncomeEwma = EstimateIncome(c, (c.Day + 1) & 1);
+    }
+
+    /// <summary>
+    /// Земля участка (building-lifecycle.md §2.6): <c>LV[1 км] · (1000 + min(200, 10·h) − min(400, lv_blight · b)) / 1000</c>, где <c>h</c> и <c>b</c> - окно 3×3 полей <c>Heritage</c> и <c>Blight</c> (вес 2 у своей клетки).
+    /// Без режима <c>city.lifecycle</c> - ровно <c>LV[1 км]</c>, как раньше.
+    /// </summary>
+    internal static long LandAt(CityWorld c, CityBudget b, int lot)
+    {
+        long lv = b.LandValue[c.Lots.Cell[lot]];
+        NeighborhoodFields? f = c.Fields;
+        if (f == null)
+        {
+            return lv;
+        }
+
+        int cell = f.CellOf(c.Lots.X[lot], c.Lots.Z[lot]);
+        long h = f.Window(cell, NeighborhoodFields.Heritage);
+        long bl = f.Window(cell, NeighborhoodFields.Blight);
+        long permille = 1000 + Math.Min(200L, 10 * h) - Math.Min(400L, c.Cfg.Lifecycle.LvBlightPermille * bl);
+        return lv * permille / 1000;
     }
 
     /// <summary>Номинальный фонд оплаты фирмы в сутки: работники * ставка смены.</summary>
@@ -147,7 +167,7 @@ internal static class BudgetFlows
         {
             if (res.Pool.IsAlive(r) && res.Home[r] >= 0)
             {
-                landBase += b.LandValue[c.Lots.Cell[bs.Lot[res.Home[r]]]];
+                landBase += LandAt(c, b, bs.Lot[res.Home[r]]);
             }
         }
 
@@ -156,9 +176,9 @@ internal static class BudgetFlows
             if (bs.IsAlive(i) && bs.State[i] == (byte)BuildingState.Active)
             {
                 ref readonly BuildingTypeDesc t = ref c.Types.Rows[bs.Type[i]];
-                if (t.Kind != LotZone.Residential)
+                if (t.Kind is not (LotZone.Residential or LotZone.Service))
                 {
-                    landBase += (long)b.LandValue[c.Lots.Cell[bs.Lot[i]]] * t.Capacity;
+                    landBase += LandAt(c, b, bs.Lot[i]) * t.Capacity;
                 }
             }
         }
@@ -219,9 +239,15 @@ internal static class BudgetFlows
             tax = c.Ledger.TransferPct(acct, c.Ledger.CityAccount, profit, rate, FlowKind.Tax);
         }
 
-        long landBase = (long)b.LandValue[c.Lots.Cell[bs.Lot[bi]]] * t.Capacity;
+        long landBase = LandAt(c, b, bs.Lot[bi]) * t.Capacity;
         long rent = c.Ledger.TransferPct(acct, c.Ledger.CityAccount, landBase, b.Policy.LandTaxBpDay, FlowKind.Rent);
         bs.CostDay[todaySlot] += rent;
+        if (b.Policy.R0 != 0)
+        {
+            // квартплата ЖКХ фирмы за место (building-lifecycle.md §2.10): тариф * Capacity, в расходы сегодняшних суток
+            bs.CostDay[todaySlot] += c.Ledger.TransferPct(acct, c.Ledger.UtilityAccount, (long)b.Policy.R0 * t.Capacity, UtilityRateBp, FlowKind.UtilityFee);
+        }
+
         return tax;
     }
 
@@ -249,6 +275,9 @@ internal static class BudgetFlows
     }
 
     /// <summary>Дневной проход жителя (§3, §7.2): земля за место, затем утечка остатка сверх <c>res_buffer_days * IncomeEwma</c>. Выселение за долг - E3.</summary>
+    /// <summary>Ставка сбора квартплаты: тариф в сотых денег -> <c>TransferPct(тариф, 100 б.п.)</c> = тариф / 100 с переносом остатка.</summary>
+    internal const int UtilityRateBp = 100;
+
     internal static void ResidentDay(CityWorld c, int r)
     {
         CityBudget? b = c.Budget;
@@ -263,7 +292,12 @@ internal static class BudgetFlows
         int home = res.Home[r];
         if (home >= 0)
         {
-            c.Ledger.TransferPct(acct, c.Ledger.CityAccount, b.LandValue[c.Lots.Cell[c.Buildings.Lot[home]]], b.Policy.LandTaxBpDay, FlowKind.Rent);
+            c.Ledger.TransferPct(acct, c.Ledger.CityAccount, LandAt(c, b, c.Buildings.Lot[home]), b.Policy.LandTaxBpDay, FlowKind.Rent);
+            if (b.Policy.R0 != 0)
+            {
+                // квартплата ЖКХ (building-lifecycle.md §2.10): R0 - сотые в сутки на жителя, в фонд Utility (R0 != 0 только в режиме city.lifecycle)
+                c.Ledger.TransferPct(acct, c.Ledger.UtilityAccount, b.Policy.R0, UtilityRateBp, FlowKind.UtilityFee);
+            }
         }
 
         long pay = (res.Account[r] - (e.ResBufferDays * res.IncomeEwma[r])) >> e.PayoutShift;
@@ -304,7 +338,7 @@ internal static class BudgetFlows
         b.ExpenseEwma += (expense - b.ExpenseEwma) >> e.BudgetEwmaShift;
         System.Diagnostics.Debug.Assert(Math.Abs(lg.City) < (1L << 56), "казна: |City| >= 2^56");
 
-        long limit = b.CreditLimit(in e);
+        long limit = b.CreditLimit(in e, Progression.CreditDaysBonus(w));
         bool negative = lg.City < 0;
         bool over = lg.City < -limit;
         b.DebtDays = negative ? Math.Min(b.DebtDays + 1, int.MaxValue - 1) : 0;
@@ -325,6 +359,7 @@ internal static class BudgetFlows
             w.Emit(SimEventKind.BudgetRecovered, 0, c.Day, Sat(lg.City));
         }
 
+        Warn(w, c, b);
         int idx = c.Day & 1;
         b.FareEvadedDay[idx] = 0;
         b.DebtEvictionsDay[idx] = 0;
@@ -336,6 +371,32 @@ internal static class BudgetFlows
             w.Emit(SimEventKind.PolicyApplied, 0, c.Day, b.Policy.Fare);
         }
     }
+
+    /// <summary>
+    /// Предупреждения о кредитном лимите (PG5, progression.md §5): по дням до лимита (<see cref="CityKpi.DaysToLimit"/>, после EWMA и лимита этих суток) уровень 1 при &lt;= 7 днях, 2 при &lt;= 2
+    /// (и за лимитом). Событие <see cref="SimEventKind.BudgetWarning"/> - только на переходе уровня вверх; гистерезис - уровень снимается, когда дней &gt; 10 или тренд &gt;= 0.
+    /// </summary>
+    internal static void Warn(World w, CityWorld c, CityBudget b)
+    {
+        int days = CityKpi.DaysToLimit(c, Progression.CreditDaysBonus(w));
+        if (days < 0 || days > WarnClearDays)
+        {
+            b.WarnLevel = 0;
+            return;
+        }
+
+        byte level = days <= Warn2Days ? (byte)2 : days <= Warn1Days ? (byte)1 : (byte)0;
+        if (level > b.WarnLevel)
+        {
+            b.WarnLevel = level;
+            w.Emit(SimEventKind.BudgetWarning, 0, level, days);
+        }
+    }
+
+    /// <summary>[Старт] пороги предупреждений, дни до лимита (progression.md §5).</summary>
+    public const int Warn1Days = 7;
+    public const int Warn2Days = 2;
+    public const int WarnClearDays = 10;
 
     private static int Sat(long v) => (int)Math.Clamp(v, int.MinValue, int.MaxValue);
 
@@ -413,7 +474,7 @@ internal static class BudgetFlows
         Vec2 prev = default;
         for (int k = 0; k < br.StopCount; k++)
         {
-            ref readonly BusStopData s = ref net.BusStops[br.FirstStop + k];
+            ref readonly BusStopData s = ref net.BusStops[net.BusRouteStops[br.FirstStop + k]];
             LaneGeometry.Evaluate(net, s.Lane, s.S, ref hint, out Vec2 pos, out _);
             if (k > 0)
             {

@@ -327,6 +327,8 @@ internal sealed class Skims
                     job[cell] = (int)Math.Min(int.MaxValue, (long)job[cell] + t.Capacity);
                     start[cell + 1]++;
                     break;
+                case LotZone.Service:
+                    break;   // депо службы (building-lifecycle.md §2.10): не цель поездок жителей
                 default:
                     job[cell] = (int)Math.Min(int.MaxValue, (long)job[cell] + t.Capacity);
                     break;

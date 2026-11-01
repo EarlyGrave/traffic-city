@@ -23,12 +23,19 @@ internal sealed class BuildingTypes
 
     public ref readonly BuildingTypeDesc this[int type] => ref Rows[type];
 
-    /// <summary>Допустимость строки: вид R/C/I, плотность 0/1, вместимость в пределах, смена внутри суток (288 слотов).</summary>
+    /// <summary>Допустимость строки: вид R/C/I/гараж/служба, плотность 0/1, вместимость в пределах, смена внутри суток (288 слотов).</summary>
     public static bool IsValid(in BuildingTypeDesc t) =>
-        t.Kind is >= LotZone.Residential and <= LotZone.Parking && t.Density <= 1 && t.Capacity is >= 1 and <= MaxCapacity &&
+        t.Kind is >= LotZone.Residential and <= LotZone.Service && t.Density <= 1 && t.Capacity is >= 1 and <= MaxCapacity &&
         t.ShopCapacity >= 0 && t.ShopCapacity <= 1_000_000 && t.ConstructDays is >= 0 and <= 3650 && t.AttractQ8 is >= 0 and <= 1 << 20 && t.VisualRow >= 0 &&
         t.ParkingCapacity is >= 0 and <= MaxCapacity && t.ParkingAccess <= ParkingAccess.Public && t.ParkingFee >= 0 &&
-        (t.Kind is LotZone.Residential or LotZone.Parking || (t.ShiftStartSlot is >= 0 and < 288 && t.ShiftSlots is >= 1 and <= 288));
+        t.DecayBpDay <= 10_000 && t.CeilDropBpDay <= 10_000 && t.DemolishCost is >= 0 and <= 100_000_000 && t.FirePpm is >= 0 and <= 1_000_000 &&
+        t.BuildCost is >= 0 and <= 100_000_000 &&
+        (t.Kind == LotZone.Service ? ServiceVehiclesOk(in t) : t.ServiceKind == ServiceKind.None && t.Vehicles == 0) &&
+        (t.Kind is LotZone.Residential or LotZone.Parking or LotZone.Service || (t.ShiftStartSlot is >= 0 and < 288 && t.ShiftSlots is >= 1 and <= 288));
+
+    /// <summary>Станция: ЖКХ - 1..64 машины депо BL; медицина и пожарные (SR2) - 0..64 (машины - уровня записи, services.md §3).</summary>
+    private static bool ServiceVehiclesOk(in BuildingTypeDesc t) =>
+        t.ServiceKind == ServiceKind.Utility ? t.Vehicles is >= 1 and <= 64 : t.ServiceKind is ServiceKind.Medicine or ServiceKind.Fire && t.Vehicles <= 64;
 
     /// <summary>Первый подходящий по виду и плотности тип (zoning-demand.md §8.3) со сдвигом <paramref name="variant"/> по подходящим; -1 - нет такого вида.</summary>
     public int Find(LotZone kind, int density, int variant)

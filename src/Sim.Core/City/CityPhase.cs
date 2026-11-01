@@ -20,6 +20,9 @@ internal static class CityPhase
             w.Peds.DropAgentsForAggregate(w);   // остатки micro-пешеходов: ноги переходят к агрегату (§9.2)
         }
 
+        OverloadValve.OnTick(w, c);   // клапан перегрузки (ADR-0035): машины из тупиков gridlock - к цели
+        c.Outside?.Ensure(w, c);   // виртуальные участки подключений по версии сети (после правок инструментами)
+
         int n = c.Wheel.Collect(w.Tick, c.DueScratch);
         for (int k = 0; k < n; k++)
         {
@@ -67,6 +70,11 @@ internal static class CityPhase
     public static void Periodic(World w)
     {
         CityWorld c = w.City!;
+        if (c.Services != null)
+        {
+            Utilities.Tick(w, c);   // ЖКХ (building-lifecycle.md §2.10): прибытия бригад, сроки, выезд - до прибытий жителей
+        }
+
         while (c.Arrivals.TryPop(out int r))
         {
             TripLegs.OnLegArrived(w, c, r);
@@ -81,11 +89,26 @@ internal static class CityPhase
         }
 
         DayPass(w, c, false);
+        if (c.Cfg.Zoning.GrowthStep != 0 && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            Growth.Hourly(w, c);   // рост по часам (zoning.growth_step = "hour"), до сдвига кольца показателей
+        }
+
+        if (c.Outside != null && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            c.Outside.OnHourEnd(w);   // событие ImmigrantsArrived за час (ADR-0037)
+        }
+
+        c.Kpi.OnTickEnd(w);   // показатели (progression.md §2.2): на последнем тике игрового часа час уходит в кольцо - до границы суток
         if ((w.Tick + 1) % c.DayTicks == 0)
         {
             c.Day++;
             w.Counters.CityDays++;
+            c.Outside?.OnDayEnd();
+            Utilities.OnDayBoundary(c);   // зарплата бригад ЖКХ и субсидия из фонда - по политике закончившихся суток
             BudgetFlows.OnDayBoundary(w, c);   // казна (city-economy.md §6.2): применение ожидающей политики; E2 - цена земли, содержание, проценты, лимит
+            c.Kpi.OnDayEnd(c.Ledger.City);   // суточное кольцо баланса (K5)
+            Progression.CheckMilestone(w, c);   // вехи на границе суток - после роста и казны (PG3, progression.md §3.3)
             c.Ledger.RollDay();
             c.Loads.ClearDay(c.Day);   // «сегодня» новых суток: позавчерашние числа L больше не нужны
             c.DayStage = DayStages.Buildings;
@@ -103,6 +126,11 @@ internal static class CityPhase
             }
 
             Demand.AggregateExec.OnDayBoundary(w, c);   // отложенное SetTripExecution: micro -> aggregate калибрует K по только что законченным суткам
+        }
+
+        if (c.Goals != null && CityKpi.IsHourEnd(w.Tick, c.DayTicks))
+        {
+            c.Goals.OnHourEnd(w, c);   // цели сценария (ADR-0038): раз в игровой час, после показателей, прогрессии и границы суток
         }
 
 #if DEBUG
@@ -253,7 +281,17 @@ internal static class CityPhase
         res.LegReq[r] = w.Tick;   // база дня для следующих событий плана, даже если нога не начнётся
         int tour = (r * CityResidents.MaxTours) + res.PlanCursor[r];
         int dest = res.PlanDest[tour];
-        bool ok = c.Buildings.IsAlive(dest) && c.Buildings.State[dest] == (byte)BuildingState.Active && TripLegs.StartLeg(w, c, r, true, (TravelMode)res.PlanMode[tour]);
+        if (OverloadValve.TourHopeless(w, c, res.PlanSlot[tour]))
+        {
+            c.Valve.LateTours++;   // сеть насыщена, а тур опаздывает больше порога: сорван, не переносится в ночь (ADR-0035)
+            w.Counters.ResToursCancelled++;
+            c.Kpi.OnTourCancelled(c, r);
+            TripLegs.FinishTour(w, c, r);
+            return;
+        }
+
+        bool alive = OutsideRef.Is(dest) ? res.Work[r] == dest : c.Buildings.IsAlive(dest) && c.Buildings.State[dest] == (byte)BuildingState.Active;   // внешняя фирма «живёт», пока житель в ней работает
+        bool ok = alive && TripLegs.StartLeg(w, c, r, true, (TravelMode)res.PlanMode[tour]);
         if (!ok)
         {
             w.Counters.ResToursUnreachable++;
@@ -279,6 +317,13 @@ internal static class CityPhase
 
             if (!TripLegs.StartLeg(w, c, r, false, (TravelMode)res.PlanMode[tour]))
             {
+                if ((res.Flags[r] & ResidentFlags.Arriving) != 0 && c.Outside != null)
+                {
+                    c.Outside.ArrivalTimeouts++;   // от подключения до дома не доехать ничем: переселенец сразу дома (ADR-0037), не застревание
+                    TripLegs.FinishTour(w, c, r);
+                    return;
+                }
+
                 TripLegs.ArriveWithoutLeg(w, c, r);
             }
         }

@@ -3,7 +3,7 @@ using Sim.Core.Network;
 
 namespace Sim.Core.Api;
 
-public enum CommandKind : int
+public enum CommandKind : ushort
 {
     None = 0,
     BuildRoad = 1,
@@ -37,6 +37,21 @@ public enum CommandKind : int
 
     // Экономика города (4.2, city-economy.md §11, E1). Номер 25 из спеки занят инструментами (T1) - взят следующий свободный.
     SetBudgetPolicy = 36,   // политика бюджета: ожидающая, действует с границы суток; без режима city_budget - см. BudgetFlows.SetPolicy
+
+    // Классы ТС (vehicle-classes.md §2.2, ADR-0039, VC2).
+    SetStreetAccess = 37,   // запрет улицы по классам (SegmentData.Deny), на месте; обратная - прежняя маска
+    SetOnCall = 38,         // VC3 (§2.4): флаг «на вызове» у спецмашины; ставит диспетчер SR или тест, без цены
+
+    // Жизнь здания (building-lifecycle.md §6.2, BL1).
+    DemolishBuilding = 39,  // снос здания игроком: цена demolish_cost из казны, необратима; только в режиме city.lifecycle
+    RestoreBuilding = 40,   // капремонт (§2.9): Cond = Ceil = 100 %, цена Capacity * restore_per_unit * (2 - Cond/10000) из казны (поток Restoration), необратим; < 50 % отклоняется
+    // 41 SetMonument - отложен решением владельца (§2.8)
+    BuildService = 42,      // депо службы (ЖКХ) на пустой участок: цена build_cost из казны; обратная - DemolishBuilding с возвратом по undo_refund_s (§6.2)
+    UpgradeService = 43,    // SR5 (services.md §2.8): уровень +1 на месте, до 3 участков-пристроек (выкуп соседей); с битом Inverse - понижение на уровень (undo в окне undo_refund_s)
+    SetServiceUpgrade = 44, // SR5: локальный апгрейд уровня (бит UpgradeMask станции) вкл/выкл; цена cost при включении, возврат только по undo-кредиту
+
+    // Городские службы (services.md §2.4, §6, SR2).
+    SetServiceBudget = 45,  // ползунок бюджета записи 50..150 % шагом 10: ожидающий, действует с границы суток; только в режиме city.services
 }
 
 public enum SignalMode : int
@@ -60,12 +75,23 @@ public enum BusStopKind : int
     Bay = 1,
 }
 
+/// <summary>Биты <see cref="Command.Flags"/> (city-economy.md §8.3).</summary>
+public static class CommandFlags
+{
+    /// <summary>Обратная команда (ставит <c>InverseBuilder</c>): при живой записи undo-кредита по цели - цена по кредиту (возврат 100%), иначе обычная.</summary>
+    public const ushort Inverse = 1;
+}
+
 /// <summary>Плоский tagged-union фиксированного размера 64 байта (core-api §4.1). Payload — с offset 8.</summary>
 [StructLayout(LayoutKind.Explicit, Size = 64)]
 public struct Command
 {
     [FieldOffset(0)]
     public CommandKind Kind;
+
+    /// <summary>Биты <see cref="CommandFlags"/> (старшие два байта прежнего 32-битного <c>Kind</c>; нули = как раньше, раскладка и байты журнала не меняются).</summary>
+    [FieldOffset(2)]
+    public ushort Flags;
 
     /// <summary>Произвольная метка клиента, эхо в <see cref="SimEvent.Tag"/>.</summary>
     [FieldOffset(4)]
@@ -126,6 +152,21 @@ public struct Command
     public SetLaneFlagsCmd SetLaneFlags;
 
     [FieldOffset(8)]
+    public SetStreetAccessCmd SetStreetAccess;
+
+    [FieldOffset(8)]
+    public SetOnCallCmd SetOnCall;
+
+    [FieldOffset(8)]
+    public DemolishBuildingCmd DemolishBuilding;
+
+    [FieldOffset(8)]
+    public RestoreBuildingCmd RestoreBuilding;
+
+    [FieldOffset(8)]
+    public BuildServiceCmd BuildService;
+
+    [FieldOffset(8)]
     public InsertBusStopCmd InsertBusStop;
 
     [FieldOffset(8)]
@@ -142,6 +183,15 @@ public struct Command
 
     [FieldOffset(8)]
     public SetBudgetPolicyCmd SetBudgetPolicy;
+
+    [FieldOffset(8)]
+    public SetServiceBudgetCmd SetServiceBudget;
+
+    [FieldOffset(8)]
+    public UpgradeServiceCmd UpgradeService;
+
+    [FieldOffset(8)]
+    public SetServiceUpgradeCmd SetServiceUpgrade;
 
     // Фабрики называются Make*: имя Command.BuildRoad занято полем-payload (core-api §4.1).
     public static Command MakeBuildRoad(in BuildRoadCmd payload, uint tag = 0)
@@ -314,6 +364,83 @@ public struct Command
         return c;
     }
 
+    public static Command MakeSetStreetAccess(in SetStreetAccessCmd payload, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetStreetAccess;
+        c.Tag = tag;
+        c.SetStreetAccess = payload;
+        return c;
+    }
+
+    public static Command MakeSetOnCall(VehicleHandle h, bool onCall, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetOnCall;
+        c.Tag = tag;
+        c.SetOnCall = new SetOnCallCmd { Index = h.Index, Generation = h.Generation, OnCall = onCall ? (byte)1 : (byte)0 };
+        return c;
+    }
+
+    /// <summary>Снос здания игроком (building-lifecycle.md §2.5): <paramref name="building"/> - слот и поколение из <see cref="BuildingRenderData"/>.</summary>
+    public static Command MakeDemolishBuilding(EntityRef building, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.DemolishBuilding;
+        c.Tag = tag;
+        c.DemolishBuilding = new DemolishBuildingCmd { Building = building };
+        return c;
+    }
+
+    /// <summary>Капремонт здания (building-lifecycle.md §2.9): <paramref name="building"/> - слот и поколение из <see cref="BuildingRenderData"/>.</summary>
+    public static Command MakeRestoreBuilding(EntityRef building, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.RestoreBuilding;
+        c.Tag = tag;
+        c.RestoreBuilding = new RestoreBuildingCmd { Building = building };
+        return c;
+    }
+
+    /// <summary>Депо службы (building-lifecycle.md §2.10, §6.2): участок <paramref name="lot"/> без здания, тип <paramref name="type"/> вида <see cref="LotZone.Service"/>.</summary>
+    public static Command MakeBuildService(int lot, int type, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.BuildService;
+        c.Tag = tag;
+        c.BuildService = new BuildServiceCmd { Lot = lot, Type = type };
+        return c;
+    }
+
+    public static Command MakeSetServiceBudget(int svc, int pct, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetServiceBudget;
+        c.Tag = tag;
+        c.SetServiceBudget = new SetServiceBudgetCmd { Svc = svc, Pct = pct };
+        return c;
+    }
+
+    /// <summary>Уровень +1 станции <paramref name="building"/> (SR5, services.md §2.8); <paramref name="annex0"/>..<paramref name="annex2"/> - участки-пристройки (-1 - нет).</summary>
+    public static Command MakeUpgradeService(EntityRef building, int annex0 = -1, int annex1 = -1, int annex2 = -1, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.UpgradeService;
+        c.Tag = tag;
+        c.UpgradeService = new UpgradeServiceCmd { Building = building, Annex0 = annex0, Annex1 = annex1, Annex2 = annex2 };
+        return c;
+    }
+
+    /// <summary>Локальный апгрейд <paramref name="id"/> (номер в списке апгрейдов текущего уровня, 0..7) станции <paramref name="building"/> (SR5, services.md §2.8).</summary>
+    public static Command MakeSetServiceUpgrade(EntityRef building, int id, bool on, uint tag = 0)
+    {
+        var c = default(Command);
+        c.Kind = CommandKind.SetServiceUpgrade;
+        c.Tag = tag;
+        c.SetServiceUpgrade = new SetServiceUpgradeCmd { Building = building, Id = id, On = on ? 1 : 0 };
+        return c;
+    }
+
     public static Command MakeInsertBusStop(in InsertBusStopCmd payload, uint tag = 0)
     {
         var c = default(Command);
@@ -380,8 +507,8 @@ public struct Command
 }
 
 /// <summary>
-/// Раскладка явная (56 Б): <see cref="Profile"/> лежит на младших двух байтах <see cref="Cz"/> - контрольная точка Безье нужна только при <c>BuildRoadFlags.Curve</c>
-/// (T5, пока <c>NotSupported</c>); когда кривые появятся вместе с профилями, поле придётся переложить (в payload 56 Б свободного места нет).
+/// Раскладка явная (56 Б). T5: контрольная точка квадратичной Безье (<c>BuildRoadFlags.Curve</c>) хранится смещением от середины хорды A-B в дециметрах (<see cref="CxDm"/>,
+/// <see cref="CzDm"/>, ±3.2 км, шаг 10 см) - так рядом поместился <see cref="Profile"/> (раньше делил байты с float <c>Cz</c>, REPORT-stage4 техдолг 8). Задавать - <see cref="SetControl"/>.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = 56)]
 public struct BuildRoadCmd
@@ -411,21 +538,23 @@ public struct BuildRoadCmd
     public RoadKind Kind;             // Street = 0, Arterial = 1
 
     [FieldOffset(23)]
-    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5; пока NotSupported), бит3 Mirrored (RP7)
+    public byte Flags;                // BuildRoadFlags: бит0 NoConnectors (тесты), бит1 AutoSplit, бит2 Curve (T5), бит3 Mirrored (RP7)
 
     // player-tools.md §2 (24 -> 56 Б). Нулевая инициализация = прежнее поведение.
     [FieldOffset(24)]
-    public float Cx;                  // контрольная точка квадратичной Безье (Curve), иначе 0
+    public short CxDm;                // контрольная точка Безье (Curve): X минус середина хорды (Ax + Bx) / 2, дм
 
-    [FieldOffset(28)]
-    public float Cz;
+    [FieldOffset(26)]
+    public short CzDm;
 
     /// <summary>
     /// Профиль дороги (ADR-0030, RP7): индекс в каталоге + 1, 0 - без профиля (прежнее поведение). Полосы и тип обязаны совпасть с профилем (с учётом <c>Mirrored</c>), иначе <c>InvalidArgument</c>.
-    /// Делит байты с <see cref="Cz"/> (см. описание типа).
     /// </summary>
     [FieldOffset(28)]
     public ushort Profile;
+
+    [FieldOffset(30)]
+    public ushort Reserved;
 
     [FieldOffset(32)]
     public EntityRef RestoreOf;       // сегмент, который команда восстанавливает (undo); Generation == 0 - не задан
@@ -435,6 +564,20 @@ public struct BuildRoadCmd
 
     [FieldOffset(48)]
     public EntityRef RestoreNodeB;
+
+    /// <summary>Контрольная точка Безье в мире, м (по концам команды <c>A</c>, <c>B</c> до привязки).</summary>
+    public readonly float ControlX => ((Ax + Bx) * 0.5f) + (CxDm * 0.1f);
+
+    public readonly float ControlZ => ((Az + Bz) * 0.5f) + (CzDm * 0.1f);
+
+    /// <summary>Задаёт контрольную точку Безье в мире (концы <c>Ax..Bz</c> уже заданы); округление до 10 см, насыщение ±3276.7 м от середины хорды.</summary>
+    public void SetControl(float x, float z)
+    {
+        CxDm = ToDm(x - ((Ax + Bx) * 0.5f));
+        CzDm = ToDm(z - ((Az + Bz) * 0.5f));
+    }
+
+    private static short ToDm(float m) => (short)System.Math.Clamp(Util.DetMath.ToIntSat(System.MathF.Round(m * 10f)), short.MinValue, short.MaxValue);
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -498,6 +641,70 @@ public struct SelectVehicleCmd
     public int Generation;
 }
 
+/// <summary>Флаг «на вызове» (vehicle-classes.md §2.4): допустим только у машины типа класса <c>Special</c>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetOnCallCmd
+{
+    public int Index;
+    public int Generation;
+    public byte OnCall;   // 0/1
+}
+
+/// <summary>Снос здания игроком (building-lifecycle.md §2.5, §6.2): живой слот с совпадающим поколением, ещё не сносится.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct DemolishBuildingCmd
+{
+    public EntityRef Building;
+}
+
+/// <summary>Капремонт здания (building-lifecycle.md §2.9, §6.2): живой слот с совпадающим поколением.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct RestoreBuildingCmd
+{
+    public EntityRef Building;
+}
+
+/// <summary>Депо службы (building-lifecycle.md §2.10, §6.2): индекс участка (<c>BuildingRenderData</c>/участки города) и индекс типа здания вида <c>Service</c>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct BuildServiceCmd
+{
+    public int Lot;
+    public int Type;
+}
+
+/// <summary><see cref="CommandKind.SetServiceBudget"/>: запись службы (индекс таблицы) и ползунок, %.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetServiceBudgetCmd
+{
+    public int Svc;
+    public int Pct;
+}
+
+/// <summary>
+/// <see cref="CommandKind.UpgradeService"/> (SR5, services.md §2.8): станция и до 3 участков-пристроек (индексы участков, -1 - нет). Пристройки - соседи станции по фасаду подряд (той же стороны
+/// того же сегмента); занятые выкупаются со сносом. С <see cref="CommandFlags.Inverse"/> - понижение уровня; перечисленные пристройки освобождаются.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct UpgradeServiceCmd
+{
+    public EntityRef Building;
+    public int Annex0;
+    public int Annex1;
+    public int Annex2;
+
+    /// <summary>Участок-пристройка с номером 0..2 или -1.</summary>
+    public readonly int AnnexAt(int k) => k switch { 0 => Annex0, 1 => Annex1, 2 => Annex2, _ => -1 };
+}
+
+/// <summary><see cref="CommandKind.SetServiceUpgrade"/> (SR5): станция, номер апгрейда в списке текущего уровня (0..7) и включить (1) / выключить (0).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct SetServiceUpgradeCmd
+{
+    public EntityRef Building;
+    public int Id;
+    public int On;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SetTargetVehicleCountCmd
 {
@@ -523,7 +730,16 @@ public struct SetPedTargetCmd
 public struct PaintZoneCmd
 {
     public float X0, Z0, X1, Z1;      // углы прямоугольника, м (упорядочиваются)
-    public byte ZoneKind, Density, R0, R1;
+    public byte ZoneKind, Density;
+    public byte R0;                   // PaintZoneFlags (0 у прямой команды)
+    public byte R1;
+}
+
+/// <summary>Биты <see cref="PaintZoneCmd.R0"/>.</summary>
+public static class PaintZoneFlags
+{
+    /// <summary>Обратная запись: участкам не ставится <c>Painted</c> (прежде их зонировал не игрок).</summary>
+    public const byte RestoreUnpainted = 1;
 }
 
 /// <summary>Режим исполнения ног (<see cref="TripExecution"/>); применяется на границе суток.</summary>

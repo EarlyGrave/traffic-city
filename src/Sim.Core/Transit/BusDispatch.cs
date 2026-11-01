@@ -43,7 +43,7 @@ internal static class BusDispatch
             return;
         }
 
-        ref readonly BusStopData s0 = ref net.BusStops[br.FirstStop];
+        ref readonly BusStopData s0 = ref net.BusStops[net.BusRouteStops[br.FirstStop]];
         ref readonly VehicleTypeDesc t = ref w.Types[br.VehicleType];
         float s = t.Length + t.MinGap;
         float destS = s0.S > s ? s0.S : s;
@@ -52,7 +52,7 @@ internal static class BusDispatch
             return;
         }
 
-        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, w.Tick, out RouteHandle h) != BuildStatus.Ok)
+        if (w.Router.Build(s0.Lane, s, s0.Lane, destS, w.Tick, out RouteHandle h, w.TypeAccess[br.VehicleType]) != BuildStatus.Ok)
         {
             return;
         }

@@ -1,0 +1,307 @@
+{
+  "format_version": 2,
+  "name": "terrain-demo",
+  "seed": 1,
+  "duration_s": 60,
+  "city": {
+    "enabled": false
+  },
+  "network": {
+    "nodes": [
+      {
+        "id": "n00",
+        "x": 0,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n10",
+        "x": 200,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n20",
+        "x": 400,
+        "z": 0,
+        "control": "none"
+      },
+      {
+        "id": "n01",
+        "x": 0,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n11",
+        "x": 200,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n21",
+        "x": 400,
+        "z": 200,
+        "control": "none"
+      },
+      {
+        "id": "n02",
+        "x": 0,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n12",
+        "x": 200,
+        "z": 400,
+        "control": "none"
+      },
+      {
+        "id": "n22",
+        "x": 400,
+        "z": 400,
+        "control": "none"
+      }
+    ],
+    "segments": [
+      {
+        "a": "n00",
+        "b": "n10",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n10",
+        "b": "n20",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n01",
+        "b": "n11",
+        "lanes_ab": 2,
+        "lanes_ba": 2,
+        "speed_kmh": 60,
+        "kind": "arterial"
+      },
+      {
+        "a": "n11",
+        "b": "n21",
+        "lanes_ab": 2,
+        "lanes_ba": 2,
+        "speed_kmh": 60,
+        "kind": "arterial"
+      },
+      {
+        "a": "n02",
+        "b": "n12",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n12",
+        "b": "n22",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n00",
+        "b": "n01",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n01",
+        "b": "n02",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n10",
+        "b": "n11",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n11",
+        "b": "n12",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n20",
+        "b": "n21",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      },
+      {
+        "a": "n21",
+        "b": "n22",
+        "lanes_ab": 1,
+        "lanes_ba": 1,
+        "speed_kmh": 40,
+        "kind": "street"
+      }
+    ]
+  },
+  "vehicles": {
+    "count": 30,
+    "spawn_ramp_s": 10
+  },
+  "demand": {
+    "zone_m": 200,
+    "model": "uniform",
+    "external_share": 0,
+    "min_trip_m": 0
+  },
+  "routing": {
+    "levels": 1,
+    "cell_m": 250,
+    "pathfind_budget_per_tick": 8
+  },
+  "capacities": {
+    "max_vehicles": 64,
+    "max_nodes": 16,
+    "max_segments": 16,
+    "max_lanes": 256,
+    "max_lane_points": 2048,
+    "max_zones": 16,
+    "max_bus_routes": 1,
+    "max_bus_stops": 1,
+    "max_routes": 256,
+    "max_plan_steps": 8192,
+    "max_pending_trips": 64,
+    "max_signalized_nodes": 1
+  },
+  "terrain": {
+    "enabled": true,
+    "cell_m": 8,
+    "extent": {
+      "min_x": -100,
+      "min_z": -100,
+      "max_x": 500,
+      "max_z": 500
+    },
+    "source": "heightmap",
+    "heightmap": {
+      "data_b64": "hAPuAlgCwgEsASADigL0AV4ByAC8AiYCkAH6AGQAWALCASwBAAAAAPQBXgHIADIAAAA=",
+      "size": [
+        5,
+        5
+      ],
+      "cell_m": 160,
+      "origin_m": [
+        -120,
+        -120
+      ],
+      "base_m": 100.0,
+      "unit_m": 0.01
+    },
+    "water": {
+      "sea_level_m": null,
+      "lakes": [
+        {
+          "x": 360,
+          "z": 360,
+          "level_m": 100.6
+        }
+      ],
+      "rivers": [
+        {
+          "points": [
+            [
+              -100,
+              450
+            ],
+            [
+              100,
+              470
+            ],
+            [
+              300,
+              490
+            ]
+          ],
+          "width_m": 16,
+          "depth_m": 2,
+          "flow_m3s": null
+        }
+      ],
+      "sources": [
+        {
+          "id": 1,
+          "kind": "inflow",
+          "x": -100,
+          "z": 450,
+          "flow_m3s": 2.5,
+          "target_level_m": null,
+          "radius_m": 20
+        }
+      ]
+    },
+    "stamps": [
+      {
+        "kind": "ridge",
+        "closed": true,
+        "points": [
+          [
+            250,
+            50
+          ],
+          [
+            350,
+            50
+          ],
+          [
+            350,
+            150
+          ],
+          [
+            250,
+            150
+          ]
+        ],
+        "height_m": 2,
+        "crest_m": 2,
+        "slope": 2.0,
+        "gaps": [
+          {
+            "x": 300,
+            "z": 50,
+            "width_m": 16
+          }
+        ]
+      }
+    ],
+    "max_grade_pct": {
+      "street": 8,
+      "arterial": 6
+    },
+    "max_cut_m": 10,
+    "max_fill_m": 6,
+    "bank_slope": 0.5,
+    "bridge_clearance_m": 2,
+    "max_bridge_m": 300,
+    "auto_bridge": true,
+    "max_brush_m": 96,
+    "max_dab_m": 2
+  }
+}

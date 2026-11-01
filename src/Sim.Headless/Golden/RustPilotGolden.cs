@@ -152,7 +152,8 @@ public static class RustPilotGolden
     private static void AppendIdm(StringBuilder sb, string root, int count, IdmDeltaMix mix)
     {
         ScenarioDesc desc = ScenarioLoader.LoadInfo(Path.Combine(root, DemoGrid), null, new ScenarioOverrides()).Desc;
-        VehicleTypeDesc[] types = desc.VehicleTypes;
+        // Вектора берут только первые два типа (car, bus): эталон Rust-пилота не зависит от числа типов в каталоге (VC1 добавил фургон, фуру и спецмашины).
+        VehicleTypeDesc[] types = desc.VehicleTypes.Length > 2 ? desc.VehicleTypes[..2] : desc.VehicleTypes;
         bool gated = mix == IdmDeltaMix.Gated;
         var r = Pcg32.Create(gated ? 0x1D17UL : 0x1D18UL, (ulong)RngStream.Behaviour);
         float[] otherDeltas = [3f, 2.5f, 1.5f, 5f, 6f, 1f, 3.3f, 0.5f];

@@ -1,3 +1,4 @@
+using Sim.Core.Api;
 using Sim.Core.Util;
 
 namespace Sim.Core.City;
@@ -10,6 +11,8 @@ internal static class ResidentFlags
     public const byte Evicted = 4;    // дом заброшен: переезд с приоритетом (§8.2)
     public const byte Leaving = 8;    // уедет из города при ближайшем AtHome
     public const byte InSeekQueue = 16;   // есть живая запись в очереди ищущих работу (Z4: без дублей)
+    public const byte Arriving = 32;      // переселенец едет от внешнего подключения к дому (ADR-0037): работу не ищет, план дня не строит; клиенту - ResidentState.Arriving
+    public const byte CareRefused = 64;   // вчера больному не нашлось места у врача (services.md §2.6): второй отказ подряд - жалоба NoCare; только в режиме city.services
 }
 
 /// <summary>Стадии дневного прохода (<c>CityWorld.DayStage</c>, Z4): здания, жители, рынки и рост, затем покой до границы суток.</summary>
@@ -48,6 +51,7 @@ internal static class TourKind
     public const byte None = 0;
     public const byte Work = 1;       // Home -> Work -> Home
     public const byte Shop = 2;       // Home -> C -> Home
+    public const byte Care = 3;       // Home -> станция службы -> Home (services.md §2.6, больной лёгкой или стационарной тяжести)
 }
 
 /// <summary>Запись очереди ищущих работу (FIFO по <c>Seq</c>; хранится и в сейве, блок <c>RESD</c>).</summary>
@@ -117,6 +121,13 @@ internal sealed class CityResidents
     public readonly long[] LegWaitFrom;    // начало ожидания выезда (K2)
     public readonly int[] LegParkWait;     // тики ожидания места в этой ноге (K2)
 
+    // ---- болезнь (services.md §2.5, SR3): только в режиме city.services; без режима 0 и ни одна ветка не пишет ----
+    public readonly byte[] Ill;            // биты 0-4 - дней осталось, 5-6 - тяжесть (1 лёгкая, 2 стационар, 3 критическая), 7 - Treated; 0 - здоров
+
+    // ---- возрастная группа (age-groups.md §2.2, RA1): ResidentAge; только в режиме city.age, без режима 0 (Adult) и ни одна ветка не пишет.
+    // Отклонение от спеки: биты 6-7 Flags заняты (64 - CareRefused SR3), поэтому группа - отдельный байт (RESD 51), в хэше - только в режиме.
+    public readonly byte[] Age;
+
     /// <summary>Очередь ищущих работу (FIFO по <see cref="Seq"/>; наполняет и разбирает рынок Z4).</summary>
     public readonly RingBuffer<SeekEntry> SeekQueue;
 
@@ -167,6 +178,8 @@ internal sealed class CityResidents
         LegStage = new byte[capacity];
         LegWaitFrom = new long[capacity];
         LegParkWait = new int[capacity];
+        Ill = new byte[capacity];
+        Age = new byte[capacity];
         SeekQueue = new RingBuffer<SeekEntry>(capacity);
         for (int i = 0; i < capacity; i++)
         {
@@ -255,5 +268,54 @@ internal sealed class CityResidents
         LegStage[i] = 0;
         LegWaitFrom[i] = 0;
         LegParkWait[i] = 0;
+        Ill[i] = 0;
+        Age[i] = 0;
     }
+}
+
+/// <summary>
+/// Возрастная группа при создании и въезде (age-groups.md §2.3): те же два броска <c>RngDemand</c>, что без режима (машина <c>v</c>, затем рабочая сила <c>u</c>, Q16), второй
+/// делится на отрезки <c>[0, L)</c> взрослый работник, <c>[L, L+E)</c> пожилой, <c>[L+E, L+E+C)</c> ребёнок, остальное - взрослый неработающий. Множество работников и их машины
+/// совпадают с прогоном без режима при том же seed. Ребёнок в пустой дом не заселяется - становится взрослым неработающим.
+/// </summary>
+internal static class AgeGroups
+{
+    /// <summary>Бросает флаги и группу нового жителя. <paramref name="emptyHome"/> - у дома не было жителей до заселения.</summary>
+    public static byte Roll(ref Pcg32 rng, in CityResidentsDesc rd, in CityAgeDesc ad, bool emptyHome, out byte age) => Roll(ref rng, in rd, in ad, emptyHome, out age, out _);
+
+    /// <summary>То же, плюс бросок машины <paramref name="carRoll"/> - чтобы при заселении пачкой превратить ребёнка во взрослого без нового броска.</summary>
+    public static byte Roll(ref Pcg32 rng, in CityResidentsDesc rd, in CityAgeDesc ad, bool emptyHome, out byte age, out uint carRoll)
+    {
+        uint v = rng.NextUInt() >> 16;
+        carRoll = v;
+        uint u = rng.NextUInt() >> 16;
+        uint car = (uint)rd.CarOwnershipQ16;
+        uint labour = (uint)rd.LabourShareQ16;
+        age = (byte)ResidentAge.Adult;
+        if (u < labour)
+        {
+            return (byte)((v < car ? ResidentFlags.HasCar : 0) | ResidentFlags.Labour);
+        }
+
+        if (ad.Enabled)
+        {
+            uint elderlyEnd = labour + (uint)ad.ElderlyQ16;
+            if (u < elderlyEnd)
+            {
+                age = (byte)ResidentAge.Elderly;
+                return v < (uint)((long)car * ad.ElderlyCarPct / 100) ? ResidentFlags.HasCar : (byte)0;
+            }
+
+            if (u < elderlyEnd + (uint)ad.ChildQ16 && !emptyHome)
+            {
+                age = (byte)ResidentAge.Child;
+                return 0;
+            }
+        }
+
+        return v < car ? ResidentFlags.HasCar : (byte)0;
+    }
+
+    /// <summary>Флаги взрослого неработающего по броску машины (как в <see cref="Roll(ref Pcg32, in CityResidentsDesc, in CityAgeDesc, bool, out byte)"/>).</summary>
+    public static byte AdultIdleFlags(in CityResidentsDesc rd, uint carRoll) => carRoll < (uint)rd.CarOwnershipQ16 ? ResidentFlags.HasCar : (byte)0;
 }

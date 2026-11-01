@@ -387,6 +387,7 @@ internal sealed class PedSnapshot
         var st = (PedState)ps.State[p];
         float x, z, heading;
         int hint = ps.RenderHint[p];
+        int yEdge;   // ребро, по которому считается высота (TR3)
         switch (st)
         {
             case PedState.Walking:
@@ -400,6 +401,7 @@ internal sealed class PedSnapshot
                     int end = pw.EndMm(p, step);
                     int dist = (int)Math.Clamp(d, 0L, Math.Max(0, end));
                     net.Evaluate(e, bwd ? len - dist : dist, bwd, ref hint, out x, out z, out heading);
+                    yEdge = e;
                     break;
                 }
 
@@ -410,6 +412,7 @@ internal sealed class PedSnapshot
                     bool bwd = (step & PedStore.StepBwd) != 0;
                     net.Evaluate(e, bwd ? net.Edges[e].LenMm : 0, bwd, ref hint, out x, out z, out heading);
                     Queued(ps.QueueRank[p], heading, ref x, ref z);
+                    yEdge = e;
                     break;
                 }
 
@@ -424,6 +427,7 @@ internal sealed class PedSnapshot
 
                     net.Evaluate(ge, ps.GoalSMm[p], false, ref hint, out x, out z, out heading);
                     Queued(ps.QueueRank[p], heading, ref x, ref z);
+                    yEdge = ge;
                     break;
                 }
 
@@ -438,13 +442,37 @@ internal sealed class PedSnapshot
 
         ps.RenderHint[p] = hint;
         r.X = x;
-        r.Y = 0f;
+        r.Y = w.Net.LanePointY != null ? EdgeY(w.Net, in net.Edges[yEdge], x, z) : 0f;
         r.Z = z;
         r.Heading = heading;
         r.Index = p;
         r.Generation = (ushort)ps.Pool.GenerationOf(p);
         r.State = (byte)st;
         r.Flags = (byte)(PedRenderFlags.Active | (ps.Leg[p] != (byte)PedLeg.Direct ? PedRenderFlags.Passenger : 0));
+    }
+
+    // Высота пешехода (terrain.md §4.7, TR3): ребро узла (переход, обход) - на высоте узла; тротуар и переход на перегоне - линейно между узлами сегмента по проекции точки.
+    private static float EdgeY(NetworkStore n, in PedEdgeData ed, float x, float z)
+    {
+        if (ed.Node >= 0 && n.NodeAlive(ed.Node))
+        {
+            return n.Nodes[ed.Node].Elevation;
+        }
+
+        if (ed.Segment < 0 || !n.SegmentAlive(ed.Segment))
+        {
+            return 0f;
+        }
+
+        ref readonly SegmentData sd = ref n.Segments[ed.Segment];
+        Vec2 a = n.Nodes[sd.NodeA].Position;
+        Vec2 b = n.Nodes[sd.NodeB].Position;
+        float ex = b.X - a.X;
+        float ez = b.Z - a.Z;
+        float l2 = (ex * ex) + (ez * ez);
+        float t = l2 > 0f ? Math.Clamp((((x - a.X) * ex) + ((z - a.Z) * ez)) / l2, 0f, 1f) : 0f;
+        float ya = n.Nodes[sd.NodeA].Elevation;
+        return ya + ((n.Nodes[sd.NodeB].Elevation - ya) * t);
     }
 
     /// <summary>Место в очереди у бордюра: 3 в ряд, ряд назад на 0.6 м (pedestrians.md §4.2).</summary>

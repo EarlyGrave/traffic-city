@@ -48,6 +48,31 @@ public static class Palette
     public static readonly Color HeatPedMid = Srgb("#FFE61A");
     public static readonly Color HeatPedHigh = Srgb("#F21A1A");
 
+    // Heatmap для дальтоников (UI12, ui-spec.md §11): без пары красный-зелёный (дейтеранопия/протанопия) и без пары синий-жёлтый (тританопия).
+    private static readonly Color _heatCbRoadLow = Srgb("#1B6FD6");
+    private static readonly Color _heatCbHigh = Srgb("#7A1F7A");
+    private static readonly Color _heatCbPedLow = Srgb("#33B3FF");
+    private static readonly Color _heatTriRoadLow = Srgb("#1AD933");
+    private static readonly Color _heatTriMid = Srgb("#FFD0D8");
+    private static readonly Color _heatTriHigh = Srgb("#B3001B");
+    private static readonly Color _heatTriPedLow = Srgb("#33D9B3");
+
+    /// <summary>Тройка heatmap дорог для режима палитры (0 - обычная, 1 - дейтеранопия/протанопия, 2 - тританопия).</summary>
+    public static (Color Low, Color Mid, Color High) HeatRoad(TrafficCity.Ui.ColorblindMode mode) => mode switch
+    {
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (_heatCbRoadLow, HeatRoadMid, _heatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (_heatTriRoadLow, _heatTriMid, _heatTriHigh),
+        _ => (HeatRoadLow, HeatRoadMid, HeatRoadHigh),
+    };
+
+    /// <summary>Тройка heatmap пешеходов для режима палитры.</summary>
+    public static (Color Low, Color Mid, Color High) HeatPed(TrafficCity.Ui.ColorblindMode mode) => mode switch
+    {
+        TrafficCity.Ui.ColorblindMode.DeuteranopiaProtanopia => (_heatCbPedLow, HeatRoadMid, _heatCbHigh),
+        TrafficCity.Ui.ColorblindMode.Tritanopia => (_heatTriPedLow, _heatTriMid, _heatTriHigh),
+        _ => (HeatPedLow, HeatPedMid, HeatPedHigh),
+    };
+
     /// <summary>Тонирование инфо-режима: беж «тёмный» и «светлый» (по яркости исходного цвета), visual-style.md §7.</summary>
     public static readonly Color InfoBgDark = Srgb("#D8CCB4");
     public static readonly Color InfoBgLight = Srgb("#F6F1E6");
@@ -85,6 +110,10 @@ public static class Palette
     public static readonly Color ZoneResidential = Lin("#F2C04A");
     public static readonly Color ZoneCommercial = Lin("#4A8CF2");
     public static readonly Color ZoneIndustrial = Lin("#9A63D6");
+    /// <summary>Те же цвета зон в sRGB для интерфейса (легенда, образцы инструмента «Зоны»). Должны совпадать с линейными <c>Zone*</c> выше.</summary>
+    public static readonly Color ZoneResidentialSrgb = Srgb("#F2C04A");
+    public static readonly Color ZoneCommercialSrgb = Srgb("#4A8CF2");
+    public static readonly Color ZoneIndustrialSrgb = Srgb("#9A63D6");
     public static readonly Color ZonePark = Lin("#52BD5A");
     public static readonly Color ZoneWater = Lin("#3F9BE6");
 

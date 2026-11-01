@@ -1,0 +1,130 @@
+Godot Engine v4.7.2.stable.mono.official.ed1daf0bf - https://godotengine.org
+Vulkan 1.4.341 - Forward+ - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4080
+
+[ui] window 1366x768, scale base 1 x user 100% = 1, state Overview
+[save] dir C:/Users/Early Grave/AppData/Roaming/Godot/app_userdata/TrafficCity/saves, autosave 24 game h, args 10
+[threads] sim workers 4 (logical cores 24)
+grid off  snap on  module 8 m  origin (0, 0)  block 19 cells
+[lod] preset high: bounds 60/200/600 m, points to 2500 m, caps 200/2000/8000/60000, min point 2 px (content/render-budgets.json, preset high)
+[render] preset high: shadow 4 splits, 800 m, atlas 4096; scaling_3d 1; msaa 2x; forward_plus/vulkan
+[landuse] polys 0, lots 3671, chunks 4, version 0/9111
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 762)
+[host] sim thread started at tick 1
+[tool] roads tool ready: catalog profiles x5, net_version 2076
+[buildings] 3671 boxes, chunks 192 + 16, version 3671
+[drv] start tick=13 net_version=2076 nodes=438 segments=762 topo=DFCA6C3B99DE16E3 catalog=profiles x5
+[drv]   profile[0] Улица 1+1 · 16 м lanes 1/1 width 16
+[drv]   profile[1] Улица, 2 в одну сторону · 16 м lanes 2/0 width 16
+[drv]   profile[2] Магистраль 2+2 · 24 м lanes 2/2 width 24
+[drv]   profile[3] Магистраль 3+3 · 32 м lanes 3/3 width 32
+[drv]   profile[4] Магистраль 2+1 · 24 м lanes 2/1 width 24
+[drv] base node (0, 0)
+[drv] tool active: Build id=roads
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\00-options.png 1366x768 Ok draw_calls_total=149 label="Начать здесь  # сетка|Улица 1+1 · 16 м"
+[drv] before build: net_version=2076 nodes=438 segments=762 topo=DFCA6C3B99DE16E3
+[drv] move target=(40,40) screen=(644,383) vp=(1152, 648) mouse=(643.4671, 382.21875) cam=(0,303,175) cursor=(40,40) valid=True
+[tool] anchor (40, 40) snap=Grid profile=Улица 1+1 · 16 м
+[drv] move target=(112,40) screen=(766,383) vp=(1152, 648) mouse=(765.75116, 382.21875) cam=(0,303,175) cursor=(112,40) valid=True
+[drv] ghost 1: verdict=None cost=1440 len=72 label="72 м  $ 1 440  # сетка|Участков под застройку потеряется: 3|Дорога никуда не ведёт|ещё 1"
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\01-ghost-valid.png 1366x768 Ok draw_calls_total=149 label="72 м  $ 1 440  # сетка|Участков под застройку потеряется: 3|Дорога никуда не ведёт|ещё 1"
+[drv] move target=(112,40) screen=(766,383) vp=(1152, 648) mouse=(765.75116, 382.21875) cam=(0,303,175) cursor=(112,40) valid=True
+[tool] submit #1 build preview_verdict=None cost=1440
+[tool] ack #1 Do tick=22 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2081 undo=1 redo=0
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 763)
+[landuse] polys 0, lots 3669, chunks 4, version 0/13673
+[drv] after build 1: net_version=2081 nodes=440 segments=763 topo=6305387DD4B52EAB undo=1
+[drv] move target=(112,112) screen=(790,509) vp=(1152, 648) mouse=(789.3646, 508.78125) cam=(0,303,175) cursor=(112,112) valid=True
+[drv] move target=(112,112) screen=(790,509) vp=(1152, 648) mouse=(789.3646, 508.78125) cam=(0,303,175) cursor=(112,112) valid=True
+[tool] submit #2 build preview_verdict=None cost=1440
+[buildings] 3671 boxes, chunks 384 + 32, version 3675
+[tool] ack #2 Do tick=33 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2085 undo=2 redo=0
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 764)
+[landuse] polys 0, lots 3667, chunks 4, version 0/18235
+[drv] after build 2: net_version=2085 nodes=441 segments=764 topo=BB2EE00BB1AC86E3 undo=2
+[drv] move target=(40,112) screen=(652,509) vp=(1152, 648) mouse=(651.90045, 508.78125) cam=(0,303,175) cursor=(40,112) valid=True
+[drv] move target=(40,112) screen=(652,509) vp=(1152, 648) mouse=(651.90045, 508.78125) cam=(0,303,175) cursor=(40,112) valid=True
+[tool] submit #3 build preview_verdict=None cost=1440
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3666, chunks 4, version 0/22799
+[tool] ack #3 Do tick=44 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2089 undo=3 redo=0
+[drv] after build 3: net_version=2089 nodes=442 segments=765 topo=897E8E066D44226B undo=3
+[drv] move target=(45,112) screen=(662,509) vp=(1152, 648) mouse=(661.1772, 508.78125) cam=(0,303,175) cursor=(40,112) valid=True
+[drv] ghost short: verdict=None label="Тяните дальше: от 1 м  ● узел"
+[drv] move target=(40,-60) screen=(635,247) vp=(1152, 648) mouse=(635.0337, 247.21875) cam=(0,303,175) cursor=(40,-64) valid=True
+[drv] ghost crossing: verdict=Overlap label="Пересекает другую дорогу|Ведите до узла или через перекрёсток"
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\02-ghost-invalid.png 1366x768 Ok draw_calls_total=149 label="Пересекает другую дорогу|Ведите до узла или через перекрёсток"
+[drv] chain cancelled: anchor=False tool=Build
+[drv] net: net_version=2089 nodes=442 segments=765 topo=897E8E066D44226B
+[drv] move target=(112,76) screen=(777,442) vp=(1152, 648) mouse=(776.71454, 442.125) cam=(0,303,175) cursor=(111,6,75,9) valid=True
+[drv] upgrade preview: verdict=None cost=5040 label="Заменить на: Магистраль 2+2 · 24 м  $ 5 040|Участков под застройку потеряется: 1"
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\03-upgrade-preview.png 1366x768 Ok draw_calls_total=149 label="Заменить на: Магистраль 2+2 · 24 м  $ 5 040|Участков под застройку потеряется: 1"
+[drv] move target=(112,76) screen=(777,442) vp=(1152, 648) mouse=(776.71454, 442.125) cam=(0,303,175) cursor=(111,6,75,9) valid=True
+[tool] submit #4 upgrade preview_verdict=None cost=5040
+[tool] ack #4 Do tick=61 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=1 net_version=2092 undo=4 redo=0
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3666, chunks 4, version 0/27360
+[buildings] 3671 boxes, chunks 384 + 32, version 3676
+[drv] after upgrade: net_version=2092 nodes=442 segments=765 topo=CDCE68FFBC2FD643 undo=4
+[drv] tool mode: Remove id=bulldoze
+[drv] move target=(76,112) screen=(721,509) vp=(1152, 648) mouse=(721.0542, 508.78125) cam=(0,303,175) cursor=(76,111,8) valid=True
+[drv] remove preview: verdict=None cost=-720 issues=0 label="Снести  +$ 720"
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\04-remove-preview.png 1366x768 Ok draw_calls_total=155 label="Снести  +$ 720"
+[drv] move target=(76,112) screen=(721,509) vp=(1152, 648) mouse=(721.0542, 508.78125) cam=(0,303,175) cursor=(76,111,8) valid=True
+[tool] submit #5 remove preview_verdict=None cost=-720
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[tool] ack #5 Do tick=75 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2093 undo=5 redo=0
+[drv] confirm visible: False
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 764)
+[landuse] polys 0, lots 3666, chunks 4, version 0/31921
+[drv] after remove: net_version=2097 nodes=441 segments=764 topo=A9D8810BA7D9A14B undo=5 redo=0
+[tool] undo requested #6 (stack 5)
+[tool] ack #6 Undo tick=82 applied=3 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2101 undo=4 redo=1
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3666, chunks 4, version 0/36485
+[drv] after undo 1: net_version=2101 nodes=442 segments=765 topo=CDCE68FFBC2FD643 undo=4 redo=1
+[tool] undo requested #7 (stack 4)
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3666, chunks 4, version 0/41047
+[tool] ack #7 Undo tick=89 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2104 undo=3 redo=2
+[drv] after undo 2: net_version=2104 nodes=442 segments=765 topo=897E8E066D44226B undo=3 redo=2
+[tool] redo requested #8 (stack 2)
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3666, chunks 4, version 0/45609
+[tool] ack #8 Redo tick=96 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2107 undo=4 redo=1
+[drv] after redo 1: net_version=2107 nodes=442 segments=765 topo=CDCE68FFBC2FD643 undo=4 redo=1
+[drv] mode now: Remove
+[drv] move target=(-228,-152) screen=(276,151) vp=(1152, 648) mouse=(274.92828, 150.1875) cam=(0,303,175) cursor=(-228,7,-152,4) valid=True
+[drv] lossy segment found: True at (-228,-152)
+[drv] move target=(-228,-152) screen=(276,151) vp=(1152, 648) mouse=(274.92828, 150.1875) cam=(0,303,175) cursor=(-228,7,-152,4) valid=True
+[drv] city street remove preview: verdict=None cost=-1520 issues=1 label="Снести  +$ 1 520|Участков под застройку потеряется: 3"
+[drv] move target=(-228,-152) screen=(276,151) vp=(1152, 648) mouse=(274.92828, 150.1875) cam=(0,303,175) cursor=(-228,7,-152,4) valid=True
+[drv] confirm visible: True text="Снести дорогу?|Участков под застройку потеряется: 3"
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\05-remove-confirm.png 1366x768 Ok draw_calls_total=159 label=""
+[drv] confirm cancelled: visible=False same topology=True undo=4
+[drv] move target=(-228,-152) screen=(276,151) vp=(1152, 648) mouse=(274.92828, 150.1875) cam=(0,303,175) cursor=(-228,7,-152,4) valid=True
+[tool] submit #9 remove preview_verdict=pending cost=?
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[tool] ack #9 Do tick=116 applied=1 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2108 undo=5 redo=0
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 764)
+[landuse] polys 0, lots 3663, chunks 4, version 0/50175
+[buildings] 3671 boxes, chunks 384 + 32, version 3679
+[drv] after confirmed remove: net_version=2112 nodes=442 segments=764 topo=646CF59E1EFCA27B undo=5
+[tool] undo requested #10 (stack 5)
+[tool] ack #10 Undo tick=123 applied=3 rejected=0 reason=None nothing=False recorded=True truncated=False lots_lost=0 net_version=2115 undo=4 redo=1
+[roads] chunks: lod0 196, lod1 196, far 16 (ячейки 250/1000 м, LOD0 до 250 м, лента от 1134 м без верхней границы дальности, LOD1 до 2118 м; полоса 3.5 м, сегментов с профилем 765)
+[landuse] polys 0, lots 3663, chunks 4, version 0/54749
+[drv] after undo of city street removal: net_version=2115 nodes=442 segments=765 topo=CDCE68FFBC2FD643 same as before=False
+[drv] tool: Build active id=roads
+[drv] move target=(40,100) screen=(651,486) vp=(1152, 648) mouse=(650.2138, 486) cam=(0,303,175) cursor=(40,96) valid=True
+[tool] anchor (40, 104) snap=Grid profile=Магистраль 2+2 · 24 м
+[drv] move target=(110,100) screen=(782,486) vp=(1152, 648) mouse=(780.9312, 486) cam=(0,303,175) cursor=(112,104) valid=True
+[drv] shot D:\projects\traffic-city\.claude\worktrees\agent-afc0f7883c71b7550\docs\design\shots\ui4\06-ghost-for-stats.png 1366x768 Ok draw_calls_total=155 label="Пересекает другую дорогу|Ведите до узла или через перекрёсток"
+[drv] draw_calls ghost shown: 155 ghost_visible=61
+[drv] draw_calls ghost shown: 155 ghost_visible=61
+[drv] draw_calls ghost shown: 155 ghost_visible=61
+[drv] draw_calls ghost shown: 155 ghost_visible=61
+[drv] draw_calls ghost hidden (cursor over toolbar): 152 label_len=0
+[drv] draw_calls ghost hidden (cursor over toolbar): 152 label_len=0
+[drv] draw_calls ghost hidden (cursor over toolbar): 152 label_len=0
+[drv] draw_calls ghost hidden (cursor over toolbar): 153 label_len=0
+[drv] done

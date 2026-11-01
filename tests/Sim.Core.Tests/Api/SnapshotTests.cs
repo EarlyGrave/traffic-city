@@ -104,6 +104,32 @@ public class SnapshotTests
         Assert.True(sim.ActiveVehicleCount > 0);
     }
 
+    /// <summary>Байты снапшота (все поля VehicleRenderData) s1k, FNV-1a по срезам тиков 50..1500: золотое значение снято до оптимизации O1 (перф фазы 10 не меняет вывод).</summary>
+    private const ulong GoldenS1kSnapshotBytes = 2675040194464117309UL;
+
+    [Fact]
+    public void Snapshot_Bytes_S1k_MatchGolden()
+    {
+        ScenarioDesc d = CityWorldTests.Desc("s1k");
+        using Simulation sim = Simulation.Create(in d);
+        ulong h = 14695981039346656037UL;
+        for (int tick = 1; tick <= 1500; tick++)
+        {
+            sim.Step(1);
+            if (tick % 50 != 0)
+            {
+                continue;
+            }
+
+            foreach (byte b in System.Runtime.InteropServices.MemoryMarshal.AsBytes(sim.Vehicles))
+            {
+                h = (h ^ b) * 1099511628211UL;
+            }
+        }
+
+        Assert.Equal(GoldenS1kSnapshotBytes, h);
+    }
+
     [Fact]
     public void Snapshot_IsIndependentOfWorkerThreads_S1k()
     {

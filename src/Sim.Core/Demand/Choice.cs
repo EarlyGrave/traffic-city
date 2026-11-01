@@ -48,7 +48,7 @@ internal static class Choice
         }
 
         long delta = s.LsRefSet ? (long)ls - s.LsRef : 0;
-        long term = ch.AscFreqDs - ((ch.BetaFreqQ8 * delta) >> 8) + (c.Residents.Work[resident] < 0 ? ch.AscNonWorkerDs : 0);
+        long term = ch.AscFreqDs - ((ch.BetaFreqQ8 * delta) >> 8) + (c.Residents.Work[resident] == -1 ? ch.AscNonWorkerDs : 0);
         Span<int> costs = stackalloc int[CityResidents.MaxTours + 1];
         for (int k = 0; k <= fmax; k++)
         {
@@ -194,13 +194,13 @@ internal static class Choice
         Skims s = c.Skims;
         s.Prepare(w);
         int home = c.Residents.Home[resident];
-        if (home < 0 || dest < 0)
+        if (home < 0 || dest == -1)
         {
             return false;
         }
 
         int homeLot = c.Buildings.Lot[home];
-        int destLot = c.Buildings.Lot[dest];
+        int destLot = c.LotOf(dest);   // здание или узел внешнего подключения (ADR-0037)
         bool hasCar = HasCar(c, resident);
         int stayTicks = StaySlots(c, resident, dest) * c.SlotTicks;
         int back = (int)((period + ((long)stayTicks * s.Periods / c.DayTicks)) % s.Periods);
@@ -293,7 +293,7 @@ internal static class Choice
 
     /// <summary>Слотов на месте назначения: смена, если <paramref name="dest"/> - работа жителя, иначе визит.</summary>
     private static int StaySlots(CityWorld c, int resident, int dest) =>
-        c.Residents.Work[resident] == dest ? c.Types.Rows[c.Buildings.Type[dest]].ShiftSlots : c.Cfg.Residents.ShopSlots;
+        c.Residents.Work[resident] != dest ? c.Cfg.Residents.ShopSlots : OutsideRef.Is(dest) ? OutsideState.ShiftSlots : c.Types.Rows[c.Buildings.Type[dest]].ShiftSlots;
 
     /// <summary>Стоимость между ячейками без привязки к участкам (для весов ячеек-целей): машина - при <paramref name="hasCar"/>, пешком - по расстоянию центров. <see cref="NoCost"/> - недоступно.</summary>
     private static int CellLegCost(Skims s, bool hasCar, int o, int d, TravelMode m, int period)

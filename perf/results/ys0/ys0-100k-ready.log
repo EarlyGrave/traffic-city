@@ -1,0 +1,4 @@
+ready ys0-100k seed=20261024: tick=90000 prepare_wall_s=114.3
++0d t=0 pop=105521 seeking=0 vac=197427 balance=2250401 income_ewma=125064 expense_ewma=16718 maint_road=89968 maint_bus=43778 trend=108346 insolvent=0 reached=0/0 next_pop=0 kpi[legs=131822 travel_min=348.5 idle%=35.5 bus%=6.4 sat%=30.1] gridlock_seen=0 res_stuck=138 active=20288 stuck_now=180
++1d t=54000 pop=108686 seeking=0 vac=195504 balance=2218311 income_ewma=145975 expense_ewma=31346 maint_road=89968 maint_bus=43778 trend=114629 insolvent=0 reached=0/0 next_pop=0 kpi[legs=130700 travel_min=418.9 idle%=33.9 bus%=14.0 sat%=56.3] gridlock_seen=1 res_stuck=273 active=12319 stuck_now=470
+done: wall_s=189.6 tick=144000 gridlock_seen=1 res_stuck=273 stuck_events=69869

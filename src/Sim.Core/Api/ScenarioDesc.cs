@@ -25,6 +25,9 @@ public struct ScenarioDesc
     public VehicleTypeDesc[] VehicleTypes; // индекс = VehicleType; >= 1 элемент
     public float WorldGridOriginX, WorldGridOriginZ;   // начало мировой сетки 8 м (ADR-0030, road-profiles.md §4.1), м; по умолчанию 0. Хранится в сейве (PARM), в хэш не входит: поведение задаст RP5/RP9
     public RoadProfilesDesc RoadProfiles;  // каталог профилей дорог (ADR-0030, road-profiles.md); Profiles = null - режим legacy: прежняя геометрия, хэши и сейвы побитово прежние
+    public ProgressionDesc Progression;    // вехи и разблокировки (ADR-0034, progression.md §4.1): только при Demand.Model = Residents; Enabled = false - всё открыто, хэш и сейв побитово прежние
+    public GoalsDesc Goals;                // цели сценария (ADR-0038, scenarios-mode.md §2.2): только при Demand.Model = Residents; WinCount + LoseCount = 0 - секции нет, хэш и сейв побитово прежние
+    public TerrainDesc Terrain;            // рельеф и вода (ADR-0036, terrain.md §9.1): Enabled = false (по умолчанию) - массивы не выделяются, хэш и сейв побитово прежние
 }
 
 public struct SimCapacities
@@ -72,10 +75,17 @@ public struct RoutingDesc
     public int TimedDriftAbsTicks;         // абсолютная добавка к порогу, тики; дефолт 400 (20 с)
 }
 
+/// <summary>
+/// Класс типа ТС (vehicle-classes.md §2.1, ADR-0039). Номера закреплены (сейвы, <c>PARM</c> типов): новые - только в конец.
+/// Права на полосы и улицы задаёт класс, а не тип; ключ JSON - прежний <c>category</c>.
+/// </summary>
 public enum VehicleCategory : int
 {
     Car = 0,
     Bus = 1,
+    Van = 2,
+    Truck = 3,
+    Special = 4,
 }
 
 public struct VehicleTypeDesc
@@ -116,6 +126,7 @@ public struct RulesDesc
     public int SignalArrowMinTicks;        // 3 с -> 60
     public int SignalArrowMaxTicks;        // 6 с -> 120
     public int SignalArrowGapTicks;        // 2 с -> 40
+    public float EmergencyRedSpeed;        // VC3: порог проезда спецмашины на вызове на красный, м/с; <= 0 -> 4.17 (15 км/ч)
 }
 
 // ---- city (scenario-format.md §2.1 "city") ----
@@ -236,6 +247,7 @@ public struct DemandDesc
     public float MinTripLength;            // м
     public ZoneDesc[] Zones;               // необязательные явные зоны (иначе ZoneGenerator)
     public OdPairDesc[] OdPairs;           // необязательные явные пары вместо модели
+    public bool SpecialOnCall;             // VC3: машины класса special от OD-генератора едут на вызове всю поездку (тест и калибровка; по умолчанию false)
 }
 
 // ---- transit ----

@@ -23,6 +23,12 @@ internal static class DayPlanner
         int cursor = c.SlotOf(now) + 1;   // не раньше следующего слота: выезд строго в будущем
         int n = 0;
         int seq = res.Seq[r];
+        if (c.Services is { Table.Explicit: true } && Illness.PlanDay(w, c, r, day, ref n, ref cursor))
+        {
+            Finish(w, c, r, day, now, n);   // больной (SR3, services.md §2.5): вместо обычных туров - разве что к врачу
+            return;
+        }
+
         bool worker = (res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] >= 0 && c.Buildings.IsAlive(res.Work[r]) && c.Buildings.State[res.Work[r]] == (byte)BuildingState.Active;
         if (worker)
         {
@@ -30,6 +36,13 @@ internal static class DayPlanner
             ref readonly BuildingTypeDesc t = ref c.Types.Rows[c.Buildings.Type[work]];
             int desired = t.ShiftStartSlot + ((seq % 7) - 3);
             AddTour(w, c, r, day, TourKind.Work, work, desired < 0 ? 0 : desired, t.ShiftSlots, ref n, ref cursor);
+        }
+        else if ((res.Flags[r] & ResidentFlags.Labour) != 0 && OutsideRef.Is(res.Work[r]))
+        {
+            // Внешняя работа (ADR-0037): тур дом -> узел подключения -> дом, смена 08:00-17:00 со сдвигом жителя.
+            worker = true;
+            int desired = OutsideState.ShiftStartSlot + ((seq % 7) - 3);
+            AddTour(w, c, r, day, TourKind.Work, res.Work[r], desired, OutsideState.ShiftSlots, ref n, ref cursor);
         }
 
         int k = Choice.ChooseFrequency(w, r);
@@ -51,6 +64,12 @@ internal static class DayPlanner
             AddTour(w, c, r, day, TourKind.Shop, dest, baseSlot, c.Cfg.Residents.ShopSlots, ref n, ref cursor);
         }
 
+        Finish(w, c, r, day, now, n);
+    }
+
+    private static void Finish(World w, CityWorld c, int r, int day, long now, int n)
+    {
+        CityResidents res = c.Residents;
         res.PlanCount[r] = (byte)n;
         res.PlanCursor[r] = 0;
         w.Counters.ResToursPlanned += n;
@@ -66,11 +85,11 @@ internal static class DayPlanner
         }
     }
 
-    private static void AddTour(World w, CityWorld c, int r, int day, byte kind, int dest, int desiredBase, int stay, ref int n, ref int cursor)
+    internal static void AddTour(World w, CityWorld c, int r, int day, byte kind, int dest, int desiredBase, int stay, ref int n, ref int cursor)
     {
         CityResidents res = c.Residents;
         int homeLot = c.Buildings.Lot[res.Home[r]];
-        int destLot = c.Buildings.Lot[dest];
+        int destLot = c.LotOf(dest);
         int baseSlot = desiredBase < CityWorld.SlotsPerDay ? desiredBase : CityWorld.SlotsPerDay - 1;
         int period = c.PeriodOf(c.TickOfSlot(day, baseSlot));
         if (!Choice.TryChooseMode(w, r, dest, period, out TravelMode mode))

@@ -23,6 +23,10 @@ internal sealed partial class NetworkStore
     public readonly Vec2[] SegmentPoints;    // осевые полилинии сегментов (между отступами от узлов)
     public readonly Vec2[] LanePoints;
     public readonly float[] LanePointS;
+    public float[]? LanePointY;              // TR3 (terrain.md §4.2): высота точки полосы, м; только при рельефе, производное (LaneElevation), вне хэша и сейва
+    public float[]? SegmentPointY;           // то же для SegmentPoints
+    public float[]? LaneGrade;               // уклон полосы по ходу (Δh / Segment.Length); connector'ы 0
+    internal RoadTerrainState? TerrainState; // TR3: служебное состояние дорог на рельефе (RoadTerrain), только при рельефе
     public readonly float[] LanePieceHeading; // курс отрезка k->k+1 полилинии (atan2); производные данные, в хэш не входят (ADR-0010)
     public readonly ZoneData[] Zones;
     public readonly int[] ZoneLanes;         // полосы появления зон подряд; диапазон зоны - ZoneData.FirstSpawnLane/SpawnLaneCount
@@ -120,6 +124,7 @@ internal sealed partial class NetworkStore
         BusStops = new BusStopData[Math.Max(0, caps.MaxBusStops)];
         BusRoutes = new BusRouteData[Math.Max(0, caps.MaxBusRoutes)];
         BusRouteStops = new int[Math.Max(0, caps.MaxBusRoutes) * Math.Max(0, caps.MaxBusStopsPerRoute)];
+        MaxStopsPerRoute = Math.Max(0, caps.MaxBusStopsPerRoute);
         NodeTicket = new uint[nodes];
         OutReserved = new float[lanes];
         LaneGateNode = new int[lanes];
@@ -223,6 +228,41 @@ internal sealed partial class NetworkStore
         }
     }
 
+    /// <summary>Предел остановок одного маршрута (<c>max_bus_stops_per_route</c>): больше - <c>Capacity</c> у <c>InsertBusStop</c> (T9).</summary>
+    public readonly int MaxStopsPerRoute;
+
+    /// <summary>
+    /// Остановка на позиции <paramref name="k"/> маршрута <paramref name="route"/> (T9: косвенно через <see cref="BusRouteStops"/>). У сети генератора <c>BusRouteStops</c> - тождество,
+    /// поэтому порядок остановок маршрута - порядок глобальных индексов; после правок игрока это уже не так, и порядок на маршруте даёт только эта функция и <see cref="StopPos"/>.
+    /// </summary>
+    public int RouteStop(int route, int k) => BusRouteStops[BusRoutes[route].FirstStop + k];
+
+    /// <summary>Позиция остановки <paramref name="stop"/> в её маршруте (<c>BusStopData.Route</c>) или -1: остановка мертва, маршрута нет или в списке маршрута её нет. O(остановок маршрута).</summary>
+    public int StopPos(int stop)
+    {
+        if (!BusStopAlive(stop))
+        {
+            return -1;
+        }
+
+        int r = BusStops[stop].Route;
+        if (!BusRouteAlive(r))
+        {
+            return -1;
+        }
+
+        ref readonly BusRouteData br = ref BusRoutes[r];
+        for (int k = 0; k < br.StopCount; k++)
+        {
+            if (BusRouteStops[br.FirstStop + k] == stop)
+            {
+                return k;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>++ при каждом изменении сети (клиент перестраивает меши по смене).</summary>
     public int Version { get; internal set; }
 
@@ -250,7 +290,13 @@ internal sealed partial class NetworkStore
         Profiles != null ? Profiles.ViewElems : default,
         Profiles?.ModuleMm ?? 0,
         gridOriginX,
-        gridOriginZ);
+        gridOriginZ,
+        new ReadOnlySpan<int>(NodeArms, 0, NodeArmCount),
+        new ReadOnlySpan<byte>(ArmFlags, 0, NodeArmCount),
+        LanePointY != null ? new ReadOnlySpan<float>(LanePointY, 0, LanePointCount) : default,
+        LaneGrade != null ? new ReadOnlySpan<float>(LaneGrade, 0, LaneCount) : default,
+        new ReadOnlySpan<Vec2>(SegmentPoints, 0, SegmentPointCount),
+        SegmentPointY != null ? new ReadOnlySpan<float>(SegmentPointY, 0, SegmentPointCount) : default);
 
     /// <summary>Раздел профилей хэша (только режим профилей, ADR-0030): каталог, <c>Segment.Profile</c> и <c>Lane.Width</c> всех слотов.</summary>
     private void AddProfileStateToHash(ref Fnv1a64 h)
@@ -353,6 +399,49 @@ internal sealed partial class NetworkStore
             AddProfileStateToHash(ref h);
         }
 
+        if (HasCustomDeny())
+        {
+            AddAccessStateToHash(ref h);
+        }
+
         return h.Value;
+    }
+
+    // Есть ли маска запрета, не видимая через Flags (vehicle-classes.md §5): у полосы - не 0 и не автобусная (её видно по зеркалу BusOnly), у улицы - не 0.
+    private bool HasCustomDeny()
+    {
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            if (Segments[i].Deny != 0)
+            {
+                return true;
+            }
+        }
+
+        for (int i = 0; i < LaneCount; i++)
+        {
+            byte d = Lanes[i].Deny;
+            if (d != 0 && d != LaneDeny.BusLane)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Раздел масок доступа (VC2): <c>Segment.Deny</c> и <c>Lane.Deny</c> всех слотов; только при масках, отличных от 0 и автобусной, - иначе хэш прежний.</summary>
+    private void AddAccessStateToHash(ref Fnv1a64 h)
+    {
+        h.Add(0x59_4E_45_44);   // метка раздела "DENY"
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            h.Add(Segments[i].Deny);
+        }
+
+        for (int i = 0; i < LaneCount; i++)
+        {
+            h.Add(Lanes[i].Deny);
+        }
     }
 }

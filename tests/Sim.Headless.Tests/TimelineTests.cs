@@ -176,14 +176,15 @@ public class TimelineTests
     }
 
     [Fact]
-    public void Timeline_ToolWithoutImplementation_IsRejectedNotSupported_NoThrow()
+    public void Timeline_RejectedTool_IsReported_NoThrow()
     {
-        string json = Doc("\"api_version\": 1, \"timeline\": [ { \"tick\": 20, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 30 } } ]");
+        // Разрез в 3 м от узла (T5: SplitRoad реализован) - отказ TooShort; раньше пример «не реализованной» команды.
+        string json = Doc("\"api_version\": 1, \"timeline\": [ { \"tick\": 20, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 3 } } ]");
         ulong h = RunTimeline(json, 1, 60, out TimelineRunner r);
         Assert.NotEqual(0UL, h);
         TimelineReject rej = Assert.Single(r.Rejects);
         Assert.Equal(CommandKind.SplitRoad, rej.Kind);
-        Assert.Equal(RejectReason.NotSupported, rej.Reason);
+        Assert.Equal(RejectReason.TooShort, rej.Reason);
         Assert.Equal(20, rej.Tick);
         var w = new StringWriter();
         r.WriteSummary(w);
@@ -276,6 +277,7 @@ public class TimelineTests
             "{ \"kind\": \"remove_bus_route\", \"route\": { \"index\": 0 } }",
             "{ \"kind\": \"set_bus_route_params\", \"route\": { \"index\": 0 }, \"headway_ticks\": 300 }",
             "{ \"kind\": \"merge_at_node\", \"node\": { \"index\": 0 } }",
+            "{ \"kind\": \"set_street_access\", \"seg\": { \"index\": 0 }, \"deny\": 8 }",
         ];
         string items = string.Join(", ", cmds.Select((c, i) => "{ \"tick\": " + (i * 10) + ", \"cmd\": " + c + " }"));
         LoadedScenario sc = Parse(Doc("\"api_version\": 1, \"timeline\": [ " + items + " ]"));
@@ -288,6 +290,8 @@ public class TimelineTests
         // JSON-форма -> payload, а не просто «разобралось»: ссылки на сущности
         Assert.Equal(RemoveRoadFlags.KeepNodes, sc.Timeline[9].Cmd.RemoveRoad.Flags);
         Assert.Equal(0, sc.Timeline[9].Cmd.RemoveRoad.Seg.Index);
+        Assert.Equal(8, sc.Timeline[cmds.Length - 1].Cmd.SetStreetAccess.Deny);   // VC2: маска по умолчанию - car | bus | van | truck
+        Assert.Equal(LaneDeny.StreetWritable, sc.Timeline[cmds.Length - 1].Cmd.SetStreetAccess.Mask);
     }
 
     [Fact]
@@ -320,14 +324,14 @@ public class TimelineTests
         {
             File.WriteAllText(Path.Combine(dir, "vehicle-types.json"), Types);
             string json = TimelineDoc().TrimEnd().TrimEnd('}').TrimEnd().TrimEnd(']')
-                + ", { \"tick\": 350, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 30 } } ] }";
+                + ", { \"tick\": 350, \"cmd\": { \"kind\": \"split_road\", \"seg\": { \"index\": 0, \"generation\": 1 }, \"s\": 3 } } ] }";
             File.WriteAllText(Path.Combine(dir, "tl.json"), json);
             var output = new StringWriter();
             var error = new StringWriter();
             int code = Sim.Headless.Bench.RunCommand.Run(["run", "--scenario", Path.Combine(dir, "tl.json"), "--ticks", "400"], output, error);
             Assert.True(code == 0, error.ToString());
             Assert.Contains("timeline: 4/4 commands enqueued, 1 rejected, 0 dropped", output.ToString(), StringComparison.Ordinal);
-            Assert.Contains("kind=SplitRoad reason=NotSupported", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains("kind=SplitRoad reason=TooShort", output.ToString(), StringComparison.Ordinal);
 
             var hash = new StringWriter();
             Assert.Equal(0, Sim.Headless.Bench.HashCommand.Run(["hash", "--scenario", Path.Combine(dir, "tl.json"), "--ticks", "700", "--threads", "2"], hash, error));

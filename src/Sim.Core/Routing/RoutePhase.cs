@@ -62,10 +62,16 @@ internal static class RoutePhase
         };
 
         EnqueueTimed(w);
+        bool batched = rt.Batch.Prepare(budget.MaxQueries, budget.MaxWork);   // (A)+(B) routing-parallel.md 3.2-3.3; дальше (C) - прежний цикл
         RerouteVehicles(w, rt, ref budget);
         if (!budget.Stopped)
         {
             RouteTrips(w, rt, ref budget);
+        }
+
+        if (batched)
+        {
+            rt.Batch.Finish();
         }
 
         if (budget.Stopped)
@@ -262,7 +268,7 @@ internal static class RoutePhase
 
             RouteHandle h = RouteHandle.Null;
             BuildStatus st = lane >= 0
-                ? rt.Build(lane, s, v.DestLane[i], v.DestS[i], w.Tick, out h)
+                ? rt.BuildBatched(lane, s, v.DestLane[i], v.DestS[i], v.Access(i), w.Tick, out h)
                 : BuildStatus.NoPath;
             if (st == BuildStatus.Deferred)
             {
@@ -347,7 +353,7 @@ internal static class RoutePhase
         }
 
         float oldCost = rt.RemainingCost(i);
-        BuildStatus st = rt.Build(lane, v.S[i], v.DestLane[i], v.DestS[i], w.Tick, out RouteHandle h);
+        BuildStatus st = rt.BuildBatched(lane, v.S[i], v.DestLane[i], v.DestS[i], v.Access(i), w.Tick, out RouteHandle h);
         if (st != BuildStatus.Ok)
         {
             return st;
@@ -392,7 +398,8 @@ internal static class RoutePhase
             }
 
             seen++;
-            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref w.RngRouting, out t.DestLane, out t.DestS))
+            byte access = w.TypeAccess[t.Type];
+            if (t.DestLane < 0 && !Destinations.Pick(net, t.ToZone, ref w.RngRouting, out t.DestLane, out t.DestS, access))
             {
                 k++; // у зоны назначения нет полос: поездка ждёт (как зона без полос спавна), бюджет не тратим
                 continue;
@@ -418,7 +425,7 @@ internal static class RoutePhase
                 return;
             }
 
-            BuildStatus st = rt.Build(t.FromLane, t.FromS, t.DestLane, t.DestS, w.Tick, out RouteHandle h);
+            BuildStatus st = rt.BuildBatched(t.FromLane, t.FromS, t.DestLane, t.DestS, access, w.Tick, out RouteHandle h);
             if (st == BuildStatus.Deferred)
             {
                 trips.Set(k, in t);
@@ -431,9 +438,13 @@ internal static class RoutePhase
             {
                 trips.RemoveAt(k); // не на дороге: поездка отбрасывается (RouteFailed считает роутер)
                 w.Counters.TripsDropped++;
-                if (t.ResidentRef != 0)
+                if (t.ResidentRef > 0)
                 {
                     City.TripLegs.OnTripDropped(w, t.ResidentRef - 1, in t);   // нога жителя без пути: другой способ или отмена тура (очередь поездок не трогается)
+                }
+                else if (t.ResidentRef < 0)
+                {
+                    City.Utilities.OnTripDropped(w, -t.ResidentRef - 1);   // бригада ЖКХ без пути (building-lifecycle.md §2.10)
                 }
 
                 continue;

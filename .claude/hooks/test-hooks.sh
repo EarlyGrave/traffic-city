@@ -87,9 +87,37 @@ rm -rf "$TMP"
 echo "== stop-verify =="
 t "stop_hook_active=true -> exit 0" 0 stop-verify.sh '{"hook_event_name":"Stop","stop_hook_active":true}'
 
+# режим прототипа: временный репо с незакоммиченным .cs; флаг есть -> ранний выход с сообщением, нет -> ветка не берётся
+PT=$(mktemp -d 2>/dev/null || echo "/tmp/th-pt.$$")
+git init -q "$PT" >/dev/null 2>&1
+( cd "$PT" && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'class A {}\n' > "$PT/A.cs"
+( cd "$PT" && git add A.cs ) >/dev/null 2>&1
+TOTAL=$((TOTAL + 1))
+PT_OUT=$(cd "$PT" && mkdir -p .claude && printf '# flag\n' > .claude/prototype-mode && printf '{"hook_event_name":"Stop"}' | bash "$HERE/stop-verify.sh" 2>&1 >/dev/null; echo "rc=$?")
+case "$PT_OUT" in *"режим прототипа — проверка в конце волны"*"rc=0") echo "PASS  stop-verify: режим прототипа (флаг есть) -> exit 0 с сообщением" ;;
+  *) echo "FAIL  stop-verify: режим прототипа (флаг есть): $PT_OUT"; FAILS=$((FAILS + 1)) ;; esac
+TOTAL=$((TOTAL + 1))
+PT_OUT=$(cd "$PT" && rm -f .claude/prototype-mode && printf '{"hook_event_name":"Stop"}' | bash "$HERE/stop-verify.sh" 2>&1 >/dev/null; echo "rc=$?")
+case "$PT_OUT" in *"режим прототипа"*) echo "FAIL  stop-verify: без флага сообщение прототипа не должно печататься: $PT_OUT"; FAILS=$((FAILS + 1)) ;;
+  *"rc=0") echo "PASS  stop-verify: без флага -> строгая ветка (exit 0, нет сообщения прототипа)" ;;
+  *) echo "FAIL  stop-verify: без флага: $PT_OUT"; FAILS=$((FAILS + 1)) ;; esac
+rm -rf "$PT"
+
 echo "== post-build / session-start (не-.cs и не-облако) =="
 t "post-build: не .cs -> allow" 0 post-build.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
 t "session-start вне облака -> exit 0" 0 session-start.sh '{"hook_event_name":"SessionStart"}'
+# в облаке core.hooksPath ставится во временном git-репо (без global.json, чтобы проверить ранний шаг)
+SS_TMP=$(mktemp -d 2>/dev/null || echo "/tmp/th-ss.$$")
+git init -q "$SS_TMP" 2>/dev/null
+TOTAL=$((TOTAL + 1))
+if (cd "$SS_TMP" && printf '%s' '{"hook_event_name":"SessionStart"}' | CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$SS_TMP" bash "$HERE/session-start.sh" >/dev/null 2>&1) \
+   && [ "$(git -C "$SS_TMP" config --get core.hooksPath)" = .githooks ]; then
+  echo "PASS  session-start в облаке -> core.hooksPath = .githooks"
+else
+  echo "FAIL  session-start в облаке -> core.hooksPath не задан"; FAILS=$((FAILS + 1))
+fi
+rm -rf "$SS_TMP"
 
 echo "== post-rust =="
 t "post-rust: не .rs -> allow" 0 post-rust.sh "{$W,\"tool_input\":{\"file_path\":\"$P/docs/a.md\",\"content\":\"a\"}}"
@@ -106,6 +134,21 @@ if command -v cargo >/dev/null 2>&1 || [ -x /root/.cargo/bin/cargo ]; then
 else
   echo "SKIP  post-rust: cargo не найден"
 fi
+
+echo "== git-lfs обёртки (.githooks) =="
+LFS_EMPTY=$(mktemp -d 2>/dev/null || echo "/tmp/th-lfs.$$")
+mkdir -p "$LFS_EMPTY"
+for lfs_hook in pre-push post-checkout post-commit post-merge; do
+  TOTAL=$((TOTAL + 1))
+  lfs_path="$P/.githooks/$lfs_hook"
+  lfs_got=$(cd "$P" && PATH="$LFS_EMPTY" /bin/sh "$lfs_path" </dev/null >/dev/null 2>&1; echo $?)
+  if [ -f "$lfs_path" ] && [ -x "$lfs_path" ] && [ "$lfs_got" = 0 ]; then
+    echo "PASS  .githooks/$lfs_hook есть, исполняемый, без git-lfs exit 0"
+  else
+    echo "FAIL  .githooks/$lfs_hook (нет, не исполняемый или не exit 0 без git-lfs)"; FAILS=$((FAILS + 1))
+  fi
+done
+rm -rf "$LFS_EMPTY"
 
 echo
 echo "Итого: $((TOTAL - FAILS))/$TOTAL PASS"

@@ -29,6 +29,7 @@ internal static class Growth
         }
 
         Parking.ParkingBuild.OnBuildingActive(w, c, bi);   // стоянка здания (parking.md §3); без режима - ничего
+        CityLife.OnComplete(c, bi);   // building-lifecycle.md §2.2: новое здание; без режима - ничего
         w.Counters.BuildingsBuilt++;
     }
 
@@ -61,6 +62,10 @@ internal static class Growth
             }
 
             b.Jobs[bi] = 0;
+            if (c.Types.Rows[b.Type[bi]].Kind == LotZone.Service)
+            {
+                Utilities.OnDepotLost(c, bi);   // депо не работает: бригады в депо распущены (building-lifecycle.md §2.10)
+            }
         }
 
         b.State[bi] = (byte)BuildingState.Abandoned;
@@ -84,6 +89,7 @@ internal static class Growth
             b.RevenueDay[s] = 0;
             b.CostDay[s] = 0;
             b.VisitsDay[s] = 0;
+            b.ArrivalsDay[s] = 0;   // без режима всегда 0
         }
     }
 
@@ -91,12 +97,40 @@ internal static class Growth
     public static void Daily(World w, CityWorld c)
     {
         ClearYesterday(c);
+        c.Fields?.Swap();   // поля квартала (building-lifecycle.md §2.6): накопитель прохода по зданиям становится действующим
+        Market m = c.Market;
+        m.Sync(c);
+        if (c.Cfg.Zoning.GrowthStep != 0)
+        {
+            RemoveAbandoned(w, c);   // спрос, въезд и рост идут по часам (Hourly)
+            c.Outside?.DayDecay(m.TotalVac);   // затухание внешних мест - раз в сутки и при росте по часам (§2.4)
+            return;
+        }
+
+        UpdateDemand(c, m);
+        RemoveAbandoned(w, c);
+        c.Outside?.DayDecay(m.TotalVac);   // затухание внешних мест по своим вакансиям города (§2.4)
+        Grow(w, c, m, 1);
+    }
+
+    /// <summary>
+    /// <c>zoning.growth_step = "hour"</c>: спрос, въезд и рост зданий на сдвиге игрового часа (последний тик часа, в том числе в сутки 0); лимиты суток делятся на 24 с округлением вверх.
+    /// Остальной дневной проход (фирмы, жители, снос) остаётся суточным.
+    /// </summary>
+    public static void Hourly(World w, CityWorld c)
+    {
         Market m = c.Market;
         m.Sync(c);
         UpdateDemand(c, m);
-        RemoveAbandoned(w, c);
+        Grow(w, c, m, 24);
+    }
+
+    /// <summary>Въезд и рост с лимитами суток, делёнными на <paramref name="parts"/> (1 - суточный шаг, 24 - часовой).</summary>
+    private static void Grow(World w, CityWorld c, Market m, int parts)
+    {
         int pop = c.Residents.AliveCount;
-        long cap = ((long)c.Cfg.Residents.MaxImmigrantsPerDayQ16 * pop) >> 16;
+        long cap = Math.Max(c.Cfg.Residents.MinImmigrantsPerDay, ((long)c.Cfg.Residents.MaxImmigrantsPerDayQ16 * pop) >> 16);
+        cap = (cap + parts - 1) / parts;
         int want = (int)Math.Min(Math.Max(1L, cap), Math.Max(0, c.DemandR));
         if (c.DemandR > 0 && want > 0)
         {
@@ -105,7 +139,7 @@ internal static class Growth
 
         if (c.Cfg.Zoning.Growth)
         {
-            Build(w, c, m);
+            Build(w, c, m, parts);
         }
     }
 
@@ -117,7 +151,7 @@ internal static class Growth
         long seekers = 0;
         for (int r = 0; r < res.HighWater; r++)
         {
-            if (res.Pool.IsAlive(r) && (res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] < 0)
+            if (res.Pool.IsAlive(r) && (res.Flags[r] & ResidentFlags.Labour) != 0 && res.Work[r] == -1)
             {
                 seekers++;
             }
@@ -138,7 +172,7 @@ internal static class Growth
         long excess = Math.Max(0L, visits - (c.Cfg.Economy.CTargetPct * dayCap / 100));
         long rawC = c.UnservedDayTotal[y] + excess;
         long rawI = seekers - m.TotalVac;
-        long rawR = m.TotalVac - seekers + c.Cfg.Residents.RBias;
+        long rawR = m.TotalVac + (c.Outside?.TotalVac() ?? 0) - seekers + c.Cfg.Residents.RBias;   // внешние вакансии - только в спрос R (ADR-0037), в I не входят
         int shift = c.Cfg.Economy.EwmaShift;
         c.DemandR += (int)((Clamp(rawR) - c.DemandR) >> shift);
         c.DemandC += (int)((Clamp(rawC) - c.DemandC) >> shift);
@@ -159,12 +193,37 @@ internal static class Growth
         CityResidents res = c.Residents;
         bool[] marked = c.Market.Removing;
         long vacate = (long)c.Cfg.Residents.VacateDays * c.DayTicks;
+        bool life = c.Cfg.Lifecycle.Enabled;
         int n = 0;
         for (int i = 0; i < b.HighWater; i++)
         {
             marked[i] = false;
             if (!b.IsAlive(i) || b.State[i] != (byte)BuildingState.Abandoned)
             {
+                continue;
+            }
+
+            if (life)
+            {
+                // building-lifecycle.md §2.3: заброшенное стоит; удаляются только снесённые игроком и рассыпавшиеся, vacate_days не действует
+                if (!CityLife.ToRemove(c, i))
+                {
+                    continue;
+                }
+
+                if (b.Occupants[i] == 0)
+                {
+                    marked[i] = true;
+                    n++;
+                }
+                else
+                {
+                    for (int r = b.HeadRes[i]; r >= 0; r = res.NextHome[r])
+                    {
+                        res.Flags[r] |= ResidentFlags.Leaving;
+                    }
+                }
+
                 continue;
             }
 
@@ -249,6 +308,12 @@ internal static class Growth
 
             marked[i] = false;
             int lot = b.Lot[i];
+            ServiceLevels.OnBuildingRemoved(c, i);   // станция снесена: её пристройки возвращаются в обычные участки (SR5)
+            if (life)
+            {
+                CityLife.OnRemove(w, c, i);   // рассыпавшееся - дешёвая очистка из казны (§2.5)
+            }
+
             c.Ledger.Transfer(c.Ledger.AccountOfBuilding(i), c.Ledger.ExternalAccount, b.Account[i], FlowKind.Emigration);
             Parking.ParkingBuild.OnBuildingRemoved(w, c, i);   // стоянка здания снесена (до Destroy: слот ещё хранит участок)
             b.Destroy(i);
@@ -264,11 +329,42 @@ internal static class Growth
 
     // ------------------------------------------------------------------ рост
 
+    /// <summary>
+    /// Балл R ячейки без своих рабочих мест (ADR-0037): при внешних подключениях с вакансиями - минус ским машиной до ближайшего узла плюс <c>job_cost</c>, иначе «нельзя».
+    /// Без секции <c>outside</c> - прежний <c>int.MinValue</c>.
+    /// </summary>
+    private static int OutsideScoreR(CityWorld c, Skims s, int cell)
+    {
+        OutsideState? o = c.Outside;
+        if (o == null)
+        {
+            return int.MinValue;
+        }
+
+        int best = int.MaxValue;
+        for (int k = 0; k < o.Count; k++)
+        {
+            int lot = c.Lots.Capacity + k;
+            if (o.Vac(k) <= 0 || c.Lots.CarLane[lot] < 0)
+            {
+                continue;
+            }
+
+            int v = s.Get(cell, c.Lots.Cell[lot], TravelMode.Car, 0);
+            if (v > 0)
+            {
+                best = Math.Min(best, v + o.JobCostDs[k]);
+            }
+        }
+
+        return best == int.MaxValue ? int.MinValue : -best;
+    }
+
     /// <summary>Новые здания (§8.3): для каждой зоны с положительным спросом - лучшие по баллу доступности пустые участки, не больше <c>max_new_buildings_per_day</c> в сумме.</summary>
-    private static void Build(World w, CityWorld c, Market m)
+    private static void Build(World w, CityWorld c, Market m, int parts)
     {
         CityDesc cfg = c.Cfg;
-        int maxNew = Math.Max(1, cfg.Zoning.MaxNewBuildingsPerDay);
+        int maxNew = Math.Max(1, (cfg.Zoning.MaxNewBuildingsPerDay + parts - 1) / parts);
         long freeHousing = m.TotalFree;
         long needR = c.DemandR - freeHousing;
         long needC = c.DemandC;
@@ -296,7 +392,7 @@ internal static class Growth
         int theta = cfg.Choice.ThetaMode64;
         for (int cell = 0; cell < s.Cells; cell++)
         {
-            m.ScoreR[cell] = s.LsJobs[cell] == Skims.NoLs ? int.MinValue : -s.LsJobs[cell];
+            m.ScoreR[cell] = s.LsJobs[cell] == Skims.NoLs ? OutsideScoreR(c, s, cell) : -s.LsJobs[cell];
             int ls = Accessibility.Combined(s, cell, true, theta);
             m.ScoreC[cell] = ls == Skims.NoLs ? int.MinValue : -ls;
         }
@@ -308,7 +404,13 @@ internal static class Growth
         for (int i = 0; i < l.Count; i++)
         {
             int z = l.Zone[i] - 1;
-            if (z < 0 || z > 2 || want[z] == 0 || l.Building[i] >= 0 || (l.Flags[i] & LotFlags.Lost) != 0)
+            if (z < 0 || z > 2 || want[z] == 0 || (l.Flags[i] & (LotFlags.Lost | LotFlags.Annex)) != 0)
+            {
+                continue;
+            }
+
+            // Занятый участок - только заброшенное здание, годное к повторному заселению (building-lifecycle.md §2.3); без режима - как раньше
+            if (l.Building[i] >= 0 && !(cfg.Lifecycle.Enabled && CityLife.Resettable(c, l.Building[i], (LotZone)l.Zone[i])))
             {
                 continue;
             }
@@ -391,6 +493,12 @@ internal static class Growth
     private static bool Place(World w, CityWorld c, int lot)
     {
         LotStore l = c.Lots;
+        if (l.Building[lot] >= 0)
+        {
+            CityLife.Resettle(w, c, l.Building[lot]);   // Build берёт занятый участок только с годной заброшкой (режим city.lifecycle)
+            return true;
+        }
+
         int type = c.Types.Find((LotZone)l.Zone[lot], l.Density[lot], lot);
         if (type < 0)
         {
@@ -402,6 +510,7 @@ internal static class Growth
             return false;
         }
 
+        CityLife.OnCreate(c, bi);
         l.Building[lot] = bi;
         l.Version++;
         if (c.Types.Rows[type].Kind != LotZone.Residential)

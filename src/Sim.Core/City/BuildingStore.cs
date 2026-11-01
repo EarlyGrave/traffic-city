@@ -29,6 +29,14 @@ internal sealed class BuildingStore
     public readonly short[] LossDays;
     public readonly short[] VacantDays;
 
+    // ---- жизнь здания (building-lifecycle.md §2.2, §3): только в режиме city.lifecycle, иначе нули ----
+    public readonly ushort[] Cond;         // состояние, б.п. (10 000 = 100 %)
+    public readonly ushort[] Ceil;         // потолок состояния, б.п.
+    public readonly int[] BornDay;         // игровые сутки создания
+    public readonly byte[] LifeFlags;      // BuildingLifeFlags
+    public readonly int[] Signif;          // значимость: накопитель с утечкой (§2.6)
+    public readonly int[] ArrivalsDay;     // [2 * Capacity] прибытия за сутки, слот (i << 1) | (day & 1)
+
     /// <summary>Версия данных для клиента (<c>BuildingsVersion</c>): растёт при создании, смене состояния и сносе.</summary>
     public int Version;
 
@@ -52,6 +60,12 @@ internal sealed class BuildingStore
         CostDay = new long[2 * capacity];
         LossDays = new short[capacity];
         VacantDays = new short[capacity];
+        Cond = new ushort[capacity];
+        Ceil = new ushort[capacity];
+        BornDay = new int[capacity];
+        LifeFlags = new byte[capacity];
+        Signif = new int[capacity];
+        ArrivalsDay = new int[2 * capacity];
         for (int i = 0; i < capacity; i++)
         {
             ResetSlot(i);
@@ -114,5 +128,12 @@ internal sealed class BuildingStore
         CostDay[(2 * i) + 1] = 0;
         LossDays[i] = 0;
         VacantDays[i] = 0;
+        Cond[i] = 0;
+        Ceil[i] = 0;
+        BornDay[i] = 0;
+        LifeFlags[i] = 0;
+        Signif[i] = 0;
+        ArrivalsDay[2 * i] = 0;
+        ArrivalsDay[(2 * i) + 1] = 0;
     }
 }

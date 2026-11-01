@@ -12,7 +12,7 @@ ADR: `docs/adr/0022-rust-pilot.md`. Связанные: `core-api.md` §8 (PCG32
   (ADR-0020: сеть пешеходов производная — сетевой хэш её не включает), воркеры.
 - Успех: (1) все golden-файлы §5 совпадают в C# и Rust побитово (кроме `headings_hash`, §6.3); (2) `ffi-smoke` в одном процессе получает
   от Rust тот же `network_hash`, что C#, и те же размеры struct; (3) CI `rust` зелёный; (4) отчёт R8 — список нарушений правил портируемости,
-  найденных при порте (каждое → строка в `lessons.md` или правка `core-api.md` §9).
+  найденных при порте (каждое → строка в `lessons/rust.md` или правка `core-api.md` §9).
 
 ## 1. Окружение (проверено 2026-10-25, облачный контейнер)
 | Что | Факт |
@@ -256,7 +256,7 @@ Rust-задачи не трогают C#-файлы и наоборот; R2 тр
 | R5 | Конфликты: `ConnectorStore.BuildConflicts`/`BuildAll` (пересечения полилиний, `SMineCm/SOtherCm`, маски), `conflicts_hash` | `rust/crates/tc-core/src/intersections/**` | `conflicts_hash` совпадает со всеми golden | R4 |
 | R6 | `tc-ffi` + `include/tc_sim.h` (§2) + `rust/ffi-smoke` (C#, `[DllImport]`, `SafeHandle`, зеркальные struct) | `rust/crates/tc-ffi/**`, `rust/ffi-smoke/**` | `ffi-smoke` на всех golden-сценариях: размеры struct, `network_hash` == C#, `create_status` == C#, `step(100)`, переполнение очереди, NULL-аргументы → коды, тестовая паника (cfg-фича `test-panic`) → `TC_ERR_PANIC`, затем `TC_ERR_POISONED`, `destroy` ок; `dotnet format rust/ffi-smoke --verify-no-changes` | R4 (R5 — для `conflicts`) |
 | R7 | (опц.) IDM-вектора: чистая функция `Idm` C# → Rust; `util.json` + 10 000 наборов аргументов из PCG (скорости, зазоры, параметры типов `vehicle-types.json`, `delta` ∈ {4, 2}) → биты ускорения | `rust/crates/tc-core/src/rules/idm.rs`; генерация в команде `golden` (C#, 1 файл) | побитово на всех наборах; `delta ∉ {2,4}` (`MathF.Pow`) — отдельный счётчик расхождений, не гейт | R1, R2 |
-| R8 | haiku-верификатор + отчёт: полный `rust-check.sh`, `dotnet test`, `ffi-smoke`, время CI-job; сводка расхождений, найденных в R3–R7, и их причин → `docs/REPORT-rust-pilot.md` (оркестратор), строки в `lessons.md`, правки `core-api.md` §9 | отчёт | цифры только из прогонов | R1–R6 (R7 — если делали) |
+| R8 | haiku-верификатор + отчёт: полный `rust-check.sh`, `dotnet test`, `ffi-smoke`, время CI-job; сводка расхождений, найденных в R3–R7, и их причин → `docs/REPORT-rust-pilot.md` (оркестратор), строки в `lessons/rust.md`, правки `core-api.md` §9 | отчёт | цифры только из прогонов | R1–R6 (R7 — если делали) |
 | R-CI | job `rust` в `ci.yml` (§9) — вместе с R1 (fmt/clippy/test) и дополнить в R6 (ffi-smoke) | `.github/workflows/ci.yml` | job зелёный в PR | R1, R6 |
 
 Параллельно можно: R1 ‖ R2 (разные языки и файлы). R3 → R4 → R5 последовательно (одни модули), R6 после R4, R7 после R1+R2 параллельно R3–R5.

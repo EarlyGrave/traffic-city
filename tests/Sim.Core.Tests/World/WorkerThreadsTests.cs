@@ -73,6 +73,58 @@ public class WorkerThreadsTests
         Assert.Equal((long)runs * count, total);
     }
 
+    // P1 (routing-parallel.md 3.3): чанк 1 - каждый из 11 тяжёлых элементов отдельным чанком, ровно один раз за запуск.
+    [Fact]
+    public void Pool_ChunkSizeOne_ElevenItems_EachExactlyOnce()
+    {
+        using var pool = new WorkerPool(4);
+        var job = new FillJob(11, 4);
+        pool.Wake();
+        const int runs = 2000;
+        for (int r = 0; r < runs; r++)
+        {
+            pool.Run(job, 11, 1);
+        }
+
+        pool.Rest();
+        for (int i = 0; i < 11; i++)
+        {
+            Assert.Equal(runs, job.Marks[i]);
+        }
+
+        long total = 0;
+        foreach (long x in job.PerWorker)
+        {
+            total += x;
+        }
+
+        Assert.Equal(11L * runs, total);
+    }
+
+    [Fact]
+    public void Pool_ChunkSizeVariants_CoverEveryIndexOnce()
+    {
+        using var pool = new WorkerPool(3);
+        var job = new FillJob(1000, 3);
+        pool.Wake();
+        int[] sizes = [1, 7, 256, 5000];
+        foreach (int cs in sizes)
+        {
+            Array.Clear(job.Marks);
+            for (int r = 0; r < 50; r++)
+            {
+                pool.Run(job, 1000, cs);
+            }
+
+            for (int i = 0; i < 1000; i++)
+            {
+                Assert.Equal(50, job.Marks[i]);
+            }
+        }
+
+        pool.Rest();
+    }
+
     [Fact]
     public void Pool_WorksAcrossWakeRestCycles_AndDisposeIsIdempotent()
     {

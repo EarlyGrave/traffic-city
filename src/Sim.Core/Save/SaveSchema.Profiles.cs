@@ -171,6 +171,26 @@ internal static partial class SaveSchema
     private static ColumnDef LaneWidthColumn() =>
         Col.Field<LaneData>(19, "Width", w => w.Net.Lanes, _laneN, "LaneCount", nameof(LaneData.Width));
 
+    // ---- NSEG 17 / NLAN 20 (w16, vehicle-classes.md §5): маски запрета классов ТС улицы и полосы; зеркало BusOnly - в Flags ----
+    private static ColumnDef SegmentDenyColumn() =>
+        Col.Field<SegmentData>(17, "Deny", w => w.Net.Segments, _segN, "SegmentCount", nameof(SegmentData.Deny));
+
+    // ---- PARM 278-279, CNTR 174-175 (VC3, окно w16 открыто; vehicle-classes.md §5) ----
+    private static ColumnDef[] VehicleClassParams() => new[]
+    {
+        Col.Scalar<float>(278, "RulesEmergencyRedSpeed", w => w.Rules.EmergencyRedSpeed, (c, v) => c.Rules.EmergencyRedSpeed = v, "4.17"),
+        Col.Scalar<byte>(279, "DemandSpecialOnCall", w => w.Demand.SpecialOnCall ? (byte)1 : (byte)0, (c, v) => c.Desc.Demand.SpecialOnCall = v != 0, "0"),
+    };
+
+    private static ColumnDef[] VehicleClassCounters() => new[]
+    {
+        Col.Scalar<long>(174, "OnCallRedGrants", w => w.Counters.OnCallRedGrants, (c, v) => c.W.Counters.OnCallRedGrants = v),
+        Col.Scalar<long>(175, "DenyDescends", w => w.Counters.DenyDescends, (c, v) => c.W.Counters.DenyDescends = v),
+    };
+
+    private static ColumnDef LaneDenyColumn() =>
+        Col.Field<LaneData>(20, "Deny", w => w.Net.Lanes, _laneN, "LaneCount", nameof(LaneData.Deny));
+
     // ---- LOTS 11-15 (w8, road-profiles.md §4.4): участки на мировой сетке; объявлены сразу, чтобы RP5 не поднимал версию ----
     private static ColumnDef[] LotGridColumns() => new[]
     {

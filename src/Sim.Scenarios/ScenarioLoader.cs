@@ -31,6 +31,18 @@ public sealed class LoadedScenario
 
     public ScenarioDesc Desc { get; }
 
+    /// <summary>Строковые id вех секции <c>progression</c> (индекс = веха ядра); пусто без прогрессии. Тексты и названия вех клиент берёт по id (progression.md §4.1).</summary>
+    public string[] MilestoneIds { get; init; } = [];
+
+    /// <summary>Метаданные карточки «Новой игры» (<c>meta</c>, scenarios-mode.md §1.2); <c>null</c> - сценарий в меню не показывается.</summary>
+    public ScenarioMeta? Meta { get; init; }
+
+    /// <summary>Предупреждения загрузчика (не ошибки): напр. секции, которые ядро пока не исполняет (<c>terrain.water.sources</c>, <c>terrain.stamps</c>).</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>Штампы рельефа (<c>terrain.stamps</c>, terrain.md §9.2), разобранные и проверенные; ядро их пока не исполняет (в <see cref="Desc"/> не входят).</summary>
+    public IReadOnlyList<TerrainStampDesc> TerrainStamps { get; init; } = [];
+
     /// <summary>Таймлайн команд (<c>timeline</c>, modding.md §3.5); пустой, если ключа нет. В <see cref="Desc"/> не входит.</summary>
     public IReadOnlyList<TimelineEntry> Timeline { get; }
 
@@ -80,7 +92,9 @@ public static partial class ScenarioLoader
         overrides ??= DefaultOverrides;
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         string text = ReadFile(path);
-        return Parse(text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides);
+        return Parse(
+            text, rel => ReadFile(Path.Combine(dir, rel)), Path.GetFileNameWithoutExtension(path), searchDirs ?? DefaultSearchDirs(dir), overrides,
+            rel => ReadBytes(Path.Combine(dir, rel)));
     }
 
     /// <summary>Поиск <c>content/</c> игры: вверх от <paramref name="startDir"/> и от текущего каталога (как <see cref="ScenarioLocator"/> ищет <c>scenarios/</c>).</summary>
@@ -99,7 +113,8 @@ public static partial class ScenarioLoader
 
     /// <summary>Разбор с каталогами пакетов для <c>format_version: 3</c> (<c>null</c> - v3 отвергается).</summary>
     public static LoadedScenario Parse(
-        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null)
+        string scenarioJson, Func<string, string> readRelativeFile, string defaultName, IReadOnlyList<PackageSearchDir>? searchDirs, ScenarioOverrides? overrides = null,
+        Func<string, byte[]>? readRelativeBytes = null)
     {
         using JsonDocument doc = OpenDoc(scenarioJson, "scenario");
         var root = new JsonObjectReader(doc.RootElement, "$");
@@ -143,6 +158,9 @@ public static partial class ScenarioLoader
         }
 
         JsonObjectReader? cityR = root.OptObject("city");
+        JsonObjectReader? lifeR = cityR?.OptObject(LifecycleKey);   // до ParseCity: Finish генератора города не должен счесть ключ лишним
+        JsonObjectReader? servR = cityR?.OptObject(ServicesKey);
+        JsonObjectReader? ageR = cityR?.OptObject(AgeKey);
         JsonObjectReader? netR = root.OptObject("network");
         if (v3 && cityR != null)
         {
@@ -200,8 +218,26 @@ public static partial class ScenarioLoader
         }
 
         CityDesc town = ParseTown(root, residents, catalog);
+        ParseLifecycle(lifeR, residents, ref town);
+        ParseServices(servR, ref town, catalog);
+        ParseAge(ageR, residents, ref town);
         ParkingDesc parking = ParseParking(root.OptObject(ParkingKey), residents);
+        ProgressionDesc progression = ParseProgression(root.OptObject(ProgressionKey), residents, roadProfiles, out string[] milestoneIds);
         ToolsDesc tools = ParseTools(root.OptObject("tools"));
+        var warnings = new List<string>();
+        TerrainDesc terrain = ParseTerrain(root.OptObject(TerrainKey), tools, readRelativeBytes, warnings, out TerrainStampDesc[] stamps);
+        ParseOutside(root.OptObject(OutsideKey), residents, network, tools, terrain.Enabled, ref town);
+        GoalsDesc goals = ParseGoals(root.OptObject(GoalsKey), residents, town.Economy.CityBudget, in progression, warnings);
+        ScenarioMeta? meta = ParseMeta(root.OptObject(MetaKey));
+        if (town.Outside.Count > 0 && parking.Enabled)
+        {
+            throw new ScenarioException("$.outside: not supported together with parking.model = \"resource\" yet");
+        }
+        if (town.Zoning.GridFromBounds != 0 && !tools.HasWorldBounds && !terrain.Enabled)
+        {
+            throw new ScenarioException("$.zoning.grid_from_bounds: requires tools.world_bounds (or terrain) to take the city grid from");
+        }
+
         SimCapacities caps = ParseCapacities(root.ReqObject("capacities"), routing, peds, residents, parking.Enabled);
         TimelineEntry[] timeline = Mods.Timeline.Parse(root, new Mods.Timeline.Context
         {
@@ -228,8 +264,11 @@ public static partial class ScenarioLoader
             Rules = rules,
             VehicleTypes = types,
             RoadProfiles = roadProfiles,
+            Progression = progression,
+            Goals = goals,
+            Terrain = terrain,
         };
-        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline);
+        return new LoadedScenario(name, typeNames, desc, catalog, packages, timeline) { MilestoneIds = milestoneIds, Warnings = warnings, TerrainStamps = stamps, Meta = meta };
     }
 
     // ---------------------------------------------------------------- units
@@ -246,6 +285,18 @@ public static partial class ScenarioLoader
         try
         {
             return File.ReadAllText(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new ScenarioException($"cannot read '{path}': {e.Message}", e);
+        }
+    }
+
+    private static byte[] ReadBytes(string path)
+    {
+        try
+        {
+            return File.ReadAllBytes(path);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -571,7 +622,10 @@ public static partial class ScenarioLoader
         {
             "car" => VehicleCategory.Car,
             "bus" => VehicleCategory.Bus,
-            _ => throw new ScenarioException($"{p}.category: expected \"car\" or \"bus\""),
+            "van" => VehicleCategory.Van,
+            "truck" => VehicleCategory.Truck,
+            "special" => VehicleCategory.Special,
+            _ => throw new ScenarioException($"{p}.category: expected \"car\", \"van\", \"truck\", \"bus\" or \"special\""),
         };
         var t = new VehicleTypeDesc
         {
@@ -890,6 +944,7 @@ public static partial class ScenarioLoader
         d.WeightJitter = (float)r.Num("weight_jitter", 0.5, min: 0, max: 1);
         d.ExternalShare = (float)r.Num("external_share", 0.3, min: 0, max: 1);
         d.MinTripLength = (float)r.Num("min_trip_m", 600, min: 0);
+        d.SpecialOnCall = r.Bool("special_on_call", false);
 
         JsonElement[]? od = r.OptArray("od_pairs");
         if (od != null)
@@ -1164,6 +1219,7 @@ public static partial class ScenarioLoader
             SignalArrowMinTicks = Ticks(3),
             SignalArrowMaxTicks = Ticks(6),
             SignalArrowGapTicks = Ticks(2),
+            EmergencyRedSpeed = 15f / 3.6f,
         };
         if (r == null)
         {
@@ -1188,6 +1244,7 @@ public static partial class ScenarioLoader
         d.SignalArrowMinTicks = Ticks(r.Num("signal_arrow_min_s", 3, min: 0.05));
         d.SignalArrowMaxTicks = Ticks(r.Num("signal_arrow_max_s", 6, min: 0.05));
         d.SignalArrowGapTicks = Ticks(r.Num("signal_arrow_gap_s", 2, min: 0.05));
+        d.EmergencyRedSpeed = Math.Max(0.01f, (float)(r.Num("emergency_red_speed_kmh", 15, min: 0, max: 50) / 3.6));   // 0 км/ч -> 0.01 м/с (полная остановка у линии)
         r.Finish();
         return d;
     }
@@ -1247,6 +1304,8 @@ public static partial class ScenarioLoader
                 BusRoute = 1000,
                 DemolishRefundPct = 50,
                 UpgradeRefundPct = 50,
+                EarthworkPerM3 = 2,
+                BridgePerMLane = 60,
             },
         };
         if (r == null)
@@ -1273,6 +1332,8 @@ public static partial class ScenarioLoader
             d.Costs.BusRoute = (long)c.Num("bus_route", d.Costs.BusRoute, min: 0, max: MaxCostValue);
             d.Costs.DemolishRefundPct = c.Int("demolish_refund_pct", d.Costs.DemolishRefundPct, min: 0, max: 100);
             d.Costs.UpgradeRefundPct = c.Int("upgrade_refund_pct", d.Costs.UpgradeRefundPct, min: 0, max: 100);
+            d.Costs.EarthworkPerM3 = (long)c.Num("earthwork_per_m3", d.Costs.EarthworkPerM3, min: 0, max: MaxCostValue);
+            d.Costs.BridgePerMLane = (long)c.Num("bridge_per_m_lane", d.Costs.BridgePerMLane, min: 0, max: MaxCostValue);
             c.Finish();
         }
 

@@ -16,6 +16,8 @@ public struct ToolCostsDesc
     public long BusRoute;
     public int DemolishRefundPct;          // возврат при сносе, % стоимости постройки
     public int UpgradeRefundPct;           // возврат за заменяемое при апгрейде, %
+    public long EarthworkPerM3;            // TR3: земляные работы под дорогой, за м³ (terrain.md §4.4); undo не возвращает
+    public long BridgePerMLane;            // TR3: мост, за метр длины на полосу вместо road_per_m_lane (terrain.md §4.5)
 }
 
 /// <summary>Секция <c>tools</c> сценария.</summary>

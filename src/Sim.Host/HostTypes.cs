@@ -10,6 +10,25 @@ public enum HostState
     Stopped = 2,
 }
 
+/// <summary>
+/// Подписка клиента на оверлеи кадра (ADR-0024 п. 3): поток симуляции копирует в кадр только то, на что подписан главный поток.
+/// Лёгкие оверлеи копируются каждый тик; <see cref="SegmentLoads"/> и <see cref="PedEdgeCounts"/> - раз в <see cref="SimThreadHost.HeavyOverlayTicks"/> тиков
+/// (кадр помечает свежесть: <see cref="SimFrame.SegmentLoadsFresh"/>, <see cref="SimFrame.PedEdgeCountsFresh"/>).
+/// </summary>
+[Flags]
+public enum HostOverlays
+{
+    None = 0,
+    LaneSignals = 1,
+    CrossingStates = 2,
+    BusStopWaiting = 4,
+    SignalStates = 8,
+    NodeThroughput = 16,
+    SignalMetrics = 32,
+    SegmentLoads = 64,
+    PedEdgeCounts = 128,
+}
+
 public enum HostRequestKind : byte
 {
     None = 0,
@@ -84,6 +103,9 @@ public sealed class SimHostOptions
     public int JournalCapacity { get; init; } = 4096;
 
     public string ThreadName { get; init; } = "sim-thread";
+
+    /// <summary>Подписка на оверлеи с первого (нулевого) кадра; дальше - <see cref="SimThreadHost.SetOverlays"/>.</summary>
+    public HostOverlays InitialOverlays { get; init; }
 }
 
 /// <summary>Эксклюзивный доступ к ядру (ADR-0024 п. 5): пока не вызван <see cref="Dispose"/>, поток симуляции стоит. Не вкладывать и не держать долго.</summary>

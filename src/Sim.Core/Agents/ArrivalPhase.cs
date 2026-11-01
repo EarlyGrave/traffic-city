@@ -49,6 +49,10 @@ internal static class ArrivalPhase
                 {
                     City.TripLegs.OnVehicleArrived(w, i);   // машина жителя: в кольцо прибытий до деспауна (фаза 9r закроет ногу)
                 }
+                else if (v.Resident[i] <= -2)
+                {
+                    City.Utilities.OnVehicleArrived(w, i);   // машина бригады ЖКХ (Resident = -2 - crew): в кольцо CrewArrivals, разбор в 9r
+                }
 
                 w.Occupancy.UnlinkAll(i);
                 if (v.Route[i] >= 0)

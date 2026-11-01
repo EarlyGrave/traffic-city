@@ -29,11 +29,26 @@ internal sealed class CityWorld
     public readonly LotBuilder LotGen;
     public readonly Market Market;             // производные рынков труда и жилья (Z4); в сейв не входят
 
+    /// <summary>Поля квартала (building-lifecycle.md §2.6); <c>null</c> без <c>city.lifecycle</c>.</summary>
+    public readonly NeighborhoodFields? Fields;
+
+    /// <summary>Службы (services.md §2.3, SR1): записи, станции, кольца вызовов, бригады ЖКХ BL; <c>null</c> без <c>city.lifecycle</c>.</summary>
+    public readonly CityServices? Services;
+
     /// <summary>Казна города (city-economy.md §2.2); <c>null</c> без <c>economy.city_budget</c> (E2 создаёт её же при <c>Enable</c>).</summary>
     public CityBudget? Budget;
 
     /// <summary>Объекты стоянки (parking.md §2.1, ADR-0026); <c>null</c> без <c>parking.model = "resource"</c> - ни одна ветка парковки не исполняется (PK1).</summary>
     public Sim.Core.Parking.ParkingStore? Parking;
+
+    /// <summary>Внешние подключения (new-game-scratch.md §2, ADR-0037); <c>null</c> без секции <c>outside</c> - ни одна ветка подключений не исполняется.</summary>
+    public readonly OutsideState? Outside;
+
+    /// <summary>Цели сценария (scenarios-mode.md §2.3, ADR-0038); <c>null</c> без секции <c>goals</c> - ни одна ветка целей не исполняется.</summary>
+    public GoalsState? Goals;
+
+    /// <summary>Показатели города (progression.md §2.3): кольцо 24 игровых часов; есть всегда в режиме жителей (сейв CKPI), в хэш - только при прогрессии.</summary>
+    public readonly CityKpi Kpi;
 
     // ---- производные Z2 (в сейв не входят): колесо событий жителей, кольцо прибытий, scratch тика ----
     public readonly TimerWheel Wheel;          // ключ = индекс жителя; ровно один ключ на жителя с EvTick >= 0
@@ -44,6 +59,11 @@ internal sealed class CityWorld
     public int Day;                            // номер суток (= Tick / DayTicks на границе; хранится явно: агрегат прыгает по тикам)
     public TripExecution Exec;                 // текущий исполнитель ног
     public int ExecPending = -1;               // запрошенное переключение (-1 нет), применяется на границе суток (Z5)
+
+    // ---- клапан перегрузки (ADR-0035): потолок машин по полосо-км - производное сети (кэш по версии); счётчики - диагностика, вне хэша и сейва (сброс при Load) ----
+    public int ValveCapCache;
+    public int ValveNetVersion = -1;
+    public readonly ValveStats Valve = new();
 
     // ---- курсоры дневных проходов (LEDG) ----
     public int CursorResidents;
@@ -73,6 +93,7 @@ internal sealed class CityWorld
         DayTicks = cfg.Calendar.DayTicks;
         SlotTicks = DayTicks / SlotsPerDay;
         Exec = cfg.Residents.TripExecution;
+        Kpi = new CityKpi(DayTicks);
         Lots = new LotStore(caps.MaxLots);
         Buildings = new BuildingStore(caps.MaxBuildings);
         Residents = new CityResidents(caps.MaxCityResidents);
@@ -84,6 +105,16 @@ internal sealed class CityWorld
             Budget.RecomputeDerived(this);
         }
 
+        if (cfg.Lifecycle.Enabled)
+        {
+            Fields = new NeighborhoodFields(in grid, cfg.Lifecycle.CellM);
+            Services = new CityServices(in own, Types, caps.MaxBuildings, Fields.Cells);
+            if (Budget != null)
+            {
+                Budget.Policy.R0 = (ushort)cfg.Lifecycle.UtilityTariff;   // тариф ЖКХ по умолчанию (§2.10)
+            }
+        }
+
         Skims = new Skims(grid.Cells, cfg.Choice.SkimPeriods, caps.SkimObsCapacity);
         Loads = new CellLoads(grid.Cells, cfg.Choice.SkimPeriods);
         LotGen = new LotBuilder(grid, cfg.Zoning.LotDepthMm, cfg.Zoning.LotFrontageMm, w);
@@ -91,7 +122,14 @@ internal sealed class CityWorld
         Wheel = new TimerWheel(caps.MaxCityResidents);
         Arrivals = new ArrivalRing(caps.MaxCityResidents);
         DueScratch = new int[Math.Max(1, caps.MaxCityResidents)];
+        if (cfg.Outside.Count > 0)
+        {
+            Outside = new OutsideState(in cfg.Outside);
+        }
     }
+
+    /// <summary>Участок «места»: здание (<c>&gt;= 0</c>) - его участок, код подключения (<see cref="OutsideRef"/>) - виртуальный участок узла.</summary>
+    public int LotOf(int place) => place >= 0 ? Buildings.Lot[place] : Lots.Capacity + OutsideRef.Conn(place);
 
     /// <summary>Период скимов тика (0..P-1).</summary>
     public int PeriodOf(long tick) => Skims.PeriodOf(tick, DayTicks);
@@ -106,6 +144,8 @@ internal sealed class CityWorld
     public void RestoreDerived(World w)
     {
         LotGen.RestoreDerived(w);
+        Outside?.Invalidate();
+        Outside?.Ensure(w, this);
         Market.Invalidate();
         Budget?.RecomputeDerived(this);
         BudgetFlows.RecomputeMaintenance(w, this);   // содержание - производное сети и маршрутов (city-economy.md §6.1)
@@ -118,6 +158,7 @@ internal sealed class CityWorld
     {
         Wheel.Clear();
         Arrivals.Clear();
+        Services?.Crews.Arrivals.Clear();
         CityResidents r = Residents;
         for (int i = 0; i < r.HighWater; i++)
         {

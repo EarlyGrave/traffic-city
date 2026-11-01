@@ -53,7 +53,7 @@ public class CityScenarioTests
         Assert.Equal(def.Residents, t.Residents);
         Assert.Equal(def.Economy, t.Economy);
         Assert.Equal(def.Choice, t.Choice);
-        Assert.Equal(6, t.BuildingTypes.Length);   // v2: базовая таблица
+        Assert.Equal(7, t.BuildingTypes.Length);   // v2: базовая таблица (BL3: седьмая строка - депо ЖКХ)
         Assert.Equal(100, d.Capacities.MaxLots);
         Assert.Equal(80, d.Capacities.MaxBuildings);
         Assert.Equal(500, d.Capacities.MaxCityResidents);
@@ -164,10 +164,11 @@ public class CityScenarioTests
         ContentCatalog cat = ContentCatalog.Build(set, issues);
         Assert.Empty(issues);
         BuildingTypeDesc[] def = CityDesc.BaseBuildingTypes();
-        Assert.Equal(def.Length, cat.Buildings.Count);
-        for (int i = 0; i < def.Length; i++)
+        BuildingTypeDesc[] svc = CityDesc.BaseServiceBuildingTypes();   // SR6: после 7 типов ядра - 5 типов служб медицины и пожарных
+        Assert.Equal(def.Length + svc.Length, cat.Buildings.Count);
+        for (int i = 0; i < def.Length + svc.Length; i++)
         {
-            Assert.Equal(def[i], cat.Buildings[i].Desc);
+            Assert.Equal(i < def.Length ? def[i] : svc[i - def.Length], cat.Buildings[i].Desc);
             Assert.Equal(i, cat.FindBuilding(cat.Buildings[i].Id));
         }
 

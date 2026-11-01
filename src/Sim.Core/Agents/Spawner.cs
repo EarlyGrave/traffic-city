@@ -213,7 +213,7 @@ internal static class Spawner
             DestLane = -1,
             Route = -1,
         };
-        if (!Routing.Destinations.Pick(net, to, ref w.RngSpawn, out trip.DestLane, out trip.DestS))
+        if (!Routing.Destinations.Pick(net, to, ref w.RngSpawn, out trip.DestLane, out trip.DestS, w.TypeAccess[trip.Type]))
         {
             return false;
         }
@@ -444,9 +444,13 @@ internal static class Spawner
         {
             w.Counters.TripsDropped++;
             w.Routes.Free(new RouteHandle(trip.Route, trip.RouteGen));
-            if (trip.ResidentRef != 0)
+            if (trip.ResidentRef > 0)
             {
                 City.TripLegs.OnTripDropped(w, trip.ResidentRef - 1, in trip);
+            }
+            else if (trip.ResidentRef < 0)
+            {
+                City.Utilities.OnTripDropped(w, -trip.ResidentRef - 1);   // машина бригады ЖКХ (building-lifecycle.md §2.10)
             }
 
             return true;
@@ -460,7 +464,7 @@ internal static class Spawner
             return true;
         }
 
-        if (trip.ResidentRef != 0 && w.City?.Parking != null)
+        if (trip.ResidentRef > 0 && w.City?.Parking != null)
         {
             // Выезд из середины полосы (parking.md §6): нет зазора - попытки на 8 и 16 м назад (дальше от узла - правило горизонта ворот не нарушается), иначе поездка ждёт следующего тика.
             for (int k = 1; k <= 2; k++)
@@ -525,7 +529,7 @@ internal static class Spawner
         else
         {
             w.Occupancy.FindNeighbours(lane, s, out ahead, out behind);
-            if (behind != -1 && trip.ResidentRef != 0 && w.City?.Parking != null && Rules.Intersections.GateRules.IsGranted(v, behind))
+            if (behind != -1 && trip.ResidentRef > 0 && w.City?.Parking != null && Rules.Intersections.GateRules.IsGranted(v, behind))
             {
                 return false;   // выезд из середины полосы (parking.md §6): допущенные ворот - префикс головы полосы, новая машина не встаёт перед допущенной (сверка активных множеств ворот)
             }
@@ -568,6 +572,11 @@ internal static class Spawner
         v.Speed[i] = speed;
         v.Length[i] = t.Length;
         v.Type[i] = trip.Type;
+        if (w.Demand.SpecialOnCall && t.Category == VehicleCategory.Special)
+        {
+            v.Flags[i] |= (byte)VehicleFlags.OnCall;   // VC3: demand.special_on_call - спецмашина едет на вызове всю поездку
+        }
+
         v.DesiredSpeed[i] = desired;
         v.SpawnTick[i] = w.Tick;
         v.DestZone[i] = trip.ToZone;
@@ -581,7 +590,11 @@ internal static class Spawner
         v.NextConn[i] = TransitionPhase.ChooseConnector(w, i, lane);
         w.Counters.VehiclesSpawned++;
         w.Emit(SimEventKind.VehicleSpawned, 0, h.Index, h.Generation);
-        if (trip.ResidentRef != 0)
+        if (trip.ResidentRef < 0)
+        {
+            City.Utilities.OnVehiclePlaced(w, -trip.ResidentRef - 1, i);   // машина бригады ЖКХ: Resident = -2 - crew, без OnCall (§2.10)
+        }
+        else if (trip.ResidentRef != 0)
         {
             if (trip.ParkRef != 0)
             {

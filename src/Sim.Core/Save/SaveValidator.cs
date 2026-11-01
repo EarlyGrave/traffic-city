@@ -75,6 +75,12 @@ internal static partial class SaveValidator
             return pst;
         }
 
+        pst = ValidateTerrainParams(c);
+        if (pst != LoadStatus.Ok)
+        {
+            return pst;
+        }
+
         DemandDesc d = c.Desc.Demand;
         TransitDesc tr = c.Desc.Transit;
         if (!Fin(d.ZoneSize) || !Fin(d.GravityExponent) || !Fin(d.WeightJitter) || !Fin(d.ExternalShare) || !Fin(d.MinTripLength) || !Fin(tr.StopSpacing) ||
@@ -217,7 +223,7 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if ((nd.Flags & ~NodeFlags.Quiesce) != 0 || (n.ToolsTouched == 0 && (nd.Flags != 0 || nd.TurnBan != 0)))
+            if ((nd.Flags & ~(NodeFlags.Quiesce | NodeFlags.Outside)) != 0 || (n.ToolsTouched == 0 && ((nd.Flags & ~NodeFlags.Outside) != 0 || nd.TurnBan != 0)))
             {
                 return Bad(c, i, 1);
             }
@@ -264,8 +270,10 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
-                (n.ToolsTouched == 0 && ((sd.Flags & ~SegmentFlags.Mirrored) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
+            // Bridge (TR3, terrain.md §4.5) - только с рельефом; мост ставит и Create (автомат по воде), поэтому он допустим и у сети без правок.
+            byte bridge = c.Desc.Terrain.Enabled ? SegmentFlags.Bridge : (byte)0;
+            if ((sd.Flags & ~(SegmentFlags.Closing | SegmentFlags.Curve | SegmentFlags.Mirrored | bridge)) != 0 || !Fin(sd.Cx) || !Fin(sd.Cz) ||
+                (n.ToolsTouched == 0 && ((sd.Flags & ~(SegmentFlags.Mirrored | bridge)) != 0 || sd.Cx != 0f || sd.Cz != 0f)) || !n.NodeAlive(sd.NodeA) || !n.NodeAlive(sd.NodeB))
             {
                 return Bad(c, i, 3);
             }
@@ -282,7 +290,7 @@ internal static partial class SaveValidator
 
             if ((uint)sd.NodeA >= (uint)nodes || (uint)sd.NodeB >= (uint)nodes || !Fin(sd.Length) || sd.Length <= 0f || !Fin(sd.SpeedLimit) || sd.SpeedLimit <= 0f ||
                 (byte)sd.Kind > (byte)RoadKind.Arterial || sd.LanesAB > NetworkBuilder.MaxLanesPerDirection || sd.LanesBA > NetworkBuilder.MaxLanesPerDirection ||
-                sd.PointCount < 2 || sd.FirstPoint < 0 || (long)sd.FirstPoint + sd.PointCount > segPts)
+                sd.PointCount < 2 || sd.FirstPoint < 0 || (long)sd.FirstPoint + sd.PointCount > segPts || (sd.Deny & ~LaneDeny.StreetWritable) != 0)
             {
                 return Bad(c, i, 3);
             }
@@ -308,7 +316,8 @@ internal static partial class SaveValidator
             }
 
             if ((l.Flags & ~(LaneFlags.BusOnly | LaneFlags.NoLaneChangeOut | LaneFlags.Closed | LaneFlags.Draining)) != 0 ||
-                (n.ToolsTouched == 0 && (l.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0))
+                (n.ToolsTouched == 0 && (l.Flags & (LaneFlags.Closed | LaneFlags.Draining)) != 0) ||
+                (l.Deny & ~LaneDeny.Known) != 0 || ((l.Flags & LaneFlags.BusOnly) != 0) != (l.Deny == LaneDeny.BusLane))   // VC2: зеркало BusOnly = (Deny == 0x1D)
             {
                 return Bad(c, i, 4);
             }
@@ -519,7 +528,7 @@ internal static partial class SaveValidator
                 continue;
             }
 
-            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > n.BusRouteStopCount || r.HeadwayTicks < 0 || r.ActiveBuses < 0 ||
+            if (r.FirstStop < 0 || r.StopCount < 0 || (long)r.FirstStop + r.StopCount > n.BusRouteStopCount || r.HeadwayTicks == int.MinValue || r.ActiveBuses < 0 ||   // < 0 - линия приостановлена (T9)
                 (uint)r.VehicleType >= (uint)w.Types.Length)
             {
                 return Bad(c, i, 16);
@@ -670,7 +679,7 @@ internal static partial class SaveValidator
             int lane = v.Lane[i];
             if (lane < -1 || lane >= lanes || v.GhostLane[i] < -1 || v.GhostLane[i] >= lanes || !Fin(v.S[i]) || !Fin(v.Speed[i]) || v.Speed[i] < 0f ||
                 !Fin(v.Accel[i]) || !Fin(v.Length[i]) || v.Length[i] <= 0f || v.Type[i] >= w.Types.Length || !Fin(v.DesiredSpeed[i]) ||
-                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || v.Flags[i] > 127)
+                !Fin(v.DestS[i]) || !Fin(v.Lateral[i]) || v.LaneChangeDir[i] < -1 || v.LaneChangeDir[i] > 1 || ((v.Flags[i] & (byte)VehicleFlags.OnCall) != 0 && w.Types[v.Type[i]].Category != VehicleCategory.Special))
             {
                 return Bad(c, i, 30);
             }
@@ -897,7 +906,7 @@ internal static partial class SaveValidator
             ref readonly PendingTrip t = ref w.Trips.At(i);
             if (t.FromZone < -1 || t.FromZone >= n.ZoneCount || t.ToZone < -1 || t.ToZone >= n.ZoneCount || t.FromLane < -1 || t.FromLane >= n.LaneCount ||
                 t.Type >= w.Types.Length || t.DestLane < -1 || t.DestLane >= n.LaneCount || !Fin(t.FromS) || !Fin(t.DestS) || t.Route < -1 ||
-                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || t.ResidentRef < 0 || (t.ResidentRef != 0 && (w.City == null || t.ResidentRef > w.City.Residents.Capacity)))
+                t.Route >= w.Routes.Pool.Capacity || t.RouteGen < 0 || !TripRefOk(w, t.ResidentRef))
             {
                 return Bad(c, i, 50);
             }
@@ -905,6 +914,10 @@ internal static partial class SaveValidator
 
         return LoadStatus.Ok;
     }
+
+    // ResidentRef: 0 - нет; > 0 - житель + 1; < 0 - бригада ЖКХ -(k + 1) (building-lifecycle.md §2.10, BL3).
+    private static bool TripRefOk(World w, int r) =>
+        r == 0 || (w.City != null && (r > 0 ? r <= w.City.Residents.Capacity : w.City.Services != null && -(long)r <= w.City.Services.Crews.Capacity));
 
     public static LoadStatus ValidateQueues(LoadContext c)
     {

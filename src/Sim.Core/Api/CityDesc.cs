@@ -17,6 +17,18 @@ public enum LotZone : byte
 
     /// <summary>Гараж (parking.md §3): здание-стоянка, ставится командой <c>BuildParking</c> (K6); рост и зонирование его не трогают (<c>Lot.Zone</c> этого значения не принимает).</summary>
     Parking = 4,
+
+    /// <summary>Здание службы (building-lifecycle.md §2.10): депо ЖКХ, ставится командой <c>BuildService</c>; рост, зонирование и рынок его не трогают (<c>Lot.Zone</c> этого значения не принимает).</summary>
+    Service = 5,
+}
+
+/// <summary>Вид службы здания <see cref="LotZone.Service"/> (§2.10); SR добавит прочие.</summary>
+public enum ServiceKind : byte
+{
+    None = 0,
+    Utility = 1,
+    Medicine = 2,   // SR2 (services.md §3): станции записей с ролью critical; машины - уровня записи
+    Fire = 3,       // SR2: роль fire
 }
 
 /// <summary>Исполнитель ног (zoning-demand.md §4, §9): агенты (micro, дефолт) или агрегат (скимы и загрузка ячеек).</summary>
@@ -59,12 +71,181 @@ public struct BuildingTypeDesc
     public int ParkingCapacity;     // R/C/I: мест стоянки здания (buildings.json: parking); для Kind = Parking (гараж) - Capacity
     public ParkingAccess ParkingAccess;   // buildings.json: parking_access
     public int ParkingFee;          // buildings.json: parking_fee, деньги за постановку гостя
+
+    // ---- жизнь здания (building-lifecycle.md §2.2, §2.5): читается только в режиме city.lifecycle ----
+    public ushort DecayBpDay;       // buildings.json: decay_bp_day, износ в сутки, б.п.
+    public ushort CeilDropBpDay;    // buildings.json: ceil_drop_bp_day, падение потолка в сутки, б.п.
+    public int DemolishCost;        // buildings.json: demolish_cost, цена сноса из казны
+    public int FirePpm;             // buildings.json: fire_ppm, возгорание в сутки, ppm (services.md §2.7, только в режиме city.services; 0 - не горит и не заражается огнём)
+
+    // ---- службы (building-lifecycle.md §2.10): только Kind = Service ----
+    public int BuildCost;           // buildings.json: build_cost, цена постройки из казны (BuildService)
+    public ServiceKind ServiceKind; // buildings.json: service ("utility")
+    public byte Vehicles;           // buildings.json: vehicles, бригад (машин) депо
+    public byte VehicleType;        // buildings.json: vehicle_type, индекс типа ТС (Vehicles[]); 0 - тип машины жителя
+
+    /// <summary>Стартовые значения жизни здания базового пакета по виду и плотности (§2.2, §2.5): износ, потолок, цена сноса.</summary>
+    public static void LifeDefaults(LotZone kind, byte density, out ushort decay, out ushort ceilDrop, out int demolish)
+    {
+        bool high = density != 0;
+        ceilDrop = (ushort)(high ? 12 : 8);
+        switch (kind)
+        {
+            case LotZone.Residential:
+                decay = (ushort)(high ? 60 : 30);
+                demolish = high ? 300 : 30;
+                break;
+            case LotZone.Commercial:
+                decay = (ushort)(high ? 60 : 40);
+                demolish = high ? 150 : 10;
+                break;
+            case LotZone.Industrial:
+                decay = (ushort)(high ? 100 : 60);
+                demolish = high ? 900 : 150;
+                break;
+            default:
+                decay = 0;
+                ceilDrop = 0;
+                demolish = 0;
+                break;
+        }
+    }
+
+    /// <summary>Строка с заполненными стартовыми значениями жизни здания (§2.2).</summary>
+    public static BuildingTypeDesc WithLifeDefaults(BuildingTypeDesc t)
+    {
+        LifeDefaults(t.Kind, t.Density, out t.DecayBpDay, out t.CeilDropBpDay, out t.DemolishCost);
+        return t;
+    }
+}
+
+/// <summary>Секция <c>city.lifecycle</c> (building-lifecycle.md §2, §6.1): износ, заброшка стоит, рассыпание, снос. <c>Enabled = false</c> - режима нет, поведение прежнее.</summary>
+public struct CityLifecycleDesc
+{
+    public bool Enabled;
+    public int AbandonedDecayPct;   // abandoned_decay_pct: множитель износа заброшенного, %; дефолт 200
+    public int LowlandCm;           // lowland_m * 100: запас над уровнем воды для «низины»; дефолт 200
+    public int WornRelocateQ16;     // worn_relocate: шанс переезда в сутки при Cond 50-60 %; дефолт 0.05
+    public int RubbleCostPct;       // rubble_cost_pct: очистка рассыпавшегося, % demolish_cost; дефолт 10
+    public int CellM;               // cell_m: шаг сетки полей квартала, м (§2.6); дефолт 128
+    public int SigShift;            // sig_shift: утечка накопителя значимости (§2.6); дефолт 6
+    public int HeritageLossRadiusM; // heritage_loss_radius_m: радиус разового недовольства при сносе значимого (§2.5); дефолт 400
+    public int LvBlightPermille;    // lv_blight: ‰ цены земли на очко Blight (§2.6); дефолт 5
+
+    // ---- ЖКХ (§2.10) ----
+    public int RepairRequestBp;     // repair_request_bp: заявка на ремонт при Cond ниже, б.п.; дефолт 8 500
+    public int RepairPerUnit;       // repair_per_unit: цена ремонта (Ceil - Cond) * Capacity * это / 10 000; дефолт 10
+    public int RepairMinutes;       // repair_minutes: работа бригады на месте, игровых минут (сутки = 1 440); дефолт 30
+    public int CrewDayCost;         // crew_day_cost: зарплата бригады в сутки; дефолт 60
+    public int MaxServiceVehicles;  // max_service_vehicles: ёмкость CrewStore; дефолт 512
+    public int MaxDispatchPerTick;  // max_dispatch_per_tick: выездов за тик фазы 9r; дефолт 4
+    public int TariffBurdenPct;     // tariff_burden_pct: тариф выше этой доли IncomeEwma - шанс ухода, %; дефолт 10
+    public int TariffLeaveQ16;      // tariff_leave: шанс ухода в сутки при тарифе выше порога; дефолт 0.02
+    public int MaxUtilityTariff;    // max_utility_tariff: предел тарифа (сотые в сутки на жителя); дефолт 1 000
+    public int UtilityTariff;       // utility_tariff: стартовый тариф BudgetPolicy.R0; дефолт 30
+    public int RestorePerUnit;      // restore_per_unit: цена капремонта Capacity * это * (2 - Cond / 10 000) (§2.9); дефолт 150
+
+    /// <summary>Дефолты §2 с включённым режимом.</summary>
+    public static CityLifecycleDesc Default() => new()
+    {
+        Enabled = true,
+        AbandonedDecayPct = 200,
+        LowlandCm = 200,
+        WornRelocateQ16 = CityDesc.Q16(0.05),
+        RubbleCostPct = 10,
+        CellM = 128,
+        SigShift = 6,
+        HeritageLossRadiusM = 400,
+        LvBlightPermille = 5,
+        RepairRequestBp = 8_500,
+        RepairPerUnit = 10,
+        RepairMinutes = 30,
+        CrewDayCost = 60,
+        MaxServiceVehicles = 512,
+        MaxDispatchPerTick = 4,
+        TariffBurdenPct = 10,
+        TariffLeaveQ16 = CityDesc.Q16(0.02),
+        MaxUtilityTariff = 1_000,
+        UtilityTariff = 30,
+        RestorePerUnit = 150,
+    };
+}
+
+/// <summary>
+/// Секция <c>city.age</c> (age-groups.md §2.1, §3, ADR-0044): возрастные группы жителей - ребёнок, взрослый, пожилой. <c>Enabled = false</c> - режима нет,
+/// все жители взрослые, поведение и хэш прежние. Доли делят тот же бросок, что <c>labour_share</c> (§2.3): <c>ChildQ16 + ElderlyQ16 &lt;= 65 536 - LabourShareQ16</c>.
+/// </summary>
+public struct CityAgeDesc
+{
+    public bool Enabled;
+    public int ChildQ16;            // child_pct / 100 (Q16); стартовое 18 %
+    public int ElderlyQ16;          // elderly_pct / 100 (Q16); стартовое 16 %
+    public int ElderlyCarPct;       // elderly_car_pct: доля car_ownership у пожилых, %; стартовое 50
+    public int ElderlyAscFreqDs;    // elderly_asc_freq_s * 10: надбавка к частоте дискреционных туров пожилых, дс (RA2); стартовое 1 200
+    public int ElderlySlot;         // elderly_slot: начало окна прибытия пожилых, слот (12 = 1 ч; RA2); стартовое 108 (09:00)
+    public int ElderlyStepSlots;    // elderly_step_slots: шаг окна между турами, слотов (RA2); стартовое 48
+    public int PensionDay;          // pension_day: пенсия пожилому в сутки из внешнего мира (RA2, §2.4); стартовое 30
+
+    /// <summary>Стартовые значения §2.3, §6 с включённым режимом.</summary>
+    public static CityAgeDesc Default() => new()
+    {
+        Enabled = true,
+        ChildQ16 = CityDesc.Q16(0.18),
+        ElderlyQ16 = CityDesc.Q16(0.16),
+        ElderlyCarPct = 50,
+        ElderlyAscFreqDs = 1_200,
+        ElderlySlot = 108,
+        ElderlyStepSlots = 48,
+        PensionDay = 30,
+    };
 }
 
 /// <summary>Календарь (<c>calendar</c>).</summary>
 public struct CityCalendarDesc
 {
     public int DayTicks;            // calendar.day_s * 20; дефолт 72 000
+    public int StartHour;           // calendar.start_hour: игровой час начала (0..23), Tick при Create = StartHour * DayTicks / 24; дефолт 0
+}
+
+/// <summary>Одно внешнее подключение (<c>outside.connections[k]</c>): узел явной сети у края карты, внешние рабочие места, доп. стоимость поездки «за край», доля въезда.</summary>
+public struct OutsideConnDesc
+{
+    public int Node;            // индекс узла сети (NodeFlags.Outside)
+    public int Jobs;            // начальные внешние вакансии; 0 - только въезд
+    public int JobCostTicks;    // job_cost_s * 20: «время за краем» в стоимости поездки на внешнюю работу
+    public int ShareQ16;        // immigrant_share: доля въезжающих через подключение (сумма = 65536)
+}
+
+/// <summary>Секция <c>outside</c> (new-game-scratch.md §2.1): до 4 подключений фиксированным POD (без массивов, FFI).</summary>
+public struct CityOutsideDesc
+{
+    public const int Max = 4;
+
+    public int Count;           // 0..4; 0 - секции нет
+    public int JobsDecayQ16;    // outside_jobs_decay: доля своих вакансий города, на которую за сутки сокращаются внешние места
+    public byte ArrivalByCar;   // arrival_by_car: 1 - переселенец едет машиной от узла к дому
+    public OutsideConnDesc C0, C1, C2, C3;
+
+    /// <summary>Подключение <paramref name="k"/> (0..3).</summary>
+    public readonly OutsideConnDesc Get(int k) => k switch
+    {
+        0 => C0,
+        1 => C1,
+        2 => C2,
+        _ => C3,
+    };
+
+    /// <summary>Записывает подключение <paramref name="k"/> (0..3).</summary>
+    public void Set(int k, in OutsideConnDesc v)
+    {
+        switch (k)
+        {
+            case 0: C0 = v; break;
+            case 1: C1 = v; break;
+            case 2: C2 = v; break;
+            default: C3 = v; break;
+        }
+    }
 }
 
 /// <summary>Участки и рост (<c>zoning</c>).</summary>
@@ -80,6 +261,8 @@ public struct CityZoningDesc
     public int IEdgeShareQ16;       // доля крайних ячеек под I
     public int UnzonedShareQ16;     // доля участков без зоны
     public int MaxPaintM2;          // предел площади PaintZone, м2; дефолт 250 000
+    public byte GrowthStep;         // zoning.growth_step: 0 = "day" (дефолт), 1 = "hour": спрос, въезд и рост зданий - на сдвиге игрового часа с лимитами /24
+    public byte GridFromBounds;     // zoning.grid_from_bounds: 1 = сетка города по tools.world_bounds (иначе по рельефу), а не по начальной сети; дефолт 0
 }
 
 /// <summary>Жители (<c>residents</c>).</summary>
@@ -95,6 +278,7 @@ public struct CityResidentsDesc
     public int MaxRelocatePerDayQ16;
     public int MaxJobSwitchPerDayQ16;
     public int MaxImmigrantsPerDayQ16;
+    public int MinImmigrantsPerDay; // residents.min_immigrants_per_day: пол суточного въезда, cap = max(min, rate * N); дефолт 0
     public int PlanSlot;            // plan_slot, дефолт 36
     public int ShopSlots;           // shop_slots, дефолт 6
     public int HomeMinSlots;        // home_min_slots, дефолт 2
@@ -129,6 +313,7 @@ public struct CityEconomyDesc
     public int LandTaxBpDay;                    // land_tax_bp_day: земельный налог в сутки, б.п. цены места
     public int BusFare;                         // bus_fare: плата за автобусную ногу
     public int InitialCityBalancePerResident;   // initial_city_balance_per_resident: вклад в казну на жителя
+    public int InitialCityBalance;              // initial_city_balance: абсолютный вклад в казну сверх вклада на жителя; дефолт 0
     public int InterestBpDay;                   // interest_bp_day: процент на долг в сутки, б.п.
     public int CreditDays;                      // credit_days: лимит кредита в днях сглаженного дохода
     public int MaintRoadStreetPerLaneKmDay;     // maint_road_per_lane_km_day.street
@@ -187,18 +372,53 @@ public struct CityDesc
     public CityEconomyDesc Economy;
     public CityChoiceDesc Choice;
 
+    /// <summary>Внешние подключения у края карты (<c>outside</c>, new-game-scratch.md §2.1, ADR-0037); <c>Count = 0</c> - секции нет, поведение прежнее.</summary>
+    public CityOutsideDesc Outside;
+
+    /// <summary>Жизнь здания (<c>city.lifecycle</c>, building-lifecycle.md); <c>Enabled = false</c> - секции нет, поведение прежнее.</summary>
+    public CityLifecycleDesc Lifecycle;
+
+    /// <summary>Службы (<c>city.services</c>, services.md); <c>Enabled = false</c> - секции нет, ЖКХ работает как в BL (встроенная запись <c>utility</c>).</summary>
+    public CityServicesDesc Services;
+
+    /// <summary>Возрастные группы (<c>city.age</c>, age-groups.md); <c>Enabled = false</c> - секции нет, все жители взрослые, поведение прежнее.</summary>
+    public CityAgeDesc Age;
+
     /// <summary>Таблица типов зданий (индекс = <c>Building.Type</c>); пустая - <see cref="BaseBuildingTypes"/>.</summary>
     public BuildingTypeDesc[] BuildingTypes;
 
-    /// <summary>6 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
+    /// <summary>Индекс типа ТС <c>utility</c> в базовом наборе (car, bus, van, truck, ambulance, fire, utility).</summary>
+    public const byte BaseUtilityVehicle = 6;
+
+    /// <summary>Индекс типа ТС <c>ambulance</c> в базовом наборе.</summary>
+    public const byte BaseAmbulanceVehicle = 4;
+
+    /// <summary>Индекс типа ТС <c>fire</c> в базовом наборе.</summary>
+    public const byte BaseFireVehicle = 5;
+
+    /// <summary>
+    /// 5 типов служб медицины и пожарной охраны (services.md §2.2, SR6), дописываются к <see cref="BaseBuildingTypes"/> загрузчиком v2 при <c>city.services</c> (индексы 7-11):
+    /// медпункт, больница, медцентр, пожарная часть, пожарное управление. Тот же набор в <c>content/base/buildings.json</c> (тест сверяет). Без режима таблица не растёт.
+    /// </summary>
+    public static BuildingTypeDesc[] BaseServiceBuildingTypes() => new[]
+    {
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 7, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 3_000, BuildCost = 15_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 8, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 10_000, BuildCost = 60_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 9, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 25_000, BuildCost = 180_000, ServiceKind = ServiceKind.Medicine, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 10, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 5_000, BuildCost = 25_000, ServiceKind = ServiceKind.Fire, VehicleType = byte.MaxValue },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 11, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 12_000, BuildCost = 80_000, ServiceKind = ServiceKind.Fire, VehicleType = byte.MaxValue },
+    };
+
+    /// <summary>7 типов пакета <c>base</c> (R/C/I x низкая/высокая плотность + депо ЖКХ); тот же набор в <c>content/base/buildings.json</c> (тест сверяет).</summary>
     public static BuildingTypeDesc[] BaseBuildingTypes() => new[]
     {
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8 },
-        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20 },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public },
-        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12 },
-        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 0, Capacity = 8, ConstructDays = 3, VisualRow = 0, ParkingCapacity = 8, DecayBpDay = 30, CeilDropBpDay = 8, DemolishCost = 30 },
+        new BuildingTypeDesc { Kind = LotZone.Residential, Density = 1, Capacity = 40, ConstructDays = 6, VisualRow = 1, ParkingCapacity = 20, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 300 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 0, Capacity = 10, ShopCapacity = 30, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 3, AttractQ8 = 256, VisualRow = 2, ParkingCapacity = 10, ParkingAccess = ParkingAccess.Public, DecayBpDay = 40, CeilDropBpDay = 8, DemolishCost = 10 },
+        new BuildingTypeDesc { Kind = LotZone.Commercial, Density = 1, Capacity = 40, ShopCapacity = 120, ShiftStartSlot = 96, ShiftSlots = 96, ConstructDays = 6, AttractQ8 = 384, VisualRow = 3, ParkingCapacity = 30, ParkingAccess = ParkingAccess.Public, DecayBpDay = 60, CeilDropBpDay = 12, DemolishCost = 150 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 0, Capacity = 12, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 3, VisualRow = 4, ParkingCapacity = 12, DecayBpDay = 60, CeilDropBpDay = 8, DemolishCost = 150 },
+        new BuildingTypeDesc { Kind = LotZone.Industrial, Density = 1, Capacity = 60, ShiftStartSlot = 90, ShiftSlots = 96, ConstructDays = 6, VisualRow = 5, ParkingCapacity = 40, DecayBpDay = 100, CeilDropBpDay = 12, DemolishCost = 900 },
+        new BuildingTypeDesc { Kind = LotZone.Service, Density = 0, Capacity = 4, ConstructDays = 0, VisualRow = 6, DecayBpDay = 25, CeilDropBpDay = 8, DemolishCost = 5_000, BuildCost = 20_000, ServiceKind = ServiceKind.Utility, Vehicles = 16, VehicleType = BaseUtilityVehicle },
     };
 
     /// <summary>Дефолты спеки (zoning-demand.md §16) с базовой таблицей зданий; <c>Calendar.DayTicks</c> = 72 000.</summary>

@@ -45,6 +45,7 @@ public sealed class GateParallelTests
     [Theory]
     [InlineData("s1k", LodMode.Off, MesoModel.Kinematic, 3000)]
     [InlineData("s10k", LodMode.AllMeso, MesoModel.Queue, 400)]
+    [InlineData("s1k", LodMode.AllMeso, MesoModel.Queue, 1500)]
     [InlineData("s10k-peds", LodMode.Off, MesoModel.Kinematic, 300)]
     public void ReverseNodeOrder_GivesSameHash(string name, LodMode mode, MesoModel model, int ticks)
     {

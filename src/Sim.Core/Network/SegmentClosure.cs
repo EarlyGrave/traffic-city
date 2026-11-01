@@ -55,6 +55,26 @@ internal static class SegmentClosure
         v.MarkAllRouteDirty();
     }
 
+    /// <summary>
+    /// Открывает connector'ы концов сегмента, закрытые перестройкой узла (с открытыми полосами по обе стороны), и сбрасывает кэш первого хода у всех машин (T5: отмена дренажа полос).
+    /// </summary>
+    public static void ReopenEnds(World w, int seg)
+    {
+        NetworkStore n = w.Net;
+        ref readonly SegmentData sd = ref n.Segments[seg];
+        ReopenConnectors(n, sd.NodeA);
+        ReopenConnectors(n, sd.NodeB);
+        n.Version++;
+        w.Gate.FullScan = true;
+        VehicleStore v = w.Vehicles;
+        for (int i = 0; i < v.HighWater; i++)
+        {
+            v.NextConn[i] = v.Pool.IsAlive(i) ? -1 : v.NextConn[i];
+        }
+
+        v.MarkAllRouteDirty();
+    }
+
     private static void SetLaneClosed(NetworkStore n, in SegmentData sd, bool closed)
     {
         int total = sd.LanesAB + sd.LanesBA;
@@ -185,7 +205,7 @@ internal static class SegmentClosure
             if ((uint)zone < (uint)n.ZoneCount && n.OpenZoneLaneCount(zone) > 0)
             {
                 int lane = n.OpenZoneLane(zone, i % n.OpenZoneLaneCount(zone));
-                int dest = Destinations.OppositeLane(n, lane);
+                int dest = Destinations.OppositeLane(n, lane, v.Access(i));
                 v.DestLane[i] = dest;
                 v.DestS[i] = n.Lanes[dest].Length * Destinations.ArrivalFraction;
                 if (v.Route[i] >= 0)
@@ -251,7 +271,7 @@ internal static class SegmentClosure
             {
                 if (n.Lanes[n.ZoneLanes[zd.FirstSpawnLane + k]].Segment == seg)
                 {
-                    w.Emit(SimEventKind.ZoneAccessLost, tag, z);
+                    w.EmitAt(SimEventKind.ZoneAccessLost, tag, z, seg, Metrics.PlaceEvents.ZonePlace(n, z));   // EV1: B = сегмент, место - центр зоны
                     break;
                 }
             }

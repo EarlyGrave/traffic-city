@@ -70,6 +70,8 @@ public struct SimCounters
     public long SpillOuts;                // заготовка S3: досрочных концов зелёного из-за забитого выезда
     public long ExitClaims;               // заготовка S4: поставленных заявок на выезд
     public long ExitClaimDenials;         // заготовка S4: отказов младшим по заявке
+    public long OnCallRedGrants;          // VC3: допусков спецмашине на вызове на красный (vehicle-classes.md §2.4; в хэш не входит)
+    public long DenyDescends;             // VC3: раскрытий ячеек оверлея из-за запрета класса (суммарно по поисковикам мира)
     public long GrantsRevoked;            // 2.6r R1: снятий допуска на красном (§5.4 п. 6; вне хэша)
     // --- уровни детализации (ADR-0013, sim-lod.md §4, §8); вне хэша, заполняются с L2/L3 ---
     public int MicroVehicles, MesoVehicles;                // текущее
@@ -150,6 +152,37 @@ public struct SimCounters
     public long ParkCarShed;              // parking_car_shed: жителей без машины из-за нехватки домашних мест
     public long ParkSearching;            // parking_searching: машин в поиске сейчас (gauge)
     public long ParkWalkTicks;            // parking_walk_ticks: Σ ходьбы от мест
+    // --- прогрессия (progression.md §4.3, ADR-0034): в сейве (CNTR) всегда, в хэше - только при прогрессии; считает PG3 ---
+    public long LockedRejects;            // отказов команд RejectReason.Locked
+    // --- жизнь здания (building-lifecycle.md §3, BL1): в сейве (CNTR) всегда, в хэше - только в режиме city.lifecycle ---
+    public long BuildingsCrumbled;        // рассыпалось (Cond = 0) и убрано
+    public long BuildingsDemolished;      // снесено игроком (DemolishBuilding)
+    public long BuildingsResettled;       // заброшенных заселено повторно (Abandoned -> Active)
+    // --- ЖКХ (building-lifecycle.md §2.10, BL3): в сейве (CNTR) всегда, в хэше - только в режиме city.lifecycle ---
+    public long RepairsDone;              // ремонтов бригадами
+    public long RepairDelayTicksTotal;    // Σ тиков от заявки до ремонта (средняя задержка = / RepairsDone)
+    public long RepairNoDepot;            // заявок снято: нет депо в дорожной компоненте
+    public long CrewTimeouts;             // таймаутов поездки бригады (micro)
+    public long TariffLeaves;             // жителей уехало из-за квартплаты (HighRent)
+    public long Restorations;             // капремонтов игроком (RestoreBuilding, BL4)
+    // --- вызовы служб (services.md §2.3, SR2): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long CallsQueued;              // вызовов поставлено в кольца (все записи, включая ремонт ЖКХ)
+    public long CallsDone;                // прибытий к цели вызова (отклик посчитан)
+    public long RespTicksTotal;           // Σ тиков отклика (средний = / CallsDone)
+    public long CallsLate;                // вызовов опоздало: ждали дольше deadline_s или некому ехать
+    // --- болезнь и «к ним ходят» (services.md §2.5-§2.6, SR3): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long IllStarted;               // заболело (бросок в плане дня)
+    public long CareVisits;               // визитов к службе с приёмом (Treated)
+    public long CareRefused;              // отказов: нет станции с местом, дальше max_cost_s, станции не стало, коек нет
+    public long IcuAdmitted;              // критических доставлено в реанимацию
+    public long IcuOverflow;              // из них сверх мест (days x2)
+    public long ResidentsLostNoAmbulance; // критических без скорой или не успели: житель уезжает (заглушка §10.3/§10.4)
+    // --- пожар (services.md §2.7, SR4): в сейве (CNTR) всегда, в хэше - только в режиме city.services ---
+    public long FiresStarted;             // очагов начато (возгорание по броску и перекидывание)
+    public long FiresOut;                 // потушено пожарной
+    public long BuildingsBurned;          // сгорело дотла (Cond = 0 при огне)
+    public long FiresSpread;              // из начатых - перекинулось на соседний дом (решение 10.1 Б)
+    public long FiresCapped;              // возгораний и перекидываний, отброшенных потолком fire_cap / пулом max_fires
 }
 
 /// <summary>Производные значения, считаются в GetStats за O(1) из <see cref="SimCounters"/>.</summary>

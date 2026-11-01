@@ -83,6 +83,360 @@ internal static class CityHash
         {
             Parking.ParkingHash.Add(ref h, w);   // раздел парковки (parking.md §13): только в режиме, хэш прочих миров не меняется (PK1)
         }
+
+        if (w.Progression != null)
+        {
+            // раздел прогрессии (progression.md §2.4, §4.4): вехи, открытое, показатели города и счётчик замков - только при прогрессии; без неё кольцо KPI - наблюдатель, хэш прежний
+            w.Progression.AddToHash(ref h);
+            c.Kpi.AddToHash(ref h, c.Cfg.Lifecycle.Enabled);
+            h.Add(w.Counters.LockedRejects);
+        }
+
+        if (c.Outside != null)
+        {
+            // раздел внешних подключений (ADR-0037): только при секции outside, хэш прочих миров не меняется
+            OutsideState o = c.Outside;
+            for (int k = 0; k < o.Count; k++)
+            {
+                h.Add(o.Jobs[k]);
+                h.Add(o.Taken[k]);
+                h.Add(o.ArrivalsDay[k]);
+                h.Add(o.ArrivalsHour[k]);
+            }
+
+            h.Add(o.Arrivals);
+            h.Add(o.ArrivalTimeouts);
+        }
+
+        // раздел целей сценария (ADR-0038): только при секции goals, хэш прочих миров не меняется
+        c.Goals?.AddToHash(ref h);
+        if (c.Cfg.Lifecycle.Enabled)
+        {
+            AddLifecycle(ref h, c, in w.Counters);
+        }
+
+        if (c.Cfg.Age.Enabled)
+        {
+            AddAge(ref h, c);   // age-groups.md §5: только в режиме city.age, без него ни одного нового байта
+        }
+    }
+
+    /// <summary>Возрастные группы (age-groups.md §5, RA1): параметры секции <c>city.age</c>, затем группа живых жителей.</summary>
+    private static void AddAge(ref Fnv1a64 h, CityWorld c)
+    {
+        ref readonly CityAgeDesc a = ref c.Cfg.Age;
+        h.Add(a.ChildQ16);
+        h.Add(a.ElderlyQ16);
+        h.Add(a.ElderlyCarPct);
+        h.Add(a.ElderlyAscFreqDs);
+        h.Add(a.ElderlySlot);
+        h.Add(a.ElderlyStepSlots);
+        h.Add(a.PensionDay);
+        CityResidents res = c.Residents;
+        for (int r = 0; r < res.HighWater; r++)
+        {
+            if (res.IsAlive(r))
+            {
+                h.Add(res.Age[r]);
+            }
+        }
+    }
+
+    /// <summary>Раздел жизни зданий (building-lifecycle.md §5): только в режиме <c>city.lifecycle</c>, без него ни одного нового байта. Поля живых слотов, затем счётчики.</summary>
+    private static void AddLifecycle(ref Fnv1a64 h, CityWorld c, in SimCounters k)
+    {
+        BuildingStore b = c.Buildings;
+        for (int i = 0; i < b.HighWater; i++)
+        {
+            if (b.Pool.IsAlive(i))
+            {
+                h.Add((int)b.Cond[i]);
+                h.Add((int)b.Ceil[i]);
+                h.Add(b.BornDay[i]);
+                h.Add(b.LifeFlags[i]);
+                h.Add(b.Signif[i]);
+                h.Add(b.ArrivalsDay[2 * i]);
+                h.Add(b.ArrivalsDay[(2 * i) + 1]);
+            }
+        }
+
+        NeighborhoodFields? f = c.Fields;
+        if (f != null)
+        {
+            for (int i = 0; i < f.Cur.Length; i++)
+            {
+                h.Add(f.Cur[i]);
+                h.Add(f.Next[i]);
+            }
+        }
+
+        h.Add(k.BuildingsCrumbled);
+        h.Add(k.BuildingsDemolished);
+        h.Add(k.BuildingsResettled);
+
+        // ЖКХ (BL3, §2.10): фонд, потоки и переносы 17..21, тариф (R0) и флаг субсидии, очередь заявок, бригады, счётчики
+        Ledger lg = c.Ledger;
+        h.Add(lg.Utility);
+        for (int fl = Ledger.BudgetFlowCount; fl < Ledger.LifecycleFlowCount; fl++)
+        {
+            h.Add(lg.FlowDay[fl]);
+            h.Add(lg.FlowYesterday[fl]);
+            h.Add(lg.FlowTotal[fl]);
+        }
+
+        CityBudget? bud = c.Budget;
+        if (bud != null)
+        {
+            for (int fl = Ledger.BudgetFlowCount; fl < Ledger.LifecycleFlowCount; fl++)
+            {
+                h.Add(bud.Carry[fl]);
+            }
+
+            h.Add((int)bud.Policy.R0);
+            h.Add((int)bud.Policy.R1);
+            h.Add((int)bud.PendingPolicy.R0);
+            h.Add((int)bud.PendingPolicy.R1);
+        }
+
+        CityServices? sv = c.Services;
+        if (sv != null)
+        {
+            if (sv.Table.Explicit)
+            {
+                AddServices(ref h, sv);   // режим city.services (services.md §5): станции, все кольца, бригады со станцией
+                AddServiceBudget(ref h, sv, lg, bud, in k);   // SR2: поток ServiceUpkeep, ползунки, расходы, отклик
+                AddIllness(ref h, c, sv, in k);   // SR3: болезнь жителей, пациенты бригад, CareEwma
+                AddFires(ref h, sv, in k);   // SR4: пул пожаров, счётчики
+            }
+            else
+            {
+                AddUtilityBl(ref h, sv);   // без режима - ровно как BL3: очередь заявок и бригады с депо-зданием
+            }
+        }
+
+        h.Add(k.RepairsDone);
+        h.Add(k.RepairDelayTicksTotal);
+        h.Add(k.RepairNoDepot);
+        h.Add(k.CrewTimeouts);
+        h.Add(k.TariffLeaves);
+        h.Add(k.Restorations);
+    }
+
+    /// <summary>ЖКХ без режима служб (BL3, побитово прежний порядок): очередь заявок (здание, поколение, тик), бригады (депо-здание станции, поколение, цель, машина, сроки).</summary>
+    private static void AddUtilityBl(ref Fnv1a64 h, CityServices sv)
+    {
+        RingBuffer<ServiceCall> queue = sv.UtilityQueue!;
+        CrewStore u = sv.Crews;
+        h.Add(queue.Count);
+        for (int i = 0; i < queue.Count; i++)
+        {
+            ref readonly ServiceCall q = ref queue.At(i);
+            h.Add(q.Target);
+            h.Add(q.TargetGen);
+            h.Add(q.Tick);
+        }
+
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.State[i]);
+            if (u.State[i] == CrewState.Free)
+            {
+                continue;
+            }
+
+            h.Add(sv.SiteBuilding(i));
+            h.Add(sv.SiteGen(i));
+            AddCrewTail(ref h, u, i);
+        }
+    }
+
+    /// <summary>Службы в режиме <c>city.services</c> (services.md §5, блок SERV): станции, кольца вызовов по записям (обычные, срочные), бригады со станцией.</summary>
+    private static void AddServices(ref Fnv1a64 h, CityServices sv)
+    {
+        SiteStore s = sv.Sites;
+        for (int i = 0; i < s.Capacity; i++)
+        {
+            h.Add(s.Building[i]);
+            if (s.Building[i] < 0)
+            {
+                continue;
+            }
+
+            h.Add(s.Gen[i]);
+            h.Add(s.Svc[i]);
+            h.Add(s.Level[i]);
+            h.Add(s.UpgradeMask[i]);
+            h.Add(s.UnitsMax[i]);
+            h.Add(s.Duty[i]);
+            h.Add(s.BedsUsed[i]);
+            h.Add(s.IcuUsed[i]);
+            for (int d = 0; d < SiteStore.ReleaseDays; d++)
+            {
+                h.Add(s.BedRelease[(i * SiteStore.ReleaseDays) + d]);
+                h.Add(s.IcuRelease[(i * SiteStore.ReleaseDays) + d]);
+            }
+
+            for (int k = 0; k < SiteStore.MaxAnnex; k++)
+            {
+                int a = s.Annex[(i * SiteStore.MaxAnnex) + k];
+                if (a >= 0)
+                {
+                    h.Add(k);   // пристройки пишутся только занятые: станции без них хэшируются как до SR5
+                    h.Add(a);
+                }
+            }
+        }
+
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            AddRing(ref h, sv.Normal[r]);
+            AddRing(ref h, sv.Urgent[r]);
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.State[i]);
+            if (u.State[i] == CrewState.Free)
+            {
+                continue;
+            }
+
+            h.Add(u.Site[i]);
+            AddCrewTail(ref h, u, i);
+        }
+    }
+
+    /// <summary>
+    /// SR2 (services.md §2.3-§2.4, только в режиме): поток 22 <c>ServiceUpkeep</c> и его перенос, ползунки <c>Pct</c>/<c>PctPending</c>, суточные расходы записей и станций, вид вызова бригад,
+    /// счётчики вызовов записей и мира, <c>RespEwma</c>.
+    /// </summary>
+    private static void AddServiceBudget(ref Fnv1a64 h, CityServices sv, Ledger lg, CityBudget? bud, in SimCounters k)
+    {
+        for (int fl = Ledger.LifecycleFlowCount; fl < Ledger.FlowCount; fl++)
+        {
+            h.Add(lg.FlowDay[fl]);
+            h.Add(lg.FlowYesterday[fl]);
+            h.Add(lg.FlowTotal[fl]);
+            h.Add(bud != null ? bud.Carry[fl] : 0L);
+        }
+
+        for (int r = 0; r < sv.Table.Count; r++)
+        {
+            h.Add(sv.Pct[r]);
+            h.Add(sv.PctPending[r]);
+            h.Add(sv.SvcCostDay[r * 2]);
+            h.Add(sv.SvcCostDay[(r * 2) + 1]);
+            h.Add(sv.RecCallsQueued[r]);
+            h.Add(sv.RecCallsDone[r]);
+            h.Add(sv.RecRespTicks[r]);
+            h.Add(sv.RecCallsLate[r]);
+        }
+
+        for (int i = 0; i < sv.SiteVarDay.Length; i++)
+        {
+            h.Add(sv.SiteVarDay[i]);
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.Kind[i]);
+        }
+
+        for (int i = 0; i < sv.RespEwma.Length; i++)
+        {
+            h.Add(sv.RespEwma[i]);
+        }
+
+        h.Add(k.CallsQueued);
+        h.Add(k.CallsDone);
+        h.Add(k.RespTicksTotal);
+        h.Add(k.CallsLate);
+    }
+
+    /// <summary>SR3 (services.md §2.5-§2.6, только в режиме): байт болезни живых жителей, пациент бригады (<c>Ref</c>/<c>RefGen</c>), <c>CareEwma</c>, счётчики болезни.</summary>
+    private static void AddIllness(ref Fnv1a64 h, CityWorld c, CityServices sv, in SimCounters k)
+    {
+        CityResidents res = c.Residents;
+        for (int r = 0; r < res.Ill.Length; r++)
+        {
+            if (res.IsAlive(r))
+            {
+                h.Add(res.Ill[r]);
+            }
+        }
+
+        CrewStore u = sv.Crews;
+        for (int i = 0; i < u.Capacity; i++)
+        {
+            h.Add(u.Ref[i]);
+            h.Add(u.RefGen[i]);
+        }
+
+        for (int i = 0; i < sv.CareEwma.Length; i++)
+        {
+            h.Add(sv.CareEwma[i]);
+        }
+
+        h.Add(k.IllStarted);
+        h.Add(k.CareVisits);
+        h.Add(k.CareRefused);
+        h.Add(k.IcuAdmitted);
+        h.Add(k.IcuOverflow);
+        h.Add(k.ResidentsLostNoAmbulance);
+    }
+
+    /// <summary>SR4 (services.md §2.7, только в режиме): пул пожаров (состояние, здание, поколение, начало, <c>Cond</c> в начале, срок повторного вызова), счётчики пожара.</summary>
+    private static void AddFires(ref Fnv1a64 h, CityServices sv, in SimCounters k)
+    {
+        FireStore f = sv.Fires;
+        for (int i = 0; i < f.Capacity; i++)
+        {
+            h.Add(f.State[i]);
+            if (f.State[i] == FireState.Free)
+            {
+                continue;
+            }
+
+            h.Add(f.Building[i]);
+            h.Add(f.Gen[i]);
+            h.Add(f.StartTick[i]);
+            h.Add(f.CondStart[i]);
+            h.Add(f.Retry[i]);
+        }
+
+        h.Add(k.FiresStarted);
+        h.Add(k.FiresOut);
+        h.Add(k.BuildingsBurned);
+        h.Add(k.FiresSpread);
+        h.Add(k.FiresCapped);
+    }
+
+    private static void AddRing(ref Fnv1a64 h, RingBuffer<ServiceCall> ring)
+    {
+        h.Add(ring.Count);
+        for (int i = 0; i < ring.Count; i++)
+        {
+            ref readonly ServiceCall q = ref ring.At(i);
+            h.Add(q.Kind);
+            h.Add(q.Target);
+            h.Add(q.TargetGen);
+            h.Add(q.Ref);
+            h.Add(q.RefGen);
+            h.Add(q.Tick);
+        }
+    }
+
+    private static void AddCrewTail(ref Fnv1a64 h, CrewStore u, int i)
+    {
+        h.Add(u.Target[i]);
+        h.Add(u.TargetGen[i]);
+        h.Add(u.SiteLot[i]);
+        h.Add(u.Vehicle[i]);
+        h.Add(u.VehicleGen[i]);
+        h.Add(u.DueTick[i]);
+        h.Add(u.ReqTick[i]);
     }
 
     /// <summary>
@@ -102,7 +456,7 @@ internal static class CityHash
 
         h.Add(b.IncomeEwma);
         h.Add(b.ExpenseEwma);
-        for (int i = 0; i < b.Carry.Length; i++)
+        for (int i = 0; i < Ledger.BudgetFlowCount; i++)   // 17..21 - только с режимом city.lifecycle (AddLifecycle)
         {
             h.Add(b.Carry[i]);
         }
@@ -110,6 +464,7 @@ internal static class CityHash
         h.Add(b.DebtDays);
         h.Add(b.OverLimitDays);
         h.Add(b.Insolvent);
+        h.Add(b.WarnLevel);   // PG5 (progression.md §5): уровень предупреждения - состояние (гистерезис), хэш econ-сценариев сменился осознанно
         for (int i = 0; i < b.UndoCredits.Length; i++)
         {
             ref readonly UndoCredit u = ref b.UndoCredits[i];
@@ -126,7 +481,7 @@ internal static class CityHash
         }
 
         Ledger lg = c.Ledger;
-        for (int f = Ledger.LegacyFlowCount; f < Ledger.FlowCount; f++)
+        for (int f = Ledger.LegacyFlowCount; f < Ledger.BudgetFlowCount; f++)
         {
             h.Add(lg.FlowDay[f]);
             h.Add(lg.FlowYesterday[f]);
